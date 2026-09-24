@@ -101,13 +101,16 @@ function select(id, app, fly = false, zoomIn = false) {
   selected = id;
   applySelection();
   const card = col.querySelector('#mapcard');
-  if (!id) { card.classList.add('hidden'); return; }
+  if (!id) { card.classList.remove('open'); return; }
   const si = D.stopById[id];
   if (si === undefined) return;
   const s = stop(si);
-  if (fly && map) map.easeTo({ center: [s.lon, s.lat], zoom: zoomIn ? 16 : Math.max(map.getZoom(), 15), offset: [0, -120] });
   const desktop = matchMedia('(min-width: 900px)').matches;
-  if (desktop && fly) { if (location.hash !== '#/stop/' + id) location.hash = '#/stop/' + id; card.classList.add('hidden'); return; }
+  if (desktop && fly) {
+    map.easeTo({ center: [s.lon, s.lat], zoom: zoomIn ? 16 : Math.max(map.getZoom(), 15), duration: 700 });
+    if (location.hash !== '#/stop/' + id) location.hash = '#/stop/' + id;
+    card.classList.remove('open'); return;
+  }
   const clockNow = now();
   const next = nextAt(si, 3, clockNow);
   const fromHub = metres(distance(s.lat, s.lon, D.hub.lat, D.hub.lon));
@@ -115,6 +118,18 @@ function select(id, app, fly = false, zoomIn = false) {
     ${next.length ? next.map(t => depRow(t, clockNow, { name: t.day ? undefined : undefined })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a></div>`;
   card.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    card.classList.add('open');
+    if (!fly || !map) return;
+    // Move the map only if the stop would sit under the card or off screen; then ease, gently.
+    const pt = map.project([s.lon, s.lat]);
+    const h = map.getContainer().clientHeight, w = map.getContainer().clientWidth;
+    const clear = h - card.offsetHeight - 24;
+    const zoom = map.getZoom() < 13 || zoomIn ? 15.5 : map.getZoom();
+    if (pt.y > clear || pt.y < 90 || pt.x < 24 || pt.x > w - 24 || zoom !== map.getZoom()) {
+      map.easeTo({ center: [s.lon, s.lat], zoom, offset: [0, -(card.offsetHeight / 2)], duration: 650, essential: true });
+    }
+  });
 }
 
 function notice(clockNow) {
@@ -132,7 +147,7 @@ export async function show({ stopId, focus, hub }, app, clockNow) {
   requestAnimationFrame(() => map.resize());
   notice(clockNow);
   if (app.geo) placeMe(app.geo);
-  if (hub) { selected = null; applySelection(); col.querySelector('#mapcard').classList.add('hidden'); map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16 }); return; }
+  if (hub) { selected = null; applySelection(); col.querySelector('#mapcard').classList.remove('open'); map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 }); return; }
   if (stopId) {
     const si = D.stopById[stopId];
     if (si !== undefined) {

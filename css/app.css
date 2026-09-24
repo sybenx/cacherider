@@ -317,7 +317,9 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .mapbar .input { height: 50px; font-size: 16px; padding-left: 44px; box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--color-text) 30%, transparent); }
 .mapbar .search .lead { left: 13px; top: 14px; }
 .mapbar .btn-icon { width: 50px; height: 50px; background: var(--color-bg); box-shadow: var(--shadow-md); }
-.mapcard { position: absolute; left: 0; right: 0; bottom: 0; z-index: 450; background: var(--color-bg); border-top: 1px solid var(--cr-line); box-shadow: var(--shadow-lg); max-height: 70%; overflow-y: auto; }
+.mapcard { position: absolute; left: 0; right: 0; bottom: 0; z-index: 450; background: var(--color-bg); border-top: 1px solid var(--cr-line); box-shadow: var(--shadow-lg); max-height: 70%; overflow-y: auto; transform: translateY(102%); transition: transform .28s cubic-bezier(.2,.7,.2,1); pointer-events: none; }
+.mapcard.open { transform: none; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { .mapcard { transition: none; } }
 .mapcard .grip { width: 40px; height: 4px; border-radius: 2px; background: var(--cr-line); margin: 8px auto 4px; }
 .mapcard .head { padding: 6px 16px 12px; gap: 6px; }
 .mapcard .head .name { display: flex; align-items: center; gap: 10px; }
