@@ -7,7 +7,7 @@ const SHELL = [
   './app/views/home.js', './app/views/stop.js', './app/views/hub.js', './app/views/route.js', './app/views/about.js', './app/views/map.js', './app/views/ustop.js', './app/views/uroute.js', './app/geo.js', './app/usu.js',
   './vendor/maplibre-gl.mjs', './vendor/maplibre-gl-shared.mjs', './vendor/maplibre-gl-worker.mjs', './vendor/maplibre-gl.css', './vendor/basemaps.mjs',
   './fonts/barlow-400.woff2', './fonts/barlow-500.woff2', './fonts/barlow-700.woff2', './fonts/barlow-condensed-400.woff2', './fonts/barlow-condensed-600.woff2',
-  './icons/icon.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
+  './icons/icon.svg', './icons/icon-96.png', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './favicon.ico',
   './data/cvtd.json', './data/cvtd-shapes.json', './data/grid.json', './data/usu.json',
 ];
 const scope = new URL('./', self.location).href;
