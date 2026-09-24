@@ -5,6 +5,7 @@ import { relative, fmtDay, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { parseAddress, geocode, townState } from '../geo.js';
+import { U, searchUSU, stopRowU, chip, liveTag, live, hasData } from '../usu.js';
 
 export function render({ q }, clockNow) {
   const app = window.__app;
@@ -28,7 +29,8 @@ export function render({ q }, clockNow) {
   if (sv.length) {
     const editing = app && app.editSaved;
     parts.push(html`<div class="section saved">${icon('star', 16)}Saved stops<button class="btn btn-ghost edit" id="edit-saved">${editing ? 'Done' : 'Edit'}</button></div>
-      <div class="list">${editing ? html.raw(sv.map((id, i) => editRow(id, i, sv.length)).join('')) : sv.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
+      <div class="list">${editing ? html.raw(sv.map((id, i) => editRow(id, i, sv.length)).join('')) : sv.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
+    if (app) app.hasCampusSaved = sv.some(id => id.startsWith('u:'));
   } else {
     const rec = recent();
     if (rec.length) {
@@ -83,16 +85,21 @@ function results(q, clockNow) {
   const addrHtml = places.map(pl => html`
     <div class="section between"><span>${pl.label} · ${pl.town}${townState(pl.town)}${pl.near ? html.raw(`<span class="note"> · near ${esc(pl.near)}</span>`) : ''}</span><a class="note" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}">Show on map</a></div>
     <div class="list">${pl.stops.length ? pl.stops.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops near there.</p></div>`}</div>`).join('');
-  if (!hits.length && !places.length) {
+  const us = searchUSU(q);
+  const campusHtml = (us.stops.length || us.routes.length) ? html`
+    <div class="notice"><span>${us.stops.length ? us.stops.length + (us.stops.length === 1 ? ' campus stop' : ' campus stops') : ''}${us.stops.length && us.routes.length ? ' · ' : ''}${us.routes.length ? us.routes.length + (us.routes.length === 1 ? ' route' : ' routes') : ''}</span></div>
+    ${us.stops.length ? html`<div class="section">${icon('stops', 16)}Campus stops</div><div class="list">${us.stops.map(i => stopRowU(i))}</div>` : ''}
+    ${us.routes.length ? html`<div class="section">${icon('route', 16)}Shuttle routes</div><div class="list">${us.routes.map(ri => { const r = U.routes[ri]; const n = live.buses.filter(b => b.ri === ri).length; return html`<a class="row" href="#/usu/route/${r.id}">${chip(ri, 36)}<div class="mid"><span class="name">${r.name}</span><span class="sub">${r.stops.length} stops · ${hasData() ? (n ? n + (n === 1 ? ' bus' : ' buses') + ' on the road' : 'no bus on the road') : 'finding buses…'}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`; })}</div>` : ''}`.s : '';
+  if (!hits.length && !places.length && !campusHtml) {
     return html`<div class="empty"><h2>No stops match “${q}”</h2><p>Stop names are street addresses. Try a street or a town, or any address in the valley, like “4182 S 800 W, Preston”, for the stops nearest it.</p></div>
       <div class="chips">${['Main St', '400 North', 'Hyrum', 'USU', 'Smithfield'].map(s => html`<a class="chip" href="#/search?q=${encodeURIComponent(s)}" data-q="${s}">${s}</a>`)}</div>
       <div class="section">${icon('route', 16)}Or browse by route</div><div class="routes">${D.routes.map((r, i) => html`<a href="#/route/${encodeURIComponent(r.short)}">${badge(i, 36)}</a>`)}</div>`;
   }
   const towns = [...new Set(hits.map(i => stop(i).town))];
   const where = towns.length === 1 ? ' in ' + towns[0] : '';
-  if (!hits.length) return html`${html.raw(addrHtml)}<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>`;
-  return html`${html.raw(addrHtml)}
-    <div class="${places.length ? 'section' : 'notice'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}</span></div>
+  if (!hits.length) return html`${html.raw(campusHtml)}${html.raw(addrHtml)}<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>`;
+  return html`${html.raw(campusHtml)}${html.raw(addrHtml)}
+    <div class="${places.length || campusHtml ? 'section' : 'notice'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}</span></div>
     <div class="list">${hits.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>
     <div class="fine">Matches street, number and town: “500 north”, “main st, hyrum” and “hyrum main” all work. So does any address in the valley, like “4182 S 800 W, Preston”, for the stops nearest it.</div>`;
 }
@@ -153,9 +160,12 @@ function commonStreet(a, b) {
 }
 
 function editRow(id, i, n) {
-  const s = stop(D.stopById[id]);
-  const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
-  return `<div class="stoprow editrow"><div class="mid"><span class="name">${esc(s.name)}${town}</span>${badges(s.routes, 24).s}</div>
+  const campus = id.startsWith('u:') ? U.stops[U.stopById[id.slice(2)]] : null;
+  const s = campus || stop(D.stopById[id]);
+  if (!s) return '';
+  const town = !campus && s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
+  const marks = campus ? `<div class="badges wide">${s.routes.map(ri => chip(ri, 24).s).join('')}</div>` : badges(s.routes, 24).s;
+  return `<div class="stoprow editrow"><div class="mid"><span class="name">${esc(s.name)}${town}</span>${marks}</div>
     <div class="end row-actions">
       <button class="btn btn-secondary btn-icon" data-move="-1" data-id="${esc(id)}" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>${icon('up', 18).s}</button>
       <button class="btn btn-secondary btn-icon" data-move="1" data-id="${esc(id)}" aria-label="Move down" ${i === n - 1 ? 'disabled' : ''}>${icon('chevDown', 18).s}</button>

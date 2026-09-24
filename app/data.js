@@ -160,7 +160,7 @@ export function remember(id) {
   try { localStorage.setItem(RECENT, JSON.stringify([id, ...recent().filter(x => x !== id)].slice(0, 4))); } catch { /* private mode */ }
 }
 const SAVED = 'cr-saved';
-export function saved() { try { return JSON.parse(localStorage.getItem(SAVED) || '[]').filter(id => id in D.stopById); } catch { return []; } }
+export function saved() { try { return JSON.parse(localStorage.getItem(SAVED) || '[]').filter(id => id in D.stopById || id.startsWith('u:')); } catch { return []; } }
 export function setSaved(ids) { try { localStorage.setItem(SAVED, JSON.stringify(ids)); } catch { /* private mode */ } }
 export function isSaved(id) { return saved().includes(id); }
 export function toggleSaved(id) { const s = saved(); setSaved(s.includes(id) ? s.filter(x => x !== id) : [...s, id]); return !s.includes(id); }

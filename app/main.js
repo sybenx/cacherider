@@ -9,11 +9,14 @@ import * as stopView from './views/stop.js';
 import * as hub from './views/hub.js';
 import * as routeView from './views/route.js';
 import * as about from './views/about.js';
+import * as ustop from './views/ustop.js';
+import * as uroute from './views/uroute.js';
+import { loadUSU, setWanted, onLive, U } from './usu.js';
 
 const side = document.getElementById('side');
 const body = document.getElementById('body');
 const TABS = [
-  { href: '#/', label: 'Stops', icon: 'stops', match: h => /^#\/(stop|search|route|about|$)/.test(h) },
+  { href: '#/', label: 'Stops', icon: 'stops', match: h => /^#\/(stop|search|route|about|usu|$)/.test(h) },
   { href: '#/map', label: 'Map', icon: 'map', match: h => h.startsWith('#/map') },
   { href: '#/hub', label: 'Transit Center', icon: 'hub', match: h => h.startsWith('#/hub') },
 ];
@@ -61,6 +64,8 @@ async function render(tick = false) {
     else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
     else if (name === 'route') view = routeView.render({ short: decodeURIComponent(seg[1] || ''), dir: seg[2] }, clockNow);
     else if (name === 'about') view = about.render({}, clockNow);
+    else if (name === 'usu' && seg[1] === 'route') view = uroute.render({ id: seg[2] }, clockNow);
+    else if (name === 'usu') view = ustop.render({ id: seg[1] }, clockNow);
     else if (name === 'map') view = null;
     else view = home.render({}, clockNow);
   } catch (e) {
@@ -69,6 +74,7 @@ async function render(tick = false) {
   }
   app.route = { name, seg, q };
   const mapOpen = name === 'map';
+  setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U && (app.geo || app.hasCampusSaved)));
   body.classList.toggle('map-open', mapOpen);
   if (view) {
     const keepScroll = (tick || view.keepScroll) && side.dataset.view === name + (seg[1] || '');
@@ -221,6 +227,7 @@ function wireHeader() {
 async function boot() {
   try {
     await Promise.all([load(), loadGrid()]);
+    await loadUSU();   // after the timetable: shared kerbs need Connect's stops
   } catch (e) {
     side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;
     return;
@@ -241,6 +248,8 @@ async function boot() {
     render(true);
   }, 5000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') render(); });
+  // Fresh bus positions redraw a live screen in place.
+  onLive(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').catch(() => {});
 }
 boot();

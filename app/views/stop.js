@@ -3,6 +3,8 @@
 import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle } from '../ui.js';
+import { U, chips, liveTag } from '../usu.js';
+import { metres as m2 } from '../time.js';
 
 export function render({ id, full }, clockNow) {
   const si = stopIndex(id);
@@ -28,6 +30,13 @@ export function render({ id, full }, clockNow) {
       <span class="muted">${icon('fwd', 20)}</span></a>`);
   }
 
+  const sh = U && U.sharedByCvtd[si];
+  if (sh) {
+    const us = U.stops[sh.i];
+    parts.push(html`<a class="twin blueprint" href="#/usu/${us.id}">${corners()}<span style="color:var(--color-accent-700)">${icon('hub', 22)}</span>
+      <div class="mid"><span class="eyebrow">USU shuttle · ${m2(sh.d)}</span><span class="name">${us.name}</span><div class="when">${chips(us.routes, 20)}${liveTag()}</div></div>
+      <span class="muted">${icon('fwd', 20)}</span></a>`);
+  }
   const nt = newTimetable(clockNow);
   const td = today(si, clockNow);
   const next = nextAt(si, 7, clockNow);

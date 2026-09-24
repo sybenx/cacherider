@@ -22,6 +22,12 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   next buses for the stop you tap.
 - **After hours, Sundays, weekday-only stops** — it says so, and shows the
   next day that runs.
+- **USU campus shuttle** — the Aggie Shuttle's stops, routes and buses,
+  live. Shuttles have no timetable, so each stop shows how many stops away
+  the next bus is and about how many minutes, estimated from where it is on
+  its loop, with how full it is. Buses move on the map; tap one for its load
+  and next stops. A campus stop at the same kerb as a Connect stop shares a
+  page. Marked LIVE, never SCHEDULED.
 - **Saved stops** — a star on any stop page keeps it at the top of the home
   screen, in your order. Saved on the phone, no account.
 - **Offline** — add it to your home screen and the timetable stays on the
@@ -44,12 +50,15 @@ app/                main.js (router), data.js (the schedule), time.js, ui.js, vi
 css/app.css         the Industry design system: Barlow Condensed, hairline rows, blueprint frames
 data/cvtd.json      the reduced timetable, ~50 KB gzipped, written nightly
 data/cvtd-shapes.json  route lines for the map
+data/usu.json       the campus shuttle's routes, stops and loops, snapshotted nightly
 tiles/              Cache Valley from OpenStreetMap via Protomaps, one file a tile, and tiles.json
 vendor/             MapLibre GL, the Protomaps basemap style and its glyphs and sprites
 fonts/              Barlow and Barlow Condensed (OFL)
 tools/reduce.py     GTFS → data/*.json
 tools/tiles.py      Protomaps build → tiles/
 tools/grid.py       tiles/ → data/grid.json, each town's address grid fitted from its street names
+tools/usu.py        Passio GO → data/usu.json (the buses themselves are fetched live by the phone)
+app/usu.js          live buses: polling, position along the loop, stops-away and minute estimates
 tools/hints.json    agency wording: the hub, the loops, headsigns
 sw.js               offline: the app and timetable cached; map tiles kept as seen, or all at once
 ```
@@ -69,6 +78,14 @@ night and commits the result when it changed. The
 quarter from the latest Protomaps build. The map is one small file a tile
 rather than one archive, because not every static host honours byte-range
 requests; a rider only ever fetches the tiles on screen.
+
+The campus shuttle comes from the Passio GO feed the USU app uses, unofficial
+and undocumented. The phone polls bus positions every 12 seconds only while a
+screen that shows them is open, straight from the feed (it allows any origin),
+so there is still no server. A stop's estimate is the nearest bus behind it on
+the loop: distance at a walking-pace bus speed plus a dwell per stop between.
+If the feed stops answering, positions are kept and minutes are dropped after
+a minute; if it reports no buses, the stop says so.
 
 Addresses need no geocoder: the valley numbers its streets from each town's
 origin, so `tools/grid.py` fits a grid per town from the named streets in the

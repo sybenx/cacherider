@@ -336,6 +336,41 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .ios-install .step .ic { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--cr-line); color: var(--color-accent-700); }
 @media (min-width: 900px) { .ios-install .sheet { max-width: 480px; left: 50%; right: auto; transform: translateX(-50%); } }
 
+/* the USU campus shuttle: live rows, load meters, chips in its own colours */
+.uchip { display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; border-radius: 5px; font-family: var(--font-heading); font-weight: 600; line-height: 1; letter-spacing: .01em; white-space: nowrap; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14); }
+.usq { width: 12px; height: 12px; flex: none; margin: 0 12px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); }
+.urow .mid { gap: 6px; }
+.urow.off .mid .sub { color: var(--cr-muted); }
+.liveline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.meter { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.meter i { width: 10px; height: 6px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 35%, transparent); }
+.meter i.on { background: var(--color-text); box-shadow: none; }
+.meter.wide i { width: 18px; }
+.livetag { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-700); white-space: nowrap; }
+.livetag i { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); animation: crPulse 2s ease-out infinite; flex: none; }
+@keyframes crPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 45%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .livetag i { animation: none; } }
+.nobus { margin: 4px 16px 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.nobus .title { font-family: var(--font-heading); font-weight: 600; font-size: 26px; line-height: 1.05; }
+.nobus .sub { font-size: 15px; line-height: 1.45; color: var(--cr-muted); text-wrap: pretty; }
+.bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform .6s linear; }
+.bus-marker svg { width: 14px; height: 14px; }
+.bus-marker.on { box-shadow: 0 0 0 3px var(--color-accent); }
+.buscard .head { gap: 10px; }
+.buscard .top { display: flex; justify-content: space-between; align-items: center; }
+.buscard .who { display: flex; align-items: center; gap: 10px; }
+.buscard .who .name { font-family: var(--font-heading); font-weight: 600; font-size: 28px; line-height: 1.05; flex: 1; }
+.buscard .load { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--cr-muted); }
+.nextstops { border-top: 1px solid var(--cr-line); padding: 6px 0 10px; position: relative; }
+.nextstops .line { position: absolute; left: 24px; top: 28px; bottom: 32px; width: 2px; }
+.nextstops .ns { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; gap: 10px; align-items: center; min-height: 46px; padding: 0 16px; color: inherit; text-decoration: none; }
+.nextstops .ns .dot { display: flex; justify-content: center; }
+.nextstops .ns .dot i { width: 10px; height: 10px; box-shadow: inset 0 0 0 1.5px var(--color-text); }
+.nextstops .ns.here .dot i { box-shadow: none; }
+.nextstops .ns .nm { font-size: 15.5px; font-weight: 500; }
+.nextstops .ns.here .nm { font-weight: 600; }
+.nextstops .ns .when { font-size: 14px; color: var(--cr-muted); white-space: nowrap; }
+
 /* sheets — the permission ask, the map's stop card */
 .scrim { position: absolute; inset: 0; background: var(--cr-scrim); z-index: 700; }
 .sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 710; background: var(--color-bg); padding: 10px 16px calc(18px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-lg); }

@@ -136,5 +136,21 @@
     "Preston": "Preston, Idaho",
     "Franklin": "Franklin, Idaho"
   },
-  "town_suffix_default": "Logan"
+  "town_suffix_default": "Logan",
+  "usu": {
+    "name": "USU campus shuttle",
+    "agency": "Utah State University",
+    "hours": "USU lists weekday service, 7 AM to 5 PM, with the Evening Express until 10 PM.",
+    "short": {
+      "Water Lab": "Water Lab",
+      "Stadium Express": "Stadium",
+      "Housing Express": "Housing",
+      "Charter": "Charter",
+      "Evening Express": "Evening",
+      "8th East Express": "8th East",
+      "South Campus Express": "South Campus",
+      "Innovation Campus Express": "Innovation",
+      "North Core Express": "North Core"
+    }
+  }
 }
