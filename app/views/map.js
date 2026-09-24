@@ -26,9 +26,12 @@ function style() {
       protomaps: { type: 'vector', tiles: [BASE + 'tiles/{z}/{x}/{y}.pbf'], minzoom: TILES.minzoom, maxzoom: TILES.maxzoom, bounds: TILES.bounds, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
       stops: { type: 'geojson', data: stopsGeo() },
       lines: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+      spot: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     },
     layers: [
       ...layers('protomaps', f, { lang: 'en' }),
+      { id: 'spot-fill', type: 'fill', source: 'spot', paint: { 'fill-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'fill-opacity': 0.18 } },
+      { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8], 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#101214' : '#ffffff', 'circle-stroke-width': 1.5, 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
       { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
@@ -150,9 +153,21 @@ function notice(clockNow) {
 }
 
 /** An address: a pin, and the card lists the stops nearest it. */
+function circle(lat, lon, m = 90, n = 40) {
+  const dlat = m / 111000, dlon = m / (111000 * Math.cos(lat * Math.PI / 180));
+  const ring = [];
+  for (let i = 0; i <= n; i++) { const a = i / n * 2 * Math.PI; ring.push([lon + dlon * Math.cos(a), lat + dlat * Math.sin(a)]); }
+  return { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } }] };
+}
+function setSpot(at) {
+  const apply = () => map.getSource('spot') && map.getSource('spot').setData(at ? circle(at.lat, at.lon) : { type: 'FeatureCollection', features: [] });
+  if (ready) apply(); else map.once('load', apply);
+}
 function showAt(at, app, clockNow) {
   selected = null; applySelection();
-  if (!pinMarker) { const el = document.createElement('div'); el.className = 'pin-marker'; el.innerHTML = icon('pin', 30, 2).s; pinMarker = new maplibregl.Marker({ element: el, anchor: 'bottom' }); }
+  // A soft disc rather than a pin: an address is arithmetic on the town's grid, good to a block, not a survey.
+  setSpot(at);
+  if (!pinMarker) { const el = document.createElement('div'); el.className = 'spot-marker'; pinMarker = new maplibregl.Marker({ element: el }); }
   pinMarker.setLngLat([at.lon, at.lat]).addTo(map);
   const near = nearestTo(at.lat, at.lon, 4);
   const card = col.querySelector('#mapcard');
@@ -172,7 +187,7 @@ export async function show({ stopId, at, focus, hub, tick }, app, clockNow) {
   notice(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
-  if (pinMarker && !at) { pinMarker.remove(); }
+  if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
   if (at) return showAt(at, app, clockNow);
   if (hub) {
     selected = null; applySelection(); col.querySelector('#mapcard').classList.remove('open');

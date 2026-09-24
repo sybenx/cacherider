@@ -341,8 +341,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1); } }
 .stop-marker { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--color-bg); box-shadow: 0 0 0 1px rgba(0,0,0,.25); cursor: pointer; }
 .stop-marker.on { width: 20px; height: 20px; border-width: 3px; box-shadow: 0 0 0 2px var(--color-accent); }
-.pin-marker { color: var(--color-accent-700); filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
-.pin-marker svg { fill: var(--color-bg); }
+.spot-marker { width: 10px; height: 10px; border-radius: 50%; background: var(--color-accent); border: 2px solid var(--color-bg); box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
 .me-marker { width: 16px; height: 16px; border-radius: 50%; background: var(--color-accent); border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 0 0 8px color-mix(in srgb, var(--color-accent) 25%, transparent); }
 
 /* desktop: the map's own bar hides, the header search serves */
