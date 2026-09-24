@@ -4,6 +4,7 @@ import { D, nextAt, nearest, isSaved, toggleSaved } from '../data.js';
 import { dayName, now, metres } from '../time.js';
 import { html, icon, badges, depRow, stopRow } from '../ui.js';
 import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live } from '../usu.js';
+import { miniSlot, mountMini } from './mini.js';
 
 export function render({ id }, clockNow) {
   if (!U) return { html: html`<div class="empty"><h2>Shuttle data isn't loaded</h2></div>`, title: 'Shuttle' };
@@ -16,6 +17,7 @@ export function render({ id }, clockNow) {
   const parts = [];
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${sid}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
+  parts.push(miniSlot({ ustopId: s.id }));
   const eyebrow = cs ? `USU shuttle and Connect · ${metres(shared.d)} apart` : `${U.name} · ${s.routes.length} ${s.routes.length === 1 ? 'route' : 'routes'}`;
   parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${cs ? html`<span class="muted" style="font-size:14px">Connect stop: ${cs.name}</span>` : ''}
     <div class="badges wide">${chips(s.routes, 30)}${cs ? badges(cs.routes, 30, true) : ''}</div></div>`);
@@ -44,6 +46,7 @@ export function render({ id }, clockNow) {
 }
 
 function mount(el) {
+  mountMini(el);
   const b = el.querySelector('#save');
   if (!b) return;
   b.onclick = () => {

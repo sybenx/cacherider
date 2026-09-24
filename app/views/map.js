@@ -9,7 +9,8 @@ import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen } from '../usu.js';
 
-let map = null, ready = false, selected = null, meMarker = null, pinMarker = null, shapesLoaded = false, flavorName = null, lastFocused = null;
+let map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
+let mm = null, mmEl = null, mmReady = false, mmKey = null, mmSel = null;   // the small map on a stop page
 const busMarkers = new Map();   // bus id → { marker, el }
 let selectedBus = null, selectedU = null;
 // The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
@@ -39,6 +40,7 @@ function style() {
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2.5, 17, 4], 'line-opacity': 0.9, 'line-dasharray': [3, 1.5] } },
+      { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
       { id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8], 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#101214' : '#ffffff', 'circle-stroke-width': 1.5, 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
@@ -75,25 +77,34 @@ function addUsuImages() {
   for (const r of U.routes) { const name = 'usq-' + r.color.slice(1); if (!map.hasImage(name)) map.addImage(name, squareImage(r.color)); }
 }
 
-async function loadShapes() {
-  if (shapesLoaded) return;
-  shapesLoaded = true;
-  try {
-    const r = await fetch(BASE + 'data/cvtd-shapes.json');
-    const j = await r.json();
-    const fc = { type: 'FeatureCollection', features: j.lines.map(l => ({ type: 'Feature', properties: { color: '#' + route(l.route).color, route: l.route }, geometry: { type: 'LineString', coordinates: l.coords } })) };
-    if (map.getSource('lines')) map.getSource('lines').setData(fc);
-  } catch (e) { console.warn('shapes', e); }
+let shapesFC = null;   // the route lines, fetched once for both maps
+function shapes() {
+  if (!shapesFC) shapesFC = fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json())
+    .then(j => ({ type: 'FeatureCollection', features: j.lines.map(l => ({ type: 'Feature', properties: { color: '#' + route(l.route).color, route: l.route }, geometry: { type: 'LineString', coordinates: l.coords } })) }))
+    .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
+  return shapesFC;
+}
+async function loadShapes(m = map) {
+  const fc = await shapes();
+  if (fc && m && m.getSource('lines')) m.getSource('lines').setData(fc);
+}
+let tilesLoaded = null;
+function loadTiles() {
+  if (!tilesLoaded) tilesLoaded = fetch(BASE + 'tiles/tiles.json').then(r => r.json()).then(t => { TILES = { ...TILES, ...t }; }).catch(() => { /* the defaults cover the valley */ });
+  return tilesLoaded;
+}
+function squaresOnDemand(m) {
+  m.on('styleimagemissing', e => { if (e.id.startsWith('usq-') && !m.hasImage(e.id)) m.addImage(e.id, squareImage('#' + e.id.slice(4))); });
 }
 
 async function init(app) {
   if (map) return;
-  try { const t = await (await fetch(BASE + 'tiles/tiles.json')).json(); TILES = { ...TILES, ...t }; } catch { /* the defaults cover the valley */ }
+  await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : [-111.8300, 41.7330];
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 17.5, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-  map.on('styleimagemissing', e => { if (e.id.startsWith('usq-') && !map.hasImage(e.id)) map.addImage(e.id, squareImage('#' + e.id.slice(4))); });
+  squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); if (selected) applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); });
   map.on('click', 'usu-stops', e => { const f = e.features[0]; selectU(f.properties.id, app); e.originalEvent._stopHit = true; });
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
@@ -103,7 +114,7 @@ async function init(app) {
   map.on('click', e => { if (!e.originalEvent._stopHit) { selectedBus = null; selectedU = null; select(null, app); } });
   map.on('mouseenter', 'stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'stops', () => map.getCanvas().style.cursor = '');
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((dark() ? 'dark' : 'light') !== flavorName) { ready = false; shapesLoaded = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); }); } });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((dark() ? 'dark' : 'light') !== flavorName) { ready = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); }); } });
   wireChrome(app);
 }
 
@@ -140,10 +151,11 @@ function placeMe(geo) {
 function applySelection() {
   if (!map || !ready) return;
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
+  map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
 }
 
 function select(id, app, fly = false, zoomIn = false) {
-  selected = id;
+  selected = id; uHilite = '';
   applySelection();
   const card = col.querySelector('#mapcard');
   if (!id) { card.classList.remove('open'); return; }
@@ -227,7 +239,7 @@ function glide(m, lon, lat) {
   m.anim = requestAnimationFrame(step);
 }
 function selectBus(id, app) {
-  selectedBus = id; selectedU = null; selected = null; applySelection();
+  selectedBus = id; selectedU = null; selected = null; uHilite = ''; applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
   busCard(app);
 }
@@ -249,7 +261,7 @@ function selectU(id, app) {
   const si = U.stopById[id];
   if (si === undefined) return;
   if (matchMedia('(min-width: 900px)').matches && !(app.route && app.route.name === 'map')) { location.hash = '#/usu/' + id; return; }
-  selectedU = si; selectedBus = null; selected = null; applySelection();
+  selectedU = si; selectedBus = null; selected = null; uHilite = id; applySelection();
   for (const m of busMarkers.values()) m.el.classList.remove('on');
   const s = U.stops[si];
   map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), offset: [0, -120], duration: 650 });
@@ -278,7 +290,7 @@ function setSpot(at) {
   if (ready) apply(); else map.once('load', apply);
 }
 function showAt(at, app, clockNow) {
-  selected = null; applySelection();
+  selected = null; uHilite = ''; applySelection();
   // A soft disc rather than a pin: an address is arithmetic on the town's grid, good to a block, not a survey.
   setSpot(at);
   if (!pinMarker) { const el = document.createElement('div'); el.className = 'spot-marker'; pinMarker = new maplibregl.Marker({ element: el }); }
@@ -295,17 +307,17 @@ function showAt(at, app, clockNow) {
 }
 
 /** Called by the router whenever the map is on screen. */
-export async function show({ stopId, at, focus, hub, tick }, app, clockNow) {
+export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clockNow) {
   await init(app);
   requestAnimationFrame(() => map.resize());
   notice(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
-  if (stopId || hub || at) { selectedBus = null; selectedU = null; }
+  if (stopId || ustopId || hub || at) { selectedBus = null; selectedU = null; }
   if (at) return showAt(at, app, clockNow);
   if (hub) {
-    selected = null; applySelection(); col.querySelector('#mapcard').classList.remove('open');
+    selected = null; uHilite = ''; applySelection(); col.querySelector('#mapcard').classList.remove('open');
     if (lastFocused !== 'hub') map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 });
     lastFocused = 'hub';
     return;
@@ -316,13 +328,52 @@ export async function show({ stopId, at, focus, hub, tick }, app, clockNow) {
       const s = stop(si);
       const changed = lastFocused !== stopId;
       lastFocused = stopId;
-      selected = stopId; applySelection();
+      selected = stopId; uHilite = ''; applySelection();
       // A click on the map already eased there; a fresh arrival from elsewhere eases now.
-      if (focus && changed && !map.isEasing()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
+      if (focus && changed && !map.isMoving()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
       if (!matchMedia('(min-width: 900px)').matches || app.route.name === 'map') select(stopId, app, false);
     }
+  } else if (ustopId && U) {
+    const si = U.stopById[ustopId];
+    if (si === undefined) return;
+    const s = U.stops[si];
+    const changed = lastFocused !== 'u:' + ustopId;
+    lastFocused = 'u:' + ustopId;
+    selected = null; uHilite = ustopId; applySelection();
+    if (app.route.name === 'map') { if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
+    else if (focus && changed && !map.isMoving()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
   } else if (app.route && app.route.name === 'map') {
     lastFocused = null;
     select(null, app);
   }
+}
+
+// ---- the small map on a stop page (phones): one instance, moved from page to page
+/** Draw the stop into `slot`; `sel` is { stopId } or { ustopId }. */
+export async function mini(sel, slot) {
+  mmSel = sel;
+  const key = sel.ustopId ? 'u:' + sel.ustopId : sel.stopId;
+  const s = sel.ustopId ? (U && U.stops[U.stopById[sel.ustopId]]) : D.stops[D.stopById[sel.stopId]];
+  if (!s) return;
+  if (!mmEl) {
+    await loadTiles();
+    if (!slot.isConnected) return;   // the page moved on while the tile index loaded
+    mmEl = document.createElement('div'); mmEl.className = 'minimap';
+    slot.prepend(mmEl);
+    mm = new maplibregl.Map({ container: mmEl, style: style(), center: [s.lon, s.lat], zoom: 16, minZoom: 10, maxZoom: 17.5, interactive: false, fadeDuration: 0, attributionControl: { compact: true } });
+    squaresOnDemand(mm);
+    mm.on('load', () => { mmReady = true; loadShapes(mm); miniSelection(); });
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (mm && (dark() ? 'dark' : 'light') !== flavorName) { mmReady = false; mm.setStyle(style()); mm.once('style.load', () => { mmReady = true; loadShapes(mm); miniSelection(); }); } });
+  } else if (mmEl.parentNode !== slot) {
+    slot.prepend(mmEl);
+    requestAnimationFrame(() => mm.resize());
+  }
+  if (mmKey !== key) mm.jumpTo({ center: [s.lon, s.lat], zoom: 16 });
+  mmKey = key;
+  miniSelection();
+}
+function miniSelection() {
+  if (!mm || !mmReady || !mmSel) return;
+  mm.setFilter('stop-selected', ['==', ['get', 'id'], mmSel.stopId || '']);
+  mm.setFilter('usu-selected', ['==', ['get', 'id'], mmSel.ustopId || '']);
 }

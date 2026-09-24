@@ -4,6 +4,7 @@ import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, rememb
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
+import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
 
 export function render({ id, full }, clockNow) {
@@ -15,6 +16,7 @@ export function render({ id, full }, clockNow) {
   const sv = isSaved(s.id);
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
+  parts.push(miniSlot({ stopId: s.id }));
   const sd = side(si);
   const eyebrow = sd ? `${s.town} · ${sd} side` : `${s.town} · Stop ${s.code || s.id}`;
   parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${badges(s.routes, 30, true)}</div>`);
@@ -109,6 +111,7 @@ function describeDays(r) {
 }
 
 function mount(el) {
+  mountMini(el);
   const b = el.querySelector('#save');
   if (!b) return;
   b.onclick = () => {

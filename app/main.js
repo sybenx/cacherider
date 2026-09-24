@@ -87,7 +87,12 @@ async function render(tick = false) {
   if (mapOpen || isDesktop()) {
     const m = await ensureMap();
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
-    m.show({ stopId: name === 'map' && !at ? seg[1] : name === 'stop' ? seg[1] : null, at, focus: name === 'map' || name === 'stop', hub: name === 'hub', tick }, app, clockNow);
+    const mapU = name === 'map' && seg[1] === 'usu';
+    m.show({
+      stopId: name === 'map' && !at && !mapU ? seg[1] : name === 'stop' ? seg[1] : null,
+      ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
+      at, focus: name === 'map' || name === 'stop' || name === 'usu', hub: name === 'hub', tick,
+    }, app, clockNow);
   }
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';
 }
@@ -234,8 +239,9 @@ async function boot() {
   }
   wireHeader();
   setupInstall();
-  window.addEventListener('hashchange', render);
-  matchMedia('(min-width: 900px)').addEventListener('change', render);
+  // Not `render` itself: the event would arrive as the tick flag and the map would sit still.
+  window.addEventListener('hashchange', () => render());
+  matchMedia('(min-width: 900px)').addEventListener('change', () => render());
   render();
   autoLocate();
   // Relative times drift by the minute: redraw when the minute turns, never mid-tap or mid-typing.
