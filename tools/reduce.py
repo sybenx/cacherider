@@ -165,7 +165,8 @@ for sv in services:
 hub_out = {'name': hub['name'], 'short': hub['short'], 'lat': hub['lat'], 'lon': hub['lon'],
            'address': stops[hub_stops[0]]['name'] if hub_stops else '', 'town': stops[hub_stops[0]]['town'] if hub_stops else '',
            'bays': bays, 'pulse': pulse, 'pulseRoutes': sorted(pulse_set), 'pulseLabel': hub.get('pulse_label', ''),
-           'loops': [route_idx[r['id']] for r in routes if r['short'] in H.get('loops', [])]}
+           'loops': [route_idx[r['id']] for r in routes if r['short'] in H.get('loops', [])],
+           'plan': hub.get('plan')}
 
 agency = table('agency.txt')[0]
 feed = (table('feed_info.txt', required=False) or [{}])[0]

@@ -265,6 +265,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .bays { margin: 0 16px; position: relative; height: 300px; }
 .bays svg.plan { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .bays .bay { position: absolute; display: flex; gap: 2px; cursor: pointer; text-decoration: none; transform: translate(-50%, -50%); transition: opacity .15s; }
+.bays .bay-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.bays .bay-stack > span { display: flex; gap: 2px; }
 .bays.picked .bay { opacity: .3; }
 .bays.picked .bay.on { opacity: 1; outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .bayhead { padding: 16px 16px 10px; display: flex; align-items: center; gap: 12px; }

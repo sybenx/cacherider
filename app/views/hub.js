@@ -92,13 +92,28 @@ function plan(picked) {
   const y = lat => top + pad + (maxLat - lat) * 111000 * scale + ((Hh - top - 2 * pad) - spanY * scale) / 2;
   const cx = x((minLon + maxLon) / 2), left = x(minLon), right = x(maxLon), topY = y(maxLat), botY = y(minLat);
   const bar = 20 * scale;
+  // Where a rider has drawn the bays (tools/hints.json), that wins over the feed's coordinates.
+  const plan = D.hub.plan || {};
+  const drawn = plan.bays || {};
+  const hallAt = plan.hall_at ? [plan.hall_at[0] * W, plan.hall_at[1] * Hh] : [cx, topY + 50];
+  const hallLines = plan.hall || ['HALL'];
   const badgesHtml = bays.map(b => {
     const on = picked === b.stop;
     const id = stop(b.stop).id;
-    const half = (b.routes.length * 32 - 2) / 2 + 4;
-    const bx = Math.min(Math.max(x(b.lon), half), W - half), by = Math.min(Math.max(y(b.lat), top + 20), Hh - 20);
-    return `<a class="bay${on ? ' on' : ''}" href="#/hub/${id}" style="left:${bx.toFixed(1)}px;top:${by.toFixed(1)}px" title="Bay: routes ${b.routes.map(ri => route(ri).short).join(', ')}">${b.routes.map(ri => badge(ri, 30).s).join('')}</a>`;
+    const at = drawn[route(b.routes[0]).short];
+    const stacked = b.routes.length > 2;
+    const cols = stacked ? 2 : b.routes.length;
+    const half = (cols * 32 - 2) / 2 + 4;
+    let bx = at ? at[0] * W : x(b.lon), by = at ? at[1] * Hh : y(b.lat);
+    bx = Math.min(Math.max(bx, half), W - half); by = Math.min(Math.max(by, top + 20), Hh - 18);
+    const inner = stacked
+      ? `<span class="bay-stack">${badge(b.routes[0], 30).s}<span>${b.routes.slice(1).map(ri => badge(ri, 30).s).join('')}</span></span>`
+      : b.routes.map(ri => badge(ri, 30).s).join('');
+    return `<a class="bay${on ? ' on' : ''}" href="#/hub/${id}" style="left:${bx.toFixed(1)}px;top:${by.toFixed(1)}px" title="Bay: routes ${b.routes.map(ri => route(ri).short).join(', ')}">${inner}</a>`;
   }).join('');
+  const hallH = 14 * hallLines.length + 20, hallW = 80;
+  const hall = `<rect x="${(hallAt[0] - hallW / 2).toFixed(1)}" y="${(hallAt[1] - hallH / 2).toFixed(1)}" width="${hallW}" height="${hallH}" fill="none" style="stroke:var(--cr-muted)"/>` +
+    hallLines.map((l, i) => `<text x="${hallAt[0].toFixed(1)}" y="${(hallAt[1] - hallH / 2 + 10 + 14 * (i + 0.75)).toFixed(1)}" text-anchor="middle" style="font:600 10.5px var(--font-heading);letter-spacing:.1em;fill:var(--cr-muted)">${l.toUpperCase()}</text>`).join('');
   return html.raw(`<div class="bays blueprint${picked !== undefined ? ' picked' : ''}">${corners().s}
     <svg class="plan" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" aria-hidden="true">
       <rect x="0" y="0" width="${W}" height="${top}" style="fill:color-mix(in srgb, var(--color-text) 8%, transparent)"/>
@@ -107,8 +122,7 @@ function plan(picked) {
       <text x="${W - 12}" y="${top * 0.6}" text-anchor="end" style="font:500 11px var(--font-body);fill:var(--cr-muted)">200 East →</text>
       <path d="M${(left + 2).toFixed(1)} ${(topY + 8).toFixed(1)} Q ${cx.toFixed(1)} ${(botY + (botY - topY) * 1.1).toFixed(1)} ${(right - 2).toFixed(1)} ${(topY + 8).toFixed(1)}" fill="none" style="stroke:color-mix(in srgb, var(--color-text) 9%, transparent)" stroke-width="30"/>
       <path d="M${(left + 2).toFixed(1)} ${(topY + 8).toFixed(1)} Q ${cx.toFixed(1)} ${(botY + (botY - topY) * 1.1).toFixed(1)} ${(right - 2).toFixed(1)} ${(topY + 8).toFixed(1)}" fill="none" style="stroke:var(--cr-line)" stroke-dasharray="4 5"/>
-      <rect x="${(cx - 40).toFixed(1)} " y="${(topY + 26).toFixed(1)}" width="80" height="48" fill="none" style="stroke:var(--cr-muted)"/>
-      <text x="${cx.toFixed(1)}" y="${(topY + 54).toFixed(1)}" text-anchor="middle" style="font:600 10.5px var(--font-heading);letter-spacing:.1em;fill:var(--cr-muted)">HALL</text>
+      ${hall}
       <g style="stroke:var(--cr-muted)"><line x1="${W - 22}" y1="${Hh - 84}" x2="${W - 22}" y2="${Hh - 64}"/><path d="M${W - 26} ${Hh - 79} L${W - 22} ${Hh - 85} L${W - 18} ${Hh - 79}" fill="none"/></g>
       <text x="${W - 22}" y="${Hh - 88}" text-anchor="middle" style="font:600 10px var(--font-heading);fill:var(--cr-muted)">N</text>
       <line x1="12" y1="${Hh - 66}" x2="${(12 + bar).toFixed(1)}" y2="${Hh - 66}" style="stroke:var(--cr-muted)"/>
