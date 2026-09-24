@@ -99,7 +99,7 @@ svg { display: block; flex: none; }
   #top nav a[aria-current] { font-weight: 600; color: var(--color-accent-700); box-shadow: inset 0 -2px 0 var(--color-accent); }
   #top .search { flex: 1; max-width: 420px; margin-left: auto; }
   #top .search .input { height: 44px; font-size: 15px; padding-left: 40px; }
-  #top .search .lead { top: 11px; left: 12px; }
+  #top .search .lead { left: 12px; }
   #tabs { display: none; }
   #side { flex: none; width: 420px; border-right: 1px solid var(--cr-line); }
   #mapcol { display: block; flex: 1; }
@@ -166,10 +166,13 @@ svg { display: block; flex: none; }
 .input {
   width: 100%; height: 54px; font: 500 17px var(--font-body); color: var(--color-text); background: var(--color-bg);
   border: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent); border-radius: var(--radius-md); padding: 0 14px 0 46px;
+  -webkit-appearance: none; appearance: none; margin: 0; box-sizing: border-box;
 }
+.input::-webkit-search-decoration, .input::-webkit-search-results-button, .input::-webkit-search-results-decoration { -webkit-appearance: none; display: none; }
+.input::-webkit-search-cancel-button { -webkit-appearance: none; width: 16px; height: 16px; cursor: pointer; background: currentColor; opacity: .6; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E") center / contain no-repeat; }
 .input::placeholder { color: var(--cr-muted); font-weight: 400; }
 .input:focus { border-color: var(--color-accent); }
-.search .lead { position: absolute; left: 14px; top: 16px; color: var(--cr-muted); pointer-events: none; }
+.search .lead { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--cr-muted); pointer-events: none; line-height: 0; }
 .search .clear { position: absolute; right: 6px; top: 5px; }
 
 /* blueprint frame — registration marks outside the box */
@@ -315,7 +318,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .mapbar { position: absolute; top: 10px; left: 12px; right: 12px; display: flex; gap: 8px; z-index: 450; }
 .mapbar .search { flex: 1; }
 .mapbar .input { height: 50px; font-size: 16px; padding-left: 44px; box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--color-text) 30%, transparent); }
-.mapbar .search .lead { left: 13px; top: 14px; }
+.mapbar .search .lead { left: 13px; }
 .mapbar .btn-icon { width: 50px; height: 50px; background: var(--color-bg); box-shadow: var(--shadow-md); }
 .mapcard { position: absolute; left: 0; right: 0; bottom: 0; z-index: 450; background: var(--color-bg); border-top: 1px solid var(--cr-line); box-shadow: var(--shadow-lg); max-height: 70%; overflow-y: auto; transform: translateY(102%); transition: transform .28s cubic-bezier(.2,.7,.2,1); pointer-events: none; }
 .mapcard.open { transform: none; pointer-events: auto; }
