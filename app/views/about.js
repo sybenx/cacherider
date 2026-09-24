@@ -2,6 +2,7 @@
 import { D, BASE, pref } from '../data.js';
 import { fmtDay } from '../time.js';
 import { html, icon, corners } from '../ui.js';
+import { installState, iosSheet, app } from '../main.js';
 
 export function render(_, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
@@ -15,6 +16,8 @@ export function render(_, clockNow) {
       <p>Nothing about you leaves this phone. Your location, when you share it, is used only to sort stops by distance. There are no accounts, no analytics and no cookies.</p>
       <p>Add it to your home screen and it works offline: the timetable is kept on the phone, and the map can be too.</p>
     </div>
+    <div class="section">${icon('down', 16)}On your home screen</div>
+    <div class="pad" id="install-about">${installBlock()}</div>
     <div class="section">${icon('map', 16)}Offline map</div>
     <div class="pad" id="offline"><p class="muted" style="font-size:14px" id="offline-note">Keeps the whole Cache Valley street map on this phone, so it draws with no signal. Streets you've already looked at are kept anyway.</p>
       <button class="btn btn-secondary btn-lg blueprint" id="save-map">${corners()}${icon('down', 20)}Save the map for offline</button></div>
@@ -26,9 +29,26 @@ export function render(_, clockNow) {
   };
 }
 
+function installBlock() {
+  const st = installState();
+  if (st === 'installed') return html`<p class="muted" style="font-size:14px">Cache Rider is on your home screen. It opens full screen and works offline.</p>`;
+  if (st === 'prompt') return html`<p class="muted" style="font-size:14px">One tap from your home screen, full screen, works offline.</p><button class="btn btn-secondary btn-lg blueprint" id="install-go">${corners()}${icon('install', 20)}Install Cache Rider</button>`;
+  if (st === 'ios') return html`<p class="muted" style="font-size:14px">Safari can keep Cache Rider on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p><button class="btn btn-secondary btn-lg blueprint" id="install-ios">${corners()}${icon('share', 20)}Show me the steps</button>`;
+  return html`<p class="muted" style="font-size:14px">In Chrome or Edge, the browser's menu offers “Install Cache Rider” or “Add to Home screen”. In Safari on a Mac, File → Add to Dock.</p>`;
+}
+
 const MARK = BASE + 'tiles/tiles.json';   // present in the map cache only once every tile is
 
 async function mount(el) {
+  const go = el.querySelector('#install-go');
+  if (go) go.onclick = async () => {
+    const p = app.installPrompt; if (!p) return;
+    p.prompt();
+    const r = await p.userChoice.catch(() => null);
+    if (r && r.outcome === 'accepted') { pref('install', 'done'); app.installPrompt = null; el.querySelector('#install-about').innerHTML = installBlock().s; }
+  };
+  const ios = el.querySelector('#install-ios');
+  if (ios) ios.onclick = () => { const was = pref('install'); iosSheet(); if (was) pref('install', was); };
   const btn = el.querySelector('#save-map');
   const note = el.querySelector('#offline-note');
   const label = (ic, text) => { btn.innerHTML = corners().s + icon(ic, 20).s + text; };

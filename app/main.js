@@ -177,6 +177,14 @@ export function wireInstall(el) {
     app.installPrompt = null; card.remove();
   };
 }
+/** What the About page can offer: Chrome's prompt, the iPhone steps, or nothing because it's already installed. */
+export function installState() {
+  if (standalone()) return 'installed';
+  if (app.installPrompt) return 'prompt';
+  if (isIOS()) return 'ios';
+  return 'none';
+}
+
 export function iosSheet() {
   const sheet = document.createElement('div');
   sheet.className = 'ios-install';
