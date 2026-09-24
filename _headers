@@ -1,6 +1,8 @@
 # Cloudflare Pages
 /tiles/*
   Cache-Control: public, max-age=604800
+/tiles/*.pbf
+  Content-Type: application/x-protobuf
 /data/*.json
   Cache-Control: public, max-age=600
 /fonts/*
