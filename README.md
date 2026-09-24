@@ -22,8 +22,12 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   next buses for the stop you tap.
 - **After hours, Sundays, weekday-only stops** — it says so, and shows the
   next day that runs.
+- **Saved stops** — a star on any stop page keeps it at the top of the home
+  screen, in your order. Saved on the phone, no account.
 - **Offline** — add it to your home screen and the timetable stays on the
-  phone. The map can be saved too.
+  phone. The map can be saved too. Chrome offers its install prompt as a
+  card; on an iPhone the app shows the Share → Add to Home Screen steps once,
+  on the third day it's opened.
 
 Every time shown is the scheduled one. Nothing about you leaves the phone: no
 accounts, no analytics, no cookies; location is only used to sort by distance.

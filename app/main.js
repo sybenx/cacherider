@@ -19,6 +19,8 @@ const TABS = [
 ];
 
 export const app = {
+  installPrompt: null,  // Chrome's deferred beforeinstallprompt, when it offers one
+  editSaved: false,     // the home screen's saved list in edit mode
   geo: null,            // { lat, lon, at } once the rider has shared their position
   mapMod: null,         // the map module, once loaded
   route: null,          // current { name, params }
@@ -146,6 +148,59 @@ async function autoLocate() {
   } catch { /* the browser won't say; wait for the tap */ }
 }
 
+// ---- install: the browser's own prompt where there is one; on iPhone Safari, the steps, once, on the third day
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function countVisit() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (pref('lastvisit') === today) return +(pref('visits') || 1);
+  pref('lastvisit', today);
+  const n = +(pref('visits') || 0) + 1;
+  pref('visits', String(n));
+  return n;
+}
+export function installCard() {
+  if (!app.installPrompt || standalone() || pref('install')) return '';
+  return html`<div class="blueprint install" id="install-card">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}
+    <div class="who"><span class="cr">CR</span><div class="col"><span class="title">Install Cache Rider</span><span class="sub">One tap from your home screen. Works offline.</span></div></div>
+    <div class="acts"><button class="btn btn-ghost" data-act="no">Not now</button><button class="btn btn-primary blueprint" data-act="go">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}${icon('install', 18)}Install</button></div></div>`;
+}
+export function wireInstall(el) {
+  const card = el.querySelector('#install-card');
+  if (!card) return;
+  card.querySelector('[data-act=no]').onclick = () => { pref('install', 'no'); card.remove(); };
+  card.querySelector('[data-act=go]').onclick = async () => {
+    const p = app.installPrompt; if (!p) return;
+    p.prompt();
+    const r = await p.userChoice.catch(() => null);
+    if (r && r.outcome === 'accepted') pref('install', 'done');
+    app.installPrompt = null; card.remove();
+  };
+}
+export function iosSheet() {
+  const sheet = document.createElement('div');
+  sheet.className = 'ios-install';
+  sheet.innerHTML = html`<div class="scrim"></div><div class="sheet blueprint" role="dialog" aria-label="Add to Home Screen">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}
+    <div class="who"><span class="cr big">CR</span><div class="col"><span class="title">Keep Cache Rider on your home screen</span><span class="sub">Opens full screen on your saved stops. Works offline with the last timetable it downloaded.</span></div><button class="btn btn-ghost btn-icon" data-act="no" aria-label="Close">${icon('close', 22)}</button></div>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><span>Tap <b>Share</b> in Safari's toolbar</span><span class="ic">${icon('share', 20)}</span></div>
+      <div class="step"><span class="n">2</span><span>Choose <b>Add to Home Screen</b></span><span class="ic">${icon('plusSquare', 20)}</span></div>
+      <div class="step"><span class="n">3</span><span>Tap <b>Add</b>, top right</span><span class="ic">${icon('check', 20)}</span></div>
+    </div>
+    <button class="btn btn-secondary btn-lg btn-block" data-act="no">Not now</button></div>`;
+  const close = () => { pref('install', 'no'); sheet.remove(); };
+  sheet.querySelectorAll('[data-act=no]').forEach(b => b.onclick = close);
+  sheet.querySelector('.scrim').onclick = close;
+  body.appendChild(sheet);
+}
+function setupInstall() {
+  if (standalone()) return;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); app.installPrompt = e; if (app.route && app.route.name === 'home') render(); });
+  window.addEventListener('appinstalled', () => { pref('install', 'done'); app.installPrompt = null; const c = document.getElementById('install-card'); if (c) c.remove(); });
+  const visits = countVisit();
+  if (isIOS() && !pref('install') && visits >= 3) setTimeout(iosSheet, 1200);
+}
+
 function wireHeader() {
   const form = document.getElementById('topsearch');
   form.querySelector('.lead').innerHTML = icon('search', 20).s;
@@ -163,6 +218,7 @@ async function boot() {
     return;
   }
   wireHeader();
+  setupInstall();
   window.addEventListener('hashchange', render);
   matchMedia('(min-width: 900px)').addEventListener('change', render);
   render();

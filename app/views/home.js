@@ -1,9 +1,9 @@
 // Home: useful without permission. Search, the next pulse, what this phone
 // remembers, every route. With location on, the nearest stops first.
-import { D, nextAt, nextPulse, nextFromHub, newTimetable, recent, search, nearest, stop, distance, pref } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref } from '../data.js';
 import { relative, fmtDay, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc } from '../ui.js';
-import { nearMe, nearOff } from '../main.js';
+import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { parseAddress, geocode, townState } from '../geo.js';
 
 export function render({ q }, clockNow) {
@@ -19,13 +19,21 @@ export function render({ q }, clockNow) {
 
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
+  parts.push(installCard());
   parts.push(pulseCard(clockNow));
 
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
 
-  const rec = recent();
-  if (rec.length) {
-    parts.push(html`<div class="section">${icon('history', 16)}Recent on this phone</div><div class="list">${rec.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
+  const sv = saved();
+  if (sv.length) {
+    const editing = app && app.editSaved;
+    parts.push(html`<div class="section saved">${icon('star', 16)}Saved stops<button class="btn btn-ghost edit" id="edit-saved">${editing ? 'Done' : 'Edit'}</button></div>
+      <div class="list">${editing ? html.raw(sv.map((id, i) => editRow(id, i, sv.length)).join('')) : sv.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
+  } else {
+    const rec = recent();
+    if (rec.length) {
+      parts.push(html`<div class="section">${icon('history', 16)}Recent on this phone</div><div class="list">${rec.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
+    }
   }
 
   parts.push(html`<div class="section">${icon('route', 16)}Browse by route</div><div class="routes">${D.routes.map((r, i) => html`<a href="#/route/${encodeURIComponent(r.short)}" aria-label="Route ${r.short}">${badge(i, 36)}</a>`)}</div>`);
@@ -42,6 +50,20 @@ function mount(el, app) {
   input.oninput = () => { clearTimeout(t); t = setTimeout(() => go(input.value, true), 250); };
   const near = el.querySelector('#near');
   if (near) near.onclick = () => app.geo ? nearOff() : nearMe();
+  wireInstall(el);
+  const edit = el.querySelector('#edit-saved');
+  if (edit) edit.onclick = () => { app.editSaved = !app.editSaved; window.dispatchEvent(new HashChangeEvent('hashchange')); };
+  el.querySelectorAll('[data-move]').forEach(b => b.onclick = () => {
+    const ids = saved(), i = ids.indexOf(b.dataset.id), j = i + (+b.dataset.move);
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]]; setSaved(ids);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  });
+  el.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => {
+    setSaved(saved().filter(x => x !== b.dataset.remove));
+    if (!saved().length) app.editSaved = false;
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  });
   if (input.value) input.focus({ preventScroll: true });
   el.querySelectorAll('[data-q]').forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.q); });
 }
@@ -128,4 +150,15 @@ function commonStreet(a, b) {
   const wa = a.split(' ').slice(1), wb = b.split(' ').slice(1);
   const common = wa.filter(w => wb.includes(w));
   return common.length >= 2 ? common.join(' ') : '';
+}
+
+function editRow(id, i, n) {
+  const s = stop(D.stopById[id]);
+  const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
+  return `<div class="stoprow editrow"><div class="mid"><span class="name">${esc(s.name)}${town}</span>${badges(s.routes, 24).s}</div>
+    <div class="end row-actions">
+      <button class="btn btn-secondary btn-icon" data-move="-1" data-id="${esc(id)}" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>${icon('up', 18).s}</button>
+      <button class="btn btn-secondary btn-icon" data-move="1" data-id="${esc(id)}" aria-label="Move down" ${i === n - 1 ? 'disabled' : ''}>${icon('chevDown', 18).s}</button>
+      <button class="btn btn-secondary btn-icon" data-remove="${esc(id)}" aria-label="Remove">${icon('close', 18).s}</button>
+    </div></div>`;
 }

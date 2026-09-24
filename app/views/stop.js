@@ -1,6 +1,6 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn } from '../data.js';
+import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle } from '../ui.js';
 
@@ -10,7 +10,9 @@ export function render({ id, full }, clockNow) {
   const s = stop(si);
   remember(s.id);
   const parts = [];
-  parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a></div>`);
+  const sv = isSaved(s.id);
+  parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
+    <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
   const sd = side(si);
   const eyebrow = sd ? `${s.town} · ${sd} side` : `${s.town} · Stop ${s.code || s.id}`;
   parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${badges(s.routes, 30, true)}</div>`);
@@ -52,7 +54,7 @@ export function render({ id, full }, clockNow) {
   }
   if (!next.length) {
     parts.push(html`<div class="empty"><h2>Nothing scheduled</h2><p>No departures from this stop in the next week.</p></div>`);
-    return { html: parts.join(''), title: s.name };
+    return { html: parts.join(''), title: s.name, mount, keepScroll: true };
   }
 
   const first = next[0];
@@ -68,7 +70,7 @@ export function render({ id, full }, clockNow) {
     parts.push(html`<div class="dayhead">${label} · ${all.length} departures</div>`);
     parts.push(html`<div class="list">${all.map(t => html.raw(`<div style="${t.day === 0 && t.min < clockNow.min ? 'opacity:.45' : ''}">${depRow(t, clockNow, { rel: t.day === 0 && t.min < clockNow.min ? 'gone' : relative(t, clockNow) }).s}</div>`))}</div>`);
     parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${s.id}">What's next</a></div>`);
-    return { html: parts.join(''), title: s.name };
+    return { html: parts.join(''), title: s.name, mount, keepScroll: true };
   }
 
   const rest = next.slice(1);
@@ -82,7 +84,7 @@ export function render({ id, full }, clockNow) {
   parts.push(html`<div class="list">${html.raw(rows.join(''))}</div>`);
   const todayCount = td.all.length;
   if (todayCount) parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${s.id}/all">Full day · ${todayCount} departures</a></div>`);
-  return { html: parts.join(''), title: s.name };
+  return { html: parts.join(''), title: s.name, mount, keepScroll: true };
 }
 
 function servicesOnDays(r) { return true; }
@@ -95,4 +97,14 @@ function describeDays(r) {
   if (weekday && !sat && !sun) return 'runs weekdays only';
   if (!weekday && sat) return 'runs Saturdays only';
   return 'is not running today';
+}
+
+function mount(el) {
+  const b = el.querySelector('#save');
+  if (!b) return;
+  b.onclick = () => {
+    const on = toggleSaved(b.dataset.id);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.innerHTML = icon('star', 22, 1.5, on ? 'currentColor' : 'none').s + (on ? 'Saved' : 'Save');
+  };
 }
