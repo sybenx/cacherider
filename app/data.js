@@ -141,7 +141,7 @@ export function nearest(lat, lon, n = 8) {
 const norm = s => s.toLowerCase().replace(/[.,]/g, ' ').replace(/\b(street|st)\b/g, 'st').replace(/\b(drive|dr)\b/g, 'dr').replace(/\b(north)\b/g, 'north').replace(/\bn\b/g, 'north').replace(/\bs\b/g, 'south').replace(/\be\b/g, 'east').replace(/\bw\b/g, 'west').replace(/\bhwy\b/g, 'highway').replace(/\s+/g, ' ').trim();
 let index = null;
 export function search(q, limit = 40) {
-  index = index || D.stops.map((s, i) => ({ i, text: norm(s.name + ' ' + s.town) }));
+  index = index || D.stops.map((s, i) => ({ i, text: norm(s.name + ' ' + s.town + ' ' + s.code + ' ' + s.id) }));
   const words = norm(q).split(' ').filter(Boolean);
   if (!words.length) return [];
   const hits = index.filter(e => words.every(w => e.text.includes(w))).map(e => e.i);
@@ -150,21 +150,7 @@ export function search(q, limit = 40) {
     const A = D.stops[a], B = D.stops[b];
     return A.town.localeCompare(B.town) || (parseInt(A.name) || 0) - (parseInt(B.name) || 0) || A.name.localeCompare(B.name);
   });
-  // A bare number is first of all a stop number, the one on the sign: that stop leads.
-  const qn = q.trim().replace(/^(stop|#)\s*/i, '');
-  if (/^\d+$/.test(qn)) {
-    const exact = D.stops.map((st, i) => i).filter(i => D.stops[i].code === qn || D.stops[i].id === qn);
-    return [...exact, ...hits.filter(i => !exact.includes(i))].slice(0, limit);
-  }
   return hits.slice(0, limit);
-}
-
-/** The stop a bare number names, if any: for the results line. */
-export function stopByNumber(q) {
-  const qn = q.trim().replace(/^(stop|#)\s*/i, '');
-  if (!/^\d+$/.test(qn)) return null;
-  const i = D.stops.findIndex(st => st.code === qn || st.id === qn);
-  return i < 0 ? null : i;
 }
 
 // ---- what this phone remembers

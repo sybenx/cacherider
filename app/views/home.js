@@ -1,6 +1,6 @@
 // Home: useful without permission. Search, the next pulse, what this phone
 // remembers, every route. With location on, the nearest stops first.
-import { D, nextAt, nextPulse, nextFromHub, newTimetable, recent, search, stopByNumber, nearest, stop, distance, pref } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, newTimetable, recent, search, nearest, stop, distance, pref } from '../data.js';
 import { relative, fmtDay, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc } from '../ui.js';
 import { nearMe, nearOff } from '../main.js';
@@ -9,7 +9,7 @@ export function render({ q }, clockNow) {
   const app = window.__app;
   const parts = [];
   parts.push(html`<div class="titlebar m-only"><span class="wordmark">Cache Rider</span><button class="btn btn-secondary" id="near">${icon('near', 20)}Near me${app && app.geo ? html.raw(' <span class="muted">· on</span>') : ''}</button></div>`);
-  parts.push(html`<div class="pad"><form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street, address or stop number" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
+  parts.push(html`<div class="pad"><form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
 
   if (q) {
     parts.push(results(q, clockNow));
@@ -62,13 +62,9 @@ function results(q, clockNow) {
   }
   const towns = [...new Set(hits.map(i => stop(i).town))];
   const where = towns.length === 1 ? ' in ' + towns[0] : '';
-  const byNumber = stopByNumber(q);
-  const line = byNumber !== null
-    ? `Stop ${stop(byNumber).code || stop(byNumber).id}` + (hits.length > 1 ? ` · then ${hits.length - 1} ${hits.length === 2 ? 'address' : 'addresses'} with “${q.trim()}”` : '')
-    : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`;
-  return html`<div class="notice"><span>${line}</span></div>
+  return html`<div class="notice"><span>${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number</span></div>
     <div class="list">${hits.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>
-    <div class="fine">Matches street, number and town, or the stop number on the sign. “500 north”, “main st, hyrum”, “hyrum main” and “201” all work.</div>`;
+    <div class="fine">Matches street, number and town. “500 north”, “main st, hyrum” and “hyrum main” all work.</div>`;
 }
 
 function pulseCard(clockNow) {
@@ -83,9 +79,9 @@ function pulseCard(clockNow) {
   }).join('');
   const day = p.day === 0 ? '' : p.day === 1 ? ' tomorrow' : ' ' + relative(p, clockNow);
   return html`<a class="pulse blueprint" href="#/hub">${corners()}
-    <div class="top"><span class="eyebrow">Next pulse</span><span class="muted">${icon('fwd', 20)}</span></div>
+    <div class="top"><span class="eyebrow">${D.hub.pulseName || 'Next pulse'}</span><span class="muted">${icon('fwd', 20)}</span></div>
     <div class="big">${time(p.min, 42)}<span class="rel">${relative(p, clockNow)}</span></div>
-    <div class="sub">${D.hub.pulseLabel.replace(' leave together', ' leave the ' + D.hub.name + ' together')}${day}</div>
+    <div class="sub">${D.hub.pulseLabel}${day}</div>
     ${loopRows ? html`<div class="loops">${html.raw(loopRows)}</div>` : ''}
     <div class="foot">${sched()}</div></a>`;
 }

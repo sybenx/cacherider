@@ -20,7 +20,7 @@
       "12",
       "15"
     ],
-    "pulse_label": "Routes 1–15 leave together",
+    "pulse_label": "together from the Transit Center",
     "plan": {
       "hall": [
         "Transit",
@@ -108,7 +108,8 @@
         0.225,
         0.155
       ]
-    }
+    },
+    "pulse_name": "Routes 1–15 leave"
   },
   "loops": [
     "G",

@@ -103,7 +103,7 @@ svg { display: block; flex: none; }
   #tabs { display: none; }
   #side { flex: none; width: 420px; border-right: 1px solid var(--cr-line); }
   #mapcol { display: block; flex: 1; }
-  #body.map-open #side { display: block; }
+  #body.map-open #side { display: none; }
   #body.map-open #mapcol { flex: 1; }
   .m-only { display: none !important; }
 }
@@ -344,4 +344,9 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .me-marker { width: 16px; height: 16px; border-radius: 50%; background: var(--color-accent); border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 0 0 8px color-mix(in srgb, var(--color-accent) 25%, transparent); }
 
 /* desktop: the map's own bar hides, the header search serves */
-@media (min-width: 900px) { .mapbar { display: none; } .mapresults { top: 12px; } .mapnotice { top: 12px; } }
+@media (min-width: 900px) {
+  #body:not(.map-open) .mapbar { display: none; }
+  #body:not(.map-open) .mapresults, #body:not(.map-open) .mapnotice { top: 12px; }
+  .mapbar, .mapresults, .mapnotice { max-width: 480px; }
+  .mapcard { max-width: 480px; left: auto; right: 16px; bottom: 16px; border: 1px solid var(--cr-line); }
+}

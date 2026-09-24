@@ -76,7 +76,7 @@ function pulseBlock(clockNow) {
   const end = p.day === 0 && diff <= 10
     ? html`<span class="t t-36 count" data-countdown="${p.min}">${countdown(p.min, clockNow)}</span><span class="cap">min : sec</span>`
     : html`<span class="t t-36 count">${p.day === 0 ? diff : ''}</span><span class="cap">${p.day === 0 ? 'min' : relative(p, clockNow)}</span>`;
-  return html`<div class="hubpulse"><div class="col"><span class="eyebrow">Next pulse</span>${time(p.min, 56)}<span class="sub">${D.hub.pulseLabel}${p.day === 1 ? ' · tomorrow' : ''}</span></div><div class="end">${end}${sched()}</div></div>`;
+  return html`<div class="hubpulse"><div class="col"><span class="eyebrow">${D.hub.pulseName || 'Next pulse'}</span>${time(p.min, 56)}<span class="sub">${D.hub.pulseLabel.replace(' from the ' + D.hub.name, '')}${p.day === 1 ? ' · tomorrow' : ''}</span></div><div class="end">${end}${sched()}</div></div>`;
 }
 
 /** The bay plan: 500 North along the top, the drive as a U, each bay's badge where the rider drew it

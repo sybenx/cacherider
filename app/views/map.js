@@ -58,7 +58,8 @@ async function init(app) {
   const center = app.geo ? [app.geo.lon, app.geo.lat] : [-111.8300, 41.7330];
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 17.5, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-  map.on('load', () => { ready = true; loadShapes(); if (selected) applySelection(); if (app.geo) placeMe(app.geo); });
+  map.on('load', () => { ready = true; loadShapes(); if (selected) applySelection(); if (app.geo) placeMe(app.geo); map.resize(); });
+  setTimeout(() => map.resize(), 300);
   map.on('click', 'stops', e => { const f = e.features[0]; select(f.properties.id, app, true); e.originalEvent._stopHit = true; });
   map.on('click', e => { if (!e.originalEvent._stopHit) select(null, app); });
   map.on('mouseenter', 'stops', () => map.getCanvas().style.cursor = 'pointer');
@@ -105,7 +106,8 @@ function select(id, app, fly = false, zoomIn = false) {
   const si = D.stopById[id];
   if (si === undefined) return;
   const s = stop(si);
-  const desktop = matchMedia('(min-width: 900px)').matches;
+  // Beside the stop list on desktop, a tap opens the stop page; on the Map tab, or a phone, the card.
+  const desktop = matchMedia('(min-width: 900px)').matches && !(app.route && app.route.name === 'map');
   if (desktop && fly) {
     map.easeTo({ center: [s.lon, s.lat], zoom: zoomIn ? 16 : Math.max(map.getZoom(), 15), duration: 700 });
     if (location.hash !== '#/stop/' + id) location.hash = '#/stop/' + id;
@@ -163,7 +165,7 @@ export async function show({ stopId, focus, hub, tick }, app, clockNow) {
       selected = stopId; applySelection();
       // A click on the map already eased there; a fresh arrival from elsewhere eases now.
       if (focus && changed && !map.isEasing()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
-      if (!matchMedia('(min-width: 900px)').matches) select(stopId, app, false);
+      if (!matchMedia('(min-width: 900px)').matches || app.route.name === 'map') select(stopId, app, false);
     }
   } else if (app.route && app.route.name === 'map') {
     lastFocused = null;

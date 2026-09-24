@@ -164,7 +164,7 @@ for sv in services:
     pulse[sv['id']] = sorted(m for m, rs in count.items() if len(rs) >= max(3, len(pulse_set) // 2))
 hub_out = {'name': hub['name'], 'short': hub['short'], 'lat': hub['lat'], 'lon': hub['lon'],
            'address': stops[hub_stops[0]]['name'] if hub_stops else '', 'town': stops[hub_stops[0]]['town'] if hub_stops else '',
-           'bays': bays, 'pulse': pulse, 'pulseRoutes': sorted(pulse_set), 'pulseLabel': hub.get('pulse_label', ''),
+           'bays': bays, 'pulse': pulse, 'pulseRoutes': sorted(pulse_set), 'pulseLabel': hub.get('pulse_label', ''), 'pulseName': hub.get('pulse_name', 'Next pulse'),
            'loops': [route_idx[r['id']] for r in routes if r['short'] in H.get('loops', [])],
            'plan': hub.get('plan')}
 

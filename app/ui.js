@@ -73,7 +73,8 @@ export function stopRow(si, next, clockNow, opts = {}) {
     ? `<div class="end"><div class="when">${badge(next.r, 20).s}${time(next.min, 22).s}</div><span class="rel">${esc(relative(next, clockNow))}</span>${sched().s}</div>`
     : `<div class="end"><span class="rel">${esc(opts.none || 'No service today')}</span></div>`;
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
-  const dist = opts.dist != null ? `<span class="dist">${esc(opts.dist)}</span>` : '';
+  const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
+  const dist = `<span class="dist">${esc([opts.dist, num].filter(Boolean).join(' · '))}</span>`;
   return raw(`<a class="stoprow" href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${dist}${badges(s.routes, 24).s}</div>${end}</a>`);
 }
 
