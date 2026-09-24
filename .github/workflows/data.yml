@@ -25,12 +25,21 @@ jobs:
         run: python3 tools/reduce.py /tmp/cvtd.zip --hints tools/hints.json --out data
       - name: Commit if changed
         run: |
+          # The built date alone is not a change worth a commit.
+          changed=$(python3 - <<'EOF'
+          import json, subprocess
+          new = json.load(open('data/cvtd.json')); new['feed'].pop('built', None)
+          try:
+              old = json.loads(subprocess.check_output(['git', 'show', 'HEAD:data/cvtd.json'])); old['feed'].pop('built', None)
+          except Exception:
+              old = None
+          shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json']) != 0
+          print('yes' if new != old or shapes else 'no')
+          EOF
+          )
+          if [ "$changed" != yes ]; then echo 'no change'; git checkout -- data; exit 0; fi
           git config user.name 'transit data'
           git config user.email 'actions@users.noreply.github.com'
           git add data/cvtd.json data/cvtd-shapes.json
-          # The built date alone is not a change worth a commit.
-          if git diff --cached --numstat | grep -q . && git diff --cached -U0 data/cvtd.json | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vqE '"built":"'; then
-            git commit -m "Transit data: $(date -u +%Y-%m-%d)" && git push
-          else
-            echo 'no change'
-          fi
+          git commit -m "Transit data: $(date -u +%Y-%m-%d)"
+          git push
