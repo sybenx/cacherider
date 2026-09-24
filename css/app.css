@@ -353,7 +353,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .nobus { margin: 4px 16px 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .nobus .title { font-family: var(--font-heading); font-weight: 600; font-size: 26px; line-height: 1.05; }
 .nobus .sub { font-size: 15px; line-height: 1.45; color: var(--cr-muted); text-wrap: pretty; }
-.bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform .6s linear; }
+.bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .bus-marker svg { width: 14px; height: 14px; }
 .bus-marker.on { box-shadow: 0 0 0 3px var(--color-accent); }
 .buscard .head { gap: 10px; }

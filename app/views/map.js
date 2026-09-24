@@ -202,14 +202,29 @@ export function liveUpdate(app) {
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el };
       busMarkers.set(b.id, m);
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
-    } else m.marker.setLngLat([b.lon, b.lat]);
+    } else glide(m, b.lon, b.lat);
     m.el.style.background = U.routes[b.ri].color;
     m.marker.setRotation(b.course);
     m.el.classList.toggle('on', selectedBus === b.id);
   }
-  for (const [id, m] of busMarkers) if (!seen.has(id)) { m.marker.remove(); busMarkers.delete(id); }
+  for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (selectedBus) { if (live.buses.some(b => b.id === selectedBus)) busCard(app); else { selectedBus = null; col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
+}
+// Move a bus marker to its new fix over 600 ms in geographic coordinates, so the
+// glide survives a pan (a CSS transform transition would drag behind the map).
+function glide(m, lon, lat) {
+  if (m.anim) cancelAnimationFrame(m.anim);
+  const from = m.marker.getLngLat();
+  if (from.lng === lon && from.lat === lat) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { m.marker.setLngLat([lon, lat]); return; }
+  const t0 = performance.now(), dur = 600;
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur);
+    m.marker.setLngLat([from.lng + (lon - from.lng) * k, from.lat + (lat - from.lat) * k]);
+    m.anim = k < 1 ? requestAnimationFrame(step) : null;
+  };
+  m.anim = requestAnimationFrame(step);
 }
 function selectBus(id, app) {
   selectedBus = id; selectedU = null; selected = null; applySelection();
