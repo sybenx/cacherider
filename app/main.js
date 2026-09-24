@@ -117,9 +117,15 @@ export function locate(onDone) {
   }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
 }
 
-/** Near me: silent when already allowed, a sheet the first time. */
-export function nearMe(onDone) {
-  if (pref('near') === 'on') locate(onDone); else askLocation(onDone);
+/** Near me: silent when the browser already allows it, the explaining sheet only when the browser is about to ask. */
+export async function nearMe(onDone) {
+  let state = pref('near') === 'on' ? 'granted' : 'prompt';
+  try {
+    if (navigator.permissions) state = (await navigator.permissions.query({ name: 'geolocation' })).state;
+  } catch { /* the browser won't say; go by what we remember */ }
+  if (state === 'granted') return locate(onDone);
+  if (state === 'denied') pref('near', 'blocked');
+  askLocation(onDone);
 }
 
 /** Near me, off: forget the fix and stop asking. */

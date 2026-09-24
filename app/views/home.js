@@ -9,7 +9,7 @@ export function render({ q }, clockNow) {
   const app = window.__app;
   const parts = [];
   parts.push(html`<div class="titlebar m-only"><span class="wordmark">Cache Rider</span><button class="btn btn-secondary" id="near">${icon('near', 20)}Near me${app && app.geo ? html.raw(' <span class="muted">· on</span>') : ''}</button></div>`);
-  parts.push(html`<form class="search pad" id="search" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form>`);
+  parts.push(html`<div class="pad"><form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
 
   if (q) {
     parts.push(results(q, clockNow));
