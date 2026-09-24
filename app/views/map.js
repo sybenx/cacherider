@@ -1,6 +1,6 @@
 // The map: self-hosted vector tiles, every stop in its routes' colour, the
 // route lines, and a card for the stop you tap. Loaded only when first shown.
-import maplibregl from '../../vendor/maplibre-gl.mjs';
+import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { Protocol } from '../../vendor/pmtiles.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse } from '../data.js';
