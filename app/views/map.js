@@ -1,15 +1,15 @@
 // The map: self-hosted vector tiles, every stop in its routes' colour, the
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
-import { Protocol } from '../../vendor/pmtiles.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle } from '../ui.js';
 import { nearMe } from '../main.js';
-import { distance } from '../data.js';
 
 let map = null, ready = false, selected = null, meMarker = null, shapesLoaded = false, flavorName = null;
+// The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
+let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16] };
 const col = document.getElementById('mapcol');
 const dark = () => matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
 
@@ -22,7 +22,7 @@ function style() {
     glyphs: BASE + 'vendor/basemaps-assets/fonts/{fontstack}/{range}.pbf',
     sprite: BASE + 'vendor/basemaps-assets/sprites/' + flavor,
     sources: {
-      protomaps: { type: 'vector', url: 'pmtiles://' + BASE + 'data/cachevalley.pmtiles', attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
+      protomaps: { type: 'vector', tiles: [BASE + 'tiles/{z}/{x}/{y}.pbf'], minzoom: TILES.minzoom, maxzoom: TILES.maxzoom, bounds: TILES.bounds, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
       stops: { type: 'geojson', data: stopsGeo() },
       lines: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     },
@@ -51,10 +51,9 @@ async function loadShapes() {
   } catch (e) { console.warn('shapes', e); }
 }
 
-function init(app) {
+async function init(app) {
   if (map) return;
-  const protocol = new Protocol();
-  maplibregl.addProtocol('pmtiles', protocol.tile);
+  try { const t = await (await fetch(BASE + 'tiles/tiles.json')).json(); TILES = { ...TILES, ...t }; } catch { /* the defaults cover the valley */ }
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : [-111.8300, 41.7330];
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 17.5, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
@@ -128,8 +127,8 @@ function notice(clockNow) {
 }
 
 /** Called by the router whenever the map is on screen. */
-export function show({ stopId, focus, hub }, app, clockNow) {
-  init(app);
+export async function show({ stopId, focus, hub }, app, clockNow) {
+  await init(app);
   requestAnimationFrame(() => map.resize());
   notice(clockNow);
   if (app.geo) placeMe(app.geo);

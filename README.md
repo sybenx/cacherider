@@ -39,12 +39,13 @@ app/                main.js (router), data.js (the schedule), time.js, ui.js, vi
 css/app.css         the Industry design system: Barlow Condensed, hairline rows, blueprint frames
 data/cvtd.json      the reduced timetable, ~50 KB gzipped, written nightly
 data/cvtd-shapes.json  route lines for the map
-data/cachevalley.pmtiles  Cache Valley from OpenStreetMap, via Protomaps, ~10 MB
-vendor/             MapLibre GL, PMTiles, the Protomaps basemap style and its glyphs and sprites
+tiles/              Cache Valley from OpenStreetMap via Protomaps, one file a tile, and tiles.json
+vendor/             MapLibre GL, the Protomaps basemap style and its glyphs and sprites
 fonts/              Barlow and Barlow Condensed (OFL)
 tools/reduce.py     GTFS → data/*.json
+tools/tiles.py      Protomaps build → tiles/
 tools/hints.json    agency wording: the hub, the loops, headsigns
-sw.js               offline: the app and timetable cached; tiles sliced from a saved map
+sw.js               offline: the app and timetable cached; map tiles kept as seen, or all at once
 ```
 
 ### Data
@@ -59,7 +60,9 @@ the day it starts and the app says so beforehand.
 The [transit data workflow](.github/workflows/data.yml) fetches the feed every
 night and commits the result when it changed. The
 [map tiles workflow](.github/workflows/map.yml) refreshes the street map each
-quarter from the latest Protomaps build.
+quarter from the latest Protomaps build. The map is one small file a tile
+rather than one archive, because not every static host honours byte-range
+requests; a rider only ever fetches the tiles on screen.
 
 ### Running it locally
 
@@ -67,8 +70,8 @@ quarter from the latest Protomaps build.
 python3 tools/serve.py 8794
 ```
 
-Then open http://127.0.0.1:8794. The dev server serves byte ranges, which the
-map needs, and never caches. To rebuild the data from a fresh feed:
+Then open http://127.0.0.1:8794. The dev server never caches, so an edit
+shows on the next reload. To rebuild the data from a fresh feed:
 
 ```bash
 curl -fsSL -o /tmp/cvtd.zip https://mycvtdbus.org/gtfs

@@ -1,7 +1,6 @@
 # Cloudflare Pages
-/data/cachevalley.pmtiles
-  Cache-Control: public, max-age=86400
-  Accept-Ranges: bytes
+/tiles/*
+  Cache-Control: public, max-age=604800
 /data/*.json
   Cache-Control: public, max-age=600
 /fonts/*

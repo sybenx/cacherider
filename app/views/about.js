@@ -16,7 +16,7 @@ export function render(_, clockNow) {
       <p>Add it to your home screen and it works offline: the timetable is kept on the phone, and the map can be too.</p>
     </div>
     <div class="section">${icon('map', 16)}Offline map</div>
-    <div class="pad" id="offline"><p class="muted" style="font-size:14px">Keeps the Cache Valley map on this phone, about 10 MB, so it draws with no signal.</p>
+    <div class="pad" id="offline"><p class="muted" style="font-size:14px" id="offline-note">Keeps the whole Cache Valley street map on this phone, so it draws with no signal. Streets you've already looked at are kept anyway.</p>
       <button class="btn btn-secondary btn-lg blueprint" id="save-map">${corners()}${icon('down', 20)}Save the map for offline</button></div>
     <div class="section">${icon('info', 16)}Feed</div>
     <div class="pad muted" style="font-size:14px"><p>${D.feed.version || ''}</p><p><a href="${D.agency.url}" target="_blank" rel="noopener">${D.agency.url}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fares</a>` : ''}</p>
@@ -26,14 +26,20 @@ export function render(_, clockNow) {
   };
 }
 
+const MARK = BASE + 'tiles/tiles.json';   // present in the map cache only once every tile is
+
 async function mount(el) {
   const btn = el.querySelector('#save-map');
+  const note = el.querySelector('#offline-note');
+  const label = (ic, text) => { btn.innerHTML = corners().s + icon(ic, 20).s + text; };
   const status = async () => {
     try {
       const c = await caches.open('cr-map');
-      const hit = await c.match(BASE + 'data/cachevalley.pmtiles');
-      if (hit) { btn.innerHTML = corners().s + icon('close', 20).s + 'Remove the offline map'; btn.dataset.saved = '1'; }
-      else { btn.innerHTML = corners().s + icon('down', 20).s + 'Save the map for offline'; delete btn.dataset.saved; }
+      const all = await c.match(MARK);
+      const n = (await c.keys()).length;
+      if (all) { label('close', 'Remove the offline map'); btn.dataset.saved = '1'; }
+      else { label('down', 'Save the map for offline'); delete btn.dataset.saved; }
+      if (n && !all) note.textContent = `${n} map tiles are already on this phone from browsing. Saving fetches the rest.`;
     } catch { btn.disabled = true; }
   };
   await status();
@@ -41,14 +47,26 @@ async function mount(el) {
     btn.disabled = true;
     try {
       const c = await caches.open('cr-map');
-      if (btn.dataset.saved) { await c.delete(BASE + 'data/cachevalley.pmtiles'); }
-      else {
-        btn.textContent = 'Saving…';
-        const r = await fetch(BASE + 'data/cachevalley.pmtiles', { cache: 'no-store' });
-        if (!r.ok) throw new Error('map ' + r.status);
-        await c.put(BASE + 'data/cachevalley.pmtiles', new Response(await r.arrayBuffer(), { headers: { 'Content-Type': 'application/octet-stream' } }));
+      if (btn.dataset.saved) {
+        for (const k of await c.keys()) await c.delete(k);
+      } else {
+        const index = await (await fetch(MARK, { cache: 'no-store' })).json();
+        const urls = index.tiles.map(t => BASE + 'tiles/' + t + '.pbf');
+        let done = 0;
+        const have = new Set((await c.keys()).map(r => r.url));
+        const todo = urls.filter(u => !have.has(u));
+        done = urls.length - todo.length;
+        for (let i = 0; i < todo.length; i += 24) {
+          await Promise.all(todo.slice(i, i + 24).map(async u => {
+            const r = await fetch(u); if (r.ok) await c.put(u, r);
+          }));
+          done += Math.min(24, todo.length - i);
+          btn.textContent = `Saving… ${Math.round(done / urls.length * 100)}%`;
+        }
+        await c.put(MARK, new Response(JSON.stringify(index), { headers: { 'Content-Type': 'application/json' } }));
+        note.textContent = `${urls.length} map tiles saved, about ${index.mb} MB.`;
       }
-    } catch (e) { btn.textContent = "Couldn't save: " + e.message; }
+    } catch (e) { note.textContent = "Couldn't save: " + e.message; }
     btn.disabled = false;
     await status();
   };
