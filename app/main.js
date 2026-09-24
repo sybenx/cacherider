@@ -122,13 +122,29 @@ export function nearMe(onDone) {
   if (pref('near') === 'on') locate(onDone); else askLocation(onDone);
 }
 
+/** Near me, off: forget the fix and stop asking. */
+export function nearOff() {
+  app.geo = null;
+  pref('near', null);
+  render();
+}
+
+/** On load, locate only when the browser says it's already allowed: never a prompt before a tap. */
+async function autoLocate() {
+  if (pref('near') !== 'on' || !navigator.permissions) return;
+  try {
+    const st = await navigator.permissions.query({ name: 'geolocation' });
+    if (st.state === 'granted') locate();
+  } catch { /* the browser won't say; wait for the tap */ }
+}
+
 function wireHeader() {
   const form = document.getElementById('topsearch');
   form.querySelector('.lead').innerHTML = icon('search', 20).s;
   form.onsubmit = e => { e.preventDefault(); const q = form.querySelector('input').value.trim(); location.hash = q ? '#/search?q=' + encodeURIComponent(q) : '#/'; };
   const near = document.getElementById('topnear');
   near.innerHTML = icon('near', 20).s + 'Near me';
-  near.onclick = () => nearMe();
+  near.onclick = () => app.geo ? nearOff() : nearMe();
 }
 
 async function boot() {
@@ -142,7 +158,7 @@ async function boot() {
   window.addEventListener('hashchange', render);
   matchMedia('(min-width: 900px)').addEventListener('change', render);
   render();
-  if (pref('near') === 'on') locate();
+  autoLocate();
   // Relative times drift by the minute: redraw when the minute turns, never mid-tap or mid-typing.
   let lastMin = now().min;
   setInterval(() => {

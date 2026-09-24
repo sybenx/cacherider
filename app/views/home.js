@@ -3,7 +3,7 @@
 import { D, nextAt, nextPulse, nextFromHub, newTimetable, recent, search, nearest, stop, distance, pref } from '../data.js';
 import { relative, fmtDay, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc } from '../ui.js';
-import { nearMe } from '../main.js';
+import { nearMe, nearOff } from '../main.js';
 
 export function render({ q }, clockNow) {
   const app = window.__app;
@@ -40,7 +40,7 @@ function mount(el, app) {
   let t;
   input.oninput = () => { clearTimeout(t); t = setTimeout(() => go(input.value, true), 250); };
   const near = el.querySelector('#near');
-  if (near) near.onclick = () => nearMe();
+  if (near) near.onclick = () => app.geo ? nearOff() : nearMe();
   if (input.value) input.focus({ preventScroll: true });
   el.querySelectorAll('[data-q]').forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.q); });
 }
