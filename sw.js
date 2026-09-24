@@ -1,6 +1,6 @@
 // Cache Rider's service worker: the app and the timetable kept on the phone,
 // the map's tiles kept as they are seen, or all at once from the About page.
-const VERSION = 'cr-v1';
+const VERSION = 'cr-v2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/data.js', './app/time.js', './app/ui.js',
@@ -13,7 +13,8 @@ const SHELL = [
 const scope = new URL('./', self.location).href;
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // Straight from the server, never the HTTP cache: a fresh worker means a fresh shell.
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'no-cache' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'cr-map' && k !== 'cr-assets').map(k => caches.delete(k)))).then(() => self.clients.claim()));
@@ -42,7 +43,7 @@ async function cacheFirst(req, name) {
 async function networkFirst(req) {
   const c = await caches.open(VERSION);
   try {
-    const res = await fetch(req);
+    const res = await fetch(req, { cache: 'no-cache' });
     if (res.ok) c.put(req, res.clone());
     return res;
   } catch {
