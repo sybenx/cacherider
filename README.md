@@ -12,8 +12,9 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
 
 ## What it does
 
-- **Stops** — search by street, number or town; the next bus at each stop, then
-  the rest of the day. Twin stops across a road know about each other. With
+- **Stops** — search by street, number, town or stop number; the next bus at
+  each stop, then the rest of the day. Any grid address in the valley, like
+  “4182 S 800 W, Preston”, lists the stops nearest it, and pins it on the map. Twin stops across a road know about each other. With
   location on, the nearest stops first.
 - **Transit Center** — the next pulse, when routes 1–15 leave together, with a
   countdown; the loops; a plan of the bays, tap one for its buses.
@@ -44,6 +45,7 @@ vendor/             MapLibre GL, the Protomaps basemap style and its glyphs and 
 fonts/              Barlow and Barlow Condensed (OFL)
 tools/reduce.py     GTFS → data/*.json
 tools/tiles.py      Protomaps build → tiles/
+tools/grid.py       tiles/ → data/grid.json, each town's address grid fitted from its street names
 tools/hints.json    agency wording: the hub, the loops, headsigns
 sw.js               offline: the app and timetable cached; map tiles kept as seen, or all at once
 ```
@@ -63,6 +65,11 @@ night and commits the result when it changed. The
 quarter from the latest Protomaps build. The map is one small file a tile
 rather than one archive, because not every static host honours byte-range
 requests; a rider only ever fetches the tiles on screen.
+
+Addresses need no geocoder: the valley numbers its streets from each town's
+origin, so `tools/grid.py` fits a grid per town from the named streets in the
+tiles (latitude against the north–south number, longitude against the
+east–west number) and the app places any address by arithmetic, offline.
 
 ### Running it locally
 

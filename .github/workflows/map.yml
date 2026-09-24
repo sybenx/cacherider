@@ -26,13 +26,14 @@ jobs:
           python-version: '3.12'
       - name: Cut the valley into tiles
         run: |
-          pip install -q pmtiles
+          pip install -q pmtiles mapbox-vector-tile
           python3 tools/tiles.py
+          python3 tools/grid.py
       - name: Commit if changed
         run: |
           git config user.name 'map tiles'
           git config user.email 'actions@users.noreply.github.com'
-          git add -A tiles
+          git add -A tiles data/grid.json
           git diff --cached --quiet && echo 'no change' && exit 0
           git commit -m "Map tiles: $(date -u +%Y-%m-%d)"
           git push

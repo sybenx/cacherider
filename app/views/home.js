@@ -4,6 +4,7 @@ import { D, nextAt, nextPulse, nextFromHub, newTimetable, recent, search, neares
 import { relative, fmtDay, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc } from '../ui.js';
 import { nearMe, nearOff } from '../main.js';
+import { parseAddress, geocode, townState } from '../geo.js';
 
 export function render({ q }, clockNow) {
   const app = window.__app;
@@ -55,16 +56,23 @@ function go(q, live = false) {
 
 function results(q, clockNow) {
   const hits = search(q);
-  if (!hits.length) {
-    return html`<div class="empty"><h2>No stops match “${q}”</h2><p>Stop names are street addresses. Try a street or a town.</p></div>
+  const addr = parseAddress(q);
+  const places = addr ? geocode(addr, 4) : [];
+  const addrHtml = places.map(pl => html`
+    <div class="section between"><span>${pl.label} · ${pl.town}${townState(pl.town)}${pl.near ? html.raw(`<span class="note"> · near ${esc(pl.near)}</span>`) : ''}</span><a class="note" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}">Show on map</a></div>
+    <div class="list">${pl.stops.length ? pl.stops.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops near there.</p></div>`}</div>`).join('');
+  if (!hits.length && !places.length) {
+    return html`<div class="empty"><h2>No stops match “${q}”</h2><p>Stop names are street addresses. Try a street or a town, or any address in the valley, like “4182 S 800 W, Preston”, for the stops nearest it.</p></div>
       <div class="chips">${['Main St', '400 North', 'Hyrum', 'USU', 'Smithfield'].map(s => html`<a class="chip" href="#/search?q=${encodeURIComponent(s)}" data-q="${s}">${s}</a>`)}</div>
       <div class="section">${icon('route', 16)}Or browse by route</div><div class="routes">${D.routes.map((r, i) => html`<a href="#/route/${encodeURIComponent(r.short)}">${badge(i, 36)}</a>`)}</div>`;
   }
   const towns = [...new Set(hits.map(i => stop(i).town))];
   const where = towns.length === 1 ? ' in ' + towns[0] : '';
-  return html`<div class="notice"><span>${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number</span></div>
+  if (!hits.length) return html`${html.raw(addrHtml)}<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>`;
+  return html`${html.raw(addrHtml)}
+    <div class="${places.length ? 'section' : 'notice'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}</span></div>
     <div class="list">${hits.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>
-    <div class="fine">Matches street, number and town. “500 north”, “main st, hyrum” and “hyrum main” all work.</div>`;
+    <div class="fine">Matches street, number and town: “500 north”, “main st, hyrum” and “hyrum main” all work. So does any address in the valley, like “4182 S 800 W, Preston”, for the stops nearest it.</div>`;
 }
 
 function pulseCard(clockNow) {

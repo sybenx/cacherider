@@ -2,12 +2,13 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle } from '../ui.js';
 import { nearMe } from '../main.js';
+import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
 
-let map = null, ready = false, selected = null, meMarker = null, shapesLoaded = false, flavorName = null, lastFocused = null;
+let map = null, ready = false, selected = null, meMarker = null, pinMarker = null, shapesLoaded = false, flavorName = null, lastFocused = null;
 // The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
 let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16] };
 const col = document.getElementById('mapcol');
@@ -80,9 +81,14 @@ function wireChrome(app) {
     const q = input.value.trim();
     if (!q) { results.classList.add('hidden'); return; }
     const hits = search(q, 12);
-    results.innerHTML = hits.length ? hits.map(i => html`<a class="stoprow" href="#/map/${stop(i).id}" data-i="${i}"><div class="mid"><span class="name">${stopTitle(i)}</span>${badges(stop(i).routes, 20)}</div><div class="end">${icon('fwd', 18)}</div></a>`).join('') : html`<div class="empty"><p>No stops match “${q}”.</p></div>`;
+    const addr = parseAddress(q);
+    const places = addr ? geocode(addr, 3) : [];
+    const placeRows = places.map(pl => html`<a class="stoprow" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}"><div class="mid"><span class="name">${pl.label}, ${pl.town}${townState(pl.town)}${pl.near ? ' · near ' + pl.near : ''}</span><span class="dist">${pl.stops.length ? `Nearest stop ${metres(pl.stops[0].d)}` : 'No stops near'}</span></div><div class="end">${icon('pin', 18)}</div></a>`).join('');
+    const stopRows = hits.map(i => html`<a class="stoprow" href="#/map/${stop(i).id}" data-i="${i}"><div class="mid"><span class="name">${stopTitle(i)}</span>${badges(stop(i).routes, 20)}</div><div class="end">${icon('fwd', 18)}</div></a>`).join('');
+    results.innerHTML = placeRows + stopRows || html`<div class="empty"><p>No stops or addresses match “${q}”.</p></div>`;
     results.classList.remove('hidden');
-    results.querySelectorAll('a').forEach(a => a.onclick = e => { e.preventDefault(); input.value = ''; results.classList.add('hidden'); select(stop(+a.dataset.i).id, app, true, true); });
+    results.querySelectorAll('a[data-i]').forEach(a => a.onclick = e => { e.preventDefault(); input.value = ''; results.classList.add('hidden'); select(stop(+a.dataset.i).id, app, true, true); });
+    results.querySelectorAll('a:not([data-i])').forEach(a => a.onclick = () => { input.value = ''; results.classList.add('hidden'); });
   }, 200); };
   col.querySelector('#mapnear').onclick = () => nearMe(geo => { if (geo) { placeMe(geo); map.flyTo({ center: [geo.lon, geo.lat], zoom: 15.5 }); } });
 }
@@ -143,13 +149,31 @@ function notice(clockNow) {
   n.innerHTML = html`<div class="callout">${icon('moon', 20)}<div><b>No service today · ${dayName(clockNow.ymd)}</b><div class="sub">${resume ? `Buses resume ${fmtDay(resume)}.` : ''}${first ? ` First departures from the ${D.hub.name} at ${clockText(first.min)}.` : ''}</div></div></div>`;
 }
 
+/** An address: a pin, and the card lists the stops nearest it. */
+function showAt(at, app, clockNow) {
+  selected = null; applySelection();
+  if (!pinMarker) { const el = document.createElement('div'); el.className = 'pin-marker'; el.innerHTML = icon('pin', 30, 2).s; pinMarker = new maplibregl.Marker({ element: el, anchor: 'bottom' }); }
+  pinMarker.setLngLat([at.lon, at.lat]).addTo(map);
+  const near = nearestTo(at.lat, at.lon, 4);
+  const card = col.querySelector('#mapcard');
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">Nearest stops to</span><div class="name"><span>${at.label || 'this spot'}</span></div></div>
+    ${near.length ? near.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops within 4 km of there.</p></div>`}`;
+  card.classList.remove('hidden');
+  requestAnimationFrame(() => card.classList.add('open'));
+  const key = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
+  if (lastFocused !== key) map.easeTo({ center: [at.lon, at.lat], zoom: Math.max(map.getZoom(), 14.5), offset: [0, -(card.offsetHeight / 2)], duration: 700 });
+  lastFocused = key;
+}
+
 /** Called by the router whenever the map is on screen. */
-export async function show({ stopId, focus, hub, tick }, app, clockNow) {
+export async function show({ stopId, at, focus, hub, tick }, app, clockNow) {
   await init(app);
   requestAnimationFrame(() => map.resize());
   notice(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
+  if (pinMarker && !at) { pinMarker.remove(); }
+  if (at) return showAt(at, app, clockNow);
   if (hub) {
     selected = null; applySelection(); col.querySelector('#mapcard').classList.remove('open');
     if (lastFocused !== 'hub') map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 });

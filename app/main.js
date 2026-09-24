@@ -3,6 +3,7 @@
 import { load, D, BASE, pref, stopIndex } from './data.js';
 import { now } from './time.js';
 import { html, icon, esc } from './ui.js';
+import { loadGrid } from './geo.js';
 import * as home from './views/home.js';
 import * as stopView from './views/stop.js';
 import * as hub from './views/hub.js';
@@ -77,7 +78,8 @@ async function render(tick = false) {
   }
   if (mapOpen || isDesktop()) {
     const m = await ensureMap();
-    m.show({ stopId: name === 'map' ? seg[1] : name === 'stop' ? seg[1] : null, focus: name === 'map' || name === 'stop', hub: name === 'hub', tick }, app, clockNow);
+    const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
+    m.show({ stopId: name === 'map' && !at ? seg[1] : name === 'stop' ? seg[1] : null, at, focus: name === 'map' || name === 'stop', hub: name === 'hub', tick }, app, clockNow);
   }
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';
 }
@@ -155,7 +157,7 @@ function wireHeader() {
 
 async function boot() {
   try {
-    await load();
+    await Promise.all([load(), loadGrid()]);
   } catch (e) {
     side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;
     return;
