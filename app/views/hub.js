@@ -79,7 +79,8 @@ function pulseBlock(clockNow) {
   return html`<div class="hubpulse"><div class="col"><span class="eyebrow">Next pulse</span>${time(p.min, 56)}<span class="sub">${D.hub.pulseLabel}${p.day === 1 ? ' · tomorrow' : ''}</span></div><div class="end">${end}${sched()}</div></div>`;
 }
 
-/** The bay plan: 500 North along the top, the drive as a horseshoe, each bay's badge where the feed puts it. */
+/** The bay plan: 500 North along the top, the drive as a U, each bay's badge where the rider drew it
+    (tools/hints.json, as fractions of the frame), else where the feed's coordinates project. */
 function plan(picked) {
   const W = 358, Hh = 300, top = 40, pad = 26;
   const bays = D.hub.bays;
@@ -90,13 +91,14 @@ function plan(picked) {
   const scale = Math.min((W - 2 * pad) / spanX, (Hh - top - 2 * pad) / spanY);
   const x = lon => pad + (lon - minLon) * 111000 * cos * scale + ((W - 2 * pad) - spanX * scale) / 2;
   const y = lat => top + pad + (maxLat - lat) * 111000 * scale + ((Hh - top - 2 * pad) - spanY * scale) / 2;
-  const cx = x((minLon + maxLon) / 2), left = x(minLon), right = x(maxLon), topY = y(maxLat), botY = y(minLat);
   const bar = 20 * scale;
-  // Where a rider has drawn the bays (tools/hints.json), that wins over the feed's coordinates.
   const plan = D.hub.plan || {};
   const drawn = plan.bays || {};
-  const hallAt = plan.hall_at ? [plan.hall_at[0] * W, plan.hall_at[1] * Hh] : [cx, topY + 50];
+  const f = (v, d) => (v == null ? d : v);
+  const hallAt = plan.hall_at ? [plan.hall_at[0] * W, plan.hall_at[1] * Hh] : [W / 2, Hh * 0.4];
+  const hallSize = plan.hall_size ? [plan.hall_size[0] * W, plan.hall_size[1] * Hh] : [80, 46];
   const hallLines = plan.hall || ['HALL'];
+  const drive = plan.drive || { start: [0.10, 0.27], c1: [0.18, 1.15], c2: [0.83, 1.15], end: [0.915, 0.28], width: 0.085 };
   const badgesHtml = bays.map(b => {
     const on = picked === b.stop;
     const id = stop(b.stop).id;
@@ -109,19 +111,23 @@ function plan(picked) {
     const inner = stacked
       ? `<span class="bay-stack">${badge(b.routes[0], 30).s}<span>${b.routes.slice(1).map(ri => badge(ri, 30).s).join('')}</span></span>`
       : b.routes.map(ri => badge(ri, 30).s).join('');
-    return `<a class="bay${on ? ' on' : ''}" href="#/hub/${id}" style="left:${bx.toFixed(1)}px;top:${by.toFixed(1)}px" title="Bay: routes ${b.routes.map(ri => route(ri).short).join(', ')}">${inner}</a>`;
+    // Percentages, so the badges keep their place on the plan at any width.
+    return `<a class="bay${on ? ' on' : ''}" href="#/hub/${id}" style="left:${(bx / W * 100).toFixed(2)}%;top:${(by / Hh * 100).toFixed(2)}%" title="Bay: routes ${b.routes.map(ri => route(ri).short).join(', ')}">${inner}</a>`;
   }).join('');
-  const hallH = 14 * hallLines.length + 20, hallW = 80;
-  const hall = `<rect x="${(hallAt[0] - hallW / 2).toFixed(1)}" y="${(hallAt[1] - hallH / 2).toFixed(1)}" width="${hallW}" height="${hallH}" fill="none" style="stroke:var(--cr-muted)"/>` +
-    hallLines.map((l, i) => `<text x="${hallAt[0].toFixed(1)}" y="${(hallAt[1] - hallH / 2 + 10 + 14 * (i + 0.75)).toFixed(1)}" text-anchor="middle" style="font:600 10.5px var(--font-heading);letter-spacing:.1em;fill:var(--cr-muted)">${l.toUpperCase()}</text>`).join('');
+  // The drive: a broad U, a cubic whose control points the rider tuned in the hints.
+  const P = k => `${(drive[k][0] * W).toFixed(1)} ${(drive[k][1] * Hh).toFixed(1)}`;
+  const road = `M${P('start')} C ${P('c1')} ${P('c2')} ${P('end')}`;
+  const lineH = 12, hallH = hallSize[1], hallW = hallSize[0];
+  const hall = `<rect x="${(hallAt[0] - hallW / 2).toFixed(1)}" y="${(hallAt[1] - hallH / 2).toFixed(1)}" width="${hallW.toFixed(1)}" height="${hallH.toFixed(1)}" fill="none" style="stroke:var(--cr-muted)"/>` +
+    hallLines.map((l, i) => `<text x="${hallAt[0].toFixed(1)}" y="${(hallAt[1] - (hallLines.length - 1) * lineH / 2 + i * lineH + 4).toFixed(1)}" text-anchor="middle" style="font:600 10.5px var(--font-heading);letter-spacing:.1em;fill:var(--cr-muted)">${l.toUpperCase()}</text>`).join('');
   return html.raw(`<div class="bays blueprint${picked !== undefined ? ' picked' : ''}">${corners().s}
-    <svg class="plan" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" aria-hidden="true">
+    <svg class="plan" viewBox="0 0 ${W} ${Hh}" aria-hidden="true">
       <rect x="0" y="0" width="${W}" height="${top}" style="fill:color-mix(in srgb, var(--color-text) 8%, transparent)"/>
       <line x1="0" y1="${top}" x2="${W}" y2="${top}" style="stroke:var(--cr-line)"/>
       <text x="12" y="${top * 0.6}" style="font:600 11px var(--font-heading);letter-spacing:.14em;fill:var(--cr-muted)">500 NORTH</text>
       <text x="${W - 12}" y="${top * 0.6}" text-anchor="end" style="font:500 11px var(--font-body);fill:var(--cr-muted)">200 East →</text>
-      <path d="M${(left + 2).toFixed(1)} ${(topY + 8).toFixed(1)} Q ${cx.toFixed(1)} ${(botY + (botY - topY) * 1.1).toFixed(1)} ${(right - 2).toFixed(1)} ${(topY + 8).toFixed(1)}" fill="none" style="stroke:color-mix(in srgb, var(--color-text) 9%, transparent)" stroke-width="30"/>
-      <path d="M${(left + 2).toFixed(1)} ${(topY + 8).toFixed(1)} Q ${cx.toFixed(1)} ${(botY + (botY - topY) * 1.1).toFixed(1)} ${(right - 2).toFixed(1)} ${(topY + 8).toFixed(1)}" fill="none" style="stroke:var(--cr-line)" stroke-dasharray="4 5"/>
+      <path d="${road}" fill="none" style="stroke:color-mix(in srgb, var(--color-text) 9%, transparent)" stroke-width="${(drive.width * W).toFixed(1)}"/>
+      <path d="${road}" fill="none" style="stroke:var(--cr-line)" stroke-dasharray="4 5"/>
       ${hall}
       <g style="stroke:var(--cr-muted)"><line x1="${W - 22}" y1="${Hh - 84}" x2="${W - 22}" y2="${Hh - 64}"/><path d="M${W - 26} ${Hh - 79} L${W - 22} ${Hh - 85} L${W - 18} ${Hh - 79}" fill="none"/></g>
       <text x="${W - 22}" y="${Hh - 88}" text-anchor="middle" style="font:600 10px var(--font-heading);fill:var(--cr-muted)">N</text>
