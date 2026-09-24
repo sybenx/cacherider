@@ -81,9 +81,12 @@ python3 tools/reduce.py /tmp/cvtd.zip
 ### Hosting
 
 The site is static, so it runs on Cloudflare Pages and GitHub Pages alike.
-Cloudflare Pages serves cacherider.com from this repository; `_redirects`
-sends connecttransit.org and connectransit.org there, and `_headers` sets the
-cache lifetimes. GitHub Pages serves the same commit at
+Cloudflare Pages serves cacherider.com from this repository, with
+connecttransit.org, connectransit.org and the www hosts attached to the same
+project. A Cloudflare Bulk Redirect (account level, list `cacherider_aliases`)
+sends those hosts to cacherider.com with a 301, since Pages' own `_redirects`
+file can't match on hostname. `_headers` sets the cache lifetimes; the zone's
+Browser Cache TTL is set to respect them. GitHub Pages serves the same commit at
 sybenx.github.io/cacherider, which keeps working with no changes if the
 domains ever lapse: every path in the app is relative.
 
