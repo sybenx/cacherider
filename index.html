@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cache Rider</title>
+<meta name="description" content="Unofficial schedule app for Connect, the Cache Valley Transit District bus. Next buses at any stop, the Transit Center bay by bay, and a map.">
+<meta name="theme-color" content="#f2f2f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101214" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Cache Rider">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="preload" href="./fonts/barlow-condensed-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./vendor/maplibre-gl.css">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <a class="wordmark" href="#/">Cache Rider</a>
+    <nav id="topnav"></nav>
+    <form class="search" id="topsearch" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" autocomplete="off" aria-label="Search stops"><span class="lead"></span></form>
+    <button class="btn btn-secondary" id="topnear" type="button">Near me</button>
+  </header>
+  <div id="body">
+    <main id="side" aria-live="polite"><div class="empty"><p>Loading the timetable…</p></div></main>
+    <div id="mapcol"><div id="map"></div></div>
+  </div>
+  <nav id="tabs"></nav>
+</div>
+<script type="importmap">{"imports":{"fflate":"./vendor/fflate.mjs"}}</script>
+<script type="module" src="./app/main.js"></script>
+<noscript><p style="padding:16px">Cache Rider needs JavaScript to read the timetable.</p></noscript>
+</body>
+</html>

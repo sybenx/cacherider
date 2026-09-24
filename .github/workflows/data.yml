@@ -1,0 +1,36 @@
+name: transit data
+
+# Every night, fetch the agency's GTFS, reduce it to what the app reads, and
+# commit the result if it changed. Hosting redeploys from the commit.
+
+on:
+  schedule:
+    - cron: '23 9 * * *'   # 03:23 Mountain, after the agency's overnight update
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reduce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch CVTD GTFS
+        run: curl -fsSL -o /tmp/cvtd.zip https://mycvtdbus.org/gtfs
+      - name: Reduce
+        run: python3 tools/reduce.py /tmp/cvtd.zip --hints tools/hints.json --out data
+      - name: Commit if changed
+        run: |
+          git config user.name 'transit data'
+          git config user.email 'actions@users.noreply.github.com'
+          git add data/cvtd.json data/cvtd-shapes.json
+          # The built date alone is not a change worth a commit.
+          if git diff --cached --numstat | grep -q . && git diff --cached -U0 data/cvtd.json | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vqE '"built":"'; then
+            git commit -m "Transit data: $(date -u +%Y-%m-%d)" && git push
+          else
+            echo 'no change'
+          fi

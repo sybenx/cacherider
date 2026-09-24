@@ -1,0 +1,6 @@
+# Cloudflare Pages: the other two domains lead to the canonical one.
+https://connecttransit.org/* https://cacherider.com/:splat 301
+https://www.connecttransit.org/* https://cacherider.com/:splat 301
+https://connectransit.org/* https://cacherider.com/:splat 301
+https://www.connectransit.org/* https://cacherider.com/:splat 301
+https://www.cacherider.com/* https://cacherider.com/:splat 301

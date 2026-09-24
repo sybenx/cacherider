@@ -1,0 +1,36 @@
+{
+  "_": "Agency-specific wording. Headsigns are rewritten whole; towns map a GTFS suffix to how the app names the place.",
+  "brand": "Connect",
+  "hub": {
+    "name": "Transit Center",
+    "short": "Transit Ctr",
+    "lat": 41.7406,
+    "lon": -111.8309,
+    "radius": 150,
+    "pulse_routes": ["1", "2", "3", "5", "6", "7", "8", "9", "11", "12", "15"],
+    "pulse_label": "Routes 1–15 leave together"
+  },
+  "loops": ["G", "B"],
+  "headsigns": {
+    "GREEN LOOP": "",
+    "ROUTE 15 INBOUND": "Inbound",
+    "North Logan, CV Hospital": "N Logan · CV Hospital",
+    "Hyrum, Transit Center": "Hyrum, then Transit Ctr",
+    "USU, NE Logan 1600 E": "USU · NE Logan 1600 E",
+    "L.R. Hospital - 800 E": "L.R. Hospital · 800 E",
+    "USU, Smithfield, Richmond": "USU · Smithfield · Richmond"
+  },
+  "route_names": {
+    "LOOP - Green": "Green Loop",
+    "LOOP - Blue": "Blue Loop",
+    "Route 16 - AM Weekday ONLY": "Route 16 AM",
+    "Route 16 - PM Weekday ONLY": "Route 16 PM"
+  },
+  "towns": {
+    "": "Logan",
+    "N Logan": "N Logan",
+    "Preston": "Preston, Idaho",
+    "Franklin": "Franklin, Idaho"
+  },
+  "town_suffix_default": "Logan"
+}
