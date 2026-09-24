@@ -7,7 +7,7 @@ import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle } from '../ui.js';
 import { nearMe } from '../main.js';
 
-let map = null, ready = false, selected = null, meMarker = null, shapesLoaded = false, flavorName = null;
+let map = null, ready = false, selected = null, meMarker = null, shapesLoaded = false, flavorName = null, lastFocused = null;
 // The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
 let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16] };
 const col = document.getElementById('mapcol');
@@ -142,21 +142,31 @@ function notice(clockNow) {
 }
 
 /** Called by the router whenever the map is on screen. */
-export async function show({ stopId, focus, hub }, app, clockNow) {
+export async function show({ stopId, focus, hub, tick }, app, clockNow) {
   await init(app);
   requestAnimationFrame(() => map.resize());
   notice(clockNow);
   if (app.geo) placeMe(app.geo);
-  if (hub) { selected = null; applySelection(); col.querySelector('#mapcard').classList.remove('open'); map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 }); return; }
+  if (tick) return;   // the minute turning is no reason to move the map
+  if (hub) {
+    selected = null; applySelection(); col.querySelector('#mapcard').classList.remove('open');
+    if (lastFocused !== 'hub') map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 });
+    lastFocused = 'hub';
+    return;
+  }
   if (stopId) {
     const si = D.stopById[stopId];
     if (si !== undefined) {
       const s = stop(si);
+      const changed = lastFocused !== stopId;
+      lastFocused = stopId;
       selected = stopId; applySelection();
-      if (focus) map.jumpTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15) });
+      // A click on the map already eased there; a fresh arrival from elsewhere eases now.
+      if (focus && changed && !map.isEasing()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
       if (!matchMedia('(min-width: 900px)').matches) select(stopId, app, false);
     }
   } else if (app.route && app.route.name === 'map') {
+    lastFocused = null;
     select(null, app);
   }
 }

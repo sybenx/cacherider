@@ -43,6 +43,13 @@ export function render({ id, full }, clockNow) {
     parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   }
 
+  const prov = [...new Set(td.all.filter(t => t.prov).map(t => t.r))];
+  if (prov.length) {
+    const sid = td.all.find(t => t.prov).prov;
+    const from = D.services.find(x => x.id === sid);
+    const names = prov.map(ri => 'Route ' + D.routes[ri].short).join(' and ');
+    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${names} ${prov.length > 1 ? 'are' : 'is'} missing from this week's published timetable</b><div class="sub">Times shown are from the one starting ${from ? fmtDay(from.start) : 'soon'}. The bus is running; check a detour.</div></div></div>`);
+  }
   if (!next.length) {
     parts.push(html`<div class="empty"><h2>Nothing scheduled</h2><p>No departures from this stop in the next week.</p></div>`);
     return { html: parts.join(''), title: s.name };

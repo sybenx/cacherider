@@ -77,7 +77,7 @@ async function render(tick = false) {
   }
   if (mapOpen || isDesktop()) {
     const m = await ensureMap();
-    m.show({ stopId: name === 'map' ? seg[1] : name === 'stop' ? seg[1] : null, focus: name === 'map' || name === 'stop', hub: name === 'hub' }, app, clockNow);
+    m.show({ stopId: name === 'map' ? seg[1] : name === 'stop' ? seg[1] : null, focus: name === 'map' || name === 'stop', hub: name === 'hub', tick }, app, clockNow);
   }
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';
 }

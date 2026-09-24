@@ -29,12 +29,37 @@ export function servicesOn(ymd) {
   return on;
 }
 
-/** Departures at a stop on a service day, sorted, as { min, r, h, dir }. */
+/** Calendars for the same kind of day that start soon after: where a route missing from today's may still be found. */
+export function upcomingServices(ymd, within = 45) {
+  const d = dayFrom(ymd);
+  const dow = (d.dow + 6) % 7;
+  return D.services.filter(s => s.days[dow] && s.start > ymd && dayDiff(ymd, s.start) <= within).map(s => s.id);
+}
+
+/** Departures at a stop on a service day, sorted, as { min, r, h, dir }.
+    A route the stop serves that today's calendar leaves out entirely, but an upcoming one lists, is filled in
+    from that one and marked prov: the feed sometimes publishes a new timetable without the current week's. */
 export function timesOn(si, ymd) {
   const per = D.times[si] || {};
   const out = [];
-  for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3] });
+  const seen = new Set();
+  for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) { out.push({ min: t[0], r: t[1], h: t[2], dir: t[3] }); seen.add(t[1]); }
+  const missing = (D.stops[si].routes || []).filter(r => !seen.has(r) && !routeRunsOn(r, ymd));
+  if (missing.length) {
+    for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1])) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], prov: sid });
+  }
   return out.sort((a, b) => a.min - b.min);
+}
+
+let routeDays = null;
+/** Whether a route has any trip anywhere under today's calendars: if it does, its absence at a stop is real. */
+function routeRunsOn(ri, ymd) {
+  if (!routeDays) {
+    routeDays = {};
+    for (const per of Object.values(D.times)) for (const [sid, list] of Object.entries(per)) for (const t of list) (routeDays[sid] = routeDays[sid] || new Set()).add(t[1]);
+  }
+  for (const sid of servicesOn(ymd)) if (routeDays[sid] && routeDays[sid].has(ri)) return true;
+  return false;
 }
 
 /** The next departures from a stop, rolling into the days ahead. Each carries day (0 = today) and ymd. */
