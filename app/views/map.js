@@ -549,7 +549,10 @@ function connectCard(b, app) {
   const r = D.routes[b.ri], clockNow = now();
   const next = busStops(b, 5);
   const card = col.querySelector('#mapcard');
-  const late = next.length ? lateWords(heldAt(next[0].si, next[0].min - (schedAt(next[0].si, b) ?? next[0].min))) : '';
+  // The word comes from the next stop the timetable has a row for: never the trip's final one, which on a loop
+  // is the stop it left from, an hour's schedule earlier. Only that one left, the card just says Live.
+  const at = next.find(n => !n.end);
+  const late = at ? lateWords(heldAt(at.si, at.min - (schedAt(at.si, b) ?? at.min))) : '';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null ? D.headsigns[b.h] : r.long}</span></div></div>

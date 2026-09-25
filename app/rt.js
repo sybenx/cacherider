@@ -71,7 +71,7 @@ async function tick(force) {
         const sm = schedMin(D.stopById[last.sid], ti);
         if (sm !== null) lastDelay = toMin(last.time) - sm;
       }
-      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s };
+      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s, end };
     }
     const buses = [];
     for (const b of j.buses || []) {
@@ -125,12 +125,12 @@ export function lateWords(delay) {
   if (delay <= -2) return -delay + ' min early';
   return 'On time';
 }
-/** A Connect bus's next stops with predicted minutes, for its card. */
+/** A Connect bus's next stops with predicted minutes, for its card; `end` marks the trip's final stop. */
 export function busStops(b, n = 5) {
   const u = rt.trips[b.trip];
   if (!u) return [];
   return u.stops.filter(([, , , rel]) => rel !== 1)
-    .map(([sid, seq, time]) => ({ si: D.stopById[sid], seq, min: toMin(time), time }))
+    .map(([sid, seq, time]) => ({ si: D.stopById[sid], seq, min: toMin(time), time, end: seq === u.end }))
     .filter(x => x.si !== undefined && x.time >= rt.t - 30).sort((a, b) => a.seq - b.seq).slice(0, n);
 }
 export function findBus(id) { return rt.buses.find(b => b.id === id); }
