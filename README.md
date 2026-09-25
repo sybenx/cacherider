@@ -99,6 +99,13 @@ Origin header, so phones can't read it; a GitHub Action decodes it hourly into
 skips the stop while the alert is active, and the app drops those departures.
 Alerts naming only stops, or nothing, are shown in the agency's words.
 
+The Map tab has an optional aerial view: the USGS National Map imagery
+service, public domain, NAIP over the valley, ending at zoom 16. It is loaded
+straight from USGS only while switched on, and the choice is kept on the phone.
+
+The shuttle's usual hours come from USU's page by way of `tools/hints.json`, not
+from a feed; a bus reporting outside them gets a small note that it may be parked.
+
 Addresses need no geocoder: the valley numbers its streets from each town's
 origin, so `tools/grid.py` fits a grid per town from the named streets in the
 tiles (latitude against the north–south number, longitude against the

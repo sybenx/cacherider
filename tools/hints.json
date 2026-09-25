@@ -151,6 +151,22 @@
       "South Campus Express": "South Campus",
       "Innovation Campus Express": "Innovation",
       "North Core Express": "North Core"
+    },
+    "service": {
+      "days": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0
+      ],
+      "start": 420,
+      "end": 1020,
+      "late": {
+        "Evening Express": 1320
+      }
     }
   }
 }

@@ -1,6 +1,6 @@
 // A shuttle route: its stops in loop order, each with the nearest bus.
 import { html, icon } from '../ui.js';
-import { U, estimate, chip, liveTag, isStale, hasData, lastSeen, live, notice } from '../usu.js';
+import { U, estimate, chip, liveTag, isStale, hasData, lastSeen, live, notice, offNote } from '../usu.js';
 
 export function render({ id }) {
   const ri = U ? U.routeById[id] : undefined;
@@ -15,6 +15,6 @@ export function render({ id }) {
     const end = e ? `<div class="end"><span class="t t-22">${e.here ? 'Here' : e.stops === null ? e.min + ' min' : e.stops + (e.stops === 1 ? ' stop' : ' stops')}</span><span class="rel">${isStale() ? 'at ' + lastSeen() : 'about ' + e.min + ' min'}</span></div>` : `<div class="end"><span class="rel">${hasData() ? '—' : ''}</span></div>`;
     return html.raw(`<a class="row" href="#/usu/${s.id}"><span class="usq" style="background:${r.color}"></span><div class="mid"><span class="name">${s.name}</span>${e ? liveTag(isStale() ? 'Last seen ' + lastSeen() : 'Live').s : ''}</div>${end}</a>`);
   });
-  parts.push(html`<div class="list">${rows}</div>`);
+  parts.push(html`<div class="list">${rows}</div>`, offNote([ri]));
   return { html: parts.join(''), title: r.name, live: true, keepScroll: true };
 }

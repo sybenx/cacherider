@@ -3,7 +3,7 @@
 import { D, nextAt, nearest, isSaved, toggleSaved } from '../data.js';
 import { dayName, now, metres } from '../time.js';
 import { html, icon, badges, depRow, stopRow } from '../ui.js';
-import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live } from '../usu.js';
+import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 
 export function render({ id }, clockNow) {
@@ -30,7 +30,7 @@ export function render({ id }, clockNow) {
     if (!hasData() && live.error) parts.push(html`<div class="callout">${icon('info', 20)}<div><b>Can't reach the live feed</b><div class="sub">USU's shuttle positions aren't answering. Nothing is wrong with the shuttles themselves; try again in a minute.</div></div></div>`);
     else if (isStale()) parts.push(html`<div class="callout">${icon('info', 20)}<div><b>Live feed hasn't updated in ${Math.round((Date.now() - live.at) / 60000)} min</b><div class="sub">Showing where buses were at ${lastSeen()}. Minutes are hidden until it's back.</div></div></div>`);
     else parts.push(notice());
-    if (hasData()) parts.push(html`<div class="list">${rows.map(r => liveRow(r))}</div>`);
+    if (hasData()) parts.push(html`<div class="list">${rows.map(r => liveRow(r))}</div>`, offNote(s.routes));
     else if (!live.error) parts.push(html`<div class="list">${rows.map(r => html`<div class="row urow"><span class="uchip" style="min-width:36px;height:36px;font-size:17px;background:${U.routes[r.ri].color};color:${U.routes[r.ri].text}">${U.routes[r.ri].short}</span><div class="mid"><span class="name">${U.routes[r.ri].name}</span><span class="sub">Finding the bus…</span></div><span></span></div>`)}</div>`);
   }
 

@@ -366,6 +366,15 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .bus-marker svg { width: 14px; height: 14px; }
 .bus-marker.on { box-shadow: 0 0 0 3px var(--color-accent); }
 .bus-marker.dim { opacity: .4; }
+/* thumbs: bigger buses, zoom buttons and satellite toggle on touch screens; the mouse keeps the small ones */
+@media (pointer: coarse) {
+  .bus-marker { width: 30px; height: 30px; }
+  .bus-marker svg { width: 18px; height: 18px; }
+  #map .maplibregl-ctrl-group button { width: 46px; height: 46px; }
+}
+.satbtn { display: flex; align-items: center; justify-content: center; color: var(--color-text); }
+.satbtn[aria-pressed="true"] { color: var(--color-accent-700); background: var(--color-accent-100); }
+.fine.offhours { padding-top: 6px; }
 .buscard .head { gap: 10px; }
 .buscard .top { display: flex; justify-content: space-between; align-items: center; }
 .buscard .who { display: flex; align-items: center; gap: 10px; }

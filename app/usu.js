@@ -4,7 +4,7 @@
 // Minutes are estimated from a bus's position along its loop.
 import { BASE, D, distance } from './data.js';
 import { esc, raw, html, icon } from './ui.js';
-import { metres } from './time.js';
+import { metres, now, dayFrom } from './time.js';
 
 export let U = null;
 const FEED = 'https://passiogo.com/mapGetData.php';
@@ -169,6 +169,17 @@ export function meter(b, wide = false) {
   return raw(`<span class="meter${wide ? ' wide' : ''}" role="img" aria-label="${b.pax} aboard, room for ${b.cap}" title="${b.pax} of ${b.cap} aboard">${[0, 1, 2, 3, 4].map(i => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`);
 }
 export const liveTag = (text = 'Live') => raw(`<span class="livetag"><i></i>${esc(text)}</span>`);
+/** Outside the shuttle's usual hours (from the hints; USU's page, not a feed), for these routes. */
+export function offHours(ris = null, clockNow = now()) {
+  const svc = U && U.service;
+  if (!svc) return false;
+  const idx = (dayFrom(clockNow.ymd).dow + 6) % 7;
+  const names = (ris === null ? U.routes.map((_, i) => i) : ris).map(ri => U.routes[ri].name);
+  const end = Math.max(svc.end, ...names.map(n => (svc.late || {})[n] || 0));
+  return !svc.days[idx] || clockNow.min < svc.start || clockNow.min >= end;
+}
+/** The note itself, only while a bus is reporting: it may be parked with its tracker on. */
+export const offNote = (ris = null) => live.buses.length && offHours(ris) ? raw(`<div class="fine offhours">Outside the shuttle's usual hours. A bus reporting now may not be in service.</div>`) : '';
 export const notice = () => raw(`<div class="notice"><span class="muted">${icon('info', 16).s}</span><span>Shuttles have no timetable. Minutes are estimated from where each bus is right now.</span></div>`);
 
 /** One campus-stop row: chip · route name + meter + LIVE · stops away + minutes. */

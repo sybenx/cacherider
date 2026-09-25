@@ -63,7 +63,7 @@ for rid, segs in stops_raw.get('routePoints', {}).items():
     routes[ridx[rid]]['shape'] = [p for i, p in enumerate(pts) if i == 0 or p != pts[i - 1]]
 
 out = {'system': SYSTEM, 'name': H.get('name', 'USU campus shuttle'), 'agency': H.get('agency', 'Utah State University'),
-       'hours': H.get('hours', ''), 'routes': routes, 'stops': stops}
+       'hours': H.get('hours', ''), 'service': H.get('service'), 'routes': routes, 'stops': stops}
 p = os.path.join(ROOT, 'data', 'usu.json')
 json.dump(out, open(p, 'w'), separators=(',', ':'), ensure_ascii=False)
 print('wrote', p, os.path.getsize(p), 'bytes:', len(routes), 'routes,', len(stops), 'stops')

@@ -2,12 +2,17 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, pref } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle } from '../ui.js';
 import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
-import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen } from '../usu.js';
+import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote } from '../usu.js';
+
+// Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
+const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
+const satOn = () => pref('sat') === 'on';
+const coarse = () => matchMedia('(pointer: coarse)').matches;
 
 let map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
 let mm = null, mmEl = null, mmReady = false, mmKey = null, mmSel = null;   // the small map on a stop page
@@ -18,16 +23,21 @@ let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16]
 const col = document.getElementById('mapcol');
 const dark = () => matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
 
-function style() {
+function style(sat = true) {
   const flavor = dark() ? 'dark' : 'light';
   flavorName = flavor;
   const f = namedFlavor(flavor);
+  // Imagery slides in under the basemap's labels: everything drawn before its first symbol layer is covered.
+  const base = layers('protomaps', f, { lang: 'en' });
+  const firstSymbol = Math.max(0, base.findIndex(l => l.type === 'symbol'));
+  base.splice(firstSymbol, 0, { id: 'sat', type: 'raster', source: 'sat', layout: { visibility: sat && satOn() ? 'visible' : 'none' } });
   return {
     version: 8,
     glyphs: BASE + 'vendor/basemaps-assets/fonts/{fontstack}/{range}.pbf',
     sprite: BASE + 'vendor/basemaps-assets/sprites/' + flavor,
     sources: {
       protomaps: { type: 'vector', tiles: [BASE + 'tiles/{z}/{x}/{y}.pbf'], minzoom: TILES.minzoom, maxzoom: TILES.maxzoom, bounds: TILES.bounds, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
+      sat: { type: 'raster', tiles: SAT.tiles, tileSize: 256, maxzoom: SAT.maxzoom, bounds: TILES.bounds, attribution: SAT.attribution },
       stops: { type: 'geojson', data: stopsGeo() },
       lines: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       spot: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
@@ -35,7 +45,7 @@ function style() {
       ulines: { type: 'geojson', data: usuLinesGeo() },
     },
     layers: [
-      ...layers('protomaps', f, { lang: 'en' }),
+      ...base,
       { id: 'spot-fill', type: 'fill', source: 'spot', paint: { 'fill-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'fill-opacity': 0.18 } },
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
@@ -44,7 +54,7 @@ function style() {
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
-      { id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8], 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#101214' : '#ffffff', 'circle-stroke-width': 1.5, 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
+      { id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11], 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#101214' : '#ffffff', 'circle-stroke-width': 1.5, 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
       { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'stop-labels', type: 'symbol', source: 'stops', minzoom: 15, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
     ],
@@ -103,16 +113,25 @@ async function init(app) {
   await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : [-111.8300, 41.7330];
-  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 17.5, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
+  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 19, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+  map.addControl(satControl(), 'bottom-right');
   squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); });
-  map.on('click', 'usu-stops', e => { const f = e.features[0]; selectU(f.properties.id, app); e.originalEvent._stopHit = true; });
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   setTimeout(() => map.resize(), 300);
-  map.on('click', 'stops', e => { const f = e.features[0]; select(f.properties.id, app, true); e.originalEvent._stopHit = true; });
-  map.on('click', e => { if (!e.originalEvent._stopHit) { selectedBus = null; selectedU = null; select(null, app); } });
+  // A tap picks the nearest stop within a thumb's reach, so two stops that nearly touch are still separable.
+  map.on('click', e => {
+    const r = coarse() ? 22 : 8;
+    const hits = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'usu-stops'] });
+    if (hits.length) {
+      const best = hits.map(f => { const p = map.project(f.geometry.coordinates); return { f, d: Math.hypot(p.x - e.point.x, p.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0].f;
+      if (best.layer.id === 'stops') select(best.properties.id, app, true); else selectU(best.properties.id, app);
+      return;
+    }
+    selectedBus = null; selectedU = null; select(null, app);
+  });
   map.on('mouseenter', 'stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'stops', () => map.getCanvas().style.cursor = '');
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((dark() ? 'dark' : 'light') !== flavorName) { ready = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); }); } });
@@ -137,6 +156,20 @@ function wireGrip(app) {
     if (dy > 50) { selectedBus = null; selectedU = null; select(null, app); }
   };
   card.addEventListener('pointerup', end); card.addEventListener('pointercancel', end);
+}
+
+/** The satellite toggle, a map control beside the zoom buttons; the choice is kept on the phone. */
+function satControl() {
+  return {
+    onAdd() {
+      const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'satbtn'; b.title = 'Satellite'; b.setAttribute('aria-label', 'Satellite imagery');
+      b.innerHTML = icon('globe', 20).s; b.setAttribute('aria-pressed', satOn() ? 'true' : 'false');
+      b.onclick = () => { const on = !satOn(); pref('sat', on ? 'on' : 'off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); if (map.getLayer('sat')) map.setLayoutProperty('sat', 'visibility', on ? 'visible' : 'none'); };
+      el.appendChild(b); this.el = el; return el;
+    },
+    onRemove() { this.el.remove(); },
+  };
 }
 
 function chrome() {
@@ -284,7 +317,7 @@ function busCard(app) {
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.name} · heading ${heading(b.course)}</span>${isStale() ? liveTag('Last seen ' + lastSeen()) : liveTag()}</div>
     <div class="who">${chip(b.ri, 32)}<span class="name">${r.name}</span></div>
-    ${b.cap ? html`<div class="load">${meter(b, true)}<span>${loadWords(b)}</span></div>` : ''}</div>
+    ${b.cap ? html`<div class="load">${meter(b, true)}<span>${loadWords(b)}</span></div>` : ''}${offNote([b.ri])}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:${r.color}"></i>${next.map((n, i) => html`<a class="ns${n.here && i === 0 ? ' here' : ''}" href="#/usu/${U.stops[n.si].id}"><span class="dot"><i style="${n.here && i === 0 ? 'background:' + r.color : ''}"></i></span><span class="nm">${U.stops[n.si].name}</span><span class="when">${n.here && i === 0 ? 'here now' : isStale() ? '' : 'about ' + Math.max(1, n.min) + ' min'}</span></a>`)}</div>` : ''}`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
@@ -394,10 +427,10 @@ export async function mini(sel, slot) {
     if (!slot.isConnected) return;   // the page moved on while the tile index loaded
     mmEl = document.createElement('div'); mmEl.className = 'minimap';
     slot.prepend(mmEl);
-    mm = new maplibregl.Map({ container: mmEl, style: style(), center: [s.lon, s.lat], zoom: 16, minZoom: 10, maxZoom: 17.5, interactive: false, fadeDuration: 0, attributionControl: { compact: true } });
+    mm = new maplibregl.Map({ container: mmEl, style: style(false), center: [s.lon, s.lat], zoom: 16, minZoom: 10, maxZoom: 17.5, interactive: false, fadeDuration: 0, attributionControl: { compact: true } });
     squaresOnDemand(mm);
     mm.on('load', () => { mmReady = true; loadShapes(mm); miniSelection(); });
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (mm && (dark() ? 'dark' : 'light') !== flavorName) { mmReady = false; mm.setStyle(style()); mm.once('style.load', () => { mmReady = true; loadShapes(mm); miniSelection(); }); } });
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (mm && (dark() ? 'dark' : 'light') !== flavorName) { mmReady = false; mm.setStyle(style(false)); mm.once('style.load', () => { mmReady = true; loadShapes(mm); miniSelection(); }); } });
   } else if (mmEl.parentNode !== slot) {
     slot.prepend(mmEl);
     requestAnimationFrame(() => mm.resize());
