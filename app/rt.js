@@ -110,7 +110,9 @@ export function predict(t) {
   const i = order.indexOf(t.si);
   if (i < 0) return null;
   const f = u.first ? order.indexOf(D.stopById[u.first.sid]) : -1, l = u.last ? order.indexOf(D.stopById[u.last.sid]) : -1;
-  if (f >= 0 && i < f) return { gone: true };
+  // Pulling out of a Transit Center bay, the bus drops the bay from its predictions at once. It never leaves a bay
+  // early, so the row holds its scheduled minute and says now until that minute is out, rather than vanish mid-departure.
+  if (f >= 0 && i < f) return D.stops[t.si].hub ? held(t, 0) : { gone: true };
   if (l >= 0 && i > l && u.lastDelay !== null) return { ...held(t, u.lastDelay), est: true };
   return null;
 }
