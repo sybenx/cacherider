@@ -413,7 +413,7 @@ function applySelection() {
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
   litLines(map, hiLines, hiLoops);
-  for (const m of busMarkers.values()) m.el.classList.toggle('dim', dimBus(m));
+  for (const m of busMarkers.values()) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); }
 }
 
 /** The picked stop's routes, or a bus's loop, drawn on top at full strength; every other line faded back. */
@@ -488,6 +488,10 @@ function dimBus(m) {
   if (m.kind === 'c') return (hiLines.length > 0 && !hiLines.includes(m.ri)) || hiLoops.length > 0;
   return hiLoops.length > 0 && !hiLoops.includes(U.routes[m.ri].id);
 }
+/** A bus on a lit route or loop: drawn at full size and tappable however far out the map is zoomed. */
+function litBus(m) {
+  return m.kind === 'c' ? hiLines.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
+}
 /** Every bus with a fix, shuttle and Connect alike, moved or placed; the ones gone from the feeds removed. */
 export function liveUpdate(app) {
   if (!map) return;
@@ -509,6 +513,7 @@ export function liveUpdate(app) {
     m.ri = b.ri;
     m.el.classList.toggle('on', selectedBus === b.id);
     m.el.classList.toggle('dim', dimBus(m));
+    m.el.classList.toggle('lit', litBus(m));
   };
   if (U) for (const b of live.buses) place(b, 'u', U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
   if (!rtStale()) for (const b of rt.buses) place(b, 'c', '#' + D.routes[b.ri].color, 'Route ' + D.routes[b.ri].short + ' · bus ' + b.label);

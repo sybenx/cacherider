@@ -380,11 +380,18 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 #map.bus-small .bus-marker svg { width: 22px; height: 22px; }
 #map.bus-small .bus-marker path { fill: var(--bus-color); stroke: rgba(0,0,0,.55); stroke-width: 1.5; stroke-linejoin: round; }
 #map.bus-small .bus.on .bus-marker path { stroke: var(--color-accent); stroke-width: 2.5; }
+/* a bus on the lit route keeps its badge and its tap at any zoom, so tapping a stop finds its buses */
+#map.bus-small .bus.lit, #map.bus-small .bus.on { pointer-events: auto; }
+#map.bus-small .bus.lit .bus-marker, #map.bus-small .bus.on .bus-marker { transform: none; border-color: #fff; background: var(--bus-color); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); }
+#map.bus-small .bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
+#map.bus-small .bus.lit .bus-marker svg, #map.bus-small .bus.on .bus-marker svg { width: 14px; height: 14px; }
+#map.bus-small .bus.lit .bus-marker path, #map.bus-small .bus.on .bus-marker path { fill: #fff; stroke: none; }
 /* thumbs: bigger buses, zoom buttons and satellite toggle on touch screens; the mouse keeps the small ones */
 @media (pointer: coarse) {
   .bus-marker { width: 30px; height: 30px; }
   .bus-marker svg { width: 18px; height: 18px; }
   #map.bus-small .bus-marker svg { width: 26px; height: 26px; }
+  #map.bus-small .bus.lit .bus-marker svg, #map.bus-small .bus.on .bus-marker svg { width: 18px; height: 18px; }
   #map .maplibregl-ctrl-group button { width: 46px; height: 46px; }
 }
 #map .maplibregl-ctrl-group button.satbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-text); }
