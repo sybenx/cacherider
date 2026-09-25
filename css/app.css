@@ -466,6 +466,9 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .land-right { display: flex; align-items: center; gap: 4px; }
 .land-date { font-family: var(--font-heading); font-weight: 600; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; padding-right: 8px; }
 .land-top .btn-icon { width: 44px; height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--color-text); }
+.land-top .btn-icon[aria-pressed="true"] { color: var(--color-accent-700); background: var(--color-accent-100); }
+.routes.campus { display: flex; flex-wrap: wrap; gap: 8px; }
+.routes.campus a { display: inline-flex; width: auto; height: auto; aspect-ratio: auto; border: 0; padding: 0; }
 .land-alert { margin-top: 10px; }
 /* the hero: the right-hand rule from the watchface, one answer set large */
 .hero { display: flex; flex-direction: column; gap: 14px; margin: 18px 12px 0 16px; padding-right: 16px; border-right: 2px solid var(--color-text); color: inherit; text-decoration: none; }
@@ -505,17 +508,6 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .land-row .name { font-size: 16px; font-weight: 500; }
 .land-row .sub { font-size: 12.5px; color: var(--cr-muted); }
 .land-row .end { display: flex; align-items: center; gap: 8px; }
-/* both systems, side by side */
-.systems { margin: 0 16px 16px; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--cr-line); }
-.systems.one { grid-template-columns: 1fr; }
-.systems a { padding: 12px 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; color: inherit; text-decoration: none; }
-.systems a + a { border-left: 1px solid var(--cr-line); }
-.systems .tag { display: flex; }
-.systems .col { display: flex; flex-direction: column; gap: 2px; }
-.systems .sys { font-family: var(--font-heading); font-weight: 600; font-size: 24px; line-height: 1.05; }
-.systems .sub { font-size: 13px; color: var(--cr-muted); }
-.systems .swatches { display: flex; gap: 3px; }
-.systems .swatches span { width: 14px; height: 6px; display: block; }
 /* one ask for location */
 .ask { padding: 0 16px 18px; display: flex; flex-direction: column; gap: 12px; }
 .ask .btn-lg { min-height: 52px; font-family: var(--font-heading); font-weight: 600; font-size: 19px; letter-spacing: .01em; gap: 8px; }

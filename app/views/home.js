@@ -2,7 +2,7 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
@@ -26,41 +26,56 @@ function landing(clockNow, app) {
     if (n) { heroSi = n.i; heroWhy = 'Nearest · ' + metres(n.d); }
   }
   const stopHero = heroSi !== undefined;
+  const geo = app && app.geo;
   const [dow, date, mon] = fmtDay(clockNow.ymd).split(' ');
-  const parts = [html`<div class="land-top m-only"><span class="wordmark">Cache Rider</span><span class="land-right"><span class="land-date">${dow} <span class="muted">${mon} ${date}</span></span>${stopHero ? html`<a class="btn btn-ghost btn-icon" href="#/search" aria-label="Search">${icon('search', 22)}</a>` : ''}</span></div>`];
+  const parts = [html`<div class="land-top m-only"><span class="wordmark">Cache Rider</span><span class="land-right"><span class="land-date">${dow} <span class="muted">${mon} ${date}</span></span>
+    <button class="btn btn-ghost btn-icon" id="near" type="button" aria-label="${geo ? 'Location on · turn off' : 'Sort stops by distance'}" aria-pressed="${geo ? 'true' : 'false'}" title="${geo ? 'Location on' : 'Near me'}">${icon('near', 22)}</button>
+    <a class="btn btn-ghost btn-icon" href="#/search" aria-label="Search">${icon('search', 22)}</a></span></div>`];
   for (const a of systemAlerts(clockNow.ymd)) parts.push(html`<div class="callout alert land-alert">${icon('info', 20)}<div><b>${a.title}</b><div class="sub">${a.text}</div></div></div>`);
 
   parts.push(stopHero ? stopHeroBlock(heroSi, heroWhy, clockNow) : pulseHeroBlock(clockNow));
   parts.push(html`<div class="spacer"></div>`);
 
   if (stopHero) {
-    parts.push(pulseLine(clockNow));
-    const others = sv.filter(id => id !== firstSaved);
+    parts.push(hubLine(clockNow));
     if (sv.length) {
       const editing = app && app.editSaved;
-      if (others.length || editing) parts.push(html`<div class="land-eye"><span>Saved</span><button class="btn btn-ghost edit" id="edit-saved">${editing ? 'Done' : 'Edit'}</button></div>`);
-      else parts.push(html`<div class="land-eye"><span>Saved</span><button class="btn btn-ghost edit" id="edit-saved">Edit</button></div>`);
+      const others = sv.filter(id => id !== firstSaved);
+      parts.push(html`<div class="land-eye"><span>Saved</span><button class="btn btn-ghost edit" id="edit-saved">${editing ? 'Done' : 'Edit'}</button></div>`);
       if (editing) parts.push(html`<div class="list">${html.raw(sv.map((id, i) => editRow(id, i, sv.length)).join(''))}</div>`);
-      else if (others.length) parts.push(html`<div class="land-rows">${others.map(id => savedRow(id, clockNow))}</div>`);
-    } else if (app && app.geo) {
-      const rows = nearest(app.geo.lat, app.geo.lon, 6).filter(x => x.i !== heroSi && !stop(x.i).hub).slice(0, 3);
-      parts.push(html`<div class="land-eye"><span>Also near you</span></div><div class="land-rows">${rows.map(({ i, d }) => nearRow(i, d, clockNow))}</div>`);
+      else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
+    } else if (geo) {
+      const rows = nearest(geo.lat, geo.lon, 6).filter(x => x.i !== heroSi && !stop(x.i).hub).slice(0, 3);
+      parts.push(html`<div class="land-eye"><span>Also near you</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) }))}</div>`);
     }
+  } else if (geo) {
+    const rows = nearest(geo.lat, geo.lon, 5).filter(x => !stop(x.i).hub).slice(0, 3);
+    if (rows.length) parts.push(html`<div class="land-eye"><span>Nearest to you</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) }))}</div>`);
   } else {
-    parts.push(systemsPanel());
-    if (app && app.geo) {
-      const rows = nearest(app.geo.lat, app.geo.lon, 5).filter(x => !stop(x.i).hub).slice(0, 3);
-      if (rows.length) parts.push(html`<div class="land-eye"><span>Nearest to you</span></div><div class="land-rows">${rows.map(({ i, d }) => nearRow(i, d, clockNow))}</div>`);
-    } else {
-      parts.push(html`<div class="ask">
-        <form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form>
-        <button class="btn btn-primary btn-lg blueprint" id="near">${corners()}${icon('near', 20)}Show the stops near me</button>
-        <span class="ask-note">Location stays on this phone, used only to sort stops.</span></div>`);
-    }
+    parts.push(html`<div class="ask">
+      <form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form>
+      <button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
+      <span class="ask-note">Location stays on this phone, used only to sort stops.</span></div>`);
+  }
+  parts.push(chips());
+  const nt = newTimetable(clockNow);
+  if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
+  const detours = activeAlerts(clockNow.ymd).filter(a => (a.stops || []).length || (a.routes || []).length);
+  if (detours.length) {
+    const rs = [...new Set(detours.flatMap(a => a.routes || []))].sort((x, y) => +x - +y);
+    parts.push(html`<div class="notice">${icon('ban', 16)}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on route' + (rs.length > 1 ? 's ' : ' ') + rs.join(', ') : ''} · <a href="#/about">details</a></span></div>`);
   }
   parts.push(installCard());
+  parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
   if (app) app.hasCampusSaved = sv.some(id => id.startsWith('u:'));
   return { html: html`<div class="land">${html.raw(parts.join(''))}</div>`.s, mount, title: '' };
+}
+
+/** Every route as a chip: Connect's badges, then the shuttle's in their own colours. */
+function chips() {
+  const connect = D.routes.map((r, i) => html`<a href="#/route/${encodeURIComponent(r.short)}" aria-label="Route ${r.short}">${badge(i, 36)}</a>`);
+  const campus = U ? U.routes.map((r, ri) => r.stops.length ? html`<a href="#/usu/route/${r.id}" aria-label="${r.name}">${chip(ri, 36)}</a>` : '') : [];
+  return html`<div class="land-eye"><span>Routes</span></div><div class="routes">${connect}</div>${campus.some(Boolean) ? html`<div class="land-eye"><span>Aggie Shuttle</span></div><div class="routes campus">${campus}</div>` : ''}`;
 }
 
 /** The giant time: hours, the two accent squares of the colon, minutes. */
@@ -83,62 +98,38 @@ function stopHeroBlock(si, why, clockNow) {
   const big = countdown
     ? html`<div class="giant count"><span>${left <= 0 ? 'NOW' : left}</span>${left > 0 ? html`<span class="unit">MIN</span>` : ''}</div>`
     : giant(first.min);
-  const sideVal = countdown ? time(first.min, 34) : html`<span class="rt">${first.day === 0 ? relative(first, clockNow) : first.day === 1 ? 'tomorrow' : dayName(first.ymd)}</span>`;
+  const sideVal = countdown ? time(first.min, 34) : first.day === 0 ? html`<span class="rt">${relative(first, clockNow)}</span>` : '';
+  const dayWord = first.day === 0 ? '' : first.day === 1 ? 'Tomorrow' : dayName(first.ymd);
   const then = next.slice(1);
   const dest = String(headsign(first)), long = D.routes[first.r].long;
   return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span>${big}
-    <div class="who">${badge(first.r, 44)}<div class="mid"><span class="dest">${html.raw(dest)}</span>${dest.replace(/<[^>]+>/g, '') !== long ? html`<span class="sub">${long}</span>` : ''}</div>${sideVal}</div>
+    <div class="who">${badge(first.r, 44)}<div class="mid"><span class="dest">${html.raw(dest)}</span>${dayWord || dest.replace(/<[^>]+>/g, '') !== long ? html`<span class="sub">${[dayWord, dest.replace(/<[^>]+>/g, '') !== long ? long : ''].filter(Boolean).join(' · ')}</span>` : ''}</div>${sideVal}</div>
     ${then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${time(t.min, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : ''}</a></div>`;
 }
 
 function pulseHeroBlock(clockNow) {
   const p = nextPulse(1, clockNow)[0];
-  const eye = html`<div class="eye"><span class="eyebrow">${D.agency.brand} · Next pulse</span>${sched()}</div>`;
+  const eye = html`<div class="eye"><span class="eyebrow">${D.agency.brand} · ${D.hub.name}</span>${sched()}</div>`;
   if (!p) {
     const resume = nextServiceDay(clockNow);
     return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${D.hub.name}</span><div class="hero-none">No buses today${resume ? html`<span class="sub">Service resumes ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
   }
   const loops = (D.hub.loops || []).map(ri => { const n = nextFromHub(ri, 1, clockNow)[0]; return n ? html`<div class="loop">${badge(ri, 28)}<div class="col">${time(n.min, 22)}<span class="sub">${D.routes[ri].long}</span></div></div>` : ''; });
   const when = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
-  return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${D.hub.name}</span>${giant(p.min)}
-    <div class="who"><span class="dest">${D.hub.pulseName || 'Every route leaves'} together</span><span class="rt">${when}</span></div>
+  return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${(D.hub.pulseName || 'Every route').replace(/\s+leave$/, '')}</span>${giant(p.min)}
+    <div class="who"><span class="dest">${D.routes.length} routes from the ${D.hub.name}</span><span class="rt">${when}</span></div>
     ${loops.some(Boolean) ? html`<div class="loops">${loops}</div>` : ''}</a></div>`;
 }
 
-/** The pulse as one line in a blueprint frame, under a stop hero. */
-function pulseLine(clockNow) {
+/** The Transit Center as one line in a blueprint frame, under a stop hero. */
+function hubLine(clockNow) {
   const p = nextPulse(1, clockNow)[0];
   if (!p) return '';
   const when = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
-  return html`<a class="land-pulse blueprint" href="#/hub">${corners()}<div class="col"><span class="eyebrow">Pulse · ${D.hub.name}</span><div class="line">${time(p.min, 42)}<span class="sub">${when}</span></div></div><span class="muted">${icon('fwd', 20)}</span></a>`;
+  return html`<a class="land-pulse blueprint" href="#/hub">${corners()}<div class="col"><span class="eyebrow">${D.hub.name} · ${(D.hub.pulseName || 'all routes').replace(/\s+leave$/, '')}</span><div class="line">${time(p.min, 42)}<span class="sub">${when}</span></div></div><span class="muted">${icon('fwd', 20)}</span></a>`;
 }
 
-function savedRow(id, clockNow) {
-  if (id.startsWith('u:')) {
-    if (!U || U.stopById[id.slice(2)] === undefined) return '';
-    const si = U.stopById[id.slice(2)], s = U.stops[si];
-    const r = board(si).find(x => x.est);
-    const end = r ? html`${chip(r.ri, 24)}<span class="t t-26">${r.est.here ? 'Here' : r.est.stops === null ? r.est.min + ' min' : r.est.stops + (r.est.stops === 1 ? ' stop' : ' stops')}</span>` : html`<span class="sub">${hasData() ? 'No bus' : '…'}</span>`;
-    return html`<a class="land-row" href="#/usu/${s.id}"><div class="col"><span class="name">${s.name}</span><span class="sub">Saved · campus shuttle</span></div><div class="end">${end}</div></a>`;
-  }
-  const si = D.stopById[id];
-  if (si === undefined) return '';
-  const s = stop(si), n = nextAt(si, 1, clockNow)[0];
-  return html`<a class="land-row" href="#/stop/${s.id}"><div class="col"><span class="name">${s.name}</span><span class="sub">Saved · Stop ${s.code || s.id}</span></div><div class="end">${n ? html`${badge(n.r, 24)}${time(n.min, 26)}${n.day ? html`<small class="day">${n.day === 1 ? 'tmrw' : dayName(n.ymd, true)}</small>` : ''}` : html`<span class="sub">No service</span>`}</div></a>`;
-}
-function nearRow(si, d, clockNow) {
-  const s = stop(si), n = nextAt(si, 1, clockNow)[0];
-  return html`<a class="land-row" href="#/stop/${s.id}"><div class="col"><span class="name">${s.name}</span><span class="sub">${metres(d)} away · Stop ${s.code || s.id}</span></div><div class="end">${n ? html`${badge(n.r, 24)}${time(n.min, 26)}` : html`<span class="sub">No service</span>`}</div></a>`;
-}
 
-/** Both systems side by side: what each is, and a way in. */
-function systemsPanel() {
-  const swatch = cols => html`<div class="swatches">${cols.map(c => html`<span style="background:${c}"></span>`)}</div>`;
-  const connect = html`<a href="#/routes"><span class="tag">${sched()}</span><div class="col"><span class="sys">${D.agency.brand}</span><span class="sub">Valley bus · ${D.routes.length} routes</span></div>${swatch(D.routes.slice(0, 6).map(r => '#' + r.color))}</a>`;
-  const n = live.buses.length;
-  const usu = U ? html`<a href="#/usu"><span class="tag">${liveTag()}</span><div class="col"><span class="sys">Aggie Shuttle</span><span class="sub">USU campus · ${hasData() ? (n ? n + (n === 1 ? ' bus' : ' buses') + ' out' : 'no bus out') : 'live positions'}</span></div>${swatch(U.routes.filter(r => r.stops.length).slice(0, 3).map(r => r.color))}</a>` : '';
-  return html`<div class="systems${U ? '' : ' one'}">${connect}${usu}</div>`;
-}
 
 // ---- search, on its own page
 function searchPage(q, clockNow, app) {
@@ -164,8 +155,7 @@ function mount(el, app) {
     input.oninput = () => { clearTimeout(t); t = setTimeout(() => go(input.value, true), 250); };
     if (input.value) input.focus({ preventScroll: true });
   }
-  const near = el.querySelector('#near');
-  if (near) near.onclick = () => app.geo ? nearOff() : nearMe();
+  for (const near of el.querySelectorAll('#near, #near-ask')) near.onclick = () => app.geo ? nearOff() : nearMe();
   wireInstall(el);
   const edit = el.querySelector('#edit-saved');
   if (edit) edit.onclick = () => { app.editSaved = !app.editSaved; window.dispatchEvent(new HashChangeEvent('hashchange')); };

@@ -11,7 +11,6 @@ import * as routeView from './views/route.js';
 import * as about from './views/about.js';
 import * as ustop from './views/ustop.js';
 import * as uroute from './views/uroute.js';
-import * as routesView from './views/routes.js';
 import { loadUSU, setWanted, onLive, U } from './usu.js';
 
 const side = document.getElementById('side');
@@ -61,8 +60,6 @@ async function render(tick = false) {
   try {
     if (name === 'home') view = home.render({ q: q.q || '', page: 'home' }, clockNow);
     else if (name === 'search') view = home.render({ q: q.q || '', page: 'search' }, clockNow);
-    else if (name === 'routes') view = routesView.render({ which: 'connect' }, clockNow);
-    else if (name === 'usu' && !seg[1]) view = routesView.render({ which: 'usu' }, clockNow);
     else if (name === 'stop') view = stopView.render({ id: seg[1], full: seg[2] === 'all' }, clockNow);
     else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
     else if (name === 'route') view = routeView.render({ short: decodeURIComponent(seg[1] || ''), dir: seg[2] }, clockNow);
