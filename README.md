@@ -50,7 +50,10 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   departure the feed knows shows its predicted time and a Live tag with the
   late/early word (never early at the Transit Center, where every route lays
   over), a bus that has already been drops out, and Connect buses
-  ride the map beside the shuttle. Each departure row carries its trip index
+  ride the map beside the shuttle. A detoured bus is off its scheduled trips
+  and missing from GTFS-realtime, so for a route the feed has no bus on the
+  Worker asks the tracker site's own API (`/api/rtpi`) for positions: on the
+  map, no stop times. Each departure row carries its trip index
   (`trips` in `data/cvtd.json`) to match the feed. Deploy with
   `wrangler deploy` from `worker/`.
 - **Android app** — for phones without Chrome (GrapheneOS and the like), a

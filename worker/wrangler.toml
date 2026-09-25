@@ -1,7 +1,8 @@
 # Cache Rider's live relay: CVTD's GTFS-realtime feeds, fetched on the rider's
 # behalf (the tracker refuses cross-origin requests), decoded to JSON, cached
 # at the edge for ten seconds so CVTD sees a few requests a minute however many
-# riders are looking. Nothing about the rider passes through: no location, no
+# riders are looking. For a route the feed has no bus on (a detour), the
+# tracker site's own vehicle list fills in positions. Nothing about the rider passes through: no location, no
 # identifiers, no logs kept.
 name = "cacherider-live"
 main = "src/index.js"

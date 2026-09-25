@@ -2,8 +2,12 @@
 //   GET /  → { t, buses: [...], trips: {...} }
 // Decoded here with a plain protobuf reader (the schema is small and fixed),
 // so the app needs no protobuf library and gets a few kilobytes, not fifty.
+// A bus off its scheduled trips (a detour) isn't in GTFS-realtime at all, so for
+// a route the feed has no bus on, the tracker site's own API fills in positions.
 
 const UPSTREAM = 'https://mycvtdbus.org/gtfs-rt/';
+const RTPI = 'https://mycvtdbus.org/api/rtpi?path=';
+const UA = { 'User-Agent': 'cacherider-live/1.0 (+https://cacherider.com)' };
 const ORIGINS = ['https://cacherider.com', 'https://sybenx.github.io', 'http://localhost:8794'];
 const TTL = 10;   // seconds at the edge; the feeds themselves update every few seconds
 
@@ -21,7 +25,9 @@ export default {
     if (path !== '/' && path !== '/live') return new Response('Not found', { status: 404, headers: cors });
     try {
       const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
-      const body = JSON.stringify(decode(vp, tu));
+      const out = decode(vp, tu);
+      try { await fillIn(out); } catch (e) { /* the feed's own buses still go out */ }
+      const body = JSON.stringify(out);
       return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + TTL } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -30,12 +36,40 @@ export default {
 };
 
 async function feed(name) {
-  const r = await fetch(UPSTREAM + name, {
-    headers: { 'User-Agent': 'cacherider-live/1.0 (+https://cacherider.com)' },
-    cf: { cacheTtl: TTL, cacheEverything: true },
-  });
+  const r = await fetch(UPSTREAM + name, { headers: UA, cf: { cacheTtl: TTL, cacheEverything: true } });
   if (!r.ok) throw new Error(name + ' ' + r.status);
   return new Uint8Array(await r.arrayBuffer());
+}
+
+// ---- the tracker site's API, for the routes GTFS-realtime has no bus on. Unofficial, so a fallback only:
+// asked about those routes alone, and never when the feed has no buses at all (nothing is running).
+async function rtpi(path, ttl) {
+  const r = await fetch(RTPI + encodeURIComponent(path), { headers: UA, cf: { cacheTtl: ttl, cacheEverything: true } });
+  if (!r.ok) throw new Error('rtpi ' + r.status);
+  return r.json();
+}
+const shortOf = trip => { const m = /^([A-Z]+|\d+)/.exec(trip || ''); return m ? m[1] : null; };   // 2_1400 → 2, B1_1329 → B
+async function fillIn(out) {
+  if (!out.buses.length) return;
+  const covered = new Set(out.buses.map(b => shortOf(b.trip)));
+  const labels = new Set(out.buses.map(b => b.label || b.id));
+  const routes = (await rtpi('routes', 86400)).filter(r => r.shortName && !covered.has(r.shortName));
+  const lists = await Promise.allSettled(routes.map(r => rtpi('routes/' + r.id + '/vehicles', 30)));
+  const now = Date.now();
+  lists.forEach((l, i) => {
+    if (l.status !== 'fulfilled' || !Array.isArray(l.value)) return;
+    for (const v of l.value) {
+      const seen = /Z$/.test(v.lastUpdated || '') ? Date.parse(v.lastUpdated) : NaN;   // stale ones come without the zone
+      if (!(now - seen < 180000) || labels.has(v.name) || typeof v.lat !== 'number') continue;
+      labels.add(v.name);
+      out.buses.push({
+        id: 'rtpi' + v.id, label: v.name, trip: '', route: routes[i].shortName, src: 'rtpi',
+        lat: +v.lat.toFixed(5), lon: +v.lon.toFixed(5),
+        bearing: typeof v.headingDegrees === 'number' ? Math.round(v.headingDegrees) : null,
+        speed: null, ts: Math.floor(seen / 1000),   // the site's speed isn't in GTFS's m/s
+      });
+    }
+  });
 }
 
 // ---- protobuf, just enough: fields as [number, value] pairs, nested messages as byte slices

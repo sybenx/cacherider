@@ -78,6 +78,7 @@ async function tick(force) {
       const ti = tripIdx.get(b.trip);
       let info = ti !== undefined ? tripInfo[ti] : null;
       let ri = info ? info.r : undefined;
+      if (ri === undefined && b.route) ri = D.routeByShort[b.route];   // a detoured bus, from the tracker site: a route, no trip
       if (ri === undefined) {   // a trip the timetable doesn't know: the route is the id's prefix
         const m = /^([A-Z]*\d+)_/.exec(b.trip || '');
         if (m) ri = D.routeByShort[m[1]] ?? D.routes.findIndex(r => r.short.startsWith(m[1] + ' '));
