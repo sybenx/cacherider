@@ -372,7 +372,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
   .bus-marker svg { width: 18px; height: 18px; }
   #map .maplibregl-ctrl-group button { width: 46px; height: 46px; }
 }
-.satbtn { display: flex; align-items: center; justify-content: center; color: var(--color-text); }
+#map .maplibregl-ctrl-group button.satbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-text); }
+.satbtn svg { display: block; }
 .satbtn[aria-pressed="true"] { color: var(--color-accent-700); background: var(--color-accent-100); }
 .fine.offhours { padding-top: 6px; }
 .buscard .head { gap: 10px; }

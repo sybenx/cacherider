@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, pref } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle } from '../ui.js';
 import { nearMe } from '../main.js';
@@ -11,13 +11,15 @@ import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading,
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
-const satOn = () => pref('sat') === 'on';
+let sat = false;   // aerial imagery: a tap each visit, never remembered
+const satOn = () => sat;
 const coarse = () => matchMedia('(pointer: coarse)').matches;
 
 let map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
 let mm = null, mmEl = null, mmReady = false, mmKey = null, mmSel = null;   // the small map on a stop page
 const busMarkers = new Map();   // bus id → { marker, el }
-let selectedBus = null, selectedU = null, hiRoute = null;   // hiRoute: a shuttle route index, its loop drawn on top
+let selectedBus = null, selectedU = null;
+let hiLines = [], hiLoops = [];   // Connect route indices and shuttle route ids whose lines are drawn on top
 // The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
 let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16] };
 const col = document.getElementById('mapcol');
@@ -49,8 +51,9 @@ function style(sat = true) {
       { id: 'spot-fill', type: 'fill', source: 'spot', paint: { 'fill-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'fill-opacity': 0.18 } },
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
+      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2.5, 17, 4], 'line-opacity': 0.9, 'line-dasharray': [3, 1.5] } },
-      { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['==', ['get', 'id'], ''], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
+      { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
@@ -165,7 +168,7 @@ function satControl() {
       const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
       const b = document.createElement('button'); b.type = 'button'; b.className = 'satbtn'; b.title = 'Satellite'; b.setAttribute('aria-label', 'Satellite imagery');
       b.innerHTML = icon('globe', 20).s; b.setAttribute('aria-pressed', satOn() ? 'true' : 'false');
-      b.onclick = () => { const on = !satOn(); pref('sat', on ? 'on' : 'off'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); if (map.getLayer('sat')) map.setLayoutProperty('sat', 'visibility', on ? 'visible' : 'none'); };
+      b.onclick = () => { const on = !sat; sat = on; b.setAttribute('aria-pressed', on ? 'true' : 'false'); if (map.getLayer('sat')) map.setLayoutProperty('sat', 'visibility', on ? 'visible' : 'none'); };
       el.appendChild(b); this.el = el; return el;
     },
     onRemove() { this.el.remove(); },
@@ -206,20 +209,25 @@ function applySelection() {
   if (!map || !ready) return;
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
-  // A tapped bus: its loop on top at full strength, everything else's lines and buses faded back.
-  const on = hiRoute !== null && U ? U.routes[hiRoute].id : '';
-  map.setFilter('usu-line-on', ['==', ['get', 'id'], on]);
-  map.setPaintProperty('usu-lines', 'line-opacity', on ? 0.25 : 0.9);
-  map.setPaintProperty('route-lines', 'line-opacity', on ? 0.3 : 0.75);
-  for (const m of busMarkers.values()) m.el.classList.toggle('dim', hiRoute !== null && m.ri !== hiRoute);
+  litLines(map, hiLines, hiLoops);
+  for (const m of busMarkers.values()) m.el.classList.toggle('dim', hiLoops.length > 0 && !hiLoops.includes(U.routes[m.ri].id));
+}
+
+/** The picked stop's routes, or a bus's loop, drawn on top at full strength; every other line faded back. */
+function litLines(m, lines, loops) {
+  m.setFilter('route-on', ['in', ['get', 'route'], ['literal', lines]]);
+  m.setFilter('usu-line-on', ['in', ['get', 'id'], ['literal', loops]]);
+  const any = lines.length > 0 || loops.length > 0;
+  m.setPaintProperty('route-lines', 'line-opacity', any ? 0.3 : 0.75);
+  m.setPaintProperty('usu-lines', 'line-opacity', any ? 0.25 : 0.9);
 }
 
 function select(id, app, fly = false, zoomIn = false) {
-  selected = id; uHilite = ''; hiRoute = null;
+  const si = id ? D.stopById[id] : undefined;
+  selected = id; uHilite = ''; hiLoops = []; hiLines = si !== undefined ? [...stop(si).routes] : [];
   applySelection();
   const card = col.querySelector('#mapcard');
   if (!id) { card.classList.remove('open'); return; }
-  const si = D.stopById[id];
   if (si === undefined) return;
   const s = stop(si);
   // Beside the stop list on desktop, a tap opens the stop page; on the Map tab, or a phone, the card.
@@ -241,14 +249,9 @@ function select(id, app, fly = false, zoomIn = false) {
   requestAnimationFrame(() => {
     card.classList.add('open');
     if (!fly || !map) return;
-    // Move the map only if the stop would sit under the card or off screen; then ease, gently.
-    const pt = map.project([s.lon, s.lat]);
-    const h = map.getContainer().clientHeight, w = map.getContainer().clientWidth;
-    const clear = h - card.offsetHeight - 24;
+    // Ease the stop into the middle of the map that's left above the card, zooming in if the map was zoomed out.
     const zoom = map.getZoom() < 13 || zoomIn ? 15.5 : map.getZoom();
-    if (pt.y > clear || pt.y < 90 || pt.x < 24 || pt.x > w - 24 || zoom !== map.getZoom()) {
-      map.easeTo({ center: [s.lon, s.lat], zoom, offset: [0, -(card.offsetHeight / 2)], duration: 650, essential: true });
-    }
+    map.easeTo({ center: [s.lon, s.lat], zoom, offset: [0, -(card.offsetHeight / 2)], duration: 650, essential: true });
   });
 }
 
@@ -281,10 +284,10 @@ export function liveUpdate(app) {
     m.marker.setRotation(b.course);
     m.ri = b.ri;
     m.el.classList.toggle('on', selectedBus === b.id);
-    m.el.classList.toggle('dim', hiRoute !== null && b.ri !== hiRoute);
+    m.el.classList.toggle('dim', hiLoops.length > 0 && !hiLoops.includes(U.routes[b.ri].id));
   }
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
-  if (selectedBus) { if (live.buses.some(b => b.id === selectedBus)) busCard(app); else { selectedBus = null; hiRoute = null; applySelection(); col.querySelector('#mapcard').classList.remove('open'); } }
+  if (selectedBus) { if (live.buses.some(b => b.id === selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; applySelection(); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
 }
 // Move a bus marker to its new fix over 600 ms in geographic coordinates, so the
@@ -304,7 +307,7 @@ function glide(m, lon, lat) {
 }
 function selectBus(id, app) {
   const b = live.buses.find(x => x.id === id);
-  selectedBus = id; selectedU = null; selected = null; uHilite = ''; hiRoute = b ? b.ri : null; applySelection();
+  selectedBus = id; selectedU = null; selected = null; uHilite = ''; hiLines = []; hiLoops = b ? [U.routes[b.ri].id] : []; applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
   busCard(app);
 }
@@ -326,7 +329,7 @@ function selectU(id, app) {
   const si = U.stopById[id];
   if (si === undefined) return;
   if (matchMedia('(min-width: 900px)').matches && !(app.route && app.route.name === 'map')) { location.hash = '#/usu/' + id; return; }
-  selectedU = si; selectedBus = null; selected = null; uHilite = id; hiRoute = null; applySelection();
+  selectedU = si; selectedBus = null; selected = null; uHilite = id; hiLines = []; hiLoops = U.stops[si].routes.map(ri => U.routes[ri].id); applySelection();
   for (const m of busMarkers.values()) m.el.classList.remove('on');
   const s = U.stops[si];
   uCard(app);
@@ -356,7 +359,7 @@ function setSpot(at) {
   if (ready) apply(); else map.once('load', apply);
 }
 function showAt(at, app, clockNow) {
-  selected = null; uHilite = ''; hiRoute = null; applySelection();
+  selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
   // A soft disc rather than a pin: an address is arithmetic on the town's grid, good to a block, not a survey.
   setSpot(at);
   if (!pinMarker) { const el = document.createElement('div'); el.className = 'spot-marker'; pinMarker = new maplibregl.Marker({ element: el }); }
@@ -373,19 +376,29 @@ function showAt(at, app, clockNow) {
 }
 
 /** Called by the router whenever the map is on screen. */
-export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clockNow) {
+export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }, app, clockNow) {
   await init(app);
   requestAnimationFrame(() => map.resize());
   notice(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
-  if (stopId || ustopId || hub || at) { selectedBus = null; selectedU = null; }
+  if (stopId || ustopId || routeShort || hub || at) { selectedBus = null; selectedU = null; }
   if (at) return showAt(at, app, clockNow);
   if (hub) {
-    selected = null; uHilite = ''; hiRoute = null; applySelection(); col.querySelector('#mapcard').classList.remove('open');
+    selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection(); col.querySelector('#mapcard').classList.remove('open');
     if (lastFocused !== 'hub') map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 });
     lastFocused = 'hub';
+    return;
+  }
+  if (routeShort) {
+    const ri = D.routeByShort[routeShort];
+    if (ri === undefined) return;
+    const changed = lastFocused !== 'r:' + ri;
+    lastFocused = 'r:' + ri;
+    selected = null; uHilite = ''; hiLines = [ri]; hiLoops = []; applySelection();
+    col.querySelector('#mapcard').classList.remove('open');
+    if (focus && changed) map.fitBounds(routeBounds(ri), { padding: 40, duration: 700, maxZoom: 15.5 });
     return;
   }
   if (stopId) {
@@ -394,7 +407,7 @@ export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clock
       const s = stop(si);
       const changed = lastFocused !== stopId;
       lastFocused = stopId;
-      selected = stopId; uHilite = ''; hiRoute = null; applySelection();
+      selected = stopId; uHilite = ''; hiLines = [...s.routes]; hiLoops = []; applySelection();
       // On the Map tab the card decides the framing, so the stop sits above it; beside the
       // stop list there is no card, and a fresh arrival eases to the stop itself.
       if (app.route.name === 'map') select(stopId, app, changed, changed && map.getZoom() < 15);
@@ -406,7 +419,7 @@ export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clock
     const s = U.stops[si];
     const changed = lastFocused !== 'u:' + ustopId;
     lastFocused = 'u:' + ustopId;
-    selected = null; uHilite = ustopId; hiRoute = null; applySelection();
+    selected = null; uHilite = ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
     if (app.route.name === 'map') { if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
     else if (focus && changed && !map.isMoving()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
   } else if (app.route && app.route.name === 'map') {
@@ -415,12 +428,20 @@ export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clock
   }
 }
 
-// ---- the small map on a stop page (phones): one instance, moved from page to page
+/** The box around a route's stops, every direction. */
+function routeBounds(ri) {
+  const b = new maplibregl.LngLatBounds();
+  for (const seq of Object.values(D.routes[ri].stops || {})) for (const si of seq) b.extend([D.stops[si].lon, D.stops[si].lat]);
+  return b;
+}
+
+// ---- the small map on a stop or route page (phones): one instance, moved from page to page
 /** Draw the stop into `slot`; `sel` is { stopId } or { ustopId }. */
 export async function mini(sel, slot) {
   mmSel = sel;
-  const key = sel.ustopId ? 'u:' + sel.ustopId : sel.stopId;
-  const s = sel.ustopId ? (U && U.stops[U.stopById[sel.ustopId]]) : D.stops[D.stopById[sel.stopId]];
+  const ri = sel.route !== undefined ? D.routeByShort[sel.route] : undefined;
+  const key = ri !== undefined ? 'r:' + ri : sel.ustopId ? 'u:' + sel.ustopId : sel.stopId;
+  const s = ri !== undefined ? D.stops[(Object.values(D.routes[ri].stops || {})[0] || [])[0]] : sel.ustopId ? (U && U.stops[U.stopById[sel.ustopId]]) : D.stops[D.stopById[sel.stopId]];
   if (!s) return;
   if (!mmEl) {
     await loadTiles();
@@ -435,7 +456,10 @@ export async function mini(sel, slot) {
     slot.prepend(mmEl);
     requestAnimationFrame(() => mm.resize());
   }
-  if (mmKey !== key) mm.jumpTo({ center: [s.lon, s.lat], zoom: 16 });
+  if (mmKey !== key) {
+    if (ri !== undefined) mm.fitBounds(routeBounds(ri), { padding: 24, duration: 0, maxZoom: 15.5 });
+    else mm.jumpTo({ center: [s.lon, s.lat], zoom: 16 });
+  }
   mmKey = key;
   miniSelection();
 }
@@ -443,4 +467,9 @@ function miniSelection() {
   if (!mm || !mmReady || !mmSel) return;
   mm.setFilter('stop-selected', ['==', ['get', 'id'], mmSel.stopId || '']);
   mm.setFilter('usu-selected', ['==', ['get', 'id'], mmSel.ustopId || '']);
+  const ri = mmSel.route !== undefined ? D.routeByShort[mmSel.route] : undefined;
+  const si = mmSel.stopId ? D.stopById[mmSel.stopId] : undefined;
+  const lines = ri !== undefined ? [ri] : si !== undefined ? [...D.stops[si].routes] : [];
+  const loops = mmSel.ustopId && U ? U.stops[U.stopById[mmSel.ustopId]].routes.map(r => U.routes[r].id) : [];
+  litLines(mm, lines, loops);
 }
