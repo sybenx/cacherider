@@ -6,7 +6,8 @@ stop, since a bus at a served stop always drives on to the next corner.
 
   python3 tools/crossings.py        # needs mapbox-vector-tile and tiles/
 
-Roads come from the map's own tiles at zoom 15; driveways and paths don't count.
+Roads come from the map's own tiles at zoom 15: the main classes and named minor
+streets. Lot lanes, driveways, unnamed stubs and paths don't count.
 """
 import gzip, json, math, os
 import mapbox_vector_tile as mvt
@@ -14,8 +15,14 @@ import mapbox_vector_tile as mvt
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 TILES = os.path.join(ROOT, 'tiles')
 Z, EXTENT, EDGE = 15, 4096, 24          # EDGE: tile pixels; an endpoint that close to the edge is a clip, not a dead end
-KINDS = {'highway', 'major_road', 'medium_road', 'minor_road'}
-CROSS_ANGLE, TURN_ANGLE, TOUCH = 20, 35, 7   # degrees, degrees, metres
+CROSS_ANGLE, TOUCH = 20, 7   # degrees, metres
+
+def street(pr):
+    """A road a bus might turn at: the main classes and their slip lanes, and named minor streets.
+    Unnamed minor roads here are parking accesses and lot lanes, whatever OSM calls them."""
+    kind, det = pr.get('kind'), pr.get('kind_detail') or ''
+    if kind in ('highway', 'major_road', 'medium_road'): return True
+    return kind == 'minor_road' and det in ('residential', 'unclassified', 'living_street') and bool(pr.get('name'))
 
 shapes = json.load(open(os.path.join(ROOT, 'data', 'cvtd-shapes.json')))['lines']
 lat0 = sum(c[1] for l in shapes for c in l['coords']) / sum(len(l['coords']) for l in shapes)
@@ -46,7 +53,7 @@ def roads_in(tx, ty):
         conv = lonlat(tx, ty)
         for f in mvt.decode(b, default_options={'y_coord_down': True}).get('roads', {}).get('features', []):
             pr = f['properties']
-            if pr.get('kind') not in KINDS or pr.get('kind_detail') in ('service', 'driveway', 'parking_aisle'): continue
+            if not street(pr): continue
             g = f['geometry']
             for line in (g['coordinates'] if g['type'] == 'MultiLineString' else [g['coordinates']]):
                 pts = [xy(*conv(px, py)) for px, py in line]
@@ -108,8 +115,6 @@ for l in shapes:
             for e in egrid.get(c, []):
                 d, u = proj(p, q, e)
                 if d <= TOUCH: found.append(cum[i] + u * L)
-        # the shape turning a corner is an intersection too
-        if i > 0 and L > 8 and cum[i] - cum[i - 1] > 8 and angle(pts[i - 1], p, p, q) > TURN_ANGLE: found.append(cum[i])
     found.sort()
     merged = []
     for d in found:

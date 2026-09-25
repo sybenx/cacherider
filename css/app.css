@@ -374,6 +374,10 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 }
 #map .maplibregl-ctrl-group button.satbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-text); }
 .satbtn svg { display: block; }
+#map .northctl { display: none; }
+#map .northctl.on { display: block; }
+#map .maplibregl-ctrl-group button.northbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-accent-700); }
+.northbtn svg { display: block; transition: transform .2s; }
 .satbtn[aria-pressed="true"] { color: var(--color-accent-700); background: var(--color-accent-100); }
 .fine.offhours { padding-top: 6px; }
 .buscard .head { gap: 10px; }

@@ -213,9 +213,10 @@ async function init(app) {
   await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : [-111.8300, 41.7330];
-  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 19, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
+  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
   map.addControl(satControl(), 'bottom-right');
+  map.addControl(northControl(), 'bottom-right');
   squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); });
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
@@ -268,6 +269,22 @@ function showSat(on) {
   if (!map.getSource('sat')) map.addSource('sat', { type: 'raster', tiles: SAT.tiles, tileSize: 256, maxzoom: SAT.maxzoom, bounds: TILES.bounds, attribution: SAT.attribution });
   const first = map.getStyle().layers.find(l => l.type === 'symbol');
   map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, first && first.id);
+}
+
+/** North: a button that appears once the map is turned, and turns it back. */
+function northControl() {
+  return {
+    onAdd(m) {
+      const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group northctl';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'northbtn'; b.title = 'Point north'; b.setAttribute('aria-label', 'Point north');
+      b.innerHTML = icon('compass', 20).s;
+      b.onclick = () => m.resetNorth({ duration: 400 });
+      const sync = () => { const a = m.getBearing(); el.classList.toggle('on', Math.abs(a) > 0.5); b.querySelector('svg').style.transform = `rotate(${-a}deg)`; };
+      m.on('rotate', sync); m.on('rotateend', sync); sync();
+      el.appendChild(b); this.el = el; return el;
+    },
+    onRemove() { this.el.remove(); },
+  };
 }
 
 function satControl() {
