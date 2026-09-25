@@ -63,6 +63,7 @@ tools/tiles.py      Protomaps build → tiles/
 tools/grid.py       tiles/ → data/grid.json, each town's address grid fitted from its street names
 tools/usu.py        Passio GO → data/usu.json (the buses themselves are fetched live by the phone)
 tools/crossings.py  tiles/ + route shapes → data/crossings.json, where each route meets a public street
+tools/roads.py      the road network from tiles/, and the drive through a list of points (a shuttle route with no drawn line)
 tools/alerts.py     GTFS-realtime alerts → data/alerts.json, decoded without protobuf bindings
 app/usu.js          live buses: polling, position along the loop, stops-away and minute estimates
 tools/hints.json    agency wording: the hub, the loops, headsigns
@@ -92,6 +93,9 @@ so there is still no server. A stop's estimate is the nearest bus behind it on
 the loop: distance at a walking-pace bus speed plus a dwell per stop between.
 If the feed stops answering, positions are kept and minutes are dropped after
 a minute; if it reports no buses, the stop says so.
+A route Passio draws no line for (Water Lab) is traced along the streets
+between its stops in order, over a road graph built from the map's own tiles,
+and flagged `traced` so the route page can say so.
 
 Service alerts come from Connect's GTFS-realtime alerts feed at
 `mycvtdbus.org/gtfs-rt/alerts`. The server refuses requests carrying a browser

@@ -14,6 +14,9 @@ const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGS
 let sat = false;   // aerial imagery: a tap each visit, never remembered
 const satOn = () => sat;
 const coarse = () => matchMedia('(pointer: coarse)').matches;
+const wide = () => matchMedia('(min-width: 900px)').matches;
+/** A stop link opened on the Map tab of a wide screen becomes its page, without a history entry to loop back into. */
+const asPage = hash => location.replace(location.href.split('#')[0] + hash);
 
 let map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
 let mm = null, mmEl = null, mmReady = false, mmKey = null, mmSel = null;   // the small map on a stop page
@@ -52,7 +55,8 @@ function style(sat = true) {
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       { id: 'route-closed-casing', type: 'line', source: 'lclosed', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 4, 14, 8, 17, 13] } },
       { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
-      { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2.5, 17, 4], 'line-opacity': 0.9, 'line-dasharray': [3, 1.5] } },
+      // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
+      { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 0.8, 1.2], 15, ['case', ['get', 'approx'], 1.4, 2.5], 17, ['case', ['get', 'approx'], 2, 4]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.9], 'line-dasharray': [3, 1.5] } },
       { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
@@ -323,7 +327,7 @@ function litLines(m, lines, loops) {
   m.setFilter('usu-line-on', ['in', ['get', 'id'], ['literal', loops]]);
   const any = lines.length > 0 || loops.length > 0;
   m.setPaintProperty('route-lines', 'line-opacity', any ? 0.3 : 0.75);
-  m.setPaintProperty('usu-lines', 'line-opacity', any ? 0.25 : 0.9);
+  m.setPaintProperty('usu-lines', 'line-opacity', any ? 0.25 : ['case', ['get', 'approx'], 0.35, 0.9]);
 }
 
 function select(id, app, fly = false, zoomIn = false) {
@@ -334,9 +338,8 @@ function select(id, app, fly = false, zoomIn = false) {
   if (!id) { card.classList.remove('open'); return; }
   if (si === undefined) return;
   const s = stop(si);
-  // Beside the stop list on desktop, a tap opens the stop page; on the Map tab, or a phone, the card.
-  const desktop = matchMedia('(min-width: 900px)').matches && !(app.route && app.route.name === 'map');
-  if (desktop && fly) {
+  // On a wide screen a tap opens the stop page beside the map, wherever the tap came from; a phone gets the card.
+  if (wide() && fly) {
     map.easeTo({ center: [s.lon, s.lat], zoom: zoomIn ? 16 : Math.max(map.getZoom(), 15), duration: 700 });
     if (location.hash !== '#/stop/' + id) location.hash = '#/stop/' + id;
     card.classList.remove('open'); return;
@@ -432,7 +435,7 @@ function busCard(app) {
 function selectU(id, app) {
   const si = U.stopById[id];
   if (si === undefined) return;
-  if (matchMedia('(min-width: 900px)').matches && !(app.route && app.route.name === 'map')) { location.hash = '#/usu/' + id; return; }
+  if (wide()) { location.hash = '#/usu/' + id; return; }
   selectedU = si; selectedBus = null; selected = null; uHilite = id; hiLines = []; hiLoops = U.stops[si].routes.map(ri => U.routes[ri].id); applySelection();
   for (const m of busMarkers.values()) m.el.classList.remove('on');
   const s = U.stops[si];
@@ -506,6 +509,8 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
     if (focus && changed) map.fitBounds(routeBounds(ri), { padding: 40, duration: 700, maxZoom: 15.5 });
     return;
   }
+  if (stopId && app.route.name === 'map' && wide()) return asPage('#/stop/' + stopId);
+  if (ustopId && app.route.name === 'map' && wide()) return asPage('#/usu/' + ustopId);
   if (stopId) {
     const si = D.stopById[stopId];
     if (si !== undefined) {

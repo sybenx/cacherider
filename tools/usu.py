@@ -8,6 +8,7 @@ the phone; only what changes rarely is kept here.
 The endpoint is the one the Passio GO app uses, undocumented and unofficial.
 """
 import json, os, re, sys, urllib.request, urllib.parse
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 SYSTEM = '3499'   # Utah State University
 BASE = 'https://passiogo.com/mapGetData.php'
@@ -62,9 +63,19 @@ for rid, segs in stops_raw.get('routePoints', {}).items():
             except (KeyError, TypeError, ValueError): pass
     routes[ridx[rid]]['shape'] = [p for i, p in enumerate(pts) if i == 0 or p != pts[i - 1]]
 
+# A route Passio draws no line for is traced along the streets between its stops, in order.
+for r in routes:
+    if r['shape'] or len(r['stops']) < 2: continue
+    try:
+        import roads
+        r['shape'] = roads.trace([(stops[si]['lon'], stops[si]['lat']) for si in r['stops']]) or []
+        r['traced'] = bool(r['shape'])
+    except ImportError:
+        print('  (mapbox-vector-tile missing: %s keeps no line)' % r['name'])
+
 out = {'system': SYSTEM, 'name': H.get('name', 'USU campus shuttle'), 'agency': H.get('agency', 'Utah State University'),
        'hours': H.get('hours', ''), 'service': H.get('service'), 'routes': routes, 'stops': stops}
 p = os.path.join(ROOT, 'data', 'usu.json')
 json.dump(out, open(p, 'w'), separators=(',', ':'), ensure_ascii=False)
 print('wrote', p, os.path.getsize(p), 'bytes:', len(routes), 'routes,', len(stops), 'stops')
-for r in routes: print('  %-28s %-14s %s  %d stops, %d shape points%s' % (r['name'], r['short'], r['color'], len(r['stops']), len(r['shape']), '  (outdated)' if r['outdated'] else ''))
+for r in routes: print('  %-28s %-14s %s  %d stops, %d shape points%s%s' % (r['name'], r['short'], r['color'], len(r['stops']), len(r['shape']), '  (outdated)' if r['outdated'] else '', '  (traced along streets)' if r.get('traced') else ''))

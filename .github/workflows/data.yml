@@ -22,11 +22,11 @@ jobs:
       - name: Fetch CVTD GTFS
         run: curl -fsSL -o /tmp/cvtd.zip https://mycvtdbus.org/gtfs
       - name: Reduce
-        run: python3 tools/reduce.py /tmp/cvtd.zip --hints tools/hints.json --out data
-      - name: Intersections along each route, from the map tiles
         run: |
           pip install -q mapbox-vector-tile
-          python3 tools/crossings.py
+          python3 tools/reduce.py /tmp/cvtd.zip --hints tools/hints.json --out data
+      - name: Intersections along each route, from the map tiles
+        run: python3 tools/crossings.py
       - name: Snapshot the USU shuttle's routes and stops
         run: python3 tools/usu.py || echo 'shuttle feed unreachable; keeping the last snapshot'
       - name: Commit if changed

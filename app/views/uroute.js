@@ -16,5 +16,6 @@ export function render({ id }) {
     return html.raw(`<a class="row" href="#/usu/${s.id}"><span class="usq" style="background:${r.color}"></span><div class="mid"><span class="name">${s.name}</span>${e ? liveTag(isStale() ? 'Last seen ' + lastSeen() : 'Live').s : ''}</div>${end}</a>`);
   });
   parts.push(html`<div class="list">${rows}</div>`, offNote([ri]));
+  if (r.traced) parts.push(html`<div class="fine">USU publishes no drawn line for this route; the one on the map is traced along the streets between its stops, in order.</div>`);
   return { html: parts.join(''), title: r.name, live: true, keepScroll: true };
 }
