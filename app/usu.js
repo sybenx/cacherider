@@ -4,7 +4,7 @@
 // Minutes are estimated from a bus's position along its loop.
 import { BASE, D, distance } from './data.js';
 import { esc, raw, html, icon } from './ui.js';
-import { metres, now, dayFrom } from './time.js';
+import { metres, now, dayFrom, clockText, DAY_NAMES } from './time.js';
 
 export let U = null;
 const FEED = 'https://passiogo.com/mapGetData.php';
@@ -178,6 +178,25 @@ export function offHours(ris = null, clockNow = now()) {
   const end = Math.max(svc.end, ...names.map(n => (svc.late || {})[n] || 0));
   return !svc.days[idx] || clockNow.min < svc.start || clockNow.min >= end;
 }
+/** A route's usual hours in words: "weekdays, 7 AM to 10 PM". From the hints, so USU's page, not a feed. */
+export function hours(ri) {
+  const svc = U && U.service;
+  if (!svc) return '';
+  const end = Math.max(svc.end, (svc.late || {})[U.routes[ri].name] || 0);
+  const on = svc.days.map((d, i) => d ? i : -1).filter(i => i >= 0);
+  const days = on.length === 5 && on[0] === 0 && on[4] === 4 ? 'weekdays' : on.map(i => DAY_NAMES[(i + 1) % 7].slice(0, 3)).join(', ');
+  const t = m => clockText(m).replace(':00', '');
+  return `${days}, ${t(svc.start)} to ${t(end)}`;
+}
+/** Today's last run for a route, as "runs until 10 PM" or "ends in about 40 min", or '' when it isn't a running day. */
+export function untilWords(ri, clockNow = now()) {
+  const svc = U && U.service;
+  if (!svc || !svc.days[(dayFrom(clockNow.ymd).dow + 6) % 7]) return '';
+  const end = Math.max(svc.end, (svc.late || {})[U.routes[ri].name] || 0);
+  const left = end - clockNow.min;
+  if (left <= 0 || clockNow.min < svc.start) return '';
+  return left <= 90 ? `ends in about ${left} min` : `runs until ${clockText(end).replace(':00', '')}`;
+}
 /** The note itself, only while a bus is reporting: it may be parked with its tracker on. */
 export const offNote = (ris = null) => live.buses.length && offHours(ris) ? raw(`<div class="fine offhours">Outside the shuttle's usual hours. A bus reporting now may not be in service.</div>`) : '';
 export const notice = () => raw(`<div class="notice"><span class="muted">${icon('info', 16).s}</span><span>Shuttles have no timetable. Minutes are estimated from where each bus is right now.</span></div>`);
@@ -185,7 +204,7 @@ export const notice = () => raw(`<div class="notice"><span class="muted">${icon(
 /** One campus-stop row: chip · route name + meter + LIVE · stops away + minutes. */
 export function liveRow(row, opts = {}) {
   const r = U.routes[row.ri], e = row.est, stale = isStale();
-  if (!e) return raw(`<div class="row urow off">${chip(row.ri, 36).s}<div class="mid"><span class="name muted">${esc(r.name)}</span><span class="sub">No bus on the road right now</span></div><span></span></div>`);
+  if (!e) return raw(`<div class="row urow off">${chip(row.ri, 36).s}<div class="mid"><span class="name muted">${esc(r.name)}</span><span class="sub">No bus on the road right now${hours(row.ri) ? ' · runs ' + esc(hours(row.ri)) : ''}</span></div><span></span></div>`);
   const tag = stale ? liveTag('Last seen ' + lastSeen()) : liveTag();
   const big = e.here ? 'Here' : e.stops === null ? (stale ? metres(e.d) : e.min + ' min') : e.stops + (e.stops === 1 ? ' stop' : ' stops');
   const sub = e.here ? (stale ? 'at ' + lastSeen() : 'now') : e.stops === null ? (stale ? 'away at ' + lastSeen() : 'away · ' + metres(e.d)) : stale ? 'away at ' + lastSeen() : 'away · about ' + e.min + ' min';

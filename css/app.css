@@ -380,6 +380,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .northbtn svg { display: block; transition: transform .2s; }
 .satbtn[aria-pressed="true"] { color: var(--color-accent-700); background: var(--color-accent-100); }
 .fine.offhours { padding-top: 6px; }
+.buscard .hours { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13.5px; color: var(--cr-muted); }
+.buscard .hours b { color: var(--color-text); font-weight: 600; }
 .buscard .head { gap: 10px; }
 .buscard .top { display: flex; justify-content: space-between; align-items: center; }
 .buscard .who { display: flex; align-items: center; gap: 10px; }
