@@ -226,7 +226,16 @@ async function init(app) {
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   setTimeout(() => map.resize(), 300);
   // A tap picks the nearest stop within a thumb's reach, so two stops that nearly touch are still separable.
+  // On a touch screen the pick waits a beat: a second finger-down inside it is a double-tap or a
+  // tap-and-drag zoom, not a stop, so the wait is dropped rather than a card opened.
+  let tapTimer = 0;
+  const cancelTap = () => clearTimeout(tapTimer);
+  map.on('touchstart', cancelTap); map.on('movestart', cancelTap); map.on('zoomstart', cancelTap);
   map.on('click', e => {
+    if (!coarse()) return pick(e);
+    clearTimeout(tapTimer); tapTimer = setTimeout(() => pick(e), 300);
+  });
+  const pick = e => {
     const r = coarse() ? 22 : 8;
     const hits = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'usu-stops'] });
     if (hits.length) {
@@ -235,7 +244,7 @@ async function init(app) {
       return;
     }
     selectedBus = null; selectedU = null; select(null, app);
-  });
+  };
   map.on('mouseenter', 'stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'stops', () => map.getCanvas().style.cursor = '');
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((dark() ? 'dark' : 'light') !== flavorName) { ready = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); showSat(sat); }); } });
