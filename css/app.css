@@ -356,6 +356,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .bus-marker svg { width: 14px; height: 14px; }
 .bus-marker.on { box-shadow: 0 0 0 3px var(--color-accent); }
+.bus-marker.dim { opacity: .4; }
 .buscard .head { gap: 10px; }
 .buscard .top { display: flex; justify-content: space-between; align-items: center; }
 .buscard .who { display: flex; align-items: center; gap: 10px; }

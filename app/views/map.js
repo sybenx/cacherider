@@ -12,7 +12,7 @@ import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading,
 let map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
 let mm = null, mmEl = null, mmReady = false, mmKey = null, mmSel = null;   // the small map on a stop page
 const busMarkers = new Map();   // bus id → { marker, el }
-let selectedBus = null, selectedU = null;
+let selectedBus = null, selectedU = null, hiRoute = null;   // hiRoute: a shuttle route index, its loop drawn on top
 // The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
 let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16] };
 const col = document.getElementById('mapcol');
@@ -40,6 +40,7 @@ function style() {
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2.5, 17, 4], 'line-opacity': 0.9, 'line-dasharray': [3, 1.5] } },
+      { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['==', ['get', 'id'], ''], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
@@ -60,7 +61,7 @@ function usuStopsGeo() {
 }
 function usuLinesGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
-  return { type: 'FeatureCollection', features: U.routes.filter(r => r.shape.length && !r.outdated).map(r => ({ type: 'Feature', properties: { color: r.color }, geometry: { type: 'LineString', coordinates: r.shape } })) };
+  return { type: 'FeatureCollection', features: U.routes.filter(r => r.shape.length && !r.outdated).map(r => ({ type: 'Feature', properties: { id: r.id, color: r.color }, geometry: { type: 'LineString', coordinates: r.shape } })) };
 }
 /** A small square, white-edged, in a route's colour, for the shuttle stops. */
 function squareImage(hex) {
@@ -105,7 +106,7 @@ async function init(app) {
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 17.5, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
   squaresOnDemand(map);
-  map.on('load', () => { ready = true; addUsuImages(); loadShapes(); if (selected) applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); });
+  map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); });
   map.on('click', 'usu-stops', e => { const f = e.features[0]; selectU(f.properties.id, app); e.originalEvent._stopHit = true; });
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
@@ -152,10 +153,16 @@ function applySelection() {
   if (!map || !ready) return;
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
+  // A tapped bus: its loop on top at full strength, everything else's lines and buses faded back.
+  const on = hiRoute !== null && U ? U.routes[hiRoute].id : '';
+  map.setFilter('usu-line-on', ['==', ['get', 'id'], on]);
+  map.setPaintProperty('usu-lines', 'line-opacity', on ? 0.25 : 0.9);
+  map.setPaintProperty('route-lines', 'line-opacity', on ? 0.3 : 0.75);
+  for (const m of busMarkers.values()) m.el.classList.toggle('dim', hiRoute !== null && m.ri !== hiRoute);
 }
 
 function select(id, app, fly = false, zoomIn = false) {
-  selected = id; uHilite = '';
+  selected = id; uHilite = ''; hiRoute = null;
   applySelection();
   const card = col.querySelector('#mapcard');
   if (!id) { card.classList.remove('open'); return; }
@@ -211,16 +218,18 @@ export function liveUpdate(app) {
       const el = document.createElement('div');
       el.className = 'bus-marker'; el.innerHTML = ARROW; el.title = U.routes[b.ri].name + ' · bus ' + b.name;
       el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
-      m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el };
+      m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri };
       busMarkers.set(b.id, m);
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
     } else glide(m, b.lon, b.lat);
     m.el.style.background = U.routes[b.ri].color;
     m.marker.setRotation(b.course);
+    m.ri = b.ri;
     m.el.classList.toggle('on', selectedBus === b.id);
+    m.el.classList.toggle('dim', hiRoute !== null && b.ri !== hiRoute);
   }
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
-  if (selectedBus) { if (live.buses.some(b => b.id === selectedBus)) busCard(app); else { selectedBus = null; col.querySelector('#mapcard').classList.remove('open'); } }
+  if (selectedBus) { if (live.buses.some(b => b.id === selectedBus)) busCard(app); else { selectedBus = null; hiRoute = null; applySelection(); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
 }
 // Move a bus marker to its new fix over 600 ms in geographic coordinates, so the
@@ -239,7 +248,8 @@ function glide(m, lon, lat) {
   m.anim = requestAnimationFrame(step);
 }
 function selectBus(id, app) {
-  selectedBus = id; selectedU = null; selected = null; uHilite = ''; applySelection();
+  const b = live.buses.find(x => x.id === id);
+  selectedBus = id; selectedU = null; selected = null; uHilite = ''; hiRoute = b ? b.ri : null; applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
   busCard(app);
 }
@@ -261,7 +271,7 @@ function selectU(id, app) {
   const si = U.stopById[id];
   if (si === undefined) return;
   if (matchMedia('(min-width: 900px)').matches && !(app.route && app.route.name === 'map')) { location.hash = '#/usu/' + id; return; }
-  selectedU = si; selectedBus = null; selected = null; uHilite = id; applySelection();
+  selectedU = si; selectedBus = null; selected = null; uHilite = id; hiRoute = null; applySelection();
   for (const m of busMarkers.values()) m.el.classList.remove('on');
   const s = U.stops[si];
   uCard(app);
@@ -291,7 +301,7 @@ function setSpot(at) {
   if (ready) apply(); else map.once('load', apply);
 }
 function showAt(at, app, clockNow) {
-  selected = null; uHilite = ''; applySelection();
+  selected = null; uHilite = ''; hiRoute = null; applySelection();
   // A soft disc rather than a pin: an address is arithmetic on the town's grid, good to a block, not a survey.
   setSpot(at);
   if (!pinMarker) { const el = document.createElement('div'); el.className = 'spot-marker'; pinMarker = new maplibregl.Marker({ element: el }); }
@@ -318,7 +328,7 @@ export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clock
   if (stopId || ustopId || hub || at) { selectedBus = null; selectedU = null; }
   if (at) return showAt(at, app, clockNow);
   if (hub) {
-    selected = null; uHilite = ''; applySelection(); col.querySelector('#mapcard').classList.remove('open');
+    selected = null; uHilite = ''; hiRoute = null; applySelection(); col.querySelector('#mapcard').classList.remove('open');
     if (lastFocused !== 'hub') map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 });
     lastFocused = 'hub';
     return;
@@ -329,7 +339,7 @@ export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clock
       const s = stop(si);
       const changed = lastFocused !== stopId;
       lastFocused = stopId;
-      selected = stopId; uHilite = ''; applySelection();
+      selected = stopId; uHilite = ''; hiRoute = null; applySelection();
       // On the Map tab the card decides the framing, so the stop sits above it; beside the
       // stop list there is no card, and a fresh arrival eases to the stop itself.
       if (app.route.name === 'map') select(stopId, app, changed, changed && map.getZoom() < 15);
@@ -341,7 +351,7 @@ export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clock
     const s = U.stops[si];
     const changed = lastFocused !== 'u:' + ustopId;
     lastFocused = 'u:' + ustopId;
-    selected = null; uHilite = ustopId; applySelection();
+    selected = null; uHilite = ustopId; hiRoute = null; applySelection();
     if (app.route.name === 'map') { if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
     else if (focus && changed && !map.isMoving()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
   } else if (app.route && app.route.name === 'map') {
