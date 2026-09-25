@@ -19,7 +19,7 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   ask for location. Every route is a chip beneath. Search has its own page.
 - **Stops** — search by street, number, town or stop number; the next bus at
   each stop, then the rest of the day. Any grid address in the valley, like
-  “4182 S 800 W, Preston”, lists the stops nearest it, and pins it on the map. Twin stops across a road know about each other. With
+  “1400 N 500 E, Logan”, lists the stops nearest it, and pins it on the map. Twin stops across a road know about each other. With
   location on, the nearest stops first.
 - **Transit Center** — the next pulse, when routes 1–15 leave together, with a
   countdown; the loops; a plan of the bays, tap one for its buses.

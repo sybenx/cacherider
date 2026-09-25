@@ -1,5 +1,5 @@
 // Addresses, from the valley's own arithmetic. Every town numbers its streets
-// from an origin, so "4182 South 800 West" is a point once the town's grid is
+// from an origin, so "1400 North 500 East" is a point once the town's grid is
 // known; tools/grid.py fitted each grid from the street names in our tiles.
 import { BASE, D, nearest, distance } from './data.js';
 
@@ -13,7 +13,7 @@ export async function loadGrid() {
 const DIR = { n: 'N', north: 'N', s: 'S', south: 'S', e: 'E', east: 'E', w: 'W', west: 'W' };
 const WORD = { N: 'North', S: 'South', E: 'East', W: 'West' };
 
-/** "4182 s 800 w preston" → { n: -4182, e: -800, town: 'preston', label: '4182 South 800 West' }, or null. */
+/** "1400 n 500 e logan" → { n: 1400, e: 500, town: 'logan', label: '1400 North 500 East' }, or null. */
 export function parseAddress(q) {
   let t = q.toLowerCase().replace(/[.,#]/g, ' ').replace(/\s+/g, ' ').trim();
   t = t.replace(/\b(street|st|road|rd|drive|dr|avenue|ave|lane|ln)\b/g, ' ').replace(/\s+/g, ' ').trim();

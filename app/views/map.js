@@ -399,8 +399,8 @@ function select(id, app, fly = false, zoomIn = false) {
   requestAnimationFrame(() => {
     card.classList.add('open');
     if (!fly || !map) return;
-    // Ease the stop into the middle of the map that's left above the card, zooming in if the map was zoomed out.
-    const zoom = map.getZoom() < 13 || zoomIn ? 15.5 : map.getZoom();
+    // Ease the stop into the middle of the map that's left above the card. A tap keeps the zoom as it is; only an arrival from elsewhere zooms in.
+    const zoom = zoomIn ? 15.5 : map.getZoom();
     map.easeTo({ center: [s.lon, s.lat], zoom, offset: [0, -(card.offsetHeight / 2)], duration: 650, essential: true });
   });
 }
@@ -485,7 +485,7 @@ function selectU(id, app) {
   const s = U.stops[si];
   uCard(app);
   const card = col.querySelector('#mapcard');
-  map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), offset: [0, -(card.offsetHeight / 2)], duration: 650 });
+  map.easeTo({ center: [s.lon, s.lat], offset: [0, -(card.offsetHeight / 2)], duration: 650 });
 }
 function uCard(app) {
   const si = selectedU, s = U.stops[si];

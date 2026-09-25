@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fit each town's address grid from the street names in our own map tiles.
 
-Cache Valley addresses are coordinates: "4182 South 800 West, Preston" is the
-point 4182 units south and 800 west of Preston's origin. Streets are named for
+Cache Valley addresses are coordinates: "1400 North 500 East, Logan" is the
+point 1400 units north and 500 east of Logan's origin. Streets are named for
 their coordinate ("800 West", "West 800 South"), so a town's grid can be
 fitted from its named roads alone: latitude against the north–south number,
 longitude against the east–west number. The app then places any address

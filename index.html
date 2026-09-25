@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Cache Rider</title>
 <meta name="description" content="Unofficial schedule app for Connect, the Cache Valley Transit District bus. Next buses at any stop, the Transit Center bay by bay, and a map.">
-<meta name="theme-color" content="#f2f2f3" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#101214" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f3">
+<style>html{background:#f2f2f3;color-scheme:light}@media(prefers-color-scheme:dark){html{background:#101214;color-scheme:dark}}</style>
+<script>(function(){var m=matchMedia("(prefers-color-scheme: dark)"),t=document.querySelector("meta[name=theme-color]"),r=document.documentElement;function set(){var d=m.matches&&r.dataset.theme!=="light"||r.dataset.theme==="dark";t.content=d?"#101214":"#f2f2f3";}set();m.addEventListener("change",set);document.addEventListener("visibilitychange",set);})()</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Cache Rider">
