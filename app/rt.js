@@ -56,7 +56,11 @@ async function tick(force) {
       const ti = tripIdx.get(id);
       const at = new Map();
       let first = null, last = null;
+      // The trip's final stop has no boarding row in the timetable (see tools/reduce.py), and on a loop it's
+      // the same stop the trip left from: matched to that departure it would read as a bus half an hour late.
+      const end = u.s.reduce((m, x) => Math.max(m, x[1] ?? -1), -1);
       for (const [sid, seq, time, rel] of u.s) {
+        if (seq === end) continue;
         at.set(sid, { seq, time, skipped: rel === 1 });
         if (rel === 1) continue;
         if (!first || seq < first.seq) first = { sid, seq, time };
@@ -67,7 +71,7 @@ async function tick(force) {
         const sm = schedMin(D.stopById[last.sid], ti);
         if (sm !== null) lastDelay = toMin(last.time) - sm;
       }
-      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti };
+      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s };
     }
     const buses = [];
     for (const b of j.buses || []) {
@@ -100,15 +104,19 @@ export function predict(t) {
   if (!u) return null;
   const sid = D.stops[t.si].id;
   const hit = u.at.get(sid);
-  if (hit) return hit.skipped ? { gone: true } : { min: toMin(hit.time), delay: toMin(hit.time) - t.min };
+  if (hit) return hit.skipped ? { gone: true } : held(t, toMin(hit.time) - t.min);
   const order = (D.routes[t.r].stops || {})[String(t.dir)] || [];
   const i = order.indexOf(t.si);
   if (i < 0) return null;
   const f = u.first ? order.indexOf(D.stopById[u.first.sid]) : -1, l = u.last ? order.indexOf(D.stopById[u.last.sid]) : -1;
   if (f >= 0 && i < f) return { gone: true };
-  if (l >= 0 && i > l && u.lastDelay !== null) return { min: t.min + u.lastDelay, delay: u.lastDelay, est: true };
+  if (l >= 0 && i > l && u.lastDelay !== null) return { ...held(t, u.lastDelay), est: true };
   return null;
 }
+/** Every route lays over at the Transit Center, and a bus that gets in ahead waits there rather than leave
+ *  early: a departure from a bay is never before its scheduled minute, the feed can only make it later. */
+export const heldAt = (si, delay) => D.stops[si] && D.stops[si].hub ? Math.max(0, delay) : delay;
+const held = (t, delay) => { const d = heldAt(t.si, delay); return { min: t.min + d, delay: d }; };
 setLive(t => { const p = predict(t); if (!p) return t; return p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p }; });
 
 /** 'On time', '3 min late', '2 min early'. */
@@ -121,8 +129,8 @@ export function lateWords(delay) {
 export function busStops(b, n = 5) {
   const u = rt.trips[b.trip];
   if (!u) return [];
-  return [...u.at.entries()].filter(([, x]) => !x.skipped)
-    .map(([sid, x]) => ({ si: D.stopById[sid], seq: x.seq, min: toMin(x.time), time: x.time }))
+  return u.stops.filter(([, , , rel]) => rel !== 1)
+    .map(([sid, seq, time]) => ({ si: D.stopById[sid], seq, min: toMin(time), time }))
     .filter(x => x.si !== undefined && x.time >= rt.t - 30).sort((a, b) => a.seq - b.seq).slice(0, n);
 }
 export function findBus(id) { return rt.buses.find(b => b.id === id); }

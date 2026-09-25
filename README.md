@@ -48,7 +48,8 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   feeds, decodes the protobuf to a few kilobytes of JSON and caches it at the
   edge for ten seconds. `app/rt.js` polls it every 15 s on live screens; a
   departure the feed knows shows its predicted time and a Live tag with the
-  late/early word, a bus that has already been drops out, and Connect buses
+  late/early word (never early at the Transit Center, where every route lays
+  over), a bus that has already been drops out, and Connect buses
   ride the map beside the shuttle. Each departure row carries its trip index
   (`trips` in `data/cvtd.json`) to match the feed. Deploy with
   `wrangler deploy` from `worker/`.

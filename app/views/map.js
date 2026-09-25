@@ -8,7 +8,7 @@ import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopT
 import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, busStops, lateWords, rtStale, rtSeen } from '../rt.js';
+import { rt, findBus, busStops, lateWords, heldAt, rtStale, rtSeen } from '../rt.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
@@ -549,7 +549,7 @@ function connectCard(b, app) {
   const r = D.routes[b.ri], clockNow = now();
   const next = busStops(b, 5);
   const card = col.querySelector('#mapcard');
-  const late = next.length ? lateWords(next[0].min - (schedAt(next[0].si, b) ?? next[0].min)) : '';
+  const late = next.length ? lateWords(heldAt(next[0].si, next[0].min - (schedAt(next[0].si, b) ?? next[0].min))) : '';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null ? D.headsigns[b.h] : r.long}</span></div></div>
