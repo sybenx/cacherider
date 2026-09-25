@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.cacherider.app",
+    "sha256_cert_fingerprints": ["62:D1:E5:AB:EE:36:98:3F:EE:52:71:9B:09:7F:4B:2B:FB:B0:C5:9A:8A:8D:20:5C:E0:B4:78:4B:2B:E1:D5:0C"]
+  }
+}]

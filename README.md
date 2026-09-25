@@ -42,6 +42,12 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   phone. The map can be saved too. Chrome offers its install prompt as a
   card once a stop is saved; on an iPhone the app shows the Share → Add to Home Screen steps once,
   on the third day it's opened.
+- **Android app** — for phones without Chrome (GrapheneOS and the like), a
+  Trusted Web Activity in `android/`: the site full screen in the phone's own
+  browser, no code of its own. `.well-known/assetlinks.json` vouches for it.
+  Pushing a `v1.2.3` tag builds and signs it (`.github/workflows/android.yml`,
+  keystore in the repository secrets) and attaches the APK to a GitHub
+  release, which Obtainium can follow.
 
 Every time shown is the scheduled one. Nothing about you leaves the phone: no
 accounts, no analytics, no cookies; location is only used to sort by distance.

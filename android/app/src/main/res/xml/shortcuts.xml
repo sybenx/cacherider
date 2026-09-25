@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the icon: straight to the map or the Transit Center. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+  <shortcut android:shortcutId="map" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/shortcut_map">
+    <intent android:action="android.intent.action.VIEW" android:targetPackage="com.cacherider.app" android:targetClass="com.google.androidbrowserhelper.trusted.LauncherActivity" android:data="https://cacherider.com/#/map" />
+  </shortcut>
+  <shortcut android:shortcutId="hub" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/shortcut_hub">
+    <intent android:action="android.intent.action.VIEW" android:targetPackage="com.cacherider.app" android:targetClass="com.google.androidbrowserhelper.trusted.LauncherActivity" android:data="https://cacherider.com/#/hub" />
+  </shortcut>
+</shortcuts>

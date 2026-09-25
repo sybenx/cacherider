@@ -1,0 +1,5 @@
+// Cache Rider for Android: a Trusted Web Activity that opens cacherider.com
+// full screen in the phone's own browser. No code of its own; the site is the app.
+plugins {
+  id 'com.android.application' version '8.5.2' apply false
+}

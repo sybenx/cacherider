@@ -18,6 +18,8 @@ export function render(_, clockNow) {
     </div>
     <div class="section">${icon('down', 16)}On your home screen</div>
     <div class="pad" id="install-about">${installBlock()}</div>
+    ${installState() === 'installed' ? '' : html`<div class="section">${icon('globe', 16)}Android app</div>
+    <div class="pad muted" style="font-size:14px"><p>On an Android phone without Chrome, GrapheneOS say, there's an app: it opens Cache Rider full screen in your own browser, nothing more. <a href="https://github.com/sybenx/cacherider/releases/latest" target="_blank" rel="noopener">Download the APK</a> from the releases, or add <b>sybenx/cacherider</b> to Obtainium to keep it updated.</p></div>`}
     <div class="section">${icon('map', 16)}Offline map</div>
     <div class="pad" id="offline"><p class="muted" style="font-size:14px" id="offline-note">Keeps the whole Cache Valley street map on this phone, so it draws with no signal. Streets you've already looked at are kept anyway.</p>
       <button class="btn btn-secondary btn-lg blueprint" id="save-map">${corners()}${icon('down', 20)}Save the map for offline</button></div>
