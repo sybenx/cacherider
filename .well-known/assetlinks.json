@@ -3,6 +3,6 @@
   "target": {
     "namespace": "android_app",
     "package_name": "com.cacherider.app",
-    "sha256_cert_fingerprints": ["62:D1:E5:AB:EE:36:98:3F:EE:52:71:9B:09:7F:4B:2B:FB:B0:C5:9A:8A:8D:20:5C:E0:B4:78:4B:2B:E1:D5:0C"]
+    "sha256_cert_fingerprints": ["CA:1F:44:73:7D:87:DD:01:09:58:87:A7:6B:BD:6A:65:E5:C1:BD:76:94:9E:D0:11:E9:D3:F0:6F:9B:E4:C5:33"]
   }
 }]

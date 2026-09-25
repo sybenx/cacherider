@@ -53,7 +53,9 @@ function style(sat = true) {
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
-      { id: 'route-closed-casing', type: 'line', source: 'lclosed', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 4, 14, 8, 17, 13] } },
+      // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
+      // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
+      { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
       { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 0.8, 1.2], 15, ['case', ['get', 'approx'], 1.4, 2.5], 17, ['case', ['get', 'approx'], 2, 4]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.9], 'line-dasharray': [3, 1.5] } },
@@ -78,12 +80,14 @@ function stopsGeo() {
   return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, color: '#' + route(s.routes[0]).color, closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 
-/** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes. */
+/** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes:
+ *  the dotted lines to draw, and per shape the along-shape gaps where its solid line is left out, so a route
+ *  sharing the road underneath still shows through the dots. */
 function closedSegments(fc) {
   const ymd = now().ymd;
   const byRoute = {};   // route index → set of closed stop ids
   for (const a of activeAlerts(ymd)) for (const ri of a.ri || []) for (const id of a.stops || []) (byRoute[ri] ||= new Set()).add(id);
-  const out = [];
+  const out = [], gaps = {};
   for (const [ri, ids] of Object.entries(byRoute)) {
     const r = D.routes[+ri];
     const shapes = fc.features.filter(f => f.properties.route === +ri);
@@ -98,20 +102,45 @@ function closedSegments(fc) {
         i = j;
         if (done.has(key)) continue;
         done.add(key);
-        const cut = cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]));
-        if (cut) out.push({ type: 'Feature', properties: { color: '#' + r.color, route: +ri }, geometry: { type: 'LineString', coordinates: cut } });
+        for (const cut of cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]))) {
+          out.push({ type: 'Feature', properties: { color: '#' + r.color, route: +ri }, geometry: { type: 'LineString', coordinates: cut.coords } });
+          (gaps[cut.shape] ||= []).push([cut.s0, cut.s1]);
+        }
       }
     }
   }
-  return { type: 'FeatureCollection', features: out };
+  return { closed: { type: 'FeatureCollection', features: out }, gaps };
 }
-/** Walk each shape forward from `from` to `to`; the shortest such walk is the stretch the bus would have driven.
- *  Then trim it: a bus at a served stop always drives on to the next corner, so the dots start at the first
- *  intersection after `from` and end at the last one before `to`, never tighter than the closed stops themselves. */
+/** The solid lines with each shape's closed stretches left out. */
+function openLines(fc, gaps) {
+  const features = [];
+  for (const f of fc.features) {
+    const g = gaps[f.properties.shape];
+    if (!g) { features.push(f); continue; }
+    const c = f.geometry.coordinates, n = c.length;
+    if (!f._cum) { f._cum = [0]; for (let k = 1; k < n; k++) f._cum.push(f._cum[k - 1] + distance(c[k - 1][1], c[k - 1][0], c[k][1], c[k][0])); }
+    const L = f._cum[n - 1], walk = c.map((p, k) => [f._cum[k], p]);
+    // a gap past the closing segment of a loop wraps: two spans on the drawn line
+    const spans = g.flatMap(([s0, s1]) => s1 >= s0 ? [[s0, s1]] : [[s0, L], [0, s1]]).sort((p, q) => p[0] - q[0]);
+    let at = 0;
+    for (const [s0, s1] of spans) {
+      if (s0 - at > 1) features.push({ type: 'Feature', properties: f.properties, geometry: { type: 'LineString', coordinates: slice(walk, at, s0) } });
+      at = Math.max(at, s1);
+    }
+    if (L - at > 1) features.push({ type: 'Feature', properties: f.properties, geometry: { type: 'LineString', coordinates: slice(walk, at, L) } });
+  }
+  return { type: 'FeatureCollection', features };
+}
+/** Walk each of the route's shapes forward from `from` to `to`; the shortest such walk on a shape is the stretch
+ *  its bus would have driven, and every shape that has one is cut, so a variant of the route on the same road
+ *  doesn't show through as if it still ran. Each is trimmed: a bus at a served stop always drives on to the next
+ *  corner, so the dots start at the first intersection after `from` and end at the last one before `to`, never
+ *  tighter than the closed stops themselves. */
 function cutShape(shapes, from, to, closed) {
   const NEAR = 60;   // metres: a stop is on the line if a vertex is this close
-  let best = null;
+  const cuts = [];
   for (const f of shapes) {
+    let best = null;
     const c = f.geometry.coordinates, n = c.length;
     if (!f._cum) { f._cum = [0]; for (let k = 1; k < n; k++) f._cum.push(f._cum[k - 1] + distance(c[k - 1][1], c[k - 1][0], c[k][1], c[k][0])); }
     const total = f._cum[n - 1] + distance(c[n - 1][1], c[n - 1][0], c[0][1], c[0][0]);
@@ -126,11 +155,14 @@ function cutShape(shapes, from, to, closed) {
         if (distance(c[k][1], c[k][0], to.lat, to.lon) <= NEAR) { hit = k; break; }
       }
       if (hit < 0 || (best && len >= best.len)) continue;
-      best = { len, f, a, steps, total };
+      best = { len, a, steps, total };
     }
+    if (best && best.len < 6000) cuts.push(trimWalk(f, best, from, to, closed));   // a walk longer than that is the wrong pass, not a detour
   }
-  if (!best || best.len >= 6000) return null;   // a walk longer than that is the wrong pass, not a detour
-  const { f, a, steps, total } = best, c = f.geometry.coordinates, n = c.length;
+  return cuts;
+}
+function trimWalk(f, best, from, to, closed) {
+  const { a, steps, total } = best, c = f.geometry.coordinates, n = c.length;
   const walk = [];   // [distance along the walk, [lon, lat]]
   for (let m = a, t = 0, d = 0; t <= steps; t++, m = (m + 1) % n) {
     if (t) d += distance(c[(m + n - 1) % n][1], c[(m + n - 1) % n][0], c[m][1], c[m][0]);
@@ -143,7 +175,7 @@ function cutShape(shapes, from, to, closed) {
   const xs = (XINGS[f.properties.shape] || []).map(x => (x - f._cum[a] + total) % total).filter(w => w > fromAt + 10 && w < toAt - 10).sort((p, q) => p - q);
   let start = xs.find(w => w < firstClosed - 5); start = start === undefined ? fromAt : start;
   let end = [...xs].reverse().find(w => w > lastClosed + 5); end = end === undefined ? toAt : end;
-  return slice(walk, start, end);
+  return { coords: slice(walk, start, end), shape: f.properties.shape, s0: (f._cum[a] + start) % total, s1: (f._cum[a] + end) % total };
 }
 /** The part of a walk between two distances along it, ends interpolated. */
 function slice(walk, d0, d1) {
@@ -190,8 +222,10 @@ function shapes() {
 }
 async function loadShapes(m = map) {
   const fc = await shapes();
-  if (fc && m && m.getSource('lines')) m.getSource('lines').setData(fc);
-  if (fc && m && m.getSource('lclosed')) m.getSource('lclosed').setData(closedSegments(fc));
+  if (!fc || !m) return;
+  const { closed, gaps } = closedSegments(fc);
+  if (m.getSource('lines')) m.getSource('lines').setData(openLines(fc, gaps));
+  if (m.getSource('lclosed')) m.getSource('lclosed').setData(closed);
 }
 /** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
 let closedKey = null;
