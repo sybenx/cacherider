@@ -106,8 +106,10 @@ On the map a closed stop is a hollow ring, and the stretch of route between the
 served stops either side of it goes to dots, cut from the drawn shape by walking
 it forward from one to the other, then trimmed to the first intersection after
 the last served stop and the last one before the next, since a bus at a served
-stop always drives on to the corner (`tools/crossings.py` finds the intersections
-in the map's own road tiles). Alerts naming only stops, or nothing, are shown
+stop always drives on to the corner. `tools/crossings.py` finds the intersections
+in the map's own road tiles: a street of residential class or bigger continuing
+across the route, or a bigger road meeting it from one side. Dead ends, lot
+lanes, driveways and paths don't count. Alerts naming only stops, or nothing, are shown
 in the agency's words.
 
 The Map tab has an optional aerial view: the USGS National Map imagery
