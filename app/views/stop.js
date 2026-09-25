@@ -2,7 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark, liveWord, lively, when } from '../ui.js';
+import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
@@ -83,7 +83,7 @@ export function render({ id, full }, clockNow) {
   const first = next[0];
   const dayWord = first.day === 0 ? '' : first.day === 1 ? 'tomorrow, ' + dayName(first.ymd, true) : dayName(first.ymd);
   parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark(liveWord(first)) : sched()}</div>
-    <div class="big">${when(first, 60)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span></div>
+    ${wasLine(first)}<div class="big">${time(first.min, 60)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span></div>
     <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div></div>`);
 
   if (full) {

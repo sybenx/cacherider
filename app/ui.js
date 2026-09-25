@@ -87,6 +87,12 @@ export function when(t, size = 26) {
   if (!t.live || !t.live.delay) return time(t.min, size);
   return raw(`<span class="whent"><s class="was" style="font-size:${Math.max(12, Math.round(size * .55))}px">${esc(clock(schedOf(t)).h)}</s>${time(t.min, size).s}</span>`);
 }
+/** For the big displays, a line above the estimate saying what the crossed-out time is: 'Scheduled ~~3:15 PM~~'. */
+export function wasLine(t) {
+  if (!t.live || !t.live.delay) return raw('');
+  const c = clock(schedOf(t));
+  return raw(`<span class="wasline">Scheduled <s>${esc(c.h)} ${c.ap}</s></span>`);
+}
 /** One departure row: badge · headsign + Live or Scheduled · the time (crossed out and estimated when moved) + how long. */
 export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
