@@ -444,8 +444,9 @@ function select(id, app, fly = false, zoomIn = false) {
   const closed = closedRoutes(si, clockNow.ymd), al = stopAlerts(si, clockNow.ymd);
   const alertLine = al.length ? html`<span class="eyebrow alert">${icon('ban', 14)}${closed.size ? [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ') + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' : al[0].title}</span>` : '';
   // The twin across the road, one small line: a tap swaps the card to it without leaving the map.
-  const twinLine = s.twin ? html`<button class="twinline" type="button" data-twin="${stop(s.twin[0]).id}">${icon('swap', 16)}<span>${stop(s.twin[0]).name}${side(s.twin[0]) ? ' · ' + side(s.twin[0]) : ''}</span><span class="muted">· ${metres(s.twin[1])}</span></button>` : '';
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${s.town} · Stop ${s.code || s.id} · ${fromHub} from the ${D.hub.name}</span><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div>${alertLine}${twinLine}</div>
+  // The twin sits at the right of the eyebrow line, in its type: the card grows by nothing for it.
+  const twinLine = s.twin ? html`<button class="eyebrow twinline" type="button" data-twin="${stop(s.twin[0]).id}" title="${stop(s.twin[0]).name}">${icon('swap', 14)}Across the road · ${metres(s.twin[1])}</button>` : '';
+  card.innerHTML = html`<div class="grip"></div><div class="head"><div class="eyerow"><span class="eyebrow">${s.town} · Stop ${s.code || s.id}${s.twin ? '' : ` · ${fromHub} from the ${D.hub.name}`}</span>${twinLine}</div><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div>${alertLine}</div>
     ${next.length ? next.map(t => depRow(t, clockNow, { name: t.day ? undefined : undefined })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a></div>`;
   const tw = card.querySelector('[data-twin]');
@@ -592,6 +593,7 @@ function showAt(at, app, clockNow) {
 }
 
 /** Called by the router whenever the map is on screen. */
+let shownHash = null;
 export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }, app, clockNow) {
   await init(app);
   requestAnimationFrame(() => map.resize());
@@ -599,6 +601,11 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
+  // The address is acted on once. A redraw with the same one (the app coming back to the front, say)
+  // leaves whatever the rider has since tapped on the map alone.
+  const fresh = location.hash !== shownHash;
+  shownHash = location.hash;
+  if (!fresh) return;
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
   if (stopId || ustopId || routeShort || hub || at) { selectedBus = null; selectedU = null; }
   if (at) return showAt(at, app, clockNow);

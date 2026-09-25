@@ -255,10 +255,10 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .twin .mid .name { font-size: 16px; font-weight: 500; }
 .twin .when { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .twin .when .rel { font-size: 13px; }
-/* the map card's twin, one line under the name */
-.mapcard .twinline { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; padding: 4px 0; background: none; border: 0; font: inherit; font-size: 14px; color: var(--color-accent-700); cursor: pointer; max-width: 100%; }
-.mapcard .twinline span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mapcard .twinline .muted { color: var(--cr-muted); }
+/* the map card's twin, at the right of the eyebrow line */
+.mapcard .eyerow { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 22px; }
+.mapcard .eyerow .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mapcard .twinline { flex: none; display: inline-flex; align-items: center; gap: 5px; margin: -4px -6px -4px 0; padding: 4px 6px; background: none; border: 0; font-family: inherit; cursor: pointer; }
 
 /* the pulse card on the home screen */
 .pulse { display: block; margin: 4px 16px; padding: 14px; color: inherit; text-decoration: none; cursor: pointer; }
