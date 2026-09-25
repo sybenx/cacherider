@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, A } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle } from '../ui.js';
+import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side } from '../ui.js';
 import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -436,9 +436,21 @@ function select(id, app, fly = false, zoomIn = false) {
   const fromHub = metres(distance(s.lat, s.lon, D.hub.lat, D.hub.lon));
   const closed = closedRoutes(si, clockNow.ymd), al = stopAlerts(si, clockNow.ymd);
   const alertLine = al.length ? html`<span class="eyebrow alert">${icon('ban', 14)}${closed.size ? [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ') + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' : al[0].title}</span>` : '';
+  // The twin across the road, as on the stop page: a tap swaps the card to it without leaving the map.
+  let twinRow = '';
+  if (s.twin) {
+    const [ti, td] = s.twin, t = stop(ti), n = nextAt(ti, 1, clockNow)[0], tsd = side(ti);
+    twinRow = html`<button class="twin blueprint" type="button" data-twin="${t.id}">${corners()}<span style="color:var(--color-accent-700)">${icon('swap', 22)}</span>
+      <div class="mid"><span class="eyebrow">Across the road · ${metres(td)}</span><span class="name">${t.name}${tsd ? ' · ' + tsd : ''}</span>
+      ${n ? html`<div class="when">${badge(n.r, 20)}${time(n.min, 17)}<span class="rel">${relative(n, clockNow)}</span>${sched()}</div>` : html`<span class="rel">No service today</span>`}</div>
+      <span class="muted">${icon('fwd', 20)}</span></button>`;
+  }
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${s.town} · Stop ${s.code || s.id} · ${fromHub} from the ${D.hub.name}</span><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div>${alertLine}</div>
+    ${twinRow}
     ${next.length ? next.map(t => depRow(t, clockNow, { name: t.day ? undefined : undefined })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a></div>`;
+  const tw = card.querySelector('[data-twin]');
+  if (tw) tw.onclick = () => { card.scrollTop = 0; select(tw.dataset.twin, app, true); };
   card.classList.remove('hidden');
   requestAnimationFrame(() => {
     card.classList.add('open');
