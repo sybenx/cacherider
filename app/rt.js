@@ -9,6 +9,9 @@ const POLL = 15000, STALE = 90000;
 
 export const rt = { at: 0, t: 0, buses: [], trips: {}, wanted: false, fetching: false, error: null };
 let timer = null;
+/** 'trip:stop' → when the feed first stopped predicting that Transit Center bay for that trip: the bus pulled out. */
+const left = new Map();
+const LEFT_GRACE = 60000;   // a departure says now for this long after the bus leaves, rather than flip at once
 const listeners = new Set();
 export function onRt(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
@@ -87,6 +90,12 @@ async function tick(force) {
       if (ri === undefined || ri < 0) continue;
       buses.push({ id: 'c:' + b.id, label: b.label || b.id, trip: b.trip, ri, lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: info ? info.h : null, dir: info ? info.dir : null });
     }
+    const t0 = Date.now();
+    for (const [id, old] of Object.entries(rt.trips)) for (const [sid, x] of old.at) {
+      const k = id + ':' + sid;
+      if (!x.skipped && !left.has(k) && D.stops[D.stopById[sid]]?.hub && !(trips[id] && trips[id].at.has(sid))) left.set(k, t0);
+    }
+    for (const [k, ms] of left) if (t0 - ms > 600000) left.delete(k);
     rt.trips = trips; rt.buses = buses; rt.t = j.t; rt.at = Date.now(); rt.error = null;
   } catch (e) {
     rt.error = e.message || 'unreachable';
@@ -110,16 +119,25 @@ export function predict(t) {
   const i = order.indexOf(t.si);
   if (i < 0) return null;
   const f = u.first ? order.indexOf(D.stopById[u.first.sid]) : -1, l = u.last ? order.indexOf(D.stopById[u.last.sid]) : -1;
-  // Pulling out of a Transit Center bay, the bus drops the bay from its predictions at once. It never leaves a bay
-  // early, so the row holds its scheduled minute and says now until that minute is out, rather than vanish mid-departure.
-  if (f >= 0 && i < f) return D.stops[t.si].hub ? held(t, 0) : { gone: true };
+  // Pulling out of a Transit Center bay, the bus drops the bay from its predictions at once. Rather than vanish, the
+  // row says now for a minute after it goes; and a route bus, which never leaves a bay early, holds its scheduled
+  // minute till that's out too. A loop may leave early, so it gets only the minute.
+  if (f >= 0 && i < f) {
+    if (!D.stops[t.si].hub) return { gone: true };
+    const ms = left.get(D.trips[t.trip] + ':' + sid);
+    if (ms && Date.now() - ms < LEFT_GRACE) return held(t, toMin(Math.floor(Date.now() / 1000)) - t.min);
+    return isLoop(t.r) ? { gone: true } : held(t, 0);
+  }
   if (l >= 0 && i > l && u.lastDelay !== null) return { ...held(t, u.lastDelay), est: true };
   return null;
 }
-/** Every route lays over at the Transit Center, and a bus that gets in ahead waits there rather than leave
- *  early: a departure from a bay is never before its scheduled minute, the feed can only make it later. */
-export const heldAt = (si, delay) => D.stops[si] && D.stops[si].hub ? Math.max(0, delay) : delay;
-const held = (t, delay) => { const d = heldAt(t.si, delay); return { min: t.min + d, delay: d }; };
+/** Every route but the loops lays over at the Transit Center, and a bus that gets in ahead waits there rather
+ *  than leave early: a departure from its bay is never before its scheduled minute, the feed can only make it later. */
+export const heldAt = (si, delay, ri) => D.stops[si] && D.stops[si].hub && !isLoop(ri) ? Math.max(0, delay) : delay;
+const held = (t, delay) => { const d = heldAt(t.si, delay, t.r); return { min: t.min + d, delay: d }; };
+/** The Green and Blue Loops run to their headway more than their timetable, far off it in traffic as a matter of
+ *  course, early as often as late: no hold at the Transit Center for them, and no late or early word. */
+export const isLoop = ri => (D.hub.loops || []).includes(ri);
 setLive(t => { const p = predict(t); if (!p) return t; return p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p }; });
 
 /** 'On time', '3 min late', '2 min early'. */

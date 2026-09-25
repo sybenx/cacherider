@@ -4,8 +4,7 @@
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark } from '../ui.js';
-import { lateWords } from '../rt.js';
+import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, schedOf, when } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { parseAddress, geocode, townState } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, liveTag, live, hasData, board } from '../usu.js';
@@ -88,7 +87,7 @@ function giant(min) {
 function stopHeroBlock(si, why, clockNow) {
   const s = stop(si);
   const next = nextAt(si, 3, clockNow);
-  const eye = html`<div class="eye"><span class="eyebrow">${why} · Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark('Live · ' + lateWords(next[0].live.delay)) : sched()}</div>`;
+  const eye = html`<div class="eye"><span class="eyebrow">${why} · Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched()}</div>`;
   if (!next.length) {
     const resume = nextServiceDay(clockNow);
     return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span><div class="hero-none">Nothing scheduled${resume && resume !== clockNow.ymd ? html`<span class="sub">Buses resume ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
@@ -99,13 +98,15 @@ function stopHeroBlock(si, why, clockNow) {
   const big = countdown
     ? html`<div class="giant count"><span>${left <= 0 ? 'NOW' : left}</span>${left > 0 ? html`<span class="unit">MIN</span>` : ''}</div>`
     : giant(first.min);
-  const sideVal = countdown ? time(first.min, 34) : first.day === 0 ? html`<span class="rt">${relative(first, clockNow)}</span>` : '';
+  // Moved by the feed, the timetable's minute stands crossed out beside the estimate.
+  const was = first.live && first.live.delay ? html`<s class="was">${clock(schedOf(first)).h}</s>` : '';
+  const sideVal = countdown ? html`${was}${time(first.min, 34)}` : first.day === 0 ? html`<span class="rt">${was}${relative(first, clockNow)}</span>` : '';
   const dayWord = first.day === 0 ? '' : first.day === 1 ? 'Tomorrow' : dayName(first.ymd);
   const then = next.slice(1);
   const dest = String(headsign(first)), long = D.routes[first.r].long;
   return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span>${big}
     <div class="who">${badge(first.r, 44)}<div class="mid"><span class="dest">${html.raw(dest)}</span>${dayWord || dest.replace(/<[^>]+>/g, '') !== long ? html`<span class="sub">${[dayWord, dest.replace(/<[^>]+>/g, '') !== long ? long : ''].filter(Boolean).join(' · ')}</span>` : ''}</div>${sideVal}</div>
-    ${then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${time(t.min, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : ''}</a></div>`;
+    ${then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${when(t, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : ''}</a></div>`;
 }
 
 function pulseHeroBlock(clockNow) {

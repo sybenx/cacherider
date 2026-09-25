@@ -2,8 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark } from '../ui.js';
-import { lateWords } from '../rt.js';
+import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark, liveWord, lively, when } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
@@ -29,7 +28,7 @@ export function render({ id, full }, clockNow) {
     const tsd = side(ti);
     parts.push(html`<a class="twin blueprint" href="#/stop/${t.id}">${corners()}<span style="color:var(--color-accent-700)">${icon('swap', 22)}</span>
       <div class="mid"><span class="eyebrow">Across the road · ${metres(td)}</span><span class="name">${t.name}${tsd ? ' · ' + tsd : ''}</span>
-      ${n ? html`<div class="when">${badge(n.r, 20)}${time(n.min, 17)}<span class="rel">${relative(n, clockNow)}</span>${n.live ? liveMark() : sched()}</div>` : html`<span class="rel">No service today</span>`}</div>
+      ${n ? html`<div class="when">${badge(n.r, 20)}${when(n, 17)}<span class="rel">${relative(n, clockNow)}</span>${n.live ? liveMark() : sched()}</div>` : html`<span class="rel">No service today</span>`}</div>
       <span class="muted">${icon('fwd', 20)}</span></a>`);
   }
 
@@ -63,7 +62,7 @@ export function render({ id, full }, clockNow) {
     const only = s.routes.map(ri => D.routes[ri]);
     const weekdayOnly = only.filter(r => !servicesOnDays(r)).length;
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>No ${dayName(clockNow.ymd)} service at this stop</b><div class="sub">${only.length === 1 ? `Route ${only[0].short} ${describeDays(only[0])}.` : 'The routes here ' + (weekdayOnly ? 'run weekdays only' : 'skip today') + '.'} Other routes are running today.</div></div></div>`);
-  } else if (!td.left.length && td.last) {
+  } else if (!td.left.length && td.last && !(next[0] && next[0].day === 0)) {   // a late last bus is still coming
     parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>Last bus today left at ${clockText(td.last.min)}</b><div class="sub">The next one is ${next[0] && next[0].day === 1 ? 'tomorrow morning' : next[0] ? dayName(next[0].ymd) : 'not in the timetable'}.</div></div></div>`);
   } else if (nt) {
     parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
@@ -83,16 +82,18 @@ export function render({ id, full }, clockNow) {
 
   const first = next[0];
   const dayWord = first.day === 0 ? '' : first.day === 1 ? 'tomorrow, ' + dayName(first.ymd, true) : dayName(first.ymd);
-  parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark('Live · ' + lateWords(first.live.delay)) : sched()}</div>
-    <div class="big">${time(first.min, 60)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span></div>
+  parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark(liveWord(first)) : sched()}</div>
+    <div class="big">${when(first, 60)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span></div>
     <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div></div>`);
 
   if (full) {
-    // The whole day, past departures muted, grouped by day if we had to roll over.
-    const all = td.all.length ? td.all.map(t => ({ ...t, day: 0, ymd: clockNow.ymd })) : nextAt(si, 200, clockNow, 8).filter(t => t.day === next[0].day);
+    // The whole day by the timetable, past departures muted, grouped by day if we had to roll over. Past is the feed's
+    // word where it has one: a late bus whose minute has gone by is still coming.
+    const all = td.all.length ? td.all.map(t => lively({ ...t, day: 0, ymd: clockNow.ymd })) : nextAt(si, 200, clockNow, 8).filter(t => t.day === next[0].day);
+    const past = t => t.day === 0 && (t.gone || t.min < clockNow.min);
     const label = all[0].day === 0 ? fmtDay(clockNow.ymd, true) : fmtDay(all[0].ymd, true);
     parts.push(html`<div class="dayhead">${label} · ${all.length} departures</div>`);
-    parts.push(html`<div class="list">${all.map(t => html.raw(`<div style="${t.day === 0 && t.min < clockNow.min ? 'opacity:.45' : ''}">${depRow(t, clockNow, { rel: t.day === 0 && t.min < clockNow.min ? 'gone' : relative(t, clockNow) }).s}</div>`))}</div>`);
+    parts.push(html`<div class="list">${all.map(t => html.raw(`<div style="${past(t) ? 'opacity:.45' : ''}">${depRow(t, clockNow, { rel: past(t) ? 'gone' : relative(t, clockNow) }).s}</div>`))}</div>`);
     parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${s.id}">What's next</a></div>`);
     return { html: parts.join(''), title: s.name, mount, keepScroll: true };
   }

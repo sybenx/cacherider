@@ -1,6 +1,6 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
 import { D, route, stop, A, stopAlerts } from './data.js';
-import { predict, lateWords } from './rt.js';
+import { predict, lateWords, isLoop } from './rt.js';
 import { clock, relative, dayName } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -75,13 +75,24 @@ export const liveMark = (text = 'Live') => raw(`<span class="livetag"><i></i>${e
 export function lively(t) {
   if (t.live || t.gone) return t;
   const p = predict(t);
-  return p && p.min !== undefined ? { ...t, min: p.min, live: p } : t;
+  return !p ? t : p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p };
 }
+/** The timetable's minute for a departure, live or not. The big time is always this one. */
+export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
+export { isLoop };
+export const liveWord = t => isLoop(t.r) ? 'Live' : 'Live · ' + lateWords(t.live.delay);
+/** A departure's time: the timetable's, or, when the feed has moved it, the timetable's crossed out and the
+ *  estimate beside it at full size. */
+export function when(t, size = 26) {
+  if (!t.live || !t.live.delay) return time(t.min, size);
+  return raw(`<span class="whent"><s class="was" style="font-size:${Math.max(12, Math.round(size * .55))}px">${esc(clock(schedOf(t)).h)}</s>${time(t.min, size).s}</span>`);
+}
+/** One departure row: badge · headsign + Live or Scheduled · the time (crossed out and estimated when moved) + how long. */
 export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
-  const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark('Live · ' + lateWords(t.live.delay)).s : sched().s;
-  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}</div><div class="end">${time(t.min, 26).s}<span class="rel">${esc(rel)}</span></div></div>`);
+  const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t)).s : sched().s;
+  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}</div><div class="end">${when(t, 26).s}<span class="rel">${esc(rel)}</span></div></div>`);
 }
 
 /** A stop row for the home and search lists, with its next bus on the right. */
@@ -89,7 +100,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const s = stop(si);
   const next = next0 ? lively(next0) : next0;
   const end = next
-    ? `<div class="end"><div class="when">${badge(next.r, 20).s}${time(next.min, 22).s}</div><span class="rel">${esc(relative(next, clockNow))}</span>${next.live ? liveMark().s : sched().s}</div>`
+    ? `<div class="end"><div class="when">${badge(next.r, 20).s}${when(next, 22).s}</div><span class="rel">${esc(relative(next, clockNow))}</span>${next.live ? liveMark().s : sched().s}</div>`
     : `<div class="end"><span class="rel">${esc(opts.none || 'No service today')}</span></div>`;
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);

@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, A } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side } from '../ui.js';
+import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop } from '../ui.js';
 import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -552,7 +552,7 @@ function connectCard(b, app) {
   // The word comes from the next stop the timetable has a row for: never the trip's final one, which on a loop
   // is the stop it left from, an hour's schedule earlier. Only that one left, the card just says Live.
   const at = next.find(n => !n.end);
-  const late = at ? lateWords(heldAt(at.si, at.min - (schedAt(at.si, b) ?? at.min))) : '';
+  const late = at && !isLoop(b.ri) ? lateWords(heldAt(at.si, at.min - (schedAt(at.si, b) ?? at.min))) : '';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null ? D.headsigns[b.h] : r.long}</span></div></div>

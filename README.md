@@ -47,9 +47,11 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   the tracker refuses cross-origin requests, so the Worker fetches the two
   feeds, decodes the protobuf to a few kilobytes of JSON and caches it at the
   edge for ten seconds. `app/rt.js` polls it every 15 s on live screens; a
-  departure the feed knows shows its predicted time and a Live tag with the
-  late/early word (never early at the Transit Center, where every route lays
-  over), a bus that has already been drops out, and Connect buses
+  departure the feed knows shows its scheduled time crossed out beside the
+  estimate, and a Live tag with the late/early word (never early at the
+  Transit Center, where routes lay over; no word at all for the Green and
+  Blue Loops, which run to their headway), a bus that has already been drops
+  out, and Connect buses
   ride the map beside the shuttle. A detoured bus is off its scheduled trips
   and missing from GTFS-realtime, so for a route the feed has no bus on the
   Worker asks the tracker site's own API (`/api/rtpi`) for positions: on the
