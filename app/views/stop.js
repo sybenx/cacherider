@@ -1,6 +1,6 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved } from '../data.js';
+import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -43,7 +43,19 @@ export function render({ id, full }, clockNow) {
   const td = today(si, clockNow);
   const next = nextAt(si, 7, clockNow);
 
-  if (!td.systemRuns) {
+  // Detours that name this stop: which routes are skipping it, in the agency's words.
+  const alerts = stopAlerts(si, clockNow.ymd);
+  const closed = closedRoutes(si, clockNow.ymd);
+  const allClosed = closed.size && s.routes.every(ri => closed.has(ri));
+  if (alerts.length) {
+    const who = [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ');
+    const head = allClosed ? 'No buses stop here during the detour' : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop right now` : 'Service alert for this stop';
+    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b>${head}</b>${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
+  }
+
+  if (allClosed) {
+    // Nothing to schedule here; the callout above has said why.
+  } else if (!td.systemRuns) {
     const resume = nextServiceDay(clockNow);
     parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${D.agency.brand} doesn't run on ${dayName(clockNow.ymd)}s. ${resume ? `Service resumes ${fmtDay(resume, true)}${nt && nt <= resume ? ', on the new timetable' : ''}.` : ''}</div></div></div>`);
   } else if (!td.all.length) {
@@ -64,7 +76,7 @@ export function render({ id, full }, clockNow) {
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${names} ${prov.length > 1 ? 'are' : 'is'} missing from this week's published timetable</b><div class="sub">Times shown are from the one starting ${from ? fmtDay(from.start) : 'soon'}. The bus is running; check a detour.</div></div></div>`);
   }
   if (!next.length) {
-    parts.push(html`<div class="empty"><h2>Nothing scheduled</h2><p>No departures from this stop in the next week.</p></div>`);
+    parts.push(allClosed ? html`<div class="empty"><h2>Nothing scheduled</h2><p>Departures return when the detour ends.</p></div>` : html`<div class="empty"><h2>Nothing scheduled</h2><p>No departures from this stop in the next week.</p></div>`);
     return { html: parts.join(''), title: s.name, mount, keepScroll: true };
   }
 

@@ -1,6 +1,6 @@
 // Boot, the hash router, and the pieces every screen shares: the tab bar, the
 // desktop header, the location sheet, the minute tick.
-import { load, D, BASE, pref, stopIndex } from './data.js';
+import { load, D, BASE, pref, stopIndex, loadAlerts, A } from './data.js';
 import { now } from './time.js';
 import { html, icon, esc } from './ui.js';
 import { loadGrid } from './geo.js';
@@ -232,7 +232,7 @@ function wireHeader() {
 async function boot() {
   try {
     await Promise.all([load(), loadGrid()]);
-    await loadUSU();   // after the timetable: shared kerbs need Connect's stops
+    await Promise.all([loadUSU(), loadAlerts()]);   // after the timetable: shared kerbs and alerts need its stops and routes
   } catch (e) {
     side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;
     return;
@@ -253,7 +253,7 @@ async function boot() {
     lastMin = m;
     render(true);
   }, 5000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') render(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (Date.now() - A.loadedAt > 3600e3) loadAlerts().then(() => render()); else render(); });
   // Fresh bus positions redraw a live screen in place.
   onLive(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').catch(() => {});

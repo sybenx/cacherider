@@ -15,6 +15,36 @@ export async function load() {
   return D;
 }
 
+// ---- service alerts: detours, closed stops, late starts, from data/alerts.json (hourly)
+export let A = { fetched: null, alerts: [], byStop: {}, byRoute: {}, loadedAt: 0 };
+export async function loadAlerts() {
+  try {
+    const r = await fetch(BASE + 'data/alerts.json', { cache: 'no-cache' });
+    if (!r.ok) return;
+    const j = await r.json();
+    const byStop = {}, byRoute = {};
+    for (const a of j.alerts) {
+      a.ri = (a.routes || []).map(s => D.routeByShort[s]).filter(x => x !== undefined);
+      for (const id of a.stops || []) (byStop[id] ||= []).push(a);
+      for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
+    }
+    A = { ...j, byStop, byRoute, loadedAt: Date.now() };
+  } catch { /* the app is fine without alerts */ }
+}
+let ymdFmt = null;
+const ymdOf = epoch => (ymdFmt ||= new Intl.DateTimeFormat('en-CA', { timeZone: D.agency.tz, year: 'numeric', month: '2-digit', day: '2-digit' })).format(new Date(epoch * 1000)).replace(/-/g, '');
+export const alertOn = (a, ymd) => (!a.start || ymdOf(a.start) <= ymd) && (!a.end || ymdOf(a.end) >= ymd);
+export function stopAlerts(si, ymd) { return (A.byStop[D.stops[si].id] || []).filter(a => alertOn(a, ymd)); }
+export function routeAlerts(ri, ymd) { return (A.byRoute[ri] || []).filter(a => alertOn(a, ymd)); }
+export function systemAlerts(ymd) { return A.alerts.filter(a => !(a.stops || []).length && !(a.routes || []).length && !(a.routeIds || []).length && alertOn(a, ymd)); }
+export function activeAlerts(ymd) { return A.alerts.filter(a => alertOn(a, ymd)); }
+/** Routes that skip a stop on a day: an alert naming both the route and the stop. */
+export function closedRoutes(si, ymd) {
+  const out = new Set();
+  for (const a of stopAlerts(si, ymd)) for (const ri of a.ri) out.add(ri);
+  return out;
+}
+
 export const route = i => D.routes[i];
 export const stop = i => D.stops[i];
 export const stopIndex = id => D.stopById[id];
@@ -48,7 +78,9 @@ export function timesOn(si, ymd) {
   if (missing.length) {
     for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1])) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], prov: sid });
   }
-  return out.sort((a, b) => a.min - b.min);
+  // A detour that names this stop: that route's buses aren't calling here today.
+  const closed = A.byStop[D.stops[si].id] ? closedRoutes(si, ymd) : null;
+  return (closed && closed.size ? out.filter(t => !closed.has(t.r)) : out).sort((a, b) => a.min - b.min);
 }
 
 let routeDays = null;

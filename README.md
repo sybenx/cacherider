@@ -22,6 +22,9 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   next buses for the stop you tap.
 - **After hours, Sundays, weekday-only stops** — it says so, and shows the
   next day that runs.
+- **Service alerts** — Connect's detours, closed stops and late starts, from
+  its rider-alerts feed, checked hourly. A closed stop says so and drops that
+  route's departures; routes, the map and the About page carry the rest.
 - **USU campus shuttle** — the Aggie Shuttle's stops, routes and buses,
   live. Shuttles have no timetable, so each stop shows how many stops away
   the next bus is and about how many minutes, estimated from where it is on
@@ -51,6 +54,7 @@ css/app.css         the Industry design system: Barlow Condensed, hairline rows,
 data/cvtd.json      the reduced timetable, ~50 KB gzipped, written nightly
 data/cvtd-shapes.json  route lines for the map
 data/usu.json       the campus shuttle's routes, stops and loops, snapshotted nightly
+data/alerts.json    Connect's service alerts, decoded hourly
 tiles/              Cache Valley from OpenStreetMap via Protomaps, one file a tile, and tiles.json
 vendor/             MapLibre GL, the Protomaps basemap style and its glyphs and sprites
 fonts/              Barlow and Barlow Condensed (OFL)
@@ -58,6 +62,7 @@ tools/reduce.py     GTFS → data/*.json
 tools/tiles.py      Protomaps build → tiles/
 tools/grid.py       tiles/ → data/grid.json, each town's address grid fitted from its street names
 tools/usu.py        Passio GO → data/usu.json (the buses themselves are fetched live by the phone)
+tools/alerts.py     GTFS-realtime alerts → data/alerts.json, decoded without protobuf bindings
 app/usu.js          live buses: polling, position along the loop, stops-away and minute estimates
 tools/hints.json    agency wording: the hub, the loops, headsigns
 sw.js               offline: the app and timetable cached; map tiles kept as seen, or all at once
@@ -86,6 +91,13 @@ so there is still no server. A stop's estimate is the nearest bus behind it on
 the loop: distance at a walking-pace bus speed plus a dwell per stop between.
 If the feed stops answering, positions are kept and minutes are dropped after
 a minute; if it reports no buses, the stop says so.
+
+Service alerts come from Connect's GTFS-realtime alerts feed at
+`mycvtdbus.org/gtfs-rt/alerts`. The server refuses requests carrying a browser
+Origin header, so phones can't read it; a GitHub Action decodes it hourly into
+`data/alerts.json`. An alert naming both a route and a stop means that route
+skips the stop while the alert is active, and the app drops those departures.
+Alerts naming only stops, or nothing, are shown in the agency's words.
 
 Addresses need no geocoder: the valley numbers its streets from each town's
 origin, so `tools/grid.py` fits a grid per town from the named streets in the

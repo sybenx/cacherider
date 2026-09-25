@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle } from '../ui.js';
 import { nearMe } from '../main.js';
@@ -117,6 +117,26 @@ async function init(app) {
   map.on('mouseleave', 'stops', () => map.getCanvas().style.cursor = '');
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((dark() ? 'dark' : 'light') !== flavorName) { ready = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); }); } });
   wireChrome(app);
+  wireGrip(app);
+}
+
+/** Dragging the card's grip down closes it; the browser's pull-to-refresh never sees the gesture. */
+function wireGrip(app) {
+  const card = col.querySelector('#mapcard');
+  let y0 = null, pid = null;
+  card.addEventListener('pointerdown', e => {
+    if (!e.target.closest('.grip')) return;
+    y0 = e.clientY; pid = e.pointerId; card.setPointerCapture(pid); card.style.transition = 'none';
+    e.preventDefault();
+  });
+  card.addEventListener('pointermove', e => { if (y0 === null) return; card.style.transform = `translateY(${Math.max(0, e.clientY - y0)}px)`; });
+  const end = e => {
+    if (y0 === null) return;
+    const dy = e.clientY - y0; y0 = null;
+    card.style.transition = ''; card.style.transform = '';
+    if (dy > 50) { selectedBus = null; selectedU = null; select(null, app); }
+  };
+  card.addEventListener('pointerup', end); card.addEventListener('pointercancel', end);
 }
 
 function chrome() {
@@ -179,7 +199,9 @@ function select(id, app, fly = false, zoomIn = false) {
   const clockNow = now();
   const next = nextAt(si, 3, clockNow);
   const fromHub = metres(distance(s.lat, s.lon, D.hub.lat, D.hub.lon));
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${s.town} · Stop ${s.code || s.id} · ${fromHub} from the ${D.hub.name}</span><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div></div>
+  const closed = closedRoutes(si, clockNow.ymd), al = stopAlerts(si, clockNow.ymd);
+  const alertLine = al.length ? html`<span class="eyebrow alert">${icon('ban', 14)}${closed.size ? [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ') + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' : al[0].title}</span>` : '';
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${s.town} · Stop ${s.code || s.id} · ${fromHub} from the ${D.hub.name}</span><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div>${alertLine}</div>
     ${next.length ? next.map(t => depRow(t, clockNow, { name: t.day ? undefined : undefined })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a></div>`;
   card.classList.remove('hidden');

@@ -1,6 +1,6 @@
 // Home: useful without permission. Search, the next pulse, what this phone
 // remembers, every route. With location on, the nearest stops first.
-import { D, nextAt, nextPulse, nextFromHub, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts } from '../data.js';
 import { relative, fmtDay, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
@@ -20,6 +20,12 @@ export function render({ q }, clockNow) {
 
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
+  for (const a of systemAlerts(clockNow.ymd)) parts.push(html`<div class="callout alert">${icon('info', 20)}<div><b>${a.title}</b><div class="sub">${a.text}</div></div></div>`);
+  const detours = activeAlerts(clockNow.ymd).filter(a => (a.stops || []).length || (a.routes || []).length);
+  if (detours.length) {
+    const rs = [...new Set(detours.flatMap(a => a.routes || []))].sort((x, y) => +x - +y);
+    parts.push(html`<div class="notice">${icon('ban', 16)}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on route' + (rs.length > 1 ? 's ' : ' ') + rs.join(', ') : ''} · <a href="#/about">details</a></span></div>`);
+  }
   parts.push(installCard());
   parts.push(pulseCard(clockNow));
 

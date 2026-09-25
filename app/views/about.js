@@ -1,7 +1,7 @@
 // What this is, where the times come from, and the offline map switch.
-import { D, BASE, pref } from '../data.js';
+import { D, BASE, pref, A, activeAlerts } from '../data.js';
 import { fmtDay } from '../time.js';
-import { html, icon, corners } from '../ui.js';
+import { html, icon, corners, badges } from '../ui.js';
 import { installState, iosSheet, app } from '../main.js';
 
 export function render(_, clockNow) {
@@ -21,6 +21,8 @@ export function render(_, clockNow) {
     <div class="section">${icon('map', 16)}Offline map</div>
     <div class="pad" id="offline"><p class="muted" style="font-size:14px" id="offline-note">Keeps the whole Cache Valley street map on this phone, so it draws with no signal. Streets you've already looked at are kept anyway.</p>
       <button class="btn btn-secondary btn-lg blueprint" id="save-map">${corners()}${icon('down', 20)}Save the map for offline</button></div>
+    <div class="section" id="alerts">${icon('ban', 16)}Service alerts</div>
+    ${alertsBlock(clockNow)}
     <div class="section">${icon('info', 16)}Feed</div>
     <div class="pad muted" style="font-size:14px"><p>${D.feed.version || ''}</p><p><a href="${D.agency.url}" target="_blank" rel="noopener">${D.agency.url}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fares</a>` : ''}</p>
       <p><a href="https://github.com/sybenx/cacherider" target="_blank" rel="noopener">Source on GitHub</a> · Companion to the <a href="https://github.com/sybenx/headway" target="_blank" rel="noopener">Headway</a> Pebble watchface. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, via Protomaps.</p></div>
@@ -91,3 +93,13 @@ async function mount(el) {
     await status();
   };
 }
+
+function alertsBlock(clockNow) {
+  const al = activeAlerts(clockNow.ymd);
+  const when = A.fetched ? new Date(A.fetched) : null;
+  const upd = when ? `Checked ${when.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : '';
+  if (!al.length) return html`<div class="pad muted" style="font-size:14px"><p>Nothing from ${D.agency.brand} right now. ${upd}</p></div>`;
+  return html`<div class="list">${al.map(a => html`<div class="alertrow">${a.ri && a.ri.length ? badges(a.ri, 24) : ''}<b>${a.title}</b><p>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</p>${known(a).length ? html`<p class="muted">Stops: ${known(a).map(id => html`<a href="#/stop/${id}">${D.stops[D.stopById[id]].name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), [])}</p>` : ''}</div>`)}</div><div class="fine">${upd}. Alerts come from ${D.agency.brand}'s rider alerts feed, checked hourly.</div>`;
+}
+// Stops the alert names that are in the timetable; the others are in its words already.
+const known = a => (a.stops || []).filter(id => D.stopById[id] !== undefined);

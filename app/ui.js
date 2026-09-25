@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop } from './data.js';
+import { D, route, stop, A, stopAlerts } from './data.js';
 import { clock, relative, dayName } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -81,7 +81,8 @@ export function stopRow(si, next, clockNow, opts = {}) {
     : `<div class="end"><span class="rel">${esc(opts.none || 'No service today')}</span></div>`;
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
-  const dist = `<span class="dist">${esc([opts.dist, num].filter(Boolean).join(' · '))}</span>`;
+  const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';
+  const dist = `<span class="dist">${esc([opts.dist, num].filter(Boolean).join(' · '))}${alert ? (opts.dist || num ? ' · ' : '') + alert : ''}</span>`;
   return raw(`<a class="stoprow" href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${dist}${badges(s.routes, 24).s}</div>${end}</a>`);
 }
 
