@@ -62,6 +62,7 @@ tools/reduce.py     GTFS → data/*.json
 tools/tiles.py      Protomaps build → tiles/
 tools/grid.py       tiles/ → data/grid.json, each town's address grid fitted from its street names
 tools/usu.py        Passio GO → data/usu.json (the buses themselves are fetched live by the phone)
+tools/crossings.py  tiles/ + route shapes → data/crossings.json, where each route meets a public street
 tools/alerts.py     GTFS-realtime alerts → data/alerts.json, decoded without protobuf bindings
 app/usu.js          live buses: polling, position along the loop, stops-away and minute estimates
 tools/hints.json    agency wording: the hub, the loops, headsigns
@@ -99,7 +100,10 @@ Origin header, so phones can't read it; a GitHub Action decodes it hourly into
 skips the stop while the alert is active, and the app drops those departures.
 On the map a closed stop is a hollow ring, and the stretch of route between the
 served stops either side of it goes to dots, cut from the drawn shape by walking
-it forward from one to the other. Alerts naming only stops, or nothing, are shown
+it forward from one to the other, then trimmed to the first intersection after
+the last served stop and the last one before the next, since a bus at a served
+stop always drives on to the corner (`tools/crossings.py` finds the intersections
+in the map's own road tiles). Alerts naming only stops, or nothing, are shown
 in the agency's words.
 
 The Map tab has an optional aerial view: the USGS National Map imagery

@@ -29,17 +29,13 @@ function style(sat = true) {
   const flavor = dark() ? 'dark' : 'light';
   flavorName = flavor;
   const f = namedFlavor(flavor);
-  // Imagery slides in under the basemap's labels: everything drawn before its first symbol layer is covered.
   const base = layers('protomaps', f, { lang: 'en' });
-  const firstSymbol = Math.max(0, base.findIndex(l => l.type === 'symbol'));
-  base.splice(firstSymbol, 0, { id: 'sat', type: 'raster', source: 'sat', layout: { visibility: sat && satOn() ? 'visible' : 'none' } });
   return {
     version: 8,
     glyphs: BASE + 'vendor/basemaps-assets/fonts/{fontstack}/{range}.pbf',
     sprite: BASE + 'vendor/basemaps-assets/sprites/' + flavor,
     sources: {
       protomaps: { type: 'vector', tiles: [BASE + 'tiles/{z}/{x}/{y}.pbf'], minzoom: TILES.minzoom, maxzoom: TILES.maxzoom, bounds: TILES.bounds, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
-      sat: { type: 'raster', tiles: SAT.tiles, tileSize: 256, maxzoom: SAT.maxzoom, bounds: TILES.bounds, attribution: SAT.attribution },
       stops: { type: 'geojson', data: stopsGeo() },
       lines: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       lclosed: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },   // the stretches of route we can't vouch for
@@ -86,7 +82,7 @@ function closedSegments(fc) {
   const out = [];
   for (const [ri, ids] of Object.entries(byRoute)) {
     const r = D.routes[+ri];
-    const shapes = fc.features.filter(f => f.properties.route === +ri).map(f => f.geometry.coordinates);
+    const shapes = fc.features.filter(f => f.properties.route === +ri);
     if (!shapes.length) continue;
     const done = new Set();
     for (const seq of Object.values(r.stops || {})) {
@@ -98,19 +94,23 @@ function closedSegments(fc) {
         i = j;
         if (done.has(key)) continue;
         done.add(key);
-        const cut = cutShape(shapes, from, to);
+        const cut = cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]));
         if (cut) out.push({ type: 'Feature', properties: { color: '#' + r.color, route: +ri }, geometry: { type: 'LineString', coordinates: cut } });
       }
     }
   }
   return { type: 'FeatureCollection', features: out };
 }
-/** Walk each shape forward from `from` to `to`; the shortest such walk is the stretch the bus would have driven. */
-function cutShape(shapes, from, to) {
+/** Walk each shape forward from `from` to `to`; the shortest such walk is the stretch the bus would have driven.
+ *  Then trim it: a bus at a served stop always drives on to the next corner, so the dots start at the first
+ *  intersection after `from` and end at the last one before `to`, never tighter than the closed stops themselves. */
+function cutShape(shapes, from, to, closed) {
   const NEAR = 60;   // metres: a stop is on the line if a vertex is this close
   let best = null;
-  for (const c of shapes) {
-    const n = c.length;
+  for (const f of shapes) {
+    const c = f.geometry.coordinates, n = c.length;
+    if (!f._cum) { f._cum = [0]; for (let k = 1; k < n; k++) f._cum.push(f._cum[k - 1] + distance(c[k - 1][1], c[k - 1][0], c[k][1], c[k][0])); }
+    const total = f._cum[n - 1] + distance(c[n - 1][1], c[n - 1][0], c[0][1], c[0][0]);
     const near = s => c.map((p, k) => [distance(p[1], p[0], s.lat, s.lon), k]).filter(x => x[0] <= NEAR).map(x => x[1]);
     for (const a of near(from)) {
       // forward from a, wrapping once round a loop, to the first vertex near `to`
@@ -122,12 +122,27 @@ function cutShape(shapes, from, to) {
         if (distance(c[k][1], c[k][0], to.lat, to.lon) <= NEAR) { hit = k; break; }
       }
       if (hit < 0 || (best && len >= best.len)) continue;
-      const coords = [];
-      for (let m = a, t = 0; t <= steps; t++, m = (m + 1) % n) coords.push(c[m]);
-      best = { len, coords };
+      best = { len, f, a, steps, total };
     }
   }
-  return best && best.len < 6000 ? best.coords : null;   // a walk longer than that is the wrong pass, not a detour
+  if (!best || best.len >= 6000) return null;   // a walk longer than that is the wrong pass, not a detour
+  const { f, a, steps, total } = best, c = f.geometry.coordinates, n = c.length;
+  const walk = [];   // [distance along the walk, [lon, lat]]
+  for (let m = a, t = 0, d = 0; t <= steps; t++, m = (m + 1) % n) {
+    if (t) d += distance(c[(m + n - 1) % n][1], c[(m + n - 1) % n][0], c[m][1], c[m][0]);
+    walk.push([d, c[m]]);
+  }
+  const along = s => { let bi = 0; for (let i = 1; i < walk.length; i++) if (distance(walk[i][1][1], walk[i][1][0], s.lat, s.lon) < distance(walk[bi][1][1], walk[bi][1][0], s.lat, s.lon)) bi = i; return walk[bi][0]; };
+  const firstClosed = Math.min(...closed.map(along)), lastClosed = Math.max(...closed.map(along));
+  const xs = (XINGS[f.properties.shape] || []).map(x => (x - f._cum[a] + total) % total).filter(w => w > 12 && w < best.len - 12).sort((p, q) => p - q);
+  let start = xs.find(w => w < firstClosed - 5); start = start === undefined ? 0 : start;
+  let end = [...xs].reverse().find(w => w > lastClosed + 5); end = end === undefined ? best.len : end;
+  return slice(walk, start, end);
+}
+/** The part of a walk between two distances along it, ends interpolated. */
+function slice(walk, d0, d1) {
+  const at = d => { for (let i = 1; i < walk.length; i++) if (walk[i][0] >= d) { const [a, pa] = walk[i - 1], [b, pb] = walk[i], t = b === a ? 0 : (d - a) / (b - a); return [pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t]; } return walk[walk.length - 1][1]; };
+  return [at(d0), ...walk.filter(([d]) => d > d0 && d < d1).map(w => w[1]), at(d1)];
 }
 
 function usuStopsGeo() {
@@ -136,7 +151,12 @@ function usuStopsGeo() {
 }
 function usuLinesGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
-  return { type: 'FeatureCollection', features: U.routes.filter(r => r.shape.length && !r.outdated).map(r => ({ type: 'Feature', properties: { id: r.id, color: r.color }, geometry: { type: 'LineString', coordinates: r.shape } })) };
+  // Passio's "outdated" flag doesn't stop a route running, so every route with a shape is drawn; one without gets a
+  // stop-to-stop line as a stand-in.
+  return { type: 'FeatureCollection', features: U.routes.filter(r => r.shape.length || r.stops.length >= 3).map(r => {
+    const coords = r.shape.length ? r.shape : [...r.stops, r.stops[0]].map(si => [U.stops[si].lon, U.stops[si].lat]);
+    return { type: 'Feature', properties: { id: r.id, color: r.color, approx: !r.shape.length }, geometry: { type: 'LineString', coordinates: coords } };
+  }) };
 }
 /** A small square, white-edged, in a route's colour, for the shuttle stops. */
 function squareImage(hex) {
@@ -153,10 +173,12 @@ function addUsuImages() {
   for (const r of U.routes) { const name = 'usq-' + r.color.slice(1); if (!map.hasImage(name)) map.addImage(name, squareImage(r.color)); }
 }
 
-let shapesFC = null;   // the route lines, fetched once for both maps
+let shapesFC = null, XINGS = {};   // the route lines, fetched once for both maps; intersections along each, by shape id
 function shapes() {
-  if (!shapesFC) shapesFC = fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json())
-    .then(j => ({ type: 'FeatureCollection', features: j.lines.map(l => ({ type: 'Feature', properties: { color: '#' + route(l.route).color, route: l.route }, geometry: { type: 'LineString', coordinates: l.coords } })) }))
+  if (!shapesFC) shapesFC = Promise.all([
+    fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json()),
+    fetch(BASE + 'data/crossings.json').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => ({ type: 'Feature', properties: { color: '#' + route(l.route).color, route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } })) }; })
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
@@ -208,7 +230,7 @@ async function init(app) {
   });
   map.on('mouseenter', 'stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'stops', () => map.getCanvas().style.cursor = '');
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((dark() ? 'dark' : 'light') !== flavorName) { ready = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); }); } });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((dark() ? 'dark' : 'light') !== flavorName) { ready = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); showSat(sat); }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -233,13 +255,24 @@ function wireGrip(app) {
 }
 
 /** The satellite toggle, a map control beside the zoom buttons; the choice is kept on the phone. */
+/** Imagery slides in under the basemap's labels: everything drawn before its first symbol layer is covered.
+ *  The layer exists only while it's on; a hidden raster layer in the initial style left the basemap unpainted. */
+function showSat(on) {
+  if (!map || !ready) return;
+  if (!on) { if (map.getLayer('sat')) map.removeLayer('sat'); if (map.getSource('sat')) map.removeSource('sat'); return; }
+  if (map.getLayer('sat')) return;
+  if (!map.getSource('sat')) map.addSource('sat', { type: 'raster', tiles: SAT.tiles, tileSize: 256, maxzoom: SAT.maxzoom, bounds: TILES.bounds, attribution: SAT.attribution });
+  const first = map.getStyle().layers.find(l => l.type === 'symbol');
+  map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, first && first.id);
+}
+
 function satControl() {
   return {
     onAdd() {
       const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
       const b = document.createElement('button'); b.type = 'button'; b.className = 'satbtn'; b.title = 'Satellite'; b.setAttribute('aria-label', 'Satellite imagery');
       b.innerHTML = icon('globe', 20).s; b.setAttribute('aria-pressed', satOn() ? 'true' : 'false');
-      b.onclick = () => { const on = !sat; sat = on; b.setAttribute('aria-pressed', on ? 'true' : 'false'); if (map.getLayer('sat')) map.setLayoutProperty('sat', 'visibility', on ? 'visible' : 'none'); };
+      b.onclick = () => { sat = !sat; b.setAttribute('aria-pressed', sat ? 'true' : 'false'); showSat(sat); };
       el.appendChild(b); this.el = el; return el;
     },
     onRemove() { this.el.remove(); },

@@ -23,6 +23,10 @@ jobs:
         run: curl -fsSL -o /tmp/cvtd.zip https://mycvtdbus.org/gtfs
       - name: Reduce
         run: python3 tools/reduce.py /tmp/cvtd.zip --hints tools/hints.json --out data
+      - name: Intersections along each route, from the map tiles
+        run: |
+          pip install -q mapbox-vector-tile
+          python3 tools/crossings.py
       - name: Snapshot the USU shuttle's routes and stops
         run: python3 tools/usu.py || echo 'shuttle feed unreachable; keeping the last snapshot'
       - name: Commit if changed
@@ -35,13 +39,13 @@ jobs:
               old = json.loads(subprocess.check_output(['git', 'show', 'HEAD:data/cvtd.json'])); old['feed'].pop('built', None)
           except Exception:
               old = None
-          shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json']) != 0
+          shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json', 'data/crossings.json']) != 0
           print('yes' if new != old or shapes else 'no')
           EOF
           )
           if [ "$changed" != yes ]; then echo 'no change'; git checkout -- data; exit 0; fi
           git config user.name 'transit data'
           git config user.email 'actions@users.noreply.github.com'
-          git add data/cvtd.json data/cvtd-shapes.json data/usu.json
+          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json
           git commit -m "Transit data: $(date -u +%Y-%m-%d)"
           git push

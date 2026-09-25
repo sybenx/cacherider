@@ -29,11 +29,12 @@ jobs:
           pip install -q pmtiles mapbox-vector-tile
           python3 tools/tiles.py
           python3 tools/grid.py
+          python3 tools/crossings.py
       - name: Commit if changed
         run: |
           git config user.name 'map tiles'
           git config user.email 'actions@users.noreply.github.com'
-          git add -A tiles data/grid.json
+          git add -A tiles data/grid.json data/crossings.json
           git diff --cached --quiet && echo 'no change' && exit 0
           git commit -m "Map tiles: $(date -u +%Y-%m-%d)"
           git push
