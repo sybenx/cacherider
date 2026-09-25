@@ -138,9 +138,11 @@ function cutShape(shapes, from, to, closed) {
   }
   const along = s => { let bi = 0; for (let i = 1; i < walk.length; i++) if (distance(walk[i][1][1], walk[i][1][0], s.lat, s.lon) < distance(walk[bi][1][1], walk[bi][1][0], s.lat, s.lon)) bi = i; return walk[bi][0]; };
   const firstClosed = Math.min(...closed.map(along)), lastClosed = Math.max(...closed.map(along));
-  const xs = (XINGS[f.properties.shape] || []).map(x => (x - f._cum[a] + total) % total).filter(w => w > 12 && w < best.len - 12).sort((p, q) => p - q);
-  let start = xs.find(w => w < firstClosed - 5); start = start === undefined ? 0 : start;
-  let end = [...xs].reverse().find(w => w > lastClosed + 5); end = end === undefined ? best.len : end;
+  // The walk may begin a little before the served stop and end a little after the next; the cut is measured from the stops.
+  const fromAt = along(from), toAt = along(to);
+  const xs = (XINGS[f.properties.shape] || []).map(x => (x - f._cum[a] + total) % total).filter(w => w > fromAt + 10 && w < toAt - 10).sort((p, q) => p - q);
+  let start = xs.find(w => w < firstClosed - 5); start = start === undefined ? fromAt : start;
+  let end = [...xs].reverse().find(w => w > lastClosed + 5); end = end === undefined ? toAt : end;
   return slice(walk, start, end);
 }
 /** The part of a walk between two distances along it, ends interpolated. */
