@@ -242,23 +242,47 @@ async function init(app) {
   wireGrip(app);
 }
 
-/** Dragging the card's grip down closes it; the browser's pull-to-refresh never sees the gesture. */
+/** Swiping the card down closes it, from anywhere on it: the gesture is claimed on the first move only when the
+ *  card is scrolled to the top and the finger is heading down, so scrolling and taps work as before. The grip
+ *  also drags with a mouse. The browser's pull-to-refresh never sees any of it. */
 function wireGrip(app) {
   const card = col.querySelector('#mapcard');
-  let y0 = null, pid = null;
-  card.addEventListener('pointerdown', e => {
-    if (!e.target.closest('.grip')) return;
-    y0 = e.clientY; pid = e.pointerId; card.setPointerCapture(pid); card.style.transition = 'none';
-    e.preventDefault();
-  });
-  card.addEventListener('pointermove', e => { if (y0 === null) return; card.style.transform = `translateY(${Math.max(0, e.clientY - y0)}px)`; });
-  const end = e => {
-    if (y0 === null) return;
-    const dy = e.clientY - y0; y0 = null;
+  const close = () => { selectedBus = null; selectedU = null; select(null, app); };
+  let y0 = null, x0 = 0, t0 = 0, claimed = false;
+  const settle = (dy, dt) => {
     card.style.transition = ''; card.style.transform = '';
-    if (dy > 50) { selectedBus = null; selectedU = null; select(null, app); }
+    if (dy > 70 || (dy > 24 && dy / Math.max(dt, 1) > 0.5)) close();   // far enough, or a flick
   };
-  card.addEventListener('pointerup', end); card.addEventListener('pointercancel', end);
+  card.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { y0 = null; return; }
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = e.timeStamp; claimed = false;
+  }, { passive: true });
+  card.addEventListener('touchmove', e => {
+    if (y0 === null || e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+    if (!claimed) {
+      if (card.scrollTop > 0 || dy <= 0 || Math.abs(dx) > Math.abs(dy)) { y0 = null; return; }   // the browser's: a scroll, or a tap
+      claimed = true; card.style.transition = 'none';
+    }
+    e.preventDefault();
+    card.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  }, { passive: false });
+  const touchEnd = e => {
+    if (y0 === null) return;
+    const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : y0) - y0;
+    y0 = null;
+    if (claimed) settle(dy, e.timeStamp - t0);
+  };
+  card.addEventListener('touchend', touchEnd); card.addEventListener('touchcancel', touchEnd);
+  // a mouse drags the grip
+  let my0 = null;
+  card.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch' || !e.target.closest('.grip')) return;
+    my0 = e.clientY; t0 = e.timeStamp; card.setPointerCapture(e.pointerId); card.style.transition = 'none'; e.preventDefault();
+  });
+  card.addEventListener('pointermove', e => { if (my0 === null) return; card.style.transform = `translateY(${Math.max(0, e.clientY - my0)}px)`; });
+  const mouseEnd = e => { if (my0 === null) return; const dy = e.clientY - my0; my0 = null; settle(dy, e.timeStamp - t0); };
+  card.addEventListener('pointerup', mouseEnd); card.addEventListener('pointercancel', mouseEnd);
 }
 
 /** The satellite toggle, a map control beside the zoom buttons; the choice is kept on the phone. */
