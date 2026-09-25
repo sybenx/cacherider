@@ -97,7 +97,10 @@ Service alerts come from Connect's GTFS-realtime alerts feed at
 Origin header, so phones can't read it; a GitHub Action decodes it hourly into
 `data/alerts.json`. An alert naming both a route and a stop means that route
 skips the stop while the alert is active, and the app drops those departures.
-Alerts naming only stops, or nothing, are shown in the agency's words.
+On the map a closed stop is a hollow ring, and the stretch of route between the
+served stops either side of it goes to dots, cut from the drawn shape by walking
+it forward from one to the other. Alerts naming only stops, or nothing, are shown
+in the agency's words.
 
 The Map tab has an optional aerial view: the USGS National Map imagery
 service, public domain, NAIP over the valley, ending at zoom 16. It is loaded

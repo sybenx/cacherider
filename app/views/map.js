@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, A } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle } from '../ui.js';
 import { nearMe } from '../main.js';
@@ -42,6 +42,7 @@ function style(sat = true) {
       sat: { type: 'raster', tiles: SAT.tiles, tileSize: 256, maxzoom: SAT.maxzoom, bounds: TILES.bounds, attribution: SAT.attribution },
       stops: { type: 'geojson', data: stopsGeo() },
       lines: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+      lclosed: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },   // the stretches of route we can't vouch for
       spot: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       ustops: { type: 'geojson', data: usuStopsGeo() },
       ulines: { type: 'geojson', data: usuLinesGeo() },
@@ -52,12 +53,20 @@ function style(sat = true) {
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
+      // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
+      { id: 'route-closed-casing', type: 'line', source: 'lclosed', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 4, 14, 8, 17, 13] } },
+      { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2.5, 17, 4], 'line-opacity': 0.9, 'line-dasharray': [3, 1.5] } },
       { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
-      { id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11], 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#101214' : '#ffffff', 'circle-stroke-width': 1.5, 'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
+      { id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
+        // a closed stop is a hollow ring in its route's colour
+        'circle-color': ['case', ['get', 'closed'], flavor === 'dark' ? '#101214' : '#f2f2f3', ['get', 'color']],
+        'circle-stroke-color': ['case', ['get', 'closed'], ['get', 'color'], flavor === 'dark' ? '#101214' : '#ffffff'],
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, ['case', ['get', 'closed'], 2.5, 1.5], 17, ['case', ['get', 'closed'], 3.5, 1.5]],
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
       { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'stop-labels', type: 'symbol', source: 'stops', minzoom: 15, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
     ],
@@ -65,7 +74,60 @@ function style(sat = true) {
 }
 
 function stopsGeo() {
-  return { type: 'FeatureCollection', features: D.stops.map(s => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, color: '#' + route(s.routes[0]).color }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  const ymd = now().ymd;
+  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, color: '#' + route(s.routes[0]).color, closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+}
+
+/** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes. */
+function closedSegments(fc) {
+  const ymd = now().ymd;
+  const byRoute = {};   // route index → set of closed stop ids
+  for (const a of activeAlerts(ymd)) for (const ri of a.ri || []) for (const id of a.stops || []) (byRoute[ri] ||= new Set()).add(id);
+  const out = [];
+  for (const [ri, ids] of Object.entries(byRoute)) {
+    const r = D.routes[+ri];
+    const shapes = fc.features.filter(f => f.properties.route === +ri).map(f => f.geometry.coordinates);
+    if (!shapes.length) continue;
+    const done = new Set();
+    for (const seq of Object.values(r.stops || {})) {
+      for (let i = 0; i < seq.length; i++) {
+        if (!ids.has(D.stops[seq[i]].id)) continue;
+        let j = i; while (j + 1 < seq.length && ids.has(D.stops[seq[j + 1]].id)) j++;
+        const from = D.stops[seq[Math.max(0, i - 1)]], to = D.stops[seq[Math.min(seq.length - 1, j + 1)]];
+        const key = from.id + '>' + to.id;
+        i = j;
+        if (done.has(key)) continue;
+        done.add(key);
+        const cut = cutShape(shapes, from, to);
+        if (cut) out.push({ type: 'Feature', properties: { color: '#' + r.color, route: +ri }, geometry: { type: 'LineString', coordinates: cut } });
+      }
+    }
+  }
+  return { type: 'FeatureCollection', features: out };
+}
+/** Walk each shape forward from `from` to `to`; the shortest such walk is the stretch the bus would have driven. */
+function cutShape(shapes, from, to) {
+  const NEAR = 60;   // metres: a stop is on the line if a vertex is this close
+  let best = null;
+  for (const c of shapes) {
+    const n = c.length;
+    const near = s => c.map((p, k) => [distance(p[1], p[0], s.lat, s.lon), k]).filter(x => x[0] <= NEAR).map(x => x[1]);
+    for (const a of near(from)) {
+      // forward from a, wrapping once round a loop, to the first vertex near `to`
+      let len = 0, k = a, steps = 0, hit = -1;
+      while (steps < n) {
+        const nk = (k + 1) % n;
+        len += distance(c[k][1], c[k][0], c[nk][1], c[nk][0]);
+        k = nk; steps++;
+        if (distance(c[k][1], c[k][0], to.lat, to.lon) <= NEAR) { hit = k; break; }
+      }
+      if (hit < 0 || (best && len >= best.len)) continue;
+      const coords = [];
+      for (let m = a, t = 0; t <= steps; t++, m = (m + 1) % n) coords.push(c[m]);
+      best = { len, coords };
+    }
+  }
+  return best && best.len < 6000 ? best.coords : null;   // a walk longer than that is the wrong pass, not a detour
 }
 
 function usuStopsGeo() {
@@ -101,6 +163,15 @@ function shapes() {
 async function loadShapes(m = map) {
   const fc = await shapes();
   if (fc && m && m.getSource('lines')) m.getSource('lines').setData(fc);
+  if (fc && m && m.getSource('lclosed')) m.getSource('lclosed').setData(closedSegments(fc));
+}
+/** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
+let closedKey = null;
+function refreshClosed(clockNow) {
+  const key = A.loadedAt + ':' + clockNow.ymd;
+  if (closedKey === key) return;
+  closedKey = key;
+  for (const m of [map, mm]) if (m && m.getSource('stops')) { m.getSource('stops').setData(stopsGeo()); loadShapes(m); }
 }
 let tilesLoaded = null;
 function loadTiles() {
@@ -380,6 +451,7 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
   await init(app);
   requestAnimationFrame(() => map.resize());
   notice(clockNow);
+  if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
