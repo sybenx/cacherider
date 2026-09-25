@@ -12,6 +12,7 @@ import * as about from './views/about.js';
 import * as ustop from './views/ustop.js';
 import * as uroute from './views/uroute.js';
 import { loadUSU, setWanted, onLive, U } from './usu.js';
+import { setRtWanted, onRt } from './rt.js';
 
 const side = document.getElementById('side');
 const body = document.getElementById('body');
@@ -124,6 +125,7 @@ async function render(tick = false) {
   app.route = { name, seg, q };
   const mapOpen = name === 'map';
   setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U));
+  setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route'].includes(name));
   body.classList.toggle('map-open', mapOpen);
   if (view) {
     const same = side.dataset.view === name + (seg[1] || '');
@@ -310,6 +312,7 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (Date.now() - A.loadedAt > 3600e3) loadAlerts().then(() => render()); else render(); });
   // Fresh bus positions redraw a live screen in place.
   onLive(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
+  onRt(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').catch(() => {});
 }
 boot();

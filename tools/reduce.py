@@ -83,8 +83,15 @@ for s in raw_stops:
     stops.append({'id': s['stop_id'], 'code': s.get('stop_code', ''), 'name': name, 'town': town,
                   'lat': round(la, 5), 'lon': round(lo, 5), 'routes': [], 'hub': dist(la, lo) <= hub['radius'] and (bay or True)})
 
-# ---- departures: one row per (stop, service): [minute, route index, headsign index, direction]
+# ---- departures: one row per (stop, service): [minute, route index, headsign index, direction, trip index]
+# The trip index names the trip in the realtime feed, whose ids match the static ones without any -N suffix.
 trips = {t['trip_id']: t for t in table('trips.txt')}
+trip_ids, trip_idx = [], {}
+def trip_index(tid):
+    base = re.sub(r'-\d+$', '', tid)
+    if base not in trip_idx:
+        trip_idx[base] = len(trip_ids); trip_ids.append(base)
+    return trip_idx[base]
 head_hints = H.get('headsigns', {})
 headsigns, head_idx = [], {}
 def head(t):
@@ -109,7 +116,7 @@ for tid, rows in by_trip.items():
     for r in rows[:-1]:  # nobody boards at a trip's last stop
         if r.get('pickup_type') == '1' or r['stop_id'] not in stop_idx: continue
         si = stop_idx[r['stop_id']]
-        times.setdefault(si, {}).setdefault(t['service_id'], []).append([mins(r['departure_time']), ri, hi, di])
+        times.setdefault(si, {}).setdefault(t['service_id'], []).append([mins(r['departure_time']), ri, hi, di, trip_index(tid)])
         stop_routes.setdefault(si, set()).add(ri)
 for si, per in times.items():
     for sid in per: per[sid].sort()
@@ -159,7 +166,7 @@ pulse = {}
 for sv in services:
     count = {}
     for i in hub_stops:
-        for m, ri, hi, di in times.get(str(i), {}).get(sv['id'], []):
+        for m, ri, hi, di, _ti in times.get(str(i), {}).get(sv["id"], []):
             if ri in pulse_set: count.setdefault(m, set()).add(ri)
     pulse[sv['id']] = sorted(m for m, rs in count.items() if len(rs) >= max(3, len(pulse_set) // 2))
 hub_out = {'name': hub['name'], 'short': hub['short'], 'lat': hub['lat'], 'lon': hub['lon'],
@@ -177,7 +184,7 @@ out = {
     'feed': {'version': feed.get('feed_version', ''), 'start': feed.get('feed_start_date', ''), 'end': feed.get('feed_end_date', ''),
              'built': datetime.date.today().isoformat()},
     'routes': routes, 'services': services, 'exceptions': exceptions, 'headsigns': headsigns,
-    'stops': stops, 'hub': hub_out, 'times': times,
+    'stops': stops, 'hub': hub_out, 'times': times, 'trips': trip_ids,
 }
 os.makedirs(a.out, exist_ok=True)
 p = os.path.join(a.out, a.tag + '.json')

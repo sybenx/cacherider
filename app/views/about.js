@@ -12,8 +12,8 @@ export function render(_, clockNow) {
     <div class="head"><span class="eyebrow">Unofficial</span><h1>Cache Rider</h1></div>
     <div class="pad" style="font-size:16px;line-height:1.5">
       <p>A schedule app for ${D.agency.brand}, the ${D.agency.name} bus. Made by a rider, not by the agency.</p>
-      <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Every time is the scheduled one; buses can run early or late.</p>
-      <p>Nothing about you leaves this phone. Your location, when you share it, is used only to sort stops by distance. There are no accounts, no analytics and no cookies.</p>
+      <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Once a bus is on the road, ${D.agency.brand}'s own tracker reports where it is and when it expects to reach each stop, and those rows say <b>Live</b> instead of Scheduled. A live time is still a prediction.</p>
+      <p>Nothing about you leaves this phone. Your location, when you share it, is used only to sort stops by distance. There are no accounts, no analytics and no cookies. The live feed reaches the app through a small relay on Cloudflare, because the tracker refuses requests from browsers; the relay carries the feed one way and keeps nothing.</p>
       <p>Add it to your home screen and it works offline: the timetable is kept on the phone, and the map can be too.</p>
     </div>
     <div class="section">${icon('down', 16)}On your home screen</div>

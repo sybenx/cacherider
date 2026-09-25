@@ -4,7 +4,8 @@
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign } from '../ui.js';
+import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark } from '../ui.js';
+import { lateWords } from '../rt.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { parseAddress, geocode, townState } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, liveTag, live, hasData, board } from '../usu.js';
@@ -87,7 +88,7 @@ function giant(min) {
 function stopHeroBlock(si, why, clockNow) {
   const s = stop(si);
   const next = nextAt(si, 3, clockNow);
-  const eye = html`<div class="eye"><span class="eyebrow">${why} · Stop ${s.code || s.id}</span>${sched()}</div>`;
+  const eye = html`<div class="eye"><span class="eyebrow">${why} · Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark('Live · ' + lateWords(next[0].live.delay)) : sched()}</div>`;
   if (!next.length) {
     const resume = nextServiceDay(clockNow);
     return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span><div class="hero-none">Nothing scheduled${resume && resume !== clockNow.ymd ? html`<span class="sub">Buses resume ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;

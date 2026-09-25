@@ -8,6 +8,7 @@ import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopT
 import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
+import { rt, findBus, busStops, lateWords, rtStale, rtSeen } from '../rt.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
@@ -412,7 +413,7 @@ function applySelection() {
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
   litLines(map, hiLines, hiLoops);
-  for (const m of busMarkers.values()) m.el.classList.toggle('dim', hiLoops.length > 0 && !hiLoops.includes(U.routes[m.ri].id));
+  for (const m of busMarkers.values()) m.el.classList.toggle('dim', dimBus(m));
 }
 
 /** The picked stop's routes, or a bus's loop, drawn on top at full strength; every other line faded back. */
@@ -482,28 +483,37 @@ function busScale() {
   c.classList.toggle('bus-small', z < 13);
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
+/** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
+function dimBus(m) {
+  if (m.kind === 'c') return (hiLines.length > 0 && !hiLines.includes(m.ri)) || hiLoops.length > 0;
+  return hiLoops.length > 0 && !hiLoops.includes(U.routes[m.ri].id);
+}
+/** Every bus with a fix, shuttle and Connect alike, moved or placed; the ones gone from the feeds removed. */
 export function liveUpdate(app) {
-  if (!map || !U) return;
+  if (!map) return;
   const seen = new Set();
-  for (const b of live.buses) {
+  const place = (b, kind, color, title) => {
     seen.add(b.id);
     let m = busMarkers.get(b.id);
     if (!m) {
       const el = document.createElement('div');
-      el.className = 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>'; el.title = U.routes[b.ri].name + ' · bus ' + b.name;
+      el.className = 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';
       el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
-      m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri };
+      m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind };
       busMarkers.set(b.id, m);
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
     } else glide(m, b.lon, b.lat);
-    m.el.style.setProperty('--bus-color', U.routes[b.ri].color);
+    m.el.title = title;
+    m.el.style.setProperty('--bus-color', color);
     m.marker.setRotation(b.course);
     m.ri = b.ri;
     m.el.classList.toggle('on', selectedBus === b.id);
-    m.el.classList.toggle('dim', hiLoops.length > 0 && !hiLoops.includes(U.routes[b.ri].id));
-  }
+    m.el.classList.toggle('dim', dimBus(m));
+  };
+  if (U) for (const b of live.buses) place(b, 'u', U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
+  if (!rtStale()) for (const b of rt.buses) place(b, 'c', '#' + D.routes[b.ri].color, 'Route ' + D.routes[b.ri].short + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
-  if (selectedBus) { if (live.buses.some(b => b.id === selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; applySelection(); col.querySelector('#mapcard').classList.remove('open'); } }
+  if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
 }
 // Move a bus marker to its new fix over 600 ms in geographic coordinates, so the
@@ -522,12 +532,36 @@ function glide(m, lon, lat) {
   m.anim = requestAnimationFrame(step);
 }
 function selectBus(id, app) {
-  const b = live.buses.find(x => x.id === id);
-  selectedBus = id; selectedU = null; selected = null; uHilite = ''; hiLines = []; hiLoops = b ? [U.routes[b.ri].id] : []; applySelection();
+  const c = findBus(id), b = c || live.buses.find(x => x.id === id);
+  selectedBus = id; selectedU = null; selected = null; uHilite = '';
+  hiLines = c ? [c.ri] : []; hiLoops = b && !c ? [U.routes[b.ri].id] : [];
+  applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
   busCard(app);
 }
+/** A Connect bus: its route and headsign, where it's headed next with the feed's minutes. */
+function connectCard(b, app) {
+  const r = D.routes[b.ri], clockNow = now();
+  const next = busStops(b, 5);
+  const card = col.querySelector('#mapcard');
+  const late = next.length ? lateWords(next[0].min - (schedAt(next[0].si, b) ?? next[0].min)) : '';
+  card.innerHTML = html`<div class="grip"></div><div class="head buscard">
+    <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late ? 'Live · ' + late : 'Live')}</div>
+    <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null ? D.headsigns[b.h] : r.long}</span></div></div>
+    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${D.stops[n.si].name}</span><span class="when">${n.min - clockNow.min <= 0 ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}`;
+  card.classList.remove('hidden');
+  requestAnimationFrame(() => card.classList.add('open'));
+}
+/** The scheduled minute of this bus's trip at a stop, for the late/early word. */
+function schedAt(si, b) {
+  const ti = D.trips ? D.trips.indexOf(b.trip) : -1;
+  if (ti < 0) return null;
+  for (const rows of Object.values(D.times[si] || {})) for (const t of rows) if (t[4] === ti) return t[0];
+  return null;
+}
 function busCard(app) {
+  const c = findBus(selectedBus);
+  if (c) return connectCard(c, app);
   const b = live.buses.find(x => x.id === selectedBus);
   if (!b) return;
   const r = U.routes[b.ri];

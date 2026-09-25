@@ -73,10 +73,10 @@ export function timesOn(si, ymd) {
   const per = D.times[si] || {};
   const out = [];
   const seen = new Set();
-  for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) { out.push({ min: t[0], r: t[1], h: t[2], dir: t[3] }); seen.add(t[1]); }
+  for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) { out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4] }); seen.add(t[1]); }
   const missing = (D.stops[si].routes || []).filter(r => !seen.has(r) && !routeRunsOn(r, ymd));
   if (missing.length) {
-    for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1])) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], prov: sid });
+    for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1])) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], prov: sid });
   }
   // A detour that names this stop: that route's buses aren't calling here today.
   const closed = A.byStop[D.stops[si].id] ? closedRoutes(si, ymd) : null;
@@ -95,12 +95,17 @@ function routeRunsOn(ri, ymd) {
 }
 
 /** The next departures from a stop, rolling into the days ahead. Each carries day (0 = today) and ymd. */
+/** Set by the live module: a departure today as the realtime feed has it, with `min` moved to the predicted
+ *  minute and `live` set, or `gone` when the bus has already been. Untouched when the feed has nothing. */
+export let live = t => t;
+export function setLive(fn) { live = fn; }
 export function nextAt(si, n = 7, clockNow = now(), days = 8, filter = null) {
   const out = [];
   for (let day = 0; day < days && out.length < n; day++) {
     const ymd = dayFrom(clockNow.ymd, day).ymd;
-    for (const t of timesOn(si, ymd)) {
-      if (day === 0 && t.min < clockNow.min) continue;
+    let rows = timesOn(si, ymd);
+    if (day === 0) rows = rows.map(live).filter(t => !t.gone && t.min >= clockNow.min).sort((a, b) => a.min - b.min);   // a late bus is still coming
+    for (const t of rows) {
       if (filter && !filter(t)) continue;
       out.push({ ...t, day, ymd });
       if (out.length >= n) break;

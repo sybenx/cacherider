@@ -1,5 +1,6 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
 import { D, route, stop, A, stopAlerts } from './data.js';
+import { predict, lateWords } from './rt.js';
 import { clock, relative, dayName } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -69,17 +70,26 @@ export function headsign(t) {
 }
 
 /** One departure row: badge · headsign + Scheduled · time + relative. */
-export function depRow(t, clockNow, opts = {}) {
+export const liveMark = (text = 'Live') => raw(`<span class="livetag"><i></i>${esc(text)}</span>`);
+/** The feed's word on a departure, when it has one: the row then shows the predicted time. */
+export function lively(t) {
+  if (t.live || t.gone) return t;
+  const p = predict(t);
+  return p && p.min !== undefined ? { ...t, min: p.min, live: p } : t;
+}
+export function depRow(t0, clockNow, opts = {}) {
+  const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
-  const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : sched().s;
+  const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark('Live · ' + lateWords(t.live.delay)).s : sched().s;
   return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}</div><div class="end">${time(t.min, 26).s}<span class="rel">${esc(rel)}</span></div></div>`);
 }
 
 /** A stop row for the home and search lists, with its next bus on the right. */
-export function stopRow(si, next, clockNow, opts = {}) {
+export function stopRow(si, next0, clockNow, opts = {}) {
   const s = stop(si);
+  const next = next0 ? lively(next0) : next0;
   const end = next
-    ? `<div class="end"><div class="when">${badge(next.r, 20).s}${time(next.min, 22).s}</div><span class="rel">${esc(relative(next, clockNow))}</span>${sched().s}</div>`
+    ? `<div class="end"><div class="when">${badge(next.r, 20).s}${time(next.min, 22).s}</div><span class="rel">${esc(relative(next, clockNow))}</span>${next.live ? liveMark().s : sched().s}</div>`
     : `<div class="end"><span class="rel">${esc(opts.none || 'No service today')}</span></div>`;
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);

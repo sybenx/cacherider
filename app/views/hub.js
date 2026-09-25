@@ -2,7 +2,8 @@
 // tap. Bays sit where they are, projected from the feed's coordinates.
 import { D, nextPulse, nextFromHub, nextAt, stop, route, today } from '../data.js';
 import { relative, countdown, clockList, fmtDay, dayName, clockText } from '../time.js';
-import { html, icon, badge, time, sched, corners, depRow, headsign } from '../ui.js';
+import { html, icon, badge, time, sched, corners, depRow, headsign, liveMark } from '../ui.js';
+import { lateWords } from '../rt.js';
 
 export function render({ bay }, clockNow) {
   const H = D.hub;
@@ -17,7 +18,7 @@ export function render({ bay }, clockNow) {
       const n = nextFromHub(ri, 3, clockNow);
       if (!n.length) continue;
       const then = n.slice(1).filter(t => t.day === n[0].day).map(t => t.min);
-      parts.push(html`<a class="row tap" href="#/stop/${stop(n[0].stop).id}">${badge(ri, 36)}<div class="mid"><span class="name">${route(ri).long}</span><span class="sub">${then.length ? 'then ' + clockList(then) : n[0].day ? dayName(n[0].ymd) : sched().s}</span></div><div class="end">${time(n[0].min, 26)}<span class="rel">${relative(n[0], clockNow)}</span></div></a>`);
+      parts.push(html`<a class="row tap" href="#/stop/${stop(n[0].stop).id}">${badge(ri, 36)}<div class="mid"><span class="name">${route(ri).long}</span><span class="sub">${n[0].live ? liveMark('Live · ' + lateWords(n[0].live.delay)) : then.length ? 'then ' + clockList(then) : n[0].day ? dayName(n[0].ymd) : sched()}</span></div><div class="end">${time(n[0].min, 26)}<span class="rel">${relative(n[0], clockNow)}</span></div></a>`);
     }
     parts.push(html`<div class="section between"><span>Bays</span><span class="note">Tap a bay for its next buses</span></div>`);
   }

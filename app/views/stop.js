@@ -2,7 +2,8 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle } from '../ui.js';
+import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark } from '../ui.js';
+import { lateWords } from '../rt.js';
 import { U, chips, liveTag } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
@@ -28,7 +29,7 @@ export function render({ id, full }, clockNow) {
     const tsd = side(ti);
     parts.push(html`<a class="twin blueprint" href="#/stop/${t.id}">${corners()}<span style="color:var(--color-accent-700)">${icon('swap', 22)}</span>
       <div class="mid"><span class="eyebrow">Across the road · ${metres(td)}</span><span class="name">${t.name}${tsd ? ' · ' + tsd : ''}</span>
-      ${n ? html`<div class="when">${badge(n.r, 20)}${time(n.min, 17)}<span class="rel">${relative(n, clockNow)}</span>${sched()}</div>` : html`<span class="rel">No service today</span>`}</div>
+      ${n ? html`<div class="when">${badge(n.r, 20)}${time(n.min, 17)}<span class="rel">${relative(n, clockNow)}</span>${n.live ? liveMark() : sched()}</div>` : html`<span class="rel">No service today</span>`}</div>
       <span class="muted">${icon('fwd', 20)}</span></a>`);
   }
 
@@ -82,7 +83,7 @@ export function render({ id, full }, clockNow) {
 
   const first = next[0];
   const dayWord = first.day === 0 ? '' : first.day === 1 ? 'tomorrow, ' + dayName(first.ymd, true) : dayName(first.ymd);
-  parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${sched()}</div>
+  parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark('Live · ' + lateWords(first.live.delay)) : sched()}</div>
     <div class="big">${time(first.min, 60)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span></div>
     <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div></div>`);
 
