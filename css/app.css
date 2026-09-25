@@ -457,3 +457,67 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
   .mapbar, .mapresults, .mapnotice { max-width: 480px; }
   .mapcard { max-width: 480px; left: auto; right: 16px; bottom: 16px; border: 1px solid var(--cr-line); }
 }
+
+/* ---- the landing: the watchface on the phone ---- */
+.land { min-height: 100%; display: flex; flex-direction: column; }
+.land .spacer { flex: 1; min-height: 12px; }
+.land-top { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px 0 16px; min-height: 56px; }
+.land-top .wordmark { font-family: var(--font-heading); font-weight: 600; font-size: 22px; letter-spacing: -.01em; }
+.land-right { display: flex; align-items: center; gap: 4px; }
+.land-date { font-family: var(--font-heading); font-weight: 600; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; padding-right: 8px; }
+.land-top .btn-icon { width: 44px; height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--color-text); }
+.land-alert { margin-top: 10px; }
+/* the hero: the right-hand rule from the watchface, one answer set large */
+.hero { display: flex; flex-direction: column; gap: 14px; margin: 18px 12px 0 16px; padding-right: 16px; border-right: 2px solid var(--color-text); color: inherit; text-decoration: none; }
+.hero .eye { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hero .eye .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-main { display: flex; flex-direction: column; gap: 14px; color: inherit; text-decoration: none; }
+.hero .stopname { font-size: 20px; font-weight: 500; line-height: 1.2; }
+.giant { display: flex; align-items: center; font-family: var(--font-heading); font-weight: 600; font-size: clamp(100px, 40vw, 170px); line-height: .8; letter-spacing: -.03em; font-variant-numeric: tabular-nums; margin: 6px 0 0 -4px; }
+.giant .colon { display: flex; flex-direction: column; gap: .2em; margin: 0 .06em; }
+.giant .colon i { display: block; width: .12em; height: .12em; background: var(--color-accent); }
+.giant.count { align-items: baseline; gap: .06em; }
+.giant.count .unit { font-size: .38em; color: var(--color-accent); letter-spacing: 0; }
+.hero .who { display: flex; align-items: center; gap: 12px; }
+.hero .who .mid { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.hero .who .dest { font-size: 16px; font-weight: 500; line-height: 1.25; }
+.hero .who .sub, .hero .sub { font-size: 13.5px; color: var(--cr-muted); }
+.hero .who .rt { font-family: var(--font-heading); font-weight: 600; font-size: 34px; line-height: 1; color: var(--color-accent-700); white-space: nowrap; }
+.hero .then { display: flex; align-items: baseline; gap: 18px; padding-top: 14px; border-top: 1px solid var(--cr-line); }
+.hero .then .eyebrow.muted { color: var(--cr-muted); }
+.hero .then .day, .land-row .day { font-family: var(--font-body); font-size: 11.5px; color: var(--cr-muted); margin-left: 4px; }
+.hero .loops { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 14px; border-top: 1px solid var(--cr-line); }
+.hero .loops .loop { display: flex; align-items: center; gap: 8px; }
+.hero .loops .col { display: flex; flex-direction: column; gap: 2px; }
+.hero-none { font-family: var(--font-heading); font-weight: 600; font-size: 44px; line-height: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px; }
+.hero-none .sub { font-family: var(--font-body); font-weight: 400; font-size: 14px; }
+/* beneath: the pulse as one line, then the rows */
+.land-pulse { margin: 0 16px 14px; padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; color: inherit; text-decoration: none; }
+.land-pulse .col { display: flex; flex-direction: column; gap: 8px; }
+.land-pulse .line { display: flex; align-items: baseline; gap: 10px; }
+.land-pulse .sub { font-size: 16px; color: var(--cr-muted); }
+.land-eye { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; min-height: 28px; font-size: 11.5px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); border-top: 1px solid var(--cr-line); }
+.land-eye .edit { font-size: 13px; letter-spacing: 0; text-transform: none; min-height: 28px; padding: 0 4px; }
+.land-rows { display: flex; flex-direction: column; }
+.land-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 64px; padding: 10px 16px; border-top: 1px solid var(--cr-line); color: inherit; text-decoration: none; }
+.land-rows .land-row:first-child { border-top: 0; }
+.land-row .col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.land-row .name { font-size: 16px; font-weight: 500; }
+.land-row .sub { font-size: 12.5px; color: var(--cr-muted); }
+.land-row .end { display: flex; align-items: center; gap: 8px; }
+/* both systems, side by side */
+.systems { margin: 0 16px 16px; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--cr-line); }
+.systems.one { grid-template-columns: 1fr; }
+.systems a { padding: 12px 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; color: inherit; text-decoration: none; }
+.systems a + a { border-left: 1px solid var(--cr-line); }
+.systems .tag { display: flex; }
+.systems .col { display: flex; flex-direction: column; gap: 2px; }
+.systems .sys { font-family: var(--font-heading); font-weight: 600; font-size: 24px; line-height: 1.05; }
+.systems .sub { font-size: 13px; color: var(--cr-muted); }
+.systems .swatches { display: flex; gap: 3px; }
+.systems .swatches span { width: 14px; height: 6px; display: block; }
+/* one ask for location */
+.ask { padding: 0 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.ask .btn-lg { min-height: 52px; font-family: var(--font-heading); font-weight: 600; font-size: 19px; letter-spacing: .01em; gap: 8px; }
+.ask-note { font-size: 12.5px; line-height: 1.45; color: var(--cr-muted); text-align: center; text-wrap: pretty; }
+@media (min-width: 900px) { .land-top { display: none; } .hero { margin-top: 16px; } }
