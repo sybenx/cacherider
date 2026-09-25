@@ -40,7 +40,7 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   screen, in your order. Saved on the phone, no account.
 - **Offline** — add it to your home screen and the timetable stays on the
   phone. The map can be saved too. Chrome offers its install prompt as a
-  card; on an iPhone the app shows the Share → Add to Home Screen steps once,
+  card once a stop is saved; on an iPhone the app shows the Share → Add to Home Screen steps once,
   on the third day it's opened.
 
 Every time shown is the scheduled one. Nothing about you leaves the phone: no

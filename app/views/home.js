@@ -65,7 +65,7 @@ function landing(clockNow, app) {
     const rs = [...new Set(detours.flatMap(a => a.routes || []))].sort((x, y) => +x - +y);
     parts.push(html`<div class="notice">${icon('ban', 16)}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on route' + (rs.length > 1 ? 's ' : ' ') + rs.join(', ') : ''} · <a href="#/about">details</a></span></div>`);
   }
-  parts.push(installCard());
+  if (sv.length) parts.push(installCard());   // the offer waits until a rider has saved a stop: proof it's their app
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
   if (app) app.hasCampusSaved = sv.some(id => id.startsWith('u:'));
   return { html: html`<div class="land">${html.raw(parts.join(''))}</div>`.s, mount, title: '' };
