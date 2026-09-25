@@ -264,8 +264,9 @@ function selectU(id, app) {
   selectedU = si; selectedBus = null; selected = null; uHilite = id; applySelection();
   for (const m of busMarkers.values()) m.el.classList.remove('on');
   const s = U.stops[si];
-  map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), offset: [0, -120], duration: 650 });
   uCard(app);
+  const card = col.querySelector('#mapcard');
+  map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), offset: [0, -(card.offsetHeight / 2)], duration: 650 });
 }
 function uCard(app) {
   const si = selectedU, s = U.stops[si];
@@ -329,9 +330,10 @@ export async function show({ stopId, ustopId, at, focus, hub, tick }, app, clock
       const changed = lastFocused !== stopId;
       lastFocused = stopId;
       selected = stopId; uHilite = ''; applySelection();
-      // A click on the map already eased there; a fresh arrival from elsewhere eases now.
-      if (focus && changed && !map.isMoving()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
-      if (!matchMedia('(min-width: 900px)').matches || app.route.name === 'map') select(stopId, app, false);
+      // On the Map tab the card decides the framing, so the stop sits above it; beside the
+      // stop list there is no card, and a fresh arrival eases to the stop itself.
+      if (app.route.name === 'map') select(stopId, app, changed, changed && map.getZoom() < 15);
+      else if (focus && changed && !map.isMoving()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
     }
   } else if (ustopId && U) {
     const si = U.stopById[ustopId];
