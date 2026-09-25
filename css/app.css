@@ -362,14 +362,22 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .nobus { margin: 4px 16px 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .nobus .title { font-family: var(--font-heading); font-weight: 600; font-size: 26px; line-height: 1.05; }
 .nobus .sub { font-size: 15px; line-height: 1.45; color: var(--cr-muted); text-wrap: pretty; }
-.bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.bus { cursor: pointer; }
+.bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: var(--bus-color); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; transform: scale(var(--bus-scale, 1)); }
 .bus-marker svg { width: 14px; height: 14px; }
-.bus-marker.on { box-shadow: 0 0 0 3px var(--color-accent); }
-.bus-marker.dim { opacity: .4; }
+.bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
+.bus.dim .bus-marker { opacity: .4; }
+/* zoomed out: the circle goes, the arrow takes the route's colour, and nothing is tappable */
+#map.bus-small .bus { pointer-events: none; }
+#map.bus-small .bus-marker { border-color: transparent; background: transparent; box-shadow: none; }
+#map.bus-small .bus-marker svg { width: 22px; height: 22px; }
+#map.bus-small .bus-marker path { fill: var(--bus-color); stroke: rgba(0,0,0,.55); stroke-width: 1.5; stroke-linejoin: round; }
+#map.bus-small .bus.on .bus-marker path { stroke: var(--color-accent); stroke-width: 2.5; }
 /* thumbs: bigger buses, zoom buttons and satellite toggle on touch screens; the mouse keeps the small ones */
 @media (pointer: coarse) {
   .bus-marker { width: 30px; height: 30px; }
   .bus-marker svg { width: 18px; height: 18px; }
+  #map.bus-small .bus-marker svg { width: 26px; height: 26px; }
   #map .maplibregl-ctrl-group button { width: 46px; height: 46px; }
 }
 #map .maplibregl-ctrl-group button.satbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-text); }

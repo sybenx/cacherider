@@ -220,7 +220,8 @@ async function init(app) {
   map.addControl(satControl(), 'bottom-right');
   map.addControl(northControl(), 'bottom-right');
   squaresOnDemand(map);
-  map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); });
+  map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); });
+  map.on('zoom', busScale);
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   setTimeout(() => map.resize(), 300);
@@ -415,6 +416,16 @@ function notice(clockNow) {
 }
 
 // ---- the shuttle, live
+/** Buses follow their loops' curve: full size and tappable from zoom 14 up, shrinking below that, and
+ *  bare arrows nobody can tap below 13, so a valley-wide view isn't a pile of overlapping badges. */
+function busScale() {
+  if (!map) return;
+  const z = map.getZoom();
+  const scale = z >= 14 ? 1 : z >= 12 ? 0.45 + (z - 12) * 0.275 : Math.max(0.2, 0.45 - (12 - z) * 0.125);
+  const c = map.getContainer();
+  c.style.setProperty('--bus-scale', scale.toFixed(3));
+  c.classList.toggle('bus-small', z < 13);
+}
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
 export function liveUpdate(app) {
   if (!map || !U) return;
@@ -424,13 +435,13 @@ export function liveUpdate(app) {
     let m = busMarkers.get(b.id);
     if (!m) {
       const el = document.createElement('div');
-      el.className = 'bus-marker'; el.innerHTML = ARROW; el.title = U.routes[b.ri].name + ' · bus ' + b.name;
+      el.className = 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>'; el.title = U.routes[b.ri].name + ' · bus ' + b.name;
       el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri };
       busMarkers.set(b.id, m);
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
     } else glide(m, b.lon, b.lat);
-    m.el.style.background = U.routes[b.ri].color;
+    m.el.style.setProperty('--bus-color', U.routes[b.ri].color);
     m.marker.setRotation(b.course);
     m.ri = b.ri;
     m.el.classList.toggle('on', selectedBus === b.id);
