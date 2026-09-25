@@ -286,16 +286,21 @@ async function init(app) {
   wireGrip(app);
 }
 
-/** Swiping the card down closes it, from anywhere on it: the gesture is claimed on the first move only when the
- *  card is scrolled to the top and the finger is heading down, so scrolling and taps work as before. The grip
+/** Swiping the card down closes it, and swiping it up opens the stop's page, from anywhere on the card: the
+ *  gesture is claimed on the first move only when the card can't scroll that way any further (at its top for
+ *  down, at its end for up) and the finger is heading that way, so scrolling and taps work as before. The grip
  *  also drags with a mouse. The browser's pull-to-refresh never sees any of it. */
 function wireGrip(app) {
   const card = col.querySelector('#mapcard');
   const close = () => { selectedBus = null; selectedU = null; select(null, app); };
+  const pageHref = () => { const a = card.querySelector('.open a'); return a ? a.getAttribute('href') : null; };
   let y0 = null, x0 = 0, t0 = 0, claimed = false;
   const settle = (dy, dt) => {
     card.style.transition = ''; card.style.transform = '';
-    if (dy > 70 || (dy > 24 && dy / Math.max(dt, 1) > 0.5)) close();   // far enough, or a flick
+    const far = Math.abs(dy) > 70 || (Math.abs(dy) > 24 && Math.abs(dy) / Math.max(dt, 1) > 0.5);   // far enough, or a flick
+    if (!far) return;
+    if (claimed === 'down') close();
+    else { const href = pageHref(); if (href) location.hash = href; }   // the page slides up over the map
   };
   card.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) { y0 = null; return; }
@@ -305,11 +310,13 @@ function wireGrip(app) {
     if (y0 === null || e.touches.length !== 1) return;
     const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
     if (!claimed) {
-      if (card.scrollTop > 0 || dy <= 0 || Math.abs(dx) > Math.abs(dy)) { y0 = null; return; }   // the browser's: a scroll, or a tap
-      claimed = true; card.style.transition = 'none';
+      const down = dy > 0 && card.scrollTop <= 0;
+      const up = dy < 0 && card.scrollTop + card.clientHeight >= card.scrollHeight - 1 && !!pageHref();
+      if ((!down && !up) || Math.abs(dx) > Math.abs(dy)) { y0 = null; return; }   // the browser's: a scroll, or a tap
+      claimed = down ? 'down' : 'up'; card.style.transition = 'none';
     }
     e.preventDefault();
-    card.style.transform = `translateY(${Math.max(0, dy)}px)`;
+    card.style.transform = claimed === 'down' ? `translateY(${Math.max(0, dy)}px)` : `translateY(${Math.max(-160, Math.min(0, dy))}px)`;
   }, { passive: false });
   const touchEnd = e => {
     if (y0 === null) return;
@@ -322,7 +329,7 @@ function wireGrip(app) {
   let my0 = null;
   card.addEventListener('pointerdown', e => {
     if (e.pointerType === 'touch' || !e.target.closest('.grip')) return;
-    my0 = e.clientY; t0 = e.timeStamp; card.setPointerCapture(e.pointerId); card.style.transition = 'none'; e.preventDefault();
+    my0 = e.clientY; t0 = e.timeStamp; claimed = 'down'; card.setPointerCapture(e.pointerId); card.style.transition = 'none'; e.preventDefault();
   });
   card.addEventListener('pointermove', e => { if (my0 === null) return; card.style.transform = `translateY(${Math.max(0, e.clientY - my0)}px)`; });
   const mouseEnd = e => { if (my0 === null) return; const dy = e.clientY - my0; my0 = null; settle(dy, e.timeStamp - t0); };
@@ -436,17 +443,9 @@ function select(id, app, fly = false, zoomIn = false) {
   const fromHub = metres(distance(s.lat, s.lon, D.hub.lat, D.hub.lon));
   const closed = closedRoutes(si, clockNow.ymd), al = stopAlerts(si, clockNow.ymd);
   const alertLine = al.length ? html`<span class="eyebrow alert">${icon('ban', 14)}${closed.size ? [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ') + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' : al[0].title}</span>` : '';
-  // The twin across the road, as on the stop page: a tap swaps the card to it without leaving the map.
-  let twinRow = '';
-  if (s.twin) {
-    const [ti, td] = s.twin, t = stop(ti), n = nextAt(ti, 1, clockNow)[0], tsd = side(ti);
-    twinRow = html`<button class="twin blueprint" type="button" data-twin="${t.id}">${corners()}<span style="color:var(--color-accent-700)">${icon('swap', 22)}</span>
-      <div class="mid"><span class="eyebrow">Across the road · ${metres(td)}</span><span class="name">${t.name}${tsd ? ' · ' + tsd : ''}</span>
-      ${n ? html`<div class="when">${badge(n.r, 20)}${time(n.min, 17)}<span class="rel">${relative(n, clockNow)}</span>${sched()}</div>` : html`<span class="rel">No service today</span>`}</div>
-      <span class="muted">${icon('fwd', 20)}</span></button>`;
-  }
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${s.town} · Stop ${s.code || s.id} · ${fromHub} from the ${D.hub.name}</span><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div>${alertLine}</div>
-    ${twinRow}
+  // The twin across the road, one small line: a tap swaps the card to it without leaving the map.
+  const twinLine = s.twin ? html`<button class="twinline" type="button" data-twin="${stop(s.twin[0]).id}">${icon('swap', 16)}<span>${stop(s.twin[0]).name}${side(s.twin[0]) ? ' · ' + side(s.twin[0]) : ''}</span><span class="muted">· ${metres(s.twin[1])}</span></button>` : '';
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${s.town} · Stop ${s.code || s.id} · ${fromHub} from the ${D.hub.name}</span><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div>${alertLine}${twinLine}</div>
     ${next.length ? next.map(t => depRow(t, clockNow, { name: t.day ? undefined : undefined })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a></div>`;
   const tw = card.querySelector('[data-twin]');

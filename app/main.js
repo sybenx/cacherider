@@ -51,6 +51,51 @@ async function ensureMap() {
   return app.mapMod;
 }
 
+/** The page rises from the bottom over the map. */
+function slideIn() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  side.classList.remove('sheet-in'); side.style.transform = 'translateY(100%)';
+  void side.offsetHeight;   // commit the start position before the transition begins
+  side.classList.add('sheet-in'); side.style.transform = '';
+  const done = () => { side.classList.remove('sheet-in'); side.style.transform = ''; };
+  side.addEventListener('transitionend', done, { once: true }); setTimeout(done, 400);
+}
+/** On a sheet page, a swipe down from the top follows the finger, then goes back to the map's card or springs
+ *  home. Claimed on the first move only at the top of the page with the finger heading down, like the map card. */
+function wireSheet() {
+  let y0 = null, x0 = 0, t0 = 0, claimed = false;
+  side.addEventListener('touchstart', e => {
+    if (side.dataset.sheet !== '1' || e.touches.length !== 1) { y0 = null; return; }
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = e.timeStamp; claimed = false;
+  }, { passive: true });
+  side.addEventListener('touchmove', e => {
+    if (y0 === null || e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+    if (!claimed) {
+      if (side.scrollTop > 0 || dy <= 0 || Math.abs(dx) > Math.abs(dy)) { y0 = null; return; }
+      claimed = true; side.classList.remove('sheet-in');
+    }
+    e.preventDefault();
+    side.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  }, { passive: false });
+  const end = e => {
+    if (y0 === null) return;
+    const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : y0) - y0, dt = e.timeStamp - t0;
+    y0 = null;
+    if (!claimed) return;
+    side.classList.add('sheet-in');
+    if (dy > 70 || (dy > 24 && dy / Math.max(dt, 1) > 0.5)) {
+      side.style.transform = 'translateY(100%)';
+      const back = () => { side.classList.remove('sheet-in'); side.style.transform = ''; history.back(); };
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) back(); else setTimeout(back, 260);
+    } else {
+      side.style.transform = '';
+      side.addEventListener('transitionend', () => side.classList.remove('sheet-in'), { once: true });
+    }
+  };
+  side.addEventListener('touchend', end); side.addEventListener('touchcancel', end);
+}
+
 async function render(tick = false) {
   const { seg, q } = parse();
   renderTabs();
@@ -72,17 +117,24 @@ async function render(tick = false) {
     console.error(e);
     view = { html: html`<div class="empty"><h2>Something went wrong</h2><p>${e.message}</p></div>` };
   }
+  // A stop page reached from the Map tab on a phone is a sheet over the map: it slides up, and a swipe down at
+  // its top sends it back. The mark survives the minute's redraws of the same page.
+  const isPage = name === 'stop' || (name === 'usu' && seg[1] !== 'route');
+  const fromMap = !!app.route && app.route.name === 'map' && isPage && !isDesktop();
   app.route = { name, seg, q };
   const mapOpen = name === 'map';
   setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U));
   body.classList.toggle('map-open', mapOpen);
   if (view) {
-    const keepScroll = (tick || view.keepScroll) && side.dataset.view === name + (seg[1] || '');
+    const same = side.dataset.view === name + (seg[1] || '');
+    const keepScroll = (tick || view.keepScroll) && same;
     const y = side.scrollTop;
     side.innerHTML = view.html;
     side.dataset.view = name + (seg[1] || '');
+    side.dataset.sheet = fromMap || (same && isPage && side.dataset.sheet === '1') ? '1' : '';
     side.scrollTop = keepScroll ? y : 0;
     view.mount && view.mount(side, app);
+    if (fromMap) slideIn();
   }
   if (mapOpen || isDesktop()) {
     const m = await ensureMap();
@@ -240,6 +292,7 @@ async function boot() {
   }
   wireHeader();
   setupInstall();
+  wireSheet();
   // Not `render` itself: the event would arrive as the tick flag and the map would sit still.
   window.addEventListener('hashchange', () => render());
   matchMedia('(min-width: 900px)').addEventListener('change', () => render());
