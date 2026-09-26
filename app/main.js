@@ -32,6 +32,18 @@ export const app = {
 
 function renderTabs() {
   const h = location.hash || '#/';
+  // A tap on the Map tab while already on the map puts it back to the whole of Logan: the phone's habit for a
+  // tab tapped twice. (Set once: the tabs are redrawn on every page.)
+  if (!renderTabs.wired) {
+    renderTabs.wired = true;
+    document.getElementById('tabs').addEventListener('click', e => {
+      const a = e.target.closest('a[href="#/map"]');
+      if (!a || !(location.hash || '').startsWith('#/map') || !app.mapMod) return;
+      e.preventDefault();
+      if (location.hash !== '#/map') history.replaceState(null, '', '#/map');
+      app.mapMod.resetView(app);
+    });
+  }
   // On a wide screen the map is always beside the panel: no Map tab, the panel's edge tab gives it the width.
   for (const id of ['tabs', 'topnav']) {
     document.getElementById(id).innerHTML = TABS.filter(t => id === 'tabs' || t.href !== '#/map').map(t => html`<a href="${t.href}" ${t.match(h) ? html.raw('aria-current="page"') : ''}>${icon(t.icon, id === 'tabs' ? 22 : 18)}${t.label}</a>`).join('');

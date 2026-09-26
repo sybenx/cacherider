@@ -264,7 +264,7 @@ async function init(app) {
   if (map) return;
   await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
-  const center = app.geo ? [app.geo.lon, app.geo.lat] : [-111.8300, 41.7330];
+  const center = app.geo ? [app.geo.lon, app.geo.lat] : HOME;
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
   placeControls();
   WIDE.addEventListener('change', placeControls);
@@ -590,6 +590,15 @@ function panelPad(app) {
   map.easeTo({ padding: { left: want, top: 0, right: 0, bottom: 0 }, duration: still ? 0 : 250 });
 }
 
+/** The Map tab tapped again: the whole of Logan, north up, nothing picked. */
+const HOME = [-111.8300, 41.7330];
+export function resetView(app) {
+  if (!map) return;
+  selectedBus = null; selectedU = null; lastFocused = null;
+  select(null, app);
+  map.easeTo({ center: HOME, zoom: 13, bearing: 0, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
+}
+
 /** Search the map from outside it: the header's box on a wide screen. Set once the map is up. */
 export let mapSearch = () => {};
 
@@ -674,12 +683,16 @@ function busCard(app) {
   if (!b) return;
   const r = U.routes[b.ri];
   const next = r.shape.length ? busNext(b, 4) : [];
+  // A route with no stops is a charter: a bus a university department has booked for its own event, with no
+  // fixed route to show and none of the regular routes' hours to hold it to.
+  const charter = !r.stops.length;
   const card = col.querySelector('#mapcard');
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.name} · heading ${heading(b.course)}</span>${isStale() ? liveTag('Last seen ' + lastSeen()) : liveTag()}</div>
     <div class="who">${chip(b.ri, 32)}<span class="name">${r.name}</span></div>
     ${b.cap ? html`<div class="load">${meter(b, true)}<span>${loadWords(b)}</span></div>` : ''}
-    ${hours(b.ri) ? html`<div class="hours">${icon('clock', 15)}<span>${untilWords(b.ri) ? html`<b>${untilWords(b.ri).replace(/^./, c => c.toUpperCase())}</b> · ` : ''}usually ${hours(b.ri)}</span></div>` : ''}${offNote([b.ri])}</div>
+    ${charter ? html`<div class="hours">${icon('info', 15)}<span>Booked for a university event, with no fixed route or stops.</span></div>`
+      : hours(b.ri) ? html`<div class="hours">${icon('clock', 15)}<span>${untilWords(b.ri) ? html`<b>${untilWords(b.ri).replace(/^./, c => c.toUpperCase())}</b> · ` : ''}usually ${hours(b.ri)}</span></div>` : ''}${charter ? '' : offNote([b.ri])}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:${r.color}"></i>${next.map((n, i) => html`<a class="ns${n.here && i === 0 ? ' here' : ''}" href="#/usu/${U.stops[n.si].id}"><span class="dot"><i style="${n.here && i === 0 ? 'background:' + r.color : ''}"></i></span><span class="nm">${U.stops[n.si].name}</span><span class="when">${n.here && i === 0 ? 'here now' : isStale() ? '' : 'about ' + Math.max(1, n.min) + ' min'}</span></a>`)}</div>` : ''}`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
