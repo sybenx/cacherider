@@ -270,6 +270,8 @@ async function init(app) {
   squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); });
   map.on('zoom', busScale);
+  // The panel sliding in or out changes the map's width: it follows at the end.
+  document.getElementById('side').addEventListener('transitionend', e => { if (e.propertyName === 'margin-left') map.resize(); });
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   setTimeout(() => map.resize(), 300);
@@ -427,7 +429,7 @@ function satControl() {
 }
 
 function chrome() {
-  return html`<div class="mapbar"><form class="search" id="mapsearch" role="search"><input class="input" type="search" placeholder="Search streets" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div><div class="mapresults hidden" id="mapresults"></div><div class="mapnotice" id="mapnotice"></div><div class="mapcard hidden" id="mapcard"></div>`;
+  return html`<button class="paneltab" id="paneltab" type="button"></button><div class="mapbar"><form class="search" id="mapsearch" role="search"><input class="input" type="search" placeholder="Search streets" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div><div class="mapresults hidden" id="mapresults"></div><div class="mapnotice" id="mapnotice"></div><div class="mapcard hidden" id="mapcard"></div>`;
 }
 
 function wireChrome(app) {
@@ -485,7 +487,7 @@ function select(id, app, fly = false, zoomIn = false) {
   if (si === undefined) return;
   const s = stop(si);
   // On a wide screen a tap opens the stop page beside the map, wherever the tap came from; a phone gets the card.
-  if (wide() && fly) {
+  if (wide() && fly && app.route.name !== 'map') {
     map.easeTo({ center: [s.lon, s.lat], zoom: zoomIn ? 16 : Math.max(map.getZoom(), 15), duration: 700 });
     if (location.hash !== '#/stop/' + id) location.hash = '#/stop/' + id;
     card.classList.remove('open'); return;
@@ -544,6 +546,24 @@ function litBus(m) {
   return m.kind === 'c' ? hiLines.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
 }
 /** Every bus with a fix, shuttle and Connect alike, moved or placed; the ones gone from the feeds removed. */
+/** The wide screen's edge tab: the panel slides away for the whole map (#/map, with the stop's card if one was
+ *  open), and back to where it was. Its arrow points the way the panel will go. */
+function paintPanelTab(app) {
+  const b = col.querySelector('#paneltab');
+  if (!b) return;
+  const open = app.route.name !== 'map';
+  b.innerHTML = icon(open ? 'back' : 'fwd', 20).s;
+  b.setAttribute('aria-label', open ? 'Hide the panel: the whole map' : 'Show the panel');
+  b.title = open ? 'Whole map' : 'Show the panel';
+  b.onclick = () => {
+    const [, name, a] = (location.hash || '#/').split('/');
+    const cardOpen = col.querySelector('#mapcard').classList.contains('open');
+    if (open) location.hash = name === 'stop' ? '#/map/' + a : name === 'usu' && a !== 'route' ? '#/map/usu/' + a : '#/map';
+    // back with the stop whose card is showing, whichever way it was picked; else where the panel was
+    else location.hash = cardOpen && selected ? '#/stop/' + selected : cardOpen && selectedU !== null ? '#/usu/' + U.stops[selectedU].id : app.lastPanel || '#/';
+  };
+}
+
 /** Search the map from outside it: the header's box on a wide screen. Set once the map is up. */
 export let mapSearch = () => {};
 
@@ -641,7 +661,7 @@ function busCard(app) {
 function selectU(id, app) {
   const si = U.stopById[id];
   if (si === undefined) return;
-  if (wide()) { location.hash = '#/usu/' + id; return; }
+  if (wide() && app.route.name !== 'map') { location.hash = '#/usu/' + id; return; }
   selectedU = si; selectedBus = null; selected = null; uHilite = id; hiLines = []; hiLoops = U.stops[si].routes.map(ri => U.routes[ri].id); applySelection();
   for (const m of busMarkers.values()) m.el.classList.remove('on');
   const s = U.stops[si];
@@ -693,6 +713,9 @@ let shownHash = null;
 export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }, app, clockNow) {
   await init(app);
   requestAnimationFrame(() => map.resize());
+  paintPanelTab(app);
+  // Beside the panel the stop is in the panel: no card over the map as well.
+  if (wide() && app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');
   notice(clockNow);
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
@@ -721,8 +744,6 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
     if (focus && changed) map.fitBounds(routeBounds(ri), { padding: 40, duration: 700, maxZoom: 15.5 });
     return;
   }
-  if (stopId && app.route.name === 'map' && wide()) return asPage('#/stop/' + stopId);
-  if (ustopId && app.route.name === 'map' && wide()) return asPage('#/usu/' + ustopId);
   if (stopId) {
     const si = D.stopById[stopId];
     if (si !== undefined) {

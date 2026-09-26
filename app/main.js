@@ -32,8 +32,9 @@ export const app = {
 
 function renderTabs() {
   const h = location.hash || '#/';
+  // On a wide screen the map is always beside the panel: no Map tab, the panel's edge tab gives it the width.
   for (const id of ['tabs', 'topnav']) {
-    document.getElementById(id).innerHTML = TABS.map(t => html`<a href="${t.href}" ${t.match(h) ? html.raw('aria-current="page"') : ''}>${icon(t.icon, id === 'tabs' ? 22 : 18)}${t.label}</a>`).join('');
+    document.getElementById(id).innerHTML = TABS.filter(t => id === 'tabs' || t.href !== '#/map').map(t => html`<a href="${t.href}" ${t.match(h) ? html.raw('aria-current="page"') : ''}>${icon(t.icon, id === 'tabs' ? 22 : 18)}${t.label}</a>`).join('');
   }
 }
 
@@ -127,6 +128,7 @@ async function render(tick = false) {
   setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U));
   setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route'].includes(name));
   body.classList.toggle('map-open', mapOpen);
+  if (!mapOpen) app.lastPanel = location.hash || '#/';   // where the panel's edge tab brings it back to
   if (view) {
     // A page is the same page across its own picks (the Transit Center's routes): `view.key` says so, and the
     // rider's place is kept.

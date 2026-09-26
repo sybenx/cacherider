@@ -35,7 +35,10 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
 - **Transit Center** — the next pulse, when routes 1–15 leave together, with a
   countdown; the loops; a plan of the bays, tap one for its buses.
 - **Map** — every stop and route line on a Cache Valley street map, with the
-  next buses for the stop you tap.
+  next buses for the stop you tap. On a computer or a tablet on its side the
+  map is always beside the panel; the tab on the panel's edge slides it away
+  for the whole map, and `#/map` opens straight to that, for keeping an eye on
+  the buses.
 - **After hours, Sundays, weekday-only stops** — it says so, and shows the
   next day that runs.
 - **Service alerts** — Connect's detours, closed stops and late starts, from
