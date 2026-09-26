@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, A, stopAlerts } from './data.js';
+import { D, route, stop, A, stopAlerts, lastRun } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { clock, relative, dayName, now } from './time.js';
 
@@ -102,12 +102,17 @@ export function wasLine(t) {
   const c = clock(schedOf(t));
   return raw(`<span class="wasline">Scheduled <s>${esc(c.h)} ${c.ap}</s></span>`);
 }
+/** The night's-end word on a departure, when it's a route's last full run or its partial last run from here. */
+export function lastTag(t) {
+  const w = lastRun(t);
+  return raw(w ? `<span class="lastrun">${esc(w)}</span>` : '');
+}
 /** One departure row: badge · headsign + Live or Scheduled · the time (crossed out and estimated when moved) + how long. */
 export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
   const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t)).s : sched().s;
-  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel">${esc(rel)}</span>`}</div></div>`);
+  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel">${esc(rel)}</span>`}</div></div>`);
 }
 
 /** A stop row for the home and search lists, with its next bus on the right. */

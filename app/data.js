@@ -83,6 +83,56 @@ export function timesOn(si, ymd) {
   return (closed && closed.size ? out.filter(t => !closed.has(t.r)) : out).sort((a, b) => a.min - b.min);
 }
 
+// ---- the night's last runs. Each evening a route's final trip may run only part of the way out from the
+// Transit Center (the 8:30s, weekdays), so a stop's last departures get a word: the last trip that covers the
+// whole route, and the partial one after it, with where it ends. Every loop run is a full one.
+let tripMeta = null;
+function metaOf(ti) {
+  if (!tripMeta) {
+    tripMeta = new Map();
+    const most = {};
+    for (const [si, per] of Object.entries(D.times)) for (const rows of Object.values(per)) for (const [m, r, , d, t] of rows) {
+      let x = tripMeta.get(t);
+      if (!x) tripMeta.set(t, x = { r, d, stops: new Set(), seq: [] });
+      if (!x.stops.has(+si)) { x.stops.add(+si); x.seq.push([m, +si]); }
+    }
+    const whole = {};   // route:direction → a trip that covers it all, its stops in the order it calls
+    for (const x of tripMeta.values()) { const k = x.r + ':' + x.d; if (!most[k] || x.stops.size > most[k]) { most[k] = x.stops.size; whole[k] = x; } }
+    for (const x of tripMeta.values()) {
+      const k = x.r + ':' + x.d;
+      x.partial = !(D.hub.loops || []).includes(x.r) && x.stops.size < most[k];
+      // Where a partial trip ends: the timetable drops a trip's final stop, so it's the stop a full trip calls at next.
+      // Its furthest stop by the full trip's order: two stops can share a minute.
+      const order = whole[k].seq.slice().sort((p, q) => p[0] - q[0]).map(p => p[1]);
+      const i = Math.max(...[...x.stops].map(si => order.indexOf(si)));
+      x.end = i >= 0 && i + 1 < order.length ? order[i + 1] : null;
+    }
+  }
+  return tripMeta.get(ti);
+}
+const lastCache = new Map();
+/** 'Last full run', 'Last run (partial, to 290 South 100 East)', or null, for a departure on its service day. */
+export function lastRun(t) {
+  if (t.trip === undefined || t.si === undefined) return null;
+  const ymd = t.ymd || now().ymd, key = t.si + '|' + ymd + '|' + t.r;
+  let words = lastCache.get(key);
+  if (!words) {
+    words = new Map();
+    const rows = timesOn(t.si, ymd).filter(x => x.r === t.r && x.trip !== undefined);
+    const last = rows[rows.length - 1];
+    if (last) {
+      const m = metaOf(last.trip);
+      if (m && m.partial) {
+        words.set(last.trip, 'Last run (partial' + (m.end !== null ? ', to ' + D.stops[m.end].name : '') + ')');
+        const full = [...rows].reverse().find(x => !metaOf(x.trip)?.partial);
+        if (full) words.set(full.trip, 'Last full run');
+      } else words.set(last.trip, 'Last full run');
+    }
+    lastCache.set(key, words);
+  }
+  return words.get(t.trip) || null;
+}
+
 let routeDays = null;
 /** Whether a route has any trip anywhere under today's calendars: if it does, its absence at a stop is real. */
 function routeRunsOn(ri, ymd) {

@@ -347,6 +347,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .whent { display: inline-flex; align-items: baseline; gap: 6px; }
 .was { text-decoration: line-through; color: var(--cr-muted); font-family: var(--font-heading); font-weight: 500; white-space: nowrap; margin-right: 6px; }
 .whent .was { margin-right: 0; }
+/* the night's end on a departure: 'Last full run', 'Last run (partial, to …)' */
+.lastrun { font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; line-height: 1.35; color: var(--color-text); }
 .livetag { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-700); white-space: nowrap; }
 .livetag i { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); animation: crPulse 2s ease-out infinite; flex: none; }
 @keyframes crPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 45%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
