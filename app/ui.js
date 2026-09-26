@@ -12,6 +12,7 @@ html.raw = raw;
 
 const I = {
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  pointer: '<path d="M12 3 19 20 12 16 5 20z" fill="currentColor"/>',
   mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
   sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   back: '<path d="m15 18-6-6 6-6"/>',

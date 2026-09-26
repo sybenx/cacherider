@@ -639,3 +639,11 @@ sup.moved { font-family: var(--font-heading); font-size: 18px; font-weight: 600;
 /* a saved stop's star: the app's blue, not yellow, which is kept for what changes a trip */
 .savedmark { display: inline-flex; align-items: center; gap: 5px; }
 .savedmark svg { color: var(--color-accent); flex: none; }
+/* the nearest stop's distance and direction; a tap turns the arrow with the phone */
+/* no vertical padding: the label is a flex row, and any would make it taller and push the stop name down */
+.pointer { display: inline; margin: 0 -4px; padding: 0 4px; border: 0; background: none; font: inherit; line-height: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
+.pointer .needle { display: inline-block; width: 11px; height: 11px; margin-right: 4px; vertical-align: -1px; line-height: 0; color: var(--color-accent-700); transition: transform .2s linear; }
+.pointer .needle svg { display: block; width: 11px; height: 11px; }
+.pointer.live { color: var(--color-accent-700); }
+.pointer[aria-pressed="true"] .pw { text-decoration: underline; text-underline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .pointer .needle { transition: none; } }

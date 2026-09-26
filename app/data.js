@@ -358,6 +358,12 @@ export function distance(lat1, lon1, lat2, lon2) {
   const dy = (lat2 - lat1) * 111000, dx = (lon2 - lon1) * 111000 * Math.cos(lat1 * Math.PI / 180);
   return Math.hypot(dx, dy);
 }
+/** Degrees clockwise from north, from the first point to the second; and as one of eight words. */
+export function bearing(lat1, lon1, lat2, lon2) {
+  const dy = lat2 - lat1, dx = (lon2 - lon1) * Math.cos(lat1 * Math.PI / 180);
+  return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+}
+export const compass8 = deg => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
 export function nearest(lat, lon, n = 8) {
   return D.stops.map((s, i) => ({ i, d: distance(lat, lon, s.lat, s.lon) })).sort((a, b) => a.d - b.d).slice(0, n);
 }

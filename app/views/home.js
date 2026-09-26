@@ -2,9 +2,9 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, bearing, compass8, pref, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, movedNote } from '../ui.js';
+import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, movedNote, star } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { parseAddress, geocode, townState } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, liveTag, live, hasData, board } from '../usu.js';
@@ -17,15 +17,16 @@ export function render({ q, page }, clockNow) {
 
 // ---- the landing
 function landing(clockNow, app) {
+  if (app) window.__app = app;   // the hero's pointer reads the fix from it
   const sv = saved();
   const firstSaved = sv.find(id => !id.startsWith('u:') && D.stopById[id] !== undefined);
   // The big one: the stop you're standing near, when location is on and it's close enough to walk to; else your
   // first saved stop; else the Transit Center. Saved stops are the list beneath, every one but the hero.
   const near = app && app.geo ? nearest(app.geo.lat, app.geo.lon, 3).find(x => !stop(x.i).hub) : null;
   let heroSi, heroWhy = '';
-  if (near && near.d <= 800) { heroSi = near.i; heroWhy = 'Nearest · ' + metres(near.d); }
+  if (near && near.d <= 800) { heroSi = near.i; heroWhy = 'Nearest'; }
   else if (firstSaved !== undefined) { heroSi = D.stopById[firstSaved]; heroWhy = 'Saved'; }
-  else if (near) { heroSi = near.i; heroWhy = 'Nearest · ' + metres(near.d); }
+  else if (near) { heroSi = near.i; heroWhy = 'Nearest'; }
   const stopHero = heroSi !== undefined;
   const geo = app && app.geo;
   const [dow, date, mon] = fmtDay(clockNow.ymd).split(' ');
@@ -47,7 +48,7 @@ function landing(clockNow, app) {
     else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
   } else if (geo) {
     const rows = nearest(geo.lat, geo.lon, 6).filter(x => x.i !== heroSi && !stop(x.i).hub).slice(0, 3);
-    if (rows.length) parts.push(html`<div class="land-eye"><span>${stopHero ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) }))}</div>`);
+    if (rows.length) parts.push(html`<div class="land-eye"><span>${stopHero ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' ' + compass8(bearing(geo.lat, geo.lon, stop(i).lat, stop(i).lon)) }))}</div>`);
   }
   if (!stopHero && !geo) {
     parts.push(html`<div class="ask">
@@ -85,7 +86,10 @@ function giant(min, est = false) {
 function stopHeroBlock(si, why, clockNow) {
   const s = stop(si);
   const next = nextAt(si, 3, clockNow);
-  const eye = html`<div class="eye"><span class="eyebrow${why === 'Saved' ? ' savedmark' : ''}">${why === 'Saved' ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched()}</div>`;
+  // The nearest stop: how far and which way, the arrow pointing on a north-up page; a tap turns it with the phone.
+  const g = why === 'Nearest' && window.__app && window.__app.geo;
+  const way = g ? html`<button class="pointer" id="pointer" type="button" data-lat="${s.lat}" data-lon="${s.lon}" aria-label="Point me there" title="Point me there"><i class="needle" style="transform:rotate(${Math.round(bearing(g.lat, g.lon, s.lat, s.lon))}deg)">${icon('pointer', 13)}</i><span class="pw">${metres(distance(g.lat, g.lon, s.lat, s.lon))} ${compass8(bearing(g.lat, g.lon, s.lat, s.lon))}</span></button> · ` : '';
+  const eye = html`<div class="eye"><span class="eyebrow${why === 'Saved' ? ' savedmark' : ''}">${why === 'Saved' ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · ${way}Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched()}</div>`;
   if (!next.length) {
     const resume = nextServiceDay(clockNow);
     return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span><div class="hero-none">Nothing scheduled${resume && resume !== clockNow.ymd ? html`<span class="sub">Buses resume ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
@@ -116,7 +120,7 @@ function pulseHeroBlock(clockNow) {
     const resume = nextServiceDay(clockNow);
     return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${D.hub.name}</span><div class="hero-none">No buses today${resume ? html`<span class="sub">Service resumes ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
   }
-  const loops = (D.hub.loops || []).map(ri => { const n = nextFromHub(ri, 1, clockNow)[0]; return n ? html`<div class="loop">${badge(ri, 28)}<div class="col">${time(n.min, 22)}<span class="sub">${D.routes[ri].long}</span></div></div>` : ''; });
+  const loops = (D.hub.loops || []).map(ri => { const n = nextFromHub(ri, 1, clockNow)[0]; return n ? html`<div class="loop">${badge(ri, 28)}<div class="col"><span class="whent">${time(n.min, 22)}${n.moved !== undefined ? html.raw(star) : ''}</span><span class="sub">${D.routes[ri].long}</span></div></div>` : ''; });
   const when = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
   return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${(D.hub.pulseName || 'Every route').replace(/\s+leave$/, '')}</span>${giant(p.min)}
     <div class="who"><span class="dest">${D.routes.length} routes from the ${D.hub.name}</span><span class="rt">${when}</span></div>
@@ -147,8 +151,59 @@ function searchPage(q, clockNow, app) {
   return { html: parts.join(''), mount, title: 'Search' };
 }
 
+// ---- pointing: while it's on, the arrow turns with the phone and the distance follows the rider's steps.
+// On only after a tap (an iPhone asks for the compass then, and not before); off again by a tap, on leaving
+// the page, or when the phone gives no heading, in which case the arrow stays north-up.
+const pt = { on: false, heading: null, fix: null, watch: null };
+function paintPointer() {
+  const b = document.getElementById('pointer');
+  if (!b) { stopPointing(); return; }
+  const g = pt.fix || window.__app.geo, lat = +b.dataset.lat, lon = +b.dataset.lon;
+  const deg = bearing(g.lat, g.lon, lat, lon);
+  b.querySelector('.needle').style.transform = `rotate(${Math.round(deg - (pt.on && pt.heading !== null ? pt.heading : 0))}deg)`;
+  b.querySelector('.pw').textContent = metres(distance(g.lat, g.lon, lat, lon)) + ' ' + compass8(deg);
+  b.classList.toggle('live', pt.on && pt.heading !== null);
+  b.setAttribute('aria-pressed', pt.on ? 'true' : 'false');
+  b.title = !pt.on ? 'Point me there' : pt.heading !== null ? 'Pointing with your phone · tap to stop' : 'No compass: the arrow points as on a map, north up · tap to stop';
+}
+function onTurn(e) {
+  let h = typeof e.webkitCompassHeading === 'number' ? e.webkitCompassHeading : e.absolute && e.alpha !== null ? 360 - e.alpha : null;
+  if (h === null) return;
+  h = (h + ((screen.orientation && screen.orientation.angle) || 0) + 360) % 360;
+  pt.heading = h;
+  paintPointer();
+}
+async function startPointing() {
+  // Refused, or no compass at all: still on, the distance following the rider, the arrow north-up.
+  let compass = true;
+  if (typeof DeviceOrientationEvent === 'undefined') compass = false;
+  else if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { compass = await DeviceOrientationEvent.requestPermission() === 'granted'; } catch { compass = false; }
+  }
+  pt.on = true; pt.heading = null;
+  if (compass) { window.addEventListener('deviceorientationabsolute', onTurn); window.addEventListener('deviceorientation', onTurn); }
+  if (navigator.geolocation) pt.watch = navigator.geolocation.watchPosition(p => {
+    pt.fix = { lat: p.coords.latitude, lon: p.coords.longitude, at: Date.now() };
+    window.__app.geo = pt.fix;   // the next minute's redraw picks the nearest stop from here
+    paintPointer();
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 5000 });
+  document.addEventListener('visibilitychange', stopPointing, { once: true });
+  paintPointer();
+}
+function stopPointing() {
+  if (!pt.on) return;
+  pt.on = false; pt.heading = null;
+  window.removeEventListener('deviceorientationabsolute', onTurn);
+  window.removeEventListener('deviceorientation', onTurn);
+  if (pt.watch !== null && navigator.geolocation) navigator.geolocation.clearWatch(pt.watch);
+  pt.watch = null;
+  if (document.getElementById('pointer')) paintPointer();
+}
+
 function mount(el, app) {
   window.__app = app;
+  const pb = el.querySelector('#pointer');
+  if (pb) { pb.onclick = e => { e.preventDefault(); pt.on ? stopPointing() : startPointing(); }; if (pt.on) paintPointer(); }
   const form = el.querySelector('#search');
   if (form) {
     const input = form.querySelector('input');
@@ -217,7 +272,7 @@ function pulseCard(clockNow) {
     const n = nextFromHub(ri, 1, clockNow)[0];
     if (!n) return '';
     const r = D.routes[ri];
-    return html`<div class="loop">${badge(ri, 28)}<div class="col">${time(n.min, 20)}<span class="rel">${r.long.replace(/ Loop$/, '')} · ${relative(n, clockNow)}</span></div></div>`;
+    return html`<div class="loop">${badge(ri, 28)}<div class="col"><span class="whent">${time(n.min, 20)}${n.moved !== undefined ? html.raw(star) : ''}</span><span class="rel">${r.long.replace(/ Loop$/, '')} · ${relative(n, clockNow)}</span></div></div>`;
   }).join('');
   const day = p.day === 0 ? '' : p.day === 1 ? ' tomorrow' : ' ' + relative(p, clockNow);
   return html`<a class="pulse blueprint" href="#/hub">${corners()}
