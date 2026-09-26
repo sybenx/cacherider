@@ -82,7 +82,6 @@ svg { display: block; flex: none; }
 #side.sheet-in { transition: transform .28s cubic-bezier(.2,.7,.2,1); }
 @media (prefers-reduced-motion: reduce) { #side.sheet-in { transition: none; } }
 #mapcol { display: none; position: relative; background: var(--color-surface); }
-.paneltab { display: none; }
 #body.map-open #side { display: none; }
 #body.map-open #mapcol { display: block; flex: 1; }
 #tabs {
@@ -108,7 +107,7 @@ svg { display: block; flex: none; }
   #top .search .input { height: 44px; font-size: 15px; padding-left: 40px; }
   #top .search .lead { left: 12px; }
   #tabs { display: none; }
-  /* The map is always the whole width underneath; the panel slides over it and away for the whole map (#/map).
+  /* The map is always the whole width underneath; the panel slides over it, and away for the Map tab (#/map).
      The map is never resized mid-slide, which is what made it jitter: it only moves its centre (its padding). */
   #mapcol { display: block; position: absolute; inset: 0; }
   #side { position: absolute; top: 0; bottom: 0; left: 0; z-index: 480; width: 420px; border-right: 1px solid var(--cr-line); will-change: transform;
@@ -116,12 +115,7 @@ svg { display: block; flex: none; }
   #body.map-open #side { display: block; transform: translateX(-100%); visibility: hidden; transition: transform .25s cubic-bezier(.2,.7,.2,1), visibility 0s .25s; }
   #body.map-open #mapcol { flex: none; }
   #body:not(.map-open) .mapnotice { left: 432px; }
-  .paneltab { display: flex; position: absolute; left: 0; top: 50%; transform: translate(420px, -50%); transition: transform .25s cubic-bezier(.2,.7,.2,1); z-index: 470; width: 36px; height: 72px; align-items: center; justify-content: center; padding: 0 4px 0 0;
-    background: var(--color-bg); color: var(--color-text); border: 1px solid var(--cr-line); border-left: 0; border-radius: 0 var(--radius-md) var(--radius-md) 0; box-shadow: var(--shadow-md); cursor: pointer; }
-  #body.map-open .paneltab { transform: translate(0, -50%); }
-  .paneltab:hover { color: var(--color-accent-700); }
-  .paneltab:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { #side, #body.map-open #side, .paneltab { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #side, #body.map-open #side { transition: none; } }
   .m-only { display: none !important; }
 }
 
