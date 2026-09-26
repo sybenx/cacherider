@@ -10,6 +10,17 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
 **[cacherider.com](https://cacherider.com)** · also at
 [sybenx.github.io/cacherider](https://sybenx.github.io/cacherider/)
 
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-dark.jpg">
+    <img src="docs/screenshots/desktop-light.jpg" width="76%" alt="Cache Rider on a computer: the next Transit Center departure, 12:30 in 8 minutes, beside a map of every Connect route and the Aggie Shuttle">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-dark.png">
+    <img src="docs/screenshots/phone-light.png" width="21.5%" alt="Cache Rider on a phone: the next Transit Center departure large, the Green and Blue Loops beneath, and every route as a button">
+  </picture>
+</p>
+
 ## What it does
 
 - **The watchface, on the phone** — the home screen is one answer set

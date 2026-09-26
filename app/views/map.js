@@ -377,6 +377,8 @@ function placeControls() {
   const nav = new maplibregl.NavigationControl({ showCompass: false }), near = nearControl(), sat = satControl(), north = northControl();
   // Bottom corners stack upward in the order added, top corners downward.
   ctrls = WIDE.matches ? [near, nav, sat, north] : [nav, near, sat, north];
+  // A tablet has room for two fingers: no zoom buttons. Its shorter side is what tells it from a phone on its side.
+  if (coarse() && Math.min(screen.width, screen.height) >= 700) ctrls = ctrls.filter(c => c !== nav);
   for (const c of ctrls) map.addControl(c, WIDE.matches ? 'top-right' : c === nav ? 'bottom-left' : 'bottom-right');
 }
 
