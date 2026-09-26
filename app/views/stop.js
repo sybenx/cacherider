@@ -72,7 +72,7 @@ export function render({ id, full }, clockNow) {
   }
 
   // A Saturday runs shorter and thinner than a weekday: say how, up front, for riders who know the weekday times.
-  if (dayFrom(clockNow.ymd).dow === 6 && td.all.length) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>Saturday service here: <b>${dayShape(si, clockNow.ymd)}</b></span></div>`);
+  if (dayFrom(clockNow.ymd).dow === 6 && td.all.length) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>Saturday service today: <b>${dayShape(si, clockNow.ymd)}</b></span></div>`);
   const prov = [...new Set(td.all.filter(t => t.prov).map(t => t.r))];
   if (prov.length) {
     const sid = td.all.find(t => t.prov).prov;

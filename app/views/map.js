@@ -265,7 +265,9 @@ async function init(app) {
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : [-111.8300, 41.7330];
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+  // Zoom on the left, within a left thumb's reach; the rest on the right, Near me nearest the corner.
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+  map.addControl(nearControl(), 'bottom-right');
   map.addControl(satControl(), 'bottom-right');
   map.addControl(northControl(), 'bottom-right');
   squaresOnDemand(map);
@@ -381,6 +383,20 @@ function northControl() {
   };
 }
 
+/** Near me: the map to where you are, with your dot on it. */
+function nearControl() {
+  return {
+    onAdd(m) {
+      const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'nearbtn'; b.title = 'Near me'; b.setAttribute('aria-label', 'Near me');
+      b.innerHTML = icon('near', 20).s;
+      b.onclick = () => nearMe(geo => { if (geo) { placeMe(geo); m.flyTo({ center: [geo.lon, geo.lat], zoom: 15.5 }); } });
+      el.appendChild(b); this.el = el; return el;
+    },
+    onRemove() { this.el.remove(); },
+  };
+}
+
 function satControl() {
   return {
     onAdd() {
@@ -395,7 +411,7 @@ function satControl() {
 }
 
 function chrome() {
-  return html`<div class="mapbar"><form class="search" id="mapsearch" role="search"><input class="input" type="search" placeholder="Search streets" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form><button class="btn btn-secondary btn-icon" id="mapnear" type="button" aria-label="Near me">${icon('near', 22)}</button></div><div class="mapresults hidden" id="mapresults"></div><div class="mapnotice" id="mapnotice"></div><div class="mapcard hidden" id="mapcard"></div>`;
+  return html`<div class="mapbar"><form class="search" id="mapsearch" role="search"><input class="input" type="search" placeholder="Search streets" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div><div class="mapresults hidden" id="mapresults"></div><div class="mapnotice" id="mapnotice"></div><div class="mapcard hidden" id="mapcard"></div>`;
 }
 
 function wireChrome(app) {
@@ -415,7 +431,6 @@ function wireChrome(app) {
     results.querySelectorAll('a[data-i]').forEach(a => a.onclick = e => { e.preventDefault(); input.value = ''; results.classList.add('hidden'); select(stop(+a.dataset.i).id, app, true, true); });
     results.querySelectorAll('a:not([data-i])').forEach(a => a.onclick = () => { input.value = ''; results.classList.add('hidden'); });
   }, 200); };
-  col.querySelector('#mapnear').onclick = () => nearMe(geo => { if (geo) { placeMe(geo); map.flyTo({ center: [geo.lon, geo.lat], zoom: 15.5 }); } });
 }
 
 function placeMe(geo) {
