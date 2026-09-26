@@ -271,8 +271,6 @@ async function init(app) {
   squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); });
   map.on('zoom', busScale);
-  // The panel sliding in or out changes the map's width: it follows at the end.
-  document.getElementById('side').addEventListener('transitionend', e => { if (e.propertyName === 'margin-left') map.resize(); });
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   setTimeout(() => map.resize(), 300);
@@ -577,6 +575,18 @@ function paintPanelTab(app) {
   };
 }
 
+/** On a wide screen the panel covers the map's left 420 px: the map keeps its centre in the part you can see,
+ *  easing across as the panel slides, so the place you were looking at stays put. */
+let padLeft = null;
+function panelPad(app) {
+  const want = wide() && app.route.name !== 'map' ? 420 : 0;
+  if (want === padLeft) return;
+  const first = padLeft === null;
+  padLeft = want;
+  const still = first || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  map.easeTo({ padding: { left: want, top: 0, right: 0, bottom: 0 }, duration: still ? 0 : 250 });
+}
+
 /** Search the map from outside it: the header's box on a wide screen. Set once the map is up. */
 export let mapSearch = () => {};
 
@@ -727,6 +737,7 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
   await init(app);
   requestAnimationFrame(() => map.resize());
   paintPanelTab(app);
+  panelPad(app);
   // Beside the panel the stop is in the panel: no card over the map as well.
   if (wide() && app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');
   notice(clockNow);
