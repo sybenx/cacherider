@@ -13,6 +13,8 @@ export function render({ section }, clockNow) {
     <div class="head"><span class="eyebrow">Unofficial</span><h1>Cache Rider</h1></div>
     <div class="pad" style="font-size:16px;line-height:1.5">
       <p>A schedule app for ${D.agency.brand}, the ${D.agency.name} bus. Made by a rider, not by the agency.</p>
+      <a class="btn btn-secondary" href="${feedbackHref()}">${icon('mail', 20)}Send feedback</a>
+      <p class="muted" style="font-size:13px;margin-top:8px">A wrong time, a stop that isn't where the map says, an idea: it goes to the person who makes this, not to ${D.agency.brand}.</p>
     </div>
     <div class="section">${icon('sliders', 16)}Settings</div>
     <div class="setrows">
@@ -38,6 +40,13 @@ export function render({ section }, clockNow) {
     <div class="fine">Cache Rider isn't affiliated with ${D.agency.name}.</div>`,
     mount,
   };
+}
+
+/** An email, from the rider's own mail app: nothing is sent until they send it. The timetable's date comes along,
+ *  so a report about a time can be checked against the right one. */
+function feedbackHref() {
+  const body = `\n\n\n-- \nCache Rider · timetable of ${D.feed.built || 'unknown date'}`;
+  return 'mailto:feedback@cacherider.com?subject=' + encodeURIComponent('Cache Rider feedback') + '&body=' + encodeURIComponent(body);
 }
 
 function installBlock() {
