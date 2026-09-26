@@ -48,8 +48,8 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   live. Shuttles have no timetable, so each stop shows how many stops away
   the next bus is and about how many minutes, estimated from where it is on
   its loop, with how full it is. Buses move on the map; tap one for its load
-  and next stops. A campus stop at the same kerb as a Connect stop shares a
-  page. Marked LIVE, never SCHEDULED.
+  and next stops. A campus stop at the same pole as a Connect stop (each the
+  other's nearest, within 25 m) is one dot on the map and shares a page. Marked LIVE, never SCHEDULED.
 - **Saved stops** — a star on any stop page keeps it at the top of the home
   screen, in your order. Saved on the phone, no account.
 - **Offline** — add it to your home screen and the timetable stays on the

@@ -32,15 +32,19 @@ export async function loadUSU() {
       for (const si of r.stops) r.stopAlong[si] = along(r, U.stops[si].lat, U.stops[si].lon).along;
     }
   }
-  // Campus stops that share a kerb with a Connect stop.
+  // Campus stops at the same pole as a Connect stop, which the app shows as one stop: each the other's nearest,
+  // and within 25 m. "Each other's nearest" keeps a stop across the road out (Veterinary Science is 8 m from
+  // 903 East 700 North, but Education Bldg is nearer it). 25 m takes in Blue Square Apartments and 1111 North
+  // 800 East (24 m, one stop) and leaves out Oakridge Apartments and 1380 North 800 East (26 m, two poles):
+  // a stop moved a few metres could tip either, so check those two if the feeds change.
   U.shared = {}; U.sharedByCvtd = {};
+  const nearestC = i => { let best = null; for (let j = 0; j < D.stops.length; j++) { const d = distance(U.stops[i].lat, U.stops[i].lon, D.stops[j].lat, D.stops[j].lon); if (!best || d < best.d) best = { j, d }; } return best; };
+  const nearestU = j => { let best = null; for (let i = 0; i < U.stops.length; i++) { if (!U.stops[i].routes.length) continue; const d = distance(U.stops[i].lat, U.stops[i].lon, D.stops[j].lat, D.stops[j].lon); if (!best || d < best.d) best = { i, d }; } return best; };
   for (let i = 0; i < U.stops.length; i++) {
-    let best = null;
-    for (let j = 0; j < D.stops.length; j++) {
-      const d = distance(U.stops[i].lat, U.stops[i].lon, D.stops[j].lat, D.stops[j].lon);
-      if (d <= 45 && (!best || d < best.d)) best = { j, d };
-    }
-    if (best) { U.shared[i] = best; U.sharedByCvtd[best.j] = { i, d: best.d }; }
+    if (!U.stops[i].routes.length) continue;
+    const best = nearestC(i);
+    if (!best || best.d > 25 || nearestU(best.j).i !== i) continue;
+    U.shared[i] = best; U.sharedByCvtd[best.j] = { i, d: best.d };
   }
   return U;
 }

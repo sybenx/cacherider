@@ -197,7 +197,7 @@ function slice(walk, d0, d1) {
 
 function usuStopsGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
-  return { type: 'FeatureCollection', features: U.stops.filter(s => s.routes.length).map(s => ({ type: 'Feature', properties: { id: s.id, name: s.name, icon: 'usq-' + U.routes[s.routes[0]].color.slice(1) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  return { type: 'FeatureCollection', features: U.stops.filter((s, i) => s.routes.length && !U.shared[i]).map(s => ({ type: 'Feature', properties: { id: s.id, name: s.name, icon: 'usq-' + U.routes[s.routes[0]].color.slice(1) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 function usuLinesGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
@@ -511,7 +511,10 @@ function select(id, app, fly = false, zoomIn = false) {
   // The twin across the road, one small line: a tap swaps the card to it without leaving the map.
   // The twin sits at the right of the eyebrow line, in its type: the card grows by nothing for it.
   const twinLine = s.twin ? html`<button class="eyebrow twinline" type="button" data-twin="${stop(s.twin[0]).id}" title="${stop(s.twin[0]).name}">${icon('swap', 14)}Across the road · ${metres(s.twin[1])}</button>` : '';
-  card.innerHTML = html`<div class="grip"></div><div class="head"><div class="eyerow"><span class="eyebrow">${s.town} · Stop ${s.code || s.id}${s.twin ? '' : ` · ${fromHub} from the ${D.hub.name}`}</span>${twinLine}</div><div class="name"><span>${s.name}</span>${routeLinks(si)}</div>${alertLine}</div>
+  // The shuttle stop at the same pole, drawn as this one dot: its routes, and a way to its buses.
+  const sh = U && U.sharedByCvtd[si], us = sh ? U.stops[sh.i] : null;
+  const shuttleLine = us ? html`<a class="shuttleline" href="#/usu/${us.id}"><span class="eyebrow">${icon('hub', 14)}Also the USU shuttle · ${us.name}</span>${chips(us.routes, 20)}</a>` : '';
+  card.innerHTML = html`<div class="grip"></div><div class="head"><div class="eyerow"><span class="eyebrow">${s.town} · Stop ${s.code || s.id}${s.twin ? '' : ` · ${fromHub} from the ${D.hub.name}`}</span>${twinLine}</div><div class="name"><span>${s.name}</span>${routeLinks(si)}</div>${shuttleLine}${alertLine}</div>
     ${next.length ? next.map(t => depRow(t, clockNow, { warn: t.day > 0 && closed.has(t.r) })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a></div>`;
   const tw = card.querySelector('[data-twin]');
@@ -684,6 +687,7 @@ function busCard(app) {
 function selectU(id, app) {
   const si = U.stopById[id];
   if (si === undefined) return;
+  if (U.shared[si]) return select(D.stops[U.shared[si].j].id, app, true);   // one pole, one dot: the Connect stop's card
   if (wide() && app.route.name !== 'map') { location.hash = '#/usu/' + id; return; }
   selectedU = si; selectedBus = null; selected = null; uHilite = id; hiLines = []; hiLoops = U.stops[si].routes.map(ri => U.routes[ri].id); applySelection();
   for (const m of busMarkers.values()) m.el.classList.remove('on');
@@ -787,8 +791,9 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
     const s = U.stops[si];
     const changed = lastFocused !== 'u:' + ustopId;
     lastFocused = 'u:' + ustopId;
-    selected = null; uHilite = ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
-    if (app.route.name === 'map') { if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
+    const pole = U.shared[si];   // at a Connect stop's pole: that dot is this stop on the map
+    selected = pole ? D.stops[pole.j].id : null; uHilite = pole ? '' : ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
+    if (app.route.name === 'map') { if (pole) select(D.stops[pole.j].id, app, changed); else if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
     else if (focus && changed && !map.isMoving()) map.easeTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
   } else if (app.route && app.route.name === 'map') {
     lastFocused = null;
@@ -834,8 +839,10 @@ export async function mini(sel, slot) {
 }
 function miniSelection() {
   if (!mm || !mmReady || !mmSel) return;
-  mm.setFilter('stop-selected', ['==', ['get', 'id'], mmSel.stopId || '']);
-  mm.setFilter('usu-selected', ['==', ['get', 'id'], mmSel.ustopId || '']);
+  // a shuttle stop at a Connect stop's pole is drawn as that stop's dot, so that dot is the one marked
+  const pole = mmSel.ustopId && U && U.shared[U.stopById[mmSel.ustopId]];
+  mm.setFilter('stop-selected', ['==', ['get', 'id'], pole ? D.stops[pole.j].id : mmSel.stopId || '']);
+  mm.setFilter('usu-selected', ['==', ['get', 'id'], pole ? '' : mmSel.ustopId || '']);
   const ri = mmSel.route !== undefined ? D.routeByShort[mmSel.route] : undefined;
   const si = mmSel.stopId ? D.stopById[mmSel.stopId] : undefined;
   const lines = ri !== undefined ? [ri] : si !== undefined ? [...D.stops[si].routes] : [];
