@@ -17,7 +17,7 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   </picture>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-dark.png">
-    <img src="docs/screenshots/phone-light.png" width="21.5%" alt="Cache Rider on a phone: the next Transit Center departure large, the Green and Blue Loops beneath, and every route as a button">
+    <img src="docs/screenshots/phone-light.png" width="21.5%" alt="Cache Rider on a phone: a stop on North Main, its map, the stop across the road, and the next bus, the Green Loop at 12:30 in 8 minutes">
   </picture>
 </p>
 
