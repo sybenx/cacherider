@@ -41,7 +41,7 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
 - **Offline** — add it to your home screen and the timetable stays on the
   phone. The map can be saved too. Chrome offers its install prompt as a
   card once a stop is saved; on an iPhone the app shows the Share → Add to Home Screen steps once,
-  on the third day it's opened.
+  just after the first stop is saved.
 - **Live Connect buses** — CVTD's GTFS-realtime vehicle positions and trip
   updates, by way of `worker/`, a Cloudflare Worker at live.cacherider.com:
   the tracker refuses cross-origin requests, so the Worker fetches the two

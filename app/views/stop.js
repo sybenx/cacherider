@@ -6,6 +6,7 @@ import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side
 import { U, chips, liveTag } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
+import { afterSave } from '../main.js';
 
 export function render({ id, full }, clockNow) {
   const si = stopIndex(id);
@@ -141,6 +142,7 @@ function mount(el) {
     const on = toggleSaved(b.dataset.id);
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.innerHTML = icon('star', 22, 1.5, on ? 'currentColor' : 'none').s + (on ? 'Saved' : 'Save');
+    if (on) afterSave();
   };
 }
 

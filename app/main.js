@@ -128,11 +128,14 @@ async function render(tick = false) {
   setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route'].includes(name));
   body.classList.toggle('map-open', mapOpen);
   if (view) {
-    const same = side.dataset.view === name + (seg[1] || '');
+    // A page is the same page across its own picks (the Transit Center's routes): `view.key` says so, and the
+    // rider's place is kept.
+    const key = view.key || name + (seg[1] || '');
+    const same = side.dataset.view === key;
     const keepScroll = (tick || view.keepScroll) && same;
     const y = side.scrollTop;
     side.innerHTML = view.html;
-    side.dataset.view = name + (seg[1] || '');
+    side.dataset.view = key;
     side.dataset.sheet = fromMap || (same && isPage && side.dataset.sheet === '1') ? '1' : '';
     side.scrollTop = keepScroll ? y : 0;
     // A link to a part of a page (#/about/alerts) lands on it, the first time only: a tick keeps the rider's place.
@@ -216,16 +219,13 @@ async function autoLocate() {
   } catch { /* the browser won't say; wait for the tap */ }
 }
 
-// ---- install: the browser's own prompt where there is one; on iPhone Safari, the steps, once, on the third day
+// ---- install: the browser's own prompt where there is one; on iPhone Safari, the steps. Either only once the rider
+// has saved a stop, the sign they'll be back, and never over a page they're just opening.
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-function countVisit() {
-  const today = new Date().toISOString().slice(0, 10);
-  if (pref('lastvisit') === today) return +(pref('visits') || 1);
-  pref('lastvisit', today);
-  const n = +(pref('visits') || 0) + 1;
-  pref('visits', String(n));
-  return n;
+/** Just after a rider saves a stop, the first time: on iPhone Safari, the home-screen steps (once; Not now is final). */
+export function afterSave() {
+  if (isIOS() && !standalone() && !pref('install')) setTimeout(iosSheet, 400);
 }
 export function installCard() {
   if (!app.installPrompt || standalone() || pref('install')) return '';
@@ -273,8 +273,6 @@ function setupInstall() {
   if (standalone()) return;
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); app.installPrompt = e; if (app.route && app.route.name === 'home') render(); });
   window.addEventListener('appinstalled', () => { pref('install', 'done'); app.installPrompt = null; const c = document.getElementById('install-card'); if (c) c.remove(); });
-  const visits = countVisit();
-  if (isIOS() && !pref('install') && visits >= 3) setTimeout(iosSheet, 1200);
 }
 
 /** The look: the phone's by default, or light or dark when the rider picks one; kept on the phone and applied in

@@ -5,6 +5,7 @@ import { dayName, now, metres } from '../time.js';
 import { html, icon, badges, depRow, stopRow } from '../ui.js';
 import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
+import { afterSave } from '../main.js';
 
 export function render({ id }, clockNow) {
   if (!U) return { html: html`<div class="empty"><h2>Shuttle data isn't loaded</h2></div>`, title: 'Shuttle' };
@@ -53,5 +54,6 @@ function mount(el) {
     const on = toggleSaved(b.dataset.id);
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.innerHTML = icon('star', 22, 1.5, on ? 'currentColor' : 'none').s + (on ? 'Saved' : 'Save');
+    if (on) afterSave();
   };
 }

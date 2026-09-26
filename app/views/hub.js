@@ -73,7 +73,7 @@ export function render({ bay }, clockNow) {
   parts.push(plan(st, pick));
   if (pick) parts.push(picked(st[pick], clockNow));
   parts.push(footnote(st));
-  return { html: parts.join(''), mount, title: H.name, keepScroll: true };
+  return { html: parts.join(''), mount, title: H.name, keepScroll: true, key: 'hub' };
 }
 
 /** On a Saturday, how often they leave together and until when: ' hourly until 6:30 PM'. */
@@ -205,7 +205,16 @@ function footnote(st) {
   return html`<p class="tc-foot">Bus positions from ${D.agency.brand}’s live feed. A late bus leaves when it’s ready: a crossed-out time is the scheduled one, beside the estimate.${loose}${quiet}</p>`;
 }
 
+let shownPick = null;
 function mount(el) {
+  // A route just picked: its card opens below the plan, so bring it into view if it's off the screen. Once per
+  // pick, not on the minute's redraw, which keeps the rider's place.
+  const card = el.querySelector('.tc-pick'), pick = card ? location.hash : null;
+  if (card && pick !== shownPick) {
+    const r = card.getBoundingClientRect(), bottom = (el.getBoundingClientRect().bottom || innerHeight);
+    if (r.bottom > bottom || r.top < 0) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  shownPick = pick;
   // The countdown runs by the second while this screen is up.
   const c = el.querySelector('[data-countdown]');
   if (!c) return;
