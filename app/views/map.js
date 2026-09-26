@@ -19,6 +19,7 @@ const wide = () => matchMedia('(min-width: 900px)').matches;
 /** A stop link opened on the Map tab of a wide screen becomes its page, without a history entry to loop back into. */
 const asPage = hash => location.replace(location.href.split('#')[0] + hash);
 
+let focusRoute;   // the route whose page is open, its stops in its colour
 let map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
 let mm = null, mmEl = null, mmReady = false, mmKey = null, mmSel = null;   // the small map on a stop page
 const busMarkers = new Map();   // bus id → { marker, el }
@@ -88,7 +89,7 @@ function style(sat = true) {
 
 function stopsGeo() {
   const ymd = now().ymd;
-  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, color: '#' + route(s.routes[0]).color, dcolor: lift('#' + route(s.routes[0]).color), closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, routes: s.routes, color: '#' + route(s.routes[0]).color, dcolor: lift('#' + route(s.routes[0]).color), closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 
 /** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes:
@@ -466,7 +467,18 @@ function applySelection() {
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
   litLines(map, hiLines, hiLoops);
+  tintStops(map, focusRoute);
   for (const m of busMarkers.values()) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); }
+}
+
+/** A route in view paints every stop it calls at in its own colour; otherwise a stop wears its first route's. */
+function tintStops(m, ri) {
+  const dk = dark(), base = ['get', dk ? 'dcolor' : 'color'];
+  const c = ri === undefined ? null : dk ? lift('#' + D.routes[ri].color) : '#' + D.routes[ri].color;
+  const fill = c ? ['case', ['in', ri, ['get', 'routes']], c, base] : base;
+  m.setPaintProperty('stops', 'circle-color', ['case', ['get', 'closed'], dk ? '#101214' : '#f2f2f3', fill]);
+  m.setPaintProperty('stops', 'circle-stroke-color', ['case', ['get', 'closed'], fill, dk ? '#101214' : '#ffffff']);
+  m.setPaintProperty('stop-selected', 'circle-color', fill);
 }
 
 /** The picked stop's routes, or a bus's loop, drawn on top at full strength; every other line faded back. */
@@ -481,6 +493,7 @@ function litLines(m, lines, loops) {
 function select(id, app, fly = false, zoomIn = false) {
   const si = id ? D.stopById[id] : undefined;
   selected = id; uHilite = ''; hiLoops = []; hiLines = si !== undefined ? [...stop(si).routes] : [];
+  focusRoute = undefined;
   applySelection();
   const card = col.querySelector('#mapcard');
   if (!id) { card.classList.remove('open'); return; }
@@ -720,6 +733,7 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
+  if (!routeShort && focusRoute !== undefined) { focusRoute = undefined; applySelection(); }   // off the route's page: stops back to their own colours
   // The address is acted on once. A redraw with the same one (the app coming back to the front, say)
   // leaves whatever the rider has since tapped on the map alone.
   const fresh = location.hash !== shownHash;
@@ -739,7 +753,7 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
     if (ri === undefined) return;
     const changed = lastFocused !== 'r:' + ri;
     lastFocused = 'r:' + ri;
-    selected = null; uHilite = ''; hiLines = [ri]; hiLoops = []; applySelection();
+    selected = null; uHilite = ''; hiLines = [ri]; hiLoops = []; focusRoute = ri; applySelection();
     col.querySelector('#mapcard').classList.remove('open');
     if (focus && changed) map.fitBounds(routeBounds(ri), { padding: 40, duration: 700, maxZoom: 15.5 });
     return;
@@ -816,4 +830,5 @@ function miniSelection() {
   const lines = ri !== undefined ? [ri] : si !== undefined ? [...D.stops[si].routes] : [];
   const loops = mmSel.ustopId && U ? U.stops[U.stopById[mmSel.ustopId]].routes.map(r => U.routes[r].id) : [];
   litLines(mm, lines, loops);
+  tintStops(mm, ri);
 }

@@ -61,11 +61,14 @@ export function routeLinks(si, size = 30) {
   return raw(`<div class="badges wide">${routeLinkItems(si, size)}</div>`);
 }
 export function routeLinkItems(si, size = 30) {
-  const s = stop(si);
-  return s.routes.map(ri => {
-    const r = D.routes[ri], dir = Object.keys(r.stops || {}).find(k => routeOrder(ri, k).includes(si)) ?? Object.keys(r.stops || {})[0] ?? '0';
-    return `<a class="badgelink" href="#/route/${encodeURIComponent(r.short)}/${dir}/${esc(s.id)}" aria-label="Route ${esc(r.short)}: every stop">${badge(ri, size).s}</a>`;
-  }).join('');
+  return stop(si).routes.map(ri => routeBadgeLink(ri, si, size)).join('');
+}
+/** One route badge as a link to the route's page, landing on this stop: in `dir` when that direction calls here
+ *  (a departure knows its own), else the first that does. */
+export function routeBadgeLink(ri, si, size, dir) {
+  const r = D.routes[ri], dirs = Object.keys(r.stops || {});
+  const d = dir !== undefined && routeOrder(ri, String(dir)).includes(si) ? String(dir) : dirs.find(k => routeOrder(ri, k).includes(si)) ?? dirs[0] ?? '0';
+  return `<a class="badgelink" href="#/route/${encodeURIComponent(r.short)}/${d}/${esc(stop(si).id)}" aria-label="Route ${esc(r.short)}: every stop">${badge(ri, size).s}</a>`;
 }
 
 /** '8:06 AM' as the heading type, the meridiem small. */
@@ -136,7 +139,8 @@ export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
   const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t)).s : sched().s;
-  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}${movedNote(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
+  const b = t.si !== undefined ? routeBadgeLink(t.r, t.si, 36, t.dir) : badge(t.r, 36).s;
+  return raw(`<div class="row${opts.href ? ' tap' : ''}">${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}${movedNote(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
 }
 
 /** A stop row for the home and search lists, with its next bus on the right. */
