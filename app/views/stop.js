@@ -2,7 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, today, newTimetable, timesChange, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag } from '../ui.js';
+import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, star, movedNote } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
@@ -92,8 +92,8 @@ export function render({ id, full }, clockNow) {
   const dayWord = dayWord0 && closed.has(first.r) ? html`<span class="warnmark">${dayWord0} · after the detour</span>`
     : quiet ? html`${dayWord0} · <b class="quiet">${quiet}</b>` : dayWord0;
   parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark(liveWord(first)) : sched()}</div>
-    ${wasLine(first)}<div class="big">${loopArrival(first) ? minsOut(first, 60, clockNow) : html`${time(first.min, 60, !!first.live)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span>`}</div>
-    <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div>${lastTag(first)}</div>`);
+    ${wasLine(first)}<div class="big">${loopArrival(first) ? minsOut(first, 60, clockNow) : html`${time(first.min, 60, !!first.live)}${first.moved !== undefined ? html.raw(star) : ''}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span>`}</div>
+    <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div>${lastTag(first)}${movedNote(first)}</div>`);
 
   if (full) {
     // The whole day by the timetable, past departures muted, grouped by day if we had to roll over. Past is the feed's

@@ -89,37 +89,81 @@ export function upcomingServices(ymd, within = 45) {
  *  Transit Center, with its layovers, breaks things), so each bus's first trip lists stops before the Transit Center
  *  that it never runs. Those rows are left out; every later one is the end of the run before, and real. */
 let unrun = null;
-function notRun(ti, si) {
+/** 'service|trip|stop' → minutes a time moves. The Green and Blue Loops start together (their drivers clock in together),
+ *  so on a day the published first departures differ, the earlier loop's first run leaves with the later one and
+ *  catches up as it goes round, on time again by its return to the Transit Center: the shift shrinks with the
+ *  way gone. A best estimate on an odd day, marked as one; when the two agree, as on weekdays, nothing moves. */
+const moved = new Map();
+function notRun(ti, si, svc) {
   if (!unrun) {
     unrun = new Set();
-    const hub = new Set(D.hub.bays.map(b => b.stop)), loops = new Set(D.hub.loops || []);
-    const trips = new Map();
+    const loops = new Set(D.hub.loops || []);
+    const bayOf = r => (D.hub.bays.find(b => b.routes.includes(r)) || {}).stop;
+    const trips = new Map();   // service|trip → { t, r, svc, rows }: a trip's rows under one service
     for (const [s, per] of Object.entries(D.times)) for (const [svc, rows] of Object.entries(per)) for (const [m, r, , , t] of rows) {
       if (!loops.has(r)) continue;
-      let x = trips.get(t);
-      if (!x) trips.set(t, x = { svcs: new Set(), rows: [] });
-      x.svcs.add(svc); x.rows.push([m, +s]);
+      const k = svc + '|' + t;
+      let x = trips.get(k);
+      if (!x) trips.set(k, x = { t, r, svc, rows: [] });
+      x.rows.push([m, +s]);
     }
-    const first = new Map();   // service|run (G1, B2S…) → its earliest trip, by Transit Center time
-    for (const [t, x] of trips) {
-      const tc = Math.min(...x.rows.filter(([, s]) => hub.has(s)).map(([m]) => m));
+    const first = new Map();     // service|run (G1, B2S…) → its earliest trip, by its departure from the loop's stop
+    const opening = new Map();   // service|loop → the loop's first trip of the day
+    const runs = new Map();      // service|run → its trips in order, for the one after the first
+    for (const x of trips.values()) {
+      const bay = bayOf(x.r);
+      const tc = Math.min(...x.rows.filter(([, s]) => s === bay).map(([m]) => m));
       if (!isFinite(tc)) continue;
-      const run = D.trips[t].split('_')[0];
-      for (const svc of x.svcs) { const k = svc + '|' + run, f = first.get(k); if (!f || tc < f.tc) first.set(k, { t, tc }); }
+      x.tc = tc;
+      const run = x.svc + '|' + D.trips[x.t].split('_')[0], f = first.get(run);
+      if (!f || tc < f.tc) first.set(run, x);
+      (runs.get(run) || runs.set(run, []).get(run)).push(x);
+      x.run = run;
+      const o = x.svc + '|' + x.r, g = opening.get(o);
+      if (!g || tc < g.tc) opening.set(o, x);
     }
-    for (const { t, tc } of first.values()) for (const [m, s] of trips.get(t).rows) if (m < tc) unrun.add(t + '|' + s);
+    for (const x of first.values()) for (const [m, s] of x.rows) if (m < x.tc) unrun.add(x.svc + '|' + x.t + '|' + s);
+    const bySvc = {};
+    for (const o of opening.values()) (bySvc[o.svc] ||= []).push(o);
+    for (const os of Object.values(bySvc)) {
+      if (os.length < 2) continue;
+      const later = Math.max(...os.map(o => o.tc));
+      for (const o of os) {
+        const delta = later - o.tc;
+        o.later = later;
+        if (delta <= 0 || delta > 30) continue;
+        // The first loop, Transit Center to Transit Center: this trip from its departure on, and the next trip's
+        // stops before its own departure (the rest of the loop, filed under it by the trip cutting).
+        const after = runs.get(o.run).filter(y => y.tc > o.tc).sort((a, b) => a.tc - b.tc)[0];
+        const back = after ? after.tc : Math.max(...o.rows.map(([m]) => m));
+        const span = Math.max(back - o.tc, delta + 1);
+        const shift = m => Math.round(delta * (1 - (m - o.tc) / span));
+        for (const [m, st] of o.rows) if (m >= o.tc && shift(m) > 0) moved.set(o.svc + '|' + o.t + '|' + st, shift(m));
+        if (after) for (const [m, st] of after.rows) if (m < after.tc && shift(m) > 0) moved.set(after.svc + '|' + after.t + '|' + st, shift(m));
+      }
+      // Nothing of a loop runs before the two start together: a trip filed under the day's service that would
+      // (Blue's 11:44 on Homecoming Saturday, reaching past its stop to 12:32) is left out.
+      const loopsHere = new Set(os.map(o => o.r));
+      for (const x of trips.values()) if (x.svc === os[0].svc && loopsHere.has(x.r))
+        for (const [m, st] of x.rows) if (m + (moved.get(x.svc + '|' + x.t + '|' + st) || 0) < later) unrun.add(x.svc + '|' + x.t + '|' + st);
+    }
   }
-  return unrun.has(ti + '|' + si);
+  return unrun.has(svc + '|' + ti + '|' + si);
 }
 
 export function timesOn(si, ymd) {
   const per = D.times[si] || {};
   const out = [];
   const seen = new Set();
-  for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) { if (notRun(t[4], si)) continue; out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4] }); seen.add(t[1]); }
+  for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) {
+    if (notRun(t[4], si, sid)) continue;
+    const mv = moved.get(sid + '|' + t[4] + '|' + si);
+    out.push(mv ? { min: t[0] + mv, r: t[1], h: t[2], dir: t[3], si, trip: t[4], moved: t[0] } : { min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4] });
+    seen.add(t[1]);
+  }
   const missing = (D.stops[si].routes || []).filter(r => !seen.has(r) && !routeRunsOn(r, ymd));
   if (missing.length) {
-    for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1]) && !notRun(t[4], si)) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], prov: sid });
+    for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1]) && !notRun(t[4], si, sid)) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], prov: sid });
   }
   // A detour that names this stop: that route's buses aren't calling here today.
   const closed = A.byStop[D.stops[si].id] ? closedRoutes(si, ymd) : null;
@@ -130,6 +174,7 @@ export function timesOn(si, ymd) {
 // Transit Center (the 8:30s, weekdays), so a stop's last departures get a word: the last trip that covers the
 // whole route, and the partial one after it, with where it ends. Every loop run is a full one.
 let tripMeta = null;
+const wholeTrips = {};   // route:direction → its fullest trip, for the order its stops really come in
 function metaOf(ti) {
   if (!tripMeta) {
     tripMeta = new Map();
@@ -139,7 +184,7 @@ function metaOf(ti) {
       if (!x) tripMeta.set(t, x = { r, d, stops: new Set(), seq: [] });
       if (!x.stops.has(+si)) { x.stops.add(+si); x.seq.push([m, +si]); }
     }
-    const whole = {};   // route:direction → a trip that covers it all, its stops in the order it calls
+    const whole = wholeTrips;   // route:direction → a trip that covers it all, its stops in the order it calls
     for (const x of tripMeta.values()) { const k = x.r + ':' + x.d; if (!most[k] || x.stops.size > most[k]) { most[k] = x.stops.size; whole[k] = x; } }
     for (const x of tripMeta.values()) {
       const k = x.r + ':' + x.d;
@@ -153,6 +198,24 @@ function metaOf(ti) {
   }
   return tripMeta.get(ti);
 }
+/** A route's stops in the order its buses call at them. A numbered route's from its fullest trip (the stored order
+ *  can be off), any that trip misses slotted in before the stop that follows them in the stored order. A loop's is
+ *  the stored order, which is right, turned to start at its Transit Center stop, where every run begins. */
+export function routeOrder(ri, dir) {
+  metaOf(-1);
+  const stored = (D.routes[ri].stops || {})[String(dir)] || [];
+  if ((D.hub.loops || []).includes(ri)) {
+    const once = stored.filter((si, k) => stored.indexOf(si) === k);
+    const bay = (D.hub.bays.find(b => b.routes.includes(ri)) || {}).stop, i = once.indexOf(bay);
+    return i > 0 ? once.slice(i).concat(once.slice(0, i)) : once;
+  }
+  const w = wholeTrips[ri + ':' + dir];
+  if (!w) return stored;
+  const order = w.seq.slice().sort((a, b) => a[0] - b[0]).map(([, si]) => si);
+  [...stored].reverse().forEach((si, k, rev) => { if (order.includes(si)) return; const next = rev.slice(0, k).reverse().find(x => order.includes(x)); order.splice(next === undefined ? order.length : order.indexOf(next), 0, si); });
+  return order;
+}
+
 const lastCache = new Map();
 /** 'Last full run', 'Last run (partial, to 290 South 100 East)', or null, for a departure on its service day. */
 export function lastRun(t) {

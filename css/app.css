@@ -359,6 +359,11 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .was { text-decoration: line-through; color: var(--cr-muted); font-family: var(--font-heading); font-weight: 500; white-space: nowrap; margin-right: 6px; }
 .whent .was { margin-right: 0; }
 /* the night's end on a departure: 'Last full run', 'Last run (partial, to …)' */
+/* a time moved to our best estimate on an odd day */
+sup.moved { font-family: var(--font-heading); font-size: 18px; font-weight: 600; line-height: 1; vertical-align: top; margin-left: 2px; color: var(--cr-muted); }
+.next .big sup.moved { font-size: 32px; }
+.tc-loop sup.moved { font-size: 22px; }
+.movednote { font-size: 12px; color: var(--cr-muted); line-height: 1.35; }
 .lastrun { font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; line-height: 1.35; color: var(--color-text); }
 .livetag { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-700); white-space: nowrap; }
 .livetag i { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); animation: crPulse 2s ease-out infinite; flex: none; }

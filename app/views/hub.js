@@ -3,7 +3,7 @@
 // with where its bus is. Tap a badge for that route: where its bus is and its next three departures.
 import { D, nextPulse, nextFromHub, distance, servicesOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText } from '../time.js';
-import { html, icon, badge, time, corners, schedOf, lastTag } from '../ui.js';
+import { html, icon, badge, time, corners, schedOf, lastTag, star, movedNote } from '../ui.js';
 import { rt, rtStale, isLoop } from '../rt.js';
 
 // Each route's place on the plan, in its 358 × 284 frame with 500 North along the top: read off the feed's stop
@@ -128,8 +128,8 @@ function loops(st, pick, clockNow) {
     const rel = t.day === 0 ? html`${waiting ? '' : relative(t, clockNow)}${after}` : dayName(t.ymd);
     return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="#/hub${pick === k ? '' : '/' + k}">
       <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
-      <span class="when">${waiting ? html`<span class="t t-36">At its stop</span>` : html`<span class="whent">${was(schedOf(t), t.min)}${time(t.min, 36, !!t.live)}</span>`}<span class="rel">${rel}</span></span>
-      ${lastTag(t)}<span class="where${s.out && !s.off ? ' live' : ''}"><i></i>${where}</span></a>`;
+      <span class="when">${waiting ? html`<span class="t t-36">At its stop</span>` : html`<span class="whent">${was(schedOf(t), t.min)}${time(t.min, 36, !!t.live)}${t.moved !== undefined ? html.raw(star) : ''}</span>`}<span class="rel">${rel}</span></span>
+      ${lastTag(t)}${movedNote(t)}<span class="where${s.out && !s.off ? ' live' : ''}"><i></i>${where}</span></a>`;
   });
   return html`<div class="tc-loops blueprint">${corners()}
     <div class="top"><span class="eyebrow">The loops</span>${every ? html`<span class="note">Every ${every} min, on their own timetable</span>` : ''}</div>
@@ -187,7 +187,7 @@ function picked(s, clockNow) {
     const m = i === 0 && t.day === 0 ? s.leave : t.min, c = clock(m);
     const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ' · late' : '') : dayName(t.ymd);
     if (i === 0 && t.live && t.live.here && t.live.spacing) return html`<div class="cell first"><span class="t">At its stop</span></div>`;
-    return html`<div class="cell${i === 0 ? ' first' : ''}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}<small>${c.ap}</small></span></span><span class="rel">${rel}</span>${lastTag(t)}</div>`;
+    return html`<div class="cell${i === 0 ? ' first' : ''}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}<small>${c.ap}</small></span>${t.moved !== undefined ? html.raw(star) : ''}</span><span class="rel">${rel}</span>${lastTag(t)}${movedNote(t)}</div>`;
   });
   return html`<div class="tc-pick blueprint">${corners()}
     <div class="top">${badge(s.ris[s.ris.length - 1], 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>

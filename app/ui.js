@@ -96,6 +96,13 @@ export function minsOut(t, size = 26, clockNow = now()) {
 /** A departure's time: the timetable's in black, or the feed's estimate in blue, with the timetable's crossed out
  *  beside it when the feed has moved it. A spacing loop's, away from the Transit Center, is minutes out. */
 export function when(t, size = 26) {
+  if (t.moved !== undefined) return raw(whenRaw(t, size).s + star);
+  return whenRaw(t, size);
+}
+/** A time moved to our best estimate on an odd day (see `moved` in data.js), and the line that says so. */
+export const star = '<sup class="moved">*</sup>';
+export const movedNote = t => raw(t.moved !== undefined ? `<span class="movednote">* Unusual schedule · unlikely to be ${clock(t.moved).h}</span>` : '');
+function whenRaw(t, size) {
   if (loopArrival(t)) return minsOut(t, size);
   if (!t.live) return time(t.min, size);
   if (!t.live.delay) return time(t.min, size, true);
@@ -117,7 +124,7 @@ export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
   const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t)).s : sched().s;
-  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
+  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}${movedNote(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
 }
 
 /** A stop row for the home and search lists, with its next bus on the right. */
