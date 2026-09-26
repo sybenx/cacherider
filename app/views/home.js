@@ -154,50 +154,61 @@ function searchPage(q, clockNow, app) {
   return { html: parts.join(''), mount, title: 'Search' };
 }
 
-// ---- pointing: while it's on, the arrow turns with the phone and the distance follows the rider's steps.
-// On only after a tap (an iPhone asks for the compass then, and not before); off again by a tap, on leaving
-// the page, or when the phone gives no heading, in which case the arrow stays north-up.
-const pt = { on: false, heading: null, fix: null, watch: null };
+// ---- pointing. The arrow turns with the phone by itself wherever the browser shares the compass unasked
+// (Android does; it costs next to nothing). A tap asks for it where the browser insists on asking first (an
+// iPhone), and starts the distance following the rider's steps, which needs the GPS and so waits to be asked;
+// another tap, or leaving the page, stops that. No compass at all: the arrow stays north-up, right on a map.
+const pt = { heading: null, turnedAt: 0, listening: false, following: false, fix: null, watch: null };
+const asks = () => typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
 function paintPointer() {
   const b = document.getElementById('pointer');
-  if (!b) { stopPointing(); return; }
+  if (!b) { quiet(); return; }
   const g = pt.fix || window.__app.geo, lat = +b.dataset.lat, lon = +b.dataset.lon;
-  const deg = bearing(g.lat, g.lon, lat, lon);
-  b.querySelector('.needle').style.transform = `rotate(${Math.round(deg - (pt.on && pt.heading !== null ? pt.heading : 0))}deg)`;
+  const deg = bearing(g.lat, g.lon, lat, lon), turning = pt.heading !== null;
+  b.querySelector('.needle').style.transform = `rotate(${Math.round(deg - (turning ? pt.heading : 0))}deg)`;
   b.querySelector('.pw').textContent = metres(distance(g.lat, g.lon, lat, lon)) + ' ' + compass8(deg);
-  b.classList.toggle('live', pt.on && pt.heading !== null);
-  b.setAttribute('aria-pressed', pt.on ? 'true' : 'false');
-  b.title = !pt.on ? 'Point me there' : pt.heading !== null ? 'Pointing with your phone · tap to stop' : 'No compass: the arrow points as on a map, north up · tap to stop';
+  b.classList.toggle('live', turning);
+  b.classList.toggle('ask', !turning && asks());   // a quiet button look only where a tap is what it takes
+  b.setAttribute('aria-pressed', pt.following ? 'true' : 'false');
+  b.title = pt.following ? 'Following you · tap to stop' : turning ? 'Tap to follow as you walk' : asks() ? 'Tap to point with your phone' : 'Tap to follow as you walk';
 }
 function onTurn(e) {
   let h = typeof e.webkitCompassHeading === 'number' ? e.webkitCompassHeading : e.absolute && e.alpha !== null ? 360 - e.alpha : null;
   if (h === null) return;
-  h = (h + ((screen.orientation && screen.orientation.angle) || 0) + 360) % 360;
-  pt.heading = h;
+  pt.heading = (h + ((screen.orientation && screen.orientation.angle) || 0) + 360) % 360;
+  pt.turnedAt = Date.now();
   paintPointer();
 }
-async function startPointing() {
-  // An iPhone asks first. Chrome on Android has the same call but may answer 'denied' without asking while
-  // still sending the events, so its answer isn't trusted: listen anyway. No heading arriving means no compass
-  // (or none allowed), and the arrow stays north-up while the distance still follows the rider.
-  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try { await DeviceOrientationEvent.requestPermission(); } catch { /* listen regardless */ }
-  }
-  pt.on = true; pt.heading = null;
+function listen() {
+  if (pt.listening) return;
+  pt.listening = true;
   window.addEventListener('deviceorientationabsolute', onTurn); window.addEventListener('deviceorientation', onTurn);
-  if (navigator.geolocation) pt.watch = navigator.geolocation.watchPosition(p => {
+}
+function quiet() {   // the pointer's gone from the page: stop everything
+  pt.listening = false; pt.heading = null;
+  window.removeEventListener('deviceorientationabsolute', onTurn); window.removeEventListener('deviceorientation', onTurn);
+  stopFollowing();
+}
+async function tapPointer() {
+  // An iPhone asks here. Chrome on Android has the same call but may say 'denied' without asking while still
+  // sending the events, so its answer isn't trusted.
+  if (asks() && pt.heading === null) { try { await DeviceOrientationEvent.requestPermission(); } catch { /* listen regardless */ } listen(); }
+  if (pt.following) stopFollowing(); else startFollowing();
+  paintPointer();
+}
+function startFollowing() {
+  if (!navigator.geolocation) return;
+  pt.following = true;
+  pt.watch = navigator.geolocation.watchPosition(p => {
     pt.fix = { lat: p.coords.latitude, lon: p.coords.longitude, at: Date.now() };
     window.__app.geo = pt.fix;   // the next minute's redraw picks the nearest stop from here
     paintPointer();
   }, () => {}, { enableHighAccuracy: true, maximumAge: 5000 });
-  document.addEventListener('visibilitychange', stopPointing, { once: true });
-  paintPointer();
+  document.addEventListener('visibilitychange', stopFollowing, { once: true });
 }
-function stopPointing() {
-  if (!pt.on) return;
-  pt.on = false; pt.heading = null;
-  window.removeEventListener('deviceorientationabsolute', onTurn);
-  window.removeEventListener('deviceorientation', onTurn);
+function stopFollowing() {
+  if (!pt.following) return;
+  pt.following = false;
   if (pt.watch !== null && navigator.geolocation) navigator.geolocation.clearWatch(pt.watch);
   pt.watch = null;
   if (document.getElementById('pointer')) paintPointer();
@@ -206,7 +217,7 @@ function stopPointing() {
 function mount(el, app) {
   window.__app = app;
   const pb = el.querySelector('#pointer');
-  if (pb) { pb.onclick = e => { e.preventDefault(); pt.on ? stopPointing() : startPointing(); }; if (pt.on) paintPointer(); }
+  if (pb) { pb.onclick = e => { e.preventDefault(); tapPointer(); }; listen(); paintPointer(); }
   const form = el.querySelector('#search');
   if (form) {
     const input = form.querySelector('input');
