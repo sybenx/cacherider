@@ -636,3 +636,6 @@ sup.moved { font-family: var(--font-heading); font-size: 18px; font-weight: 600;
 .seg button[aria-pressed="true"] { background: var(--color-accent-100); color: var(--color-accent-700); font-weight: 600; }
 .shuttleline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: inherit; text-decoration: none; }
 .shuttleline .eyebrow { display: inline-flex; align-items: center; gap: 5px; }
+/* a saved stop's star: the app's blue, not yellow, which is kept for what changes a trip */
+.savedmark { display: inline-flex; align-items: center; gap: 5px; }
+.savedmark svg { color: var(--color-accent); flex: none; }

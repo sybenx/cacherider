@@ -24,10 +24,11 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
 ## What it does
 
 - **The watchface, on the phone** — the home screen is one answer set
-  large: when the next bus leaves your saved stop, with the Transit Center pulse
-  and your other stops beneath. Without a saved stop the nearest one takes the
-  hero; without location, the Transit Center does, with a search box and one
-  ask for location. Every route is a chip beneath. Search has its own page.
+  large: when the next bus leaves the stop you're standing near, with location
+  on; with it off (or the nearest stop more than 800 m away), your first saved
+  stop; with neither, the Transit Center, with a search box and one ask for
+  location. Your saved stops are listed beneath, Connect and shuttle alike, then
+  every route as a chip. Search has its own page.
 - **Stops** — search by street, number, town or stop number; the next bus at
   each stop, then the rest of the day. Any grid address in the valley, like
   “1400 N 500 E, Logan”, lists the stops nearest it, and pins it on the map. Twin stops across a road know about each other. With

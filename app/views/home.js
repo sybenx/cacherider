@@ -19,12 +19,13 @@ export function render({ q, page }, clockNow) {
 function landing(clockNow, app) {
   const sv = saved();
   const firstSaved = sv.find(id => !id.startsWith('u:') && D.stopById[id] !== undefined);
+  // The big one: the stop you're standing near, when location is on and it's close enough to walk to; else your
+  // first saved stop; else the Transit Center. Saved stops are the list beneath, every one but the hero.
+  const near = app && app.geo ? nearest(app.geo.lat, app.geo.lon, 3).find(x => !stop(x.i).hub) : null;
   let heroSi, heroWhy = '';
-  if (firstSaved !== undefined) { heroSi = D.stopById[firstSaved]; heroWhy = 'Next bus'; }
-  else if (app && app.geo) {
-    const n = nearest(app.geo.lat, app.geo.lon, 3).find(x => !stop(x.i).hub);
-    if (n) { heroSi = n.i; heroWhy = 'Nearest · ' + metres(n.d); }
-  }
+  if (near && near.d <= 800) { heroSi = near.i; heroWhy = 'Nearest · ' + metres(near.d); }
+  else if (firstSaved !== undefined) { heroSi = D.stopById[firstSaved]; heroWhy = 'Saved'; }
+  else if (near) { heroSi = near.i; heroWhy = 'Nearest · ' + metres(near.d); }
   const stopHero = heroSi !== undefined;
   const geo = app && app.geo;
   const [dow, date, mon] = fmtDay(clockNow.ymd).split(' ');
@@ -35,23 +36,20 @@ function landing(clockNow, app) {
 
   parts.push(stopHero ? stopHeroBlock(heroSi, heroWhy, clockNow) : pulseHeroBlock(clockNow));
   parts.push(html`<div class="spacer"></div>`);
+  if (stopHero) parts.push(hubLine(clockNow));
 
-  if (stopHero) {
-    parts.push(hubLine(clockNow));
-    if (sv.length) {
-      const editing = app && app.editSaved;
-      const others = sv.filter(id => id !== firstSaved);
-      parts.push(html`<div class="land-eye"><span>Saved</span><button class="btn btn-ghost edit" id="edit-saved">${editing ? 'Done' : 'Edit'}</button></div>`);
-      if (editing) parts.push(html`<div class="list">${html.raw(sv.map((id, i) => editRow(id, i, sv.length)).join(''))}</div>`);
-      else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
-    } else if (geo) {
-      const rows = nearest(geo.lat, geo.lon, 6).filter(x => x.i !== heroSi && !stop(x.i).hub).slice(0, 3);
-      parts.push(html`<div class="land-eye"><span>Also near you</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) }))}</div>`);
-    }
+  const heroId = stopHero ? stop(heroSi).id : null;
+  if (sv.length) {
+    const editing = app && app.editSaved;
+    const others = sv.filter(id => id !== heroId);
+    parts.push(html`<div class="land-eye"><span class="savedmark">${icon('star', 13, 1.5, 'currentColor')}Saved</span><button class="btn btn-ghost edit" id="edit-saved">${editing ? 'Done' : 'Edit'}</button></div>`);
+    if (editing) parts.push(html`<div class="list">${html.raw(sv.map((id, i) => editRow(id, i, sv.length)).join(''))}</div>`);
+    else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
   } else if (geo) {
-    const rows = nearest(geo.lat, geo.lon, 5).filter(x => !stop(x.i).hub).slice(0, 3);
-    if (rows.length) parts.push(html`<div class="land-eye"><span>Nearest to you</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) }))}</div>`);
-  } else {
+    const rows = nearest(geo.lat, geo.lon, 6).filter(x => x.i !== heroSi && !stop(x.i).hub).slice(0, 3);
+    if (rows.length) parts.push(html`<div class="land-eye"><span>${stopHero ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) }))}</div>`);
+  }
+  if (!stopHero && !geo) {
     parts.push(html`<div class="ask">
       <form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form>
       <button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
@@ -87,7 +85,7 @@ function giant(min, est = false) {
 function stopHeroBlock(si, why, clockNow) {
   const s = stop(si);
   const next = nextAt(si, 3, clockNow);
-  const eye = html`<div class="eye"><span class="eyebrow">${why} · Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched()}</div>`;
+  const eye = html`<div class="eye"><span class="eyebrow${why === 'Saved' ? ' savedmark' : ''}">${why === 'Saved' ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched()}</div>`;
   if (!next.length) {
     const resume = nextServiceDay(clockNow);
     return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span><div class="hero-none">Nothing scheduled${resume && resume !== clockNow.ymd ? html`<span class="sub">Buses resume ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
