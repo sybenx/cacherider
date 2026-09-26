@@ -56,9 +56,10 @@ export function badges(ris, size = 24, wide = false) {
 }
 
 /** '8:06 AM' as the heading type, the meridiem small. */
-export function time(min, size = 26) {
+/** '8:06 AM' as the heading type, the meridiem small; `est` sets it in the live-estimate blue. */
+export function time(min, size = 26, est = false) {
   const c = clock(min);
-  return raw(`<span class="t t-${size}">${c.h}<small>${c.ap}</small></span>`);
+  return raw(`<span class="t t-${size}${est ? ' est' : ''}">${c.h}<small>${c.ap}</small></span>`);
 }
 
 export const sched = () => raw(`<span class="sched">${icon('clock', 11).s}Scheduled</span>`);
@@ -90,14 +91,15 @@ export const loopArrival = t => !!t.live && isLoop(t.r) && !D.stops[t.si]?.hub &
 /** '4 MIN' in a time's place, or 'NOW'. */
 export function minsOut(t, size = 26, clockNow = now()) {
   const m = t.min - clockNow.min;
-  return raw(`<span class="t t-${size}">${m <= 0 ? 'NOW' : m + `<small>MIN</small>`}</span>`);
+  return raw(`<span class="t t-${size} est">${m <= 0 ? 'NOW' : m + `<small>MIN</small>`}</span>`);
 }
-/** A departure's time: the timetable's, or, when the feed has moved it, the timetable's crossed out and the
- *  estimate beside it at full size. A spacing loop's, away from the Transit Center, is minutes out. */
+/** A departure's time: the timetable's in black, or the feed's estimate in blue, with the timetable's crossed out
+ *  beside it when the feed has moved it. A spacing loop's, away from the Transit Center, is minutes out. */
 export function when(t, size = 26) {
   if (loopArrival(t)) return minsOut(t, size);
-  if (!t.live || !t.live.delay) return time(t.min, size);
-  return raw(`<span class="whent"><s class="was" style="font-size:${Math.max(12, Math.round(size * .55))}px">${esc(clock(schedOf(t)).h)}</s>${time(t.min, size).s}</span>`);
+  if (!t.live) return time(t.min, size);
+  if (!t.live.delay) return time(t.min, size, true);
+  return raw(`<span class="whent"><s class="was" style="font-size:${Math.max(12, Math.round(size * .55))}px">${esc(clock(schedOf(t)).h)}</s>${time(t.min, size, true).s}</span>`);
 }
 /** For the big displays, a line above the estimate saying what the crossed-out time is: 'Scheduled ~~3:15 PM~~'. */
 export function wasLine(t) {

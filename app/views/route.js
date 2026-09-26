@@ -1,5 +1,5 @@
 // A route: its stops in order, each with the route's next call there.
-import { D, route, stop, nextAt, routeAlerts } from '../data.js';
+import { D, route, stop, nextAt, routeAlerts, closedRoutes } from '../data.js';
 import { relative, clockText } from '../time.js';
 import { html, icon, badge, badges, time, sched, stopRow } from '../ui.js';
 import { miniSlot, mountMini } from './mini.js';
@@ -19,6 +19,8 @@ export function render({ short, dir }, clockNow) {
   }
   const seq = (r.stops || {})[d] || [];
   const rows = seq.map(si => {
+    // A stop the route's detour skips: say so, rather than the first bus after the detour's end, days off.
+    if (closedRoutes(si, clockNow.ymd).has(ri)) return stopRow(si, null, clockNow, { none: 'Not served · detour' });
     const n = nextAt(si, 1, clockNow, 8, t => t.r === ri)[0];
     return stopRow(si, n, clockNow, { none: 'Not today' });
   });

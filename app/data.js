@@ -25,6 +25,7 @@ export async function loadAlerts() {
     const byStop = {}, byRoute = {};
     for (const a of j.alerts) {
       a.ri = (a.routes || []).map(s => D.routeByShort[s]).filter(x => x !== undefined);
+      a.names = namedDay(a.title || '', a.start);
       for (const id of a.stops || []) (byStop[id] ||= []).push(a);
       for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
     }
@@ -33,7 +34,22 @@ export async function loadAlerts() {
 }
 let ymdFmt = null;
 const ymdOf = epoch => (ymdFmt ||= new Intl.DateTimeFormat('en-CA', { timeZone: D.agency.tz, year: 'numeric', month: '2-digit', day: '2-digit' })).format(new Date(epoch * 1000)).replace(/-/g, '');
-export const alertOn = (a, ymd) => (!a.start || ymdOf(a.start) <= ymd) && (!a.end || ymdOf(a.end) >= ymd);
+/** Connect sometimes runs a notice for a day's change up to the day before it and no further ("USU Homecoming
+ *  Parade Saturday 9/26/2026", shown until the Friday). An alert naming a date in its title stays up through it. */
+export const alertOn = (a, ymd) => (!a.start || ymdOf(a.start) <= ymd) && (!a.end || ymdOf(a.end) >= ymd || (a.names && a.names >= ymd));
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/** The date a title names, as ymd: '9/26/2026', '9/26', 'Sept 26', 'September 26th'. Null when it names none. */
+function namedDay(title, start) {
+  const year0 = start ? +ymdOf(start).slice(0, 4) : new Date().getFullYear();
+  let y, mo, d, m = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/.exec(title);
+  if (m) { mo = +m[1]; d = +m[2]; y = m[3] ? +(m[3].length === 2 ? '20' + m[3] : m[3]) : year0; }
+  else if ((m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(?:uary|ruary|ch|il|e|y|ust|t|tember|ober|ember)?\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i.exec(title))) { mo = MONTHS.indexOf(m[1].toLowerCase()) + 1; d = +m[2]; y = year0; }
+  else return null;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return String(y) + String(mo).padStart(2, '0') + String(d).padStart(2, '0');
+}
+/** A system-wide alert (no stops or routes named) about this very day, for the day's heading in a list. */
+export function dayAlert(ymd) { return A.alerts.find(a => a.names === ymd && !(a.stops || []).length && !(a.routes || []).length && !(a.routeIds || []).length) || null; }
 export function stopAlerts(si, ymd) { return (A.byStop[D.stops[si].id] || []).filter(a => alertOn(a, ymd)); }
 export function routeAlerts(ri, ymd) { return (A.byRoute[ri] || []).filter(a => alertOn(a, ymd)); }
 export function systemAlerts(ymd) { return A.alerts.filter(a => !(a.stops || []).length && !(a.routes || []).length && !(a.routeIds || []).length && alertOn(a, ymd)); }
@@ -178,6 +194,15 @@ export function newTimetable(clockNow = now()) {
     if (s.start > clockNow.ymd && dayDiff(clockNow.ymd, s.start) <= 45 && (!best || s.start < best)) best = s.start;
   }
   return best;
+}
+
+/** Whether a stop's own departures differ under the timetable starting `start`: each weekday's first week on it
+ *  against the same weekday the week before. Only then is "new timetable" worth telling a rider at this stop. */
+export function timesChange(si, start) {
+  if (!start) return false;
+  const key = ymd => timesOn(si, ymd).map(t => t.min + ':' + t.r).join(',');
+  for (let k = 0; k < 7; k++) if (key(dayFrom(start, k).ymd) !== key(dayFrom(start, k - 7).ymd)) return true;
+  return false;
 }
 
 /** The next day with service from today, for the "resumes" line. */

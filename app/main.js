@@ -109,7 +109,7 @@ async function render(tick = false) {
     else if (name === 'stop') view = stopView.render({ id: seg[1], full: seg[2] === 'all' }, clockNow);
     else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
     else if (name === 'route') view = routeView.render({ short: decodeURIComponent(seg[1] || ''), dir: seg[2] }, clockNow);
-    else if (name === 'about') view = about.render({}, clockNow);
+    else if (name === 'about') view = about.render({ section: seg[1] }, clockNow);
     else if (name === 'usu' && seg[1] === 'route') view = uroute.render({ id: seg[2] }, clockNow);
     else if (name === 'usu') view = ustop.render({ id: seg[1] }, clockNow);
     else if (name === 'map') view = null;
@@ -135,6 +135,8 @@ async function render(tick = false) {
     side.dataset.view = name + (seg[1] || '');
     side.dataset.sheet = fromMap || (same && isPage && side.dataset.sheet === '1') ? '1' : '';
     side.scrollTop = keepScroll ? y : 0;
+    // A link to a part of a page (#/about/alerts) lands on it, the first time only: a tick keeps the rider's place.
+    if (!keepScroll && view.anchor) { const a = side.querySelector('#' + view.anchor); if (a) a.scrollIntoView({ block: 'start' }); }
     view.mount && view.mount(side, app);
     if (fromMap) slideIn();
   }

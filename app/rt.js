@@ -184,11 +184,13 @@ function feedSays(t, u) {
   const sid = D.stops[t.si].id;
   const hit = u.at.get(sid);
   if (isLoop(t.r) && D.stops[t.si].hub && loopSpacing(t.r)) { const p = loopAtHub(t, u, sid, hit); if (p !== undefined) return p; }
-  // A route bus still listed at its bay after the feed's time for it is still there, boarding: the feed stamps a
-  // bay a bus waits at with its arrival, which then reads as gone. It leaves now (the listing drops when it goes).
-  // Not a loop: the Transit Center is mid-trip for them, and the feed can leave a passed stop listed.
-  const nowS = Date.now() / 1000;
-  if (hit && !hit.skipped && D.stops[t.si].hub && !isLoop(t.r) && hit.time < nowS - 30 && nowS - hit.time < 1800)
+  // A bus still listed at its bay after the feed's time for it is still there, boarding: the feed stamps a bay a
+  // bus waits at with its arrival, which then reads as gone. It leaves now (the listing drops when it goes). The
+  // Transit Center is every route's first stop, the loops' too (their stop numbering starts elsewhere, a quirk of
+  // how trips switch). A loop's listing is trusted for ten minutes past its time, a route's for thirty: a loop bus
+  // has been seen with the Transit Center still listed, minutes old, well after it left.
+  const nowS = Date.now() / 1000, cap = isLoop(t.r) ? 600 : 1800;
+  if (hit && !hit.skipped && D.stops[t.si].hub && hit.time < nowS - 30 && nowS - hit.time < cap)
     return held(t, toMin(Math.floor(nowS)) - t.min);
   if (hit) return hit.skipped ? { gone: true } : held(t, toMin(hit.time) - t.min);
   const order = (D.routes[t.r].stops || {})[String(t.dir)] || [];

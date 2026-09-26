@@ -4,10 +4,11 @@ import { fmtDay } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
 import { installState, iosSheet, app, themeButton, cycleTheme } from '../main.js';
 
-export function render(_, clockNow) {
+export function render({ section }, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
   return {
     title: 'About',
+    anchor: section === 'alerts' ? 'alerts' : null,   // #/about/alerts lands on the alerts
     html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div>
     <div class="head"><span class="eyebrow">Unofficial</span><h1>Cache Rider</h1></div>
     <div class="pad" style="font-size:16px;line-height:1.5">

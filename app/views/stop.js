@@ -1,6 +1,6 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, today, newTimetable, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes } from '../data.js';
+import { D, stopIndex, stop, nextAt, today, newTimetable, timesChange, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -39,7 +39,8 @@ export function render({ id, full }, clockNow) {
       <div class="mid"><span class="eyebrow">USU shuttle · ${m2(sh.d)}</span><span class="name">${us.name}</span><div class="when">${chips(us.routes, 20)}${liveTag()}</div></div>
       <span class="muted">${icon('fwd', 20)}</span></a>`);
   }
-  const nt = newTimetable(clockNow);
+  const nt0 = newTimetable(clockNow);
+  const nt = nt0 && timesChange(si, nt0) ? nt0 : null;   // said only where this stop's times change
   const td = today(si, clockNow);
   const next = nextAt(si, 7, clockNow);
 
@@ -47,6 +48,7 @@ export function render({ id, full }, clockNow) {
   const alerts = stopAlerts(si, clockNow.ymd);
   const closed = closedRoutes(si, clockNow.ymd);
   const allClosed = closed.size && s.routes.every(ri => closed.has(ri));
+  if (dayAlert(clockNow.ymd)) parts.push(html`<div class="notice">${icon('info', 16)}<span>Service changes today · <a href="#/about/alerts">see alert</a></span></div>`);
   if (alerts.length) {
     const who = [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ');
     const head = allClosed ? 'No buses stop here during the detour' : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop right now` : 'Service alert for this stop';
@@ -63,7 +65,7 @@ export function render({ id, full }, clockNow) {
     const weekdayOnly = only.filter(r => !servicesOnDays(r)).length;
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>No ${dayName(clockNow.ymd)} service at this stop</b><div class="sub">${only.length === 1 ? `Route ${only[0].short} ${describeDays(only[0])}.` : 'The routes here ' + (weekdayOnly ? 'run weekdays only' : 'skip today') + '.'} Other routes are running today.</div></div></div>`);
   } else if (!td.left.length && td.last && !(next[0] && next[0].day === 0)) {   // a late last bus is still coming
-    parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>Last bus today left at ${clockText(td.last.min)}</b><div class="sub">The next one is ${next[0] && next[0].day === 1 ? 'tomorrow morning' : next[0] ? dayName(next[0].ymd) : 'not in the timetable'}.</div></div></div>`);
+    parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>Last bus today left at ${clockText(td.last.min)}</b><div class="sub">The next one is ${next[0] ? (next[0].day === 1 ? 'tomorrow' : dayName(next[0].ymd)) + ' at ' + clockText(next[0].min) : 'not in the timetable'}.</div></div></div>`);
   } else if (nt) {
     parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   }
@@ -83,7 +85,7 @@ export function render({ id, full }, clockNow) {
   const first = next[0];
   const dayWord = first.day === 0 ? '' : first.day === 1 ? 'tomorrow, ' + dayName(first.ymd, true) : dayName(first.ymd);
   parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark(liveWord(first)) : sched()}</div>
-    ${wasLine(first)}<div class="big">${loopArrival(first) ? minsOut(first, 60, clockNow) : html`${time(first.min, 60)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span>`}</div>
+    ${wasLine(first)}<div class="big">${loopArrival(first) ? minsOut(first, 60, clockNow) : html`${time(first.min, 60, !!first.live)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span>`}</div>
     <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div>${lastTag(first)}</div>`);
 
   if (full) {
@@ -92,7 +94,7 @@ export function render({ id, full }, clockNow) {
     const all = td.all.length ? td.all.map(t => lively({ ...t, day: 0, ymd: clockNow.ymd })) : nextAt(si, 200, clockNow, 8).filter(t => t.day === next[0].day);
     const past = t => t.day === 0 && (t.gone || t.min < clockNow.min);
     const label = all[0].day === 0 ? fmtDay(clockNow.ymd, true) : fmtDay(all[0].ymd, true);
-    parts.push(html`<div class="dayhead">${label} · ${all.length} departures</div>`);
+    parts.push(html`<div class="dayhead">${label} · ${all.length} departures${alertLink(all[0].ymd)}</div>`);
     parts.push(html`<div class="list">${all.map(t => html.raw(`<div style="${past(t) ? 'opacity:.45' : ''}">${depRow(t, clockNow, { rel: past(t) ? 'gone' : relative(t, clockNow) }).s}</div>`))}</div>`);
     parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${s.id}">What's next</a></div>`);
     return { html: parts.join(''), title: s.name, mount, keepScroll: true };
@@ -102,10 +104,10 @@ export function render({ id, full }, clockNow) {
   let lastDay = first.day;
   const rows = [];
   for (const t of rest) {
-    if (t.day !== lastDay) { rows.push(html`<div class="dayhead">${fmtDay(t.ymd, true)}</div>`); lastDay = t.day; }
+    if (t.day !== lastDay) { rows.push(html`<div class="dayhead">${fmtDay(t.ymd, true)}${alertLink(t.ymd)}</div>`); lastDay = t.day; }
     rows.push(depRow(t, clockNow, { dayShort: true }));
   }
-  if (first.day !== 0 && rows.length && !String(rows[0]).startsWith('<div class="dayhead"')) rows.unshift(html`<div class="dayhead">${fmtDay(first.ymd, true)}</div>`);
+  if (first.day !== 0 && rows.length && !String(rows[0]).startsWith('<div class="dayhead"')) rows.unshift(html`<div class="dayhead">${fmtDay(first.ymd, true)}${alertLink(first.ymd)}</div>`);
   parts.push(html`<div class="list">${html.raw(rows.join(''))}</div>`);
   const todayCount = td.all.length;
   if (todayCount) parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${s.id}/all">Full day · ${todayCount} departures</a></div>`);
@@ -133,4 +135,10 @@ function mount(el) {
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.innerHTML = icon('star', 22, 1.5, on ? 'currentColor' : 'none').s + (on ? 'Saved' : 'Save');
   };
+}
+
+/** On a day a system-wide alert is about (a parade, a late start), the day's heading says its times may not hold:
+ *  the alert's words can't be read into the timetable, so the rider is sent to them. */
+function alertLink(ymd) {
+  return dayAlert(ymd) ? html` · <a class="dayalert" href="#/about/alerts">Service changes · see alert</a>` : '';
 }

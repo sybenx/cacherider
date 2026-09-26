@@ -63,7 +63,7 @@ function landing(clockNow, app) {
   const detours = activeAlerts(clockNow.ymd).filter(a => (a.stops || []).length || (a.routes || []).length);
   if (detours.length) {
     const rs = [...new Set(detours.flatMap(a => a.routes || []))].sort((x, y) => +x - +y);
-    parts.push(html`<div class="notice">${icon('ban', 16)}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on route' + (rs.length > 1 ? 's ' : ' ') + rs.join(', ') : ''} · <a href="#/about">details</a></span></div>`);
+    parts.push(html`<div class="notice">${icon('ban', 16)}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on route' + (rs.length > 1 ? 's ' : ' ') + rs.join(', ') : ''} · <a href="#/about/alerts">details</a></span></div>`);
   }
   if (sv.length) parts.push(installCard());   // the offer waits until a rider has saved a stop: proof it's their app
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
@@ -79,9 +79,9 @@ function chips() {
 }
 
 /** The giant time: hours, the two accent squares of the colon, minutes. */
-function giant(min) {
+function giant(min, est = false) {
   const c = clock(min), [hh, mm] = c.h.split(':');
-  return html`<div class="giant" aria-label="${c.h} ${c.ap}"><span>${hh}</span><span class="colon"><i></i><i></i></span><span>${mm}</span></div>`;
+  return html`<div class="giant${est ? ' est' : ''}" aria-label="${c.h} ${c.ap}"><span>${hh}</span><span class="colon"><i></i><i></i></span><span>${mm}</span></div>`;
 }
 
 function stopHeroBlock(si, why, clockNow) {
@@ -97,10 +97,10 @@ function stopHeroBlock(si, why, clockNow) {
   const arrival = loopArrival(first);   // a loop spacing its buses: minutes out, never a clock time
   const countdown = left !== null && (left <= 10 || arrival);
   const big = countdown
-    ? html`<div class="giant count"><span>${left <= 0 ? 'NOW' : left}</span>${left > 0 ? html`<span class="unit">MIN</span>` : ''}</div>`
-    : giant(first.min);
+    ? html`<div class="giant count${first.live ? ' est' : ''}"><span>${left <= 0 ? 'NOW' : left}</span>${left > 0 ? html`<span class="unit">MIN</span>` : ''}</div>`
+    : giant(first.min, !!first.live);
   // Moved by the feed, the timetable's time stands crossed out, labelled, above the estimate's side.
-  const val = arrival ? '' : countdown ? time(first.min, 34) : first.day === 0 ? html`<span class="rt">${relative(first, clockNow)}</span>` : '';
+  const val = arrival ? '' : countdown ? time(first.min, 34, !!first.live) : first.day === 0 ? html`<span class="rt">${relative(first, clockNow)}</span>` : '';
   const sideVal = val && first.live && first.live.delay ? html`<span class="side">${wasLine(first)}${val}</span>` : val;
   const dayWord = first.day === 0 ? '' : first.day === 1 ? 'Tomorrow' : dayName(first.ymd);
   const then = next.slice(1, 2);   // one, so a moved time and its estimate have room

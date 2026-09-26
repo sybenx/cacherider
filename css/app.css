@@ -296,6 +296,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .empty h2 { font-size: 24px; }
 .empty p { font-size: 15px; color: var(--cr-muted); margin: 0; }
 .dayhead { padding: 14px 16px 6px; font-family: var(--font-heading); font-weight: 600; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); border-top: 1px solid var(--cr-line); }
+.dayhead .dayalert { font-family: var(--font-body); font-weight: 500; letter-spacing: 0; text-transform: none; }   /* a system alert is about this day */
 
 /* saved stops */
 .section.saved .edit { margin-left: auto; min-height: 36px; padding: 0 8px; font-family: var(--font-body); font-size: 15px; font-weight: 500; letter-spacing: 0; text-transform: none; }
@@ -345,6 +346,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .wasline { font-size: 13.5px; color: var(--cr-muted); white-space: nowrap; }   /* 'Scheduled 3:15 PM', the time struck */
 .wasline s { text-decoration: line-through; }
 .whent { display: inline-flex; align-items: baseline; gap: 6px; }
+/* a time from the feed, not the timetable: always blue, so a rider can tell an estimate at a glance */
+.est, .t.est, .giant.est { color: var(--color-accent-700); }
 .was { text-decoration: line-through; color: var(--cr-muted); font-family: var(--font-heading); font-weight: 500; white-space: nowrap; margin-right: 6px; }
 .whent .was { margin-right: 0; }
 /* the night's end on a departure: 'Last full run', 'Last run (partial, to …)' */

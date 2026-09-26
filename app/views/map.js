@@ -27,11 +27,21 @@ let hiLines = [], hiLoops = [];   // Connect route indices and shuttle route ids
 // The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
 let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16] };
 const col = document.getElementById('mapcol');
+/** A route's colour for the dark map: the darker ones (the greens of 9 and 11, the purples, 16's navy) mixed toward
+ *  white just until they stand off the dark basemap; bright ones as they are. Badges keep the true colours. */
+function lift(hex) {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const lum = v => { const [r, g, b] = v.map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  let t = 0, v = c;
+  while (lum(v) < 0.2 && t < 1) { t += 0.05; v = c.map(x => Math.round(x + (255 - x) * t)); }
+  return '#' + v.map(x => x.toString(16).padStart(2, '0')).join('');
+}
 const dark = () => matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
 
 function style(sat = true) {
   const flavor = dark() ? 'dark' : 'light';
   flavorName = flavor;
+  const col = flavor === 'dark' ? 'dcolor' : 'color';   // Connect's lines and stops: lifted on the dark map
   const f = namedFlavor(flavor);
   const base = layers('protomaps', f, { lang: 'en' });
   return {
@@ -41,8 +51,8 @@ function style(sat = true) {
     sources: {
       protomaps: { type: 'vector', tiles: [BASE + 'tiles/{z}/{x}/{y}.pbf'], minzoom: TILES.minzoom, maxzoom: TILES.maxzoom, bounds: TILES.bounds, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
       stops: { type: 'geojson', data: stopsGeo() },
-      lines: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-      lclosed: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },   // the stretches of route we can't vouch for
+      lines: { type: 'geojson', data: drawn.lines || { type: 'FeatureCollection', features: [] } },
+      lclosed: { type: 'geojson', data: drawn.closed || { type: 'FeatureCollection', features: [] } },   // the stretches of route we can't vouch for
       spot: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       ustops: { type: 'geojson', data: usuStopsGeo() },
       ulines: { type: 'geojson', data: usuLinesGeo() },
@@ -51,13 +61,13 @@ function style(sat = true) {
       ...base,
       { id: 'spot-fill', type: 'fill', source: 'spot', paint: { 'fill-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'fill-opacity': 0.18 } },
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
-      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
-      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
+      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
+      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
       { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
-      { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
+      { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 0.8, 1.2], 15, ['case', ['get', 'approx'], 1.4, 2.5], 17, ['case', ['get', 'approx'], 2, 4]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.9], 'line-dasharray': [3, 1.5] } },
       { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
@@ -66,11 +76,11 @@ function style(sat = true) {
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
       { id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
         // a closed stop is a hollow ring in its route's colour
-        'circle-color': ['case', ['get', 'closed'], flavor === 'dark' ? '#101214' : '#f2f2f3', ['get', 'color']],
-        'circle-stroke-color': ['case', ['get', 'closed'], ['get', 'color'], flavor === 'dark' ? '#101214' : '#ffffff'],
+        'circle-color': ['case', ['get', 'closed'], flavor === 'dark' ? '#101214' : '#f2f2f3', ['get', col]],
+        'circle-stroke-color': ['case', ['get', 'closed'], ['get', col], flavor === 'dark' ? '#101214' : '#ffffff'],
         'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, ['case', ['get', 'closed'], 2.5, 1.5], 17, ['case', ['get', 'closed'], 3.5, 1.5]],
         'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
-      { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', 'color'], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
+      { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', col], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'stop-labels', type: 'symbol', source: 'stops', minzoom: 15, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
     ],
   };
@@ -78,7 +88,7 @@ function style(sat = true) {
 
 function stopsGeo() {
   const ymd = now().ymd;
-  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, color: '#' + route(s.routes[0]).color, closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, color: '#' + route(s.routes[0]).color, dcolor: lift('#' + route(s.routes[0]).color), closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 
 /** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes:
@@ -104,7 +114,7 @@ function closedSegments(fc) {
         if (done.has(key)) continue;
         done.add(key);
         for (const cut of cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]))) {
-          out.push({ type: 'Feature', properties: { color: '#' + r.color, route: +ri }, geometry: { type: 'LineString', coordinates: cut.coords } });
+          out.push({ type: 'Feature', properties: { color: '#' + r.color, dcolor: lift('#' + r.color), route: +ri }, geometry: { type: 'LineString', coordinates: cut.coords } });
           (gaps[cut.shape] ||= []).push([cut.s0, cut.s1]);
         }
       }
@@ -217,16 +227,20 @@ function shapes() {
   if (!shapesFC) shapesFC = Promise.all([
     fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json()),
     fetch(BASE + 'data/crossings.json').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => ({ type: 'Feature', properties: { color: '#' + route(l.route).color, route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } })) }; })
+  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => ({ type: 'Feature', properties: { color: '#' + route(l.route).color, dcolor: lift('#' + route(l.route).color), route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } })) }; })
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
+/** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
+ *  while they're worked out again. */
+const drawn = { lines: null, closed: null };
 async function loadShapes(m = map) {
   const fc = await shapes();
   if (!fc || !m) return;
   const { closed, gaps } = closedSegments(fc);
-  if (m.getSource('lines')) m.getSource('lines').setData(openLines(fc, gaps));
-  if (m.getSource('lclosed')) m.getSource('lclosed').setData(closed);
+  drawn.lines = openLines(fc, gaps); drawn.closed = closed;
+  if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
+  if (m.getSource('lclosed')) m.getSource('lclosed').setData(drawn.closed);
 }
 /** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
 let closedKey = null;
@@ -518,7 +532,7 @@ export function liveUpdate(app) {
     m.el.classList.toggle('lit', litBus(m));
   };
   if (U) for (const b of live.buses) place(b, 'u', U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
-  if (!rtStale()) for (const b of rt.buses) place(b, 'c', '#' + D.routes[b.ri].color, 'Route ' + D.routes[b.ri].short + ' · bus ' + b.label);
+  if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, 'Route ' + D.routes[b.ri].short + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
