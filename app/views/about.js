@@ -2,7 +2,7 @@
 import { D, BASE, pref, A, activeAlerts } from '../data.js';
 import { fmtDay, is24 } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
-import { installState, iosSheet, app, themeButton, cycleTheme, nearMe, nearOff, toggleClock } from '../main.js';
+import { installState, installSheet, app, themeButton, cycleTheme, nearMe, nearOff, toggleClock } from '../main.js';
 
 export function render({ section }, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
@@ -22,8 +22,8 @@ export function render({ section }, clockNow) {
       <div class="setrow"><div class="col"><span class="t">Clock</span><span class="s">3:10 PM or 15:10</span></div><div class="seg" role="group" aria-label="Clock"><button type="button" data-clock="12" aria-pressed="${is24() ? 'false' : 'true'}">12-hour</button><button type="button" data-clock="24" aria-pressed="${is24() ? 'true' : 'false'}">24-hour</button></div></div>
       <div class="setrow"><div class="col"><span class="t">Location</span><span class="s">${app.geo ? 'On · sorts stops by distance' : 'Off · turn on to sort stops by distance'}</span></div><button class="btn btn-secondary" id="aboutnear" type="button">${app.geo ? 'Turn off' : 'Turn on'}</button></div>
     </div>
-    <div class="section">${icon('down', 16)}On your home screen</div>
-    <div class="pad" id="install-about">${installBlock()}</div>
+    ${installState() === 'installed' ? '' : html`<div class="section">${icon('down', 16)}On your home screen</div>
+    <div class="pad" id="install-about">${installBlock()}</div>`}
     ${installState() === 'installed' || !/Android/i.test(navigator.userAgent) ? '' : html`<div class="section">${icon('globe', 16)}Android app</div>
     <div class="pad muted" style="font-size:14px"><p>On an Android phone without Chrome, GrapheneOS say, there's an app: it opens Cache Rider full screen in your own browser, nothing more. <a href="https://github.com/sybenx/cacherider/releases/latest" target="_blank" rel="noopener">Download the APK</a> from the releases, or add <b>sybenx/cacherider</b> to Obtainium to keep it updated.</p></div>`}
     <div class="section">${icon('map', 16)}Offline map</div>
@@ -50,12 +50,10 @@ function feedbackHref() {
 }
 
 function installBlock() {
-  const st = installState();
-  // Only what this page knows: it's open as an app right now. Whether an icon is still on the home screen, it can't see.
-  if (st === 'installed') return html`<p class="muted" style="font-size:14px">You're in the installed app: full screen, and it works offline.</p>`;
-  if (st === 'prompt') return html`<p class="muted" style="font-size:14px">One tap from your home screen, full screen, works offline.</p><button class="btn btn-secondary btn-lg blueprint" id="install-go">${corners()}${icon('install', 20)}Install Cache Rider</button>`;
-  if (st === 'ios') return html`<p class="muted" style="font-size:14px">Safari can keep Cache Rider on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p><button class="btn btn-secondary btn-lg blueprint" id="install-ios">${corners()}${icon('share', 20)}Show me the steps</button>`;
-  return html`<p class="muted" style="font-size:14px">In Chrome or Edge, the browser's menu offers “Install Cache Rider” or “Add to Home screen”. In Safari on a Mac, File → Add to Dock.</p>`;
+  // Never in the installed app (the section isn't drawn there). Elsewhere, always a button: large until it's
+  // been used once, then small. It raises the browser's own install prompt where there is one (Chrome), else the steps.
+  const used = !!pref('install');
+  return html`${used ? '' : html`<p class="muted" style="font-size:14px">One tap from your home screen, full screen, and it works offline.</p>`}<button class="btn btn-secondary${used ? '' : ' btn-lg blueprint'}" id="install-go" type="button">${used ? '' : corners()}${icon('install', 20)}Add to home screen</button>`;
 }
 
 const MARK = BASE + 'tiles/tiles.json';   // present in the map cache only once every tile is
@@ -68,13 +66,15 @@ async function mount(el) {
   if (nr) nr.onclick = () => app.geo ? nearOff() : nearMe();
   const go = el.querySelector('#install-go');
   if (go) go.onclick = async () => {
-    const p = app.installPrompt; if (!p) return;
-    p.prompt();
-    const r = await p.userChoice.catch(() => null);
-    if (r && r.outcome === 'accepted') { pref('install', 'done'); app.installPrompt = null; el.querySelector('#install-about').innerHTML = installBlock().s; }
+    const p = app.installPrompt;
+    if (p) {
+      p.prompt();
+      const r = await p.userChoice.catch(() => null);
+      if (r && r.outcome === 'accepted') { pref('install', 'done'); app.installPrompt = null; }
+    } else installSheet();
+    if (!pref('install')) pref('install', 'seen');   // used once: the button goes small
+    const box = el.querySelector('#install-about'); if (box) { box.innerHTML = installBlock().s; mount(el); }
   };
-  const ios = el.querySelector('#install-ios');
-  if (ios) ios.onclick = () => { const was = pref('install'); iosSheet(); if (was) pref('install', was); };
   const btn = el.querySelector('#save-map');
   const note = el.querySelector('#offline-note');
   const label = (ic, text) => { btn.innerHTML = corners().s + icon(ic, 20).s + text; };

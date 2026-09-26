@@ -656,3 +656,8 @@ sup.moved { font-family: var(--font-heading); font-size: 18px; font-weight: 600;
 @media (max-width: 899px) {
   #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { position: absolute; right: 60px; bottom: 0; margin: 0 0 10px 0; white-space: nowrap; }
 }
+/* The map keeps its drags. Some Android browsers (DuckDuckGo) took an up-and-down drag on it as scrolling the
+   page, hid their address bar, and dropped the drag: the map claims its touches, and the page itself neither
+   scrolls nor bounces while the map is open. */
+#map, #map .maplibregl-canvas-container, #map canvas { touch-action: none; }
+html:has(#body.map-open), html:has(#body.map-open) body { overscroll-behavior: none; overflow: hidden; }

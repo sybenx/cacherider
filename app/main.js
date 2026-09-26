@@ -209,7 +209,12 @@ export function locate(onDone) {
 
 /** Near me: silent when the browser already allows it, the explaining sheet only when the browser is about to ask. */
 export async function nearMe(onDone) {
-  let state = pref('near') === 'on' ? 'granted' : 'prompt';
+  // A fix from the last two minutes is where the rider is: no browser call, so no prompt.
+  if (app.geo && Date.now() - app.geo.at < 120000) { onDone && onDone(app.geo); return; }
+  // Allowed before: straight to the browser, without our explaining sheet. (Firefox answers 'prompt' for a
+  // permission it has given unless the rider ticked Remember, so its answer isn't trusted here.)
+  if (pref('near') === 'on') return locate(onDone);
+  let state = 'prompt';
   try {
     if (navigator.permissions) state = (await navigator.permissions.query({ name: 'geolocation' })).state;
   } catch { /* the browser won't say; go by what we remember */ }
@@ -243,7 +248,7 @@ async function autoLocate() {
 // ---- install: the browser's own prompt where there is one; on iPhone Safari, the steps. Either only once the rider
 // has saved a stop, the sign they'll be back, and never over a page they're just opening.
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isIOS = () => !/Android/i.test(navigator.userAgent) && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));   // an iPad says it's a Mac with a touchscreen
 /** Just after a rider saves a stop, the first time: on iPhone Safari, the home-screen steps (once; Not now is final). */
 export function afterSave() {
   if (isIOS() && !standalone() && !pref('install')) setTimeout(iosSheet, 400);
@@ -274,16 +279,20 @@ export function installState() {
   return 'none';
 }
 
-export function iosSheet() {
+/** The steps for a browser with no install prompt a page can raise: Safari's Share, or a menu elsewhere. */
+export function iosSheet() { installSheet(true); }
+export function installSheet(ios = isIOS()) {
+  const android = /Android/i.test(navigator.userAgent);
+  const steps = ios
+    ? [['Tap <b>Share</b> in Safari\'s toolbar', 'share'], ['Choose <b>Add to Home Screen</b>', 'plusSquare'], ['Tap <b>Add</b>, top right', 'check']]
+    : android
+      ? [['Open your browser\'s <b>menu</b> (⋮)', 'more'], ['Choose <b>Install</b> or <b>Add to Home screen</b>', 'plusSquare'], ['Confirm', 'check']]
+      : [['Open your browser\'s <b>menu</b>', 'more'], ['Choose <b>Install Cache Rider</b> (Safari: <b>File → Add to Dock</b>)', 'plusSquare'], ['Confirm', 'check']];
   const sheet = document.createElement('div');
   sheet.className = 'ios-install';
   sheet.innerHTML = html`<div class="scrim"></div><div class="sheet blueprint" role="dialog" aria-label="Add to Home Screen">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}
     <div class="who"><span class="cr big">CR</span><div class="col"><span class="title">Keep Cache Rider on your home screen</span><span class="sub">Opens full screen on your saved stops. Works offline with the last timetable it downloaded.</span></div><button class="btn btn-ghost btn-icon" data-act="no" aria-label="Close">${icon('close', 22)}</button></div>
-    <div class="steps">
-      <div class="step"><span class="n">1</span><span>Tap <b>Share</b> in Safari's toolbar</span><span class="ic">${icon('share', 20)}</span></div>
-      <div class="step"><span class="n">2</span><span>Choose <b>Add to Home Screen</b></span><span class="ic">${icon('plusSquare', 20)}</span></div>
-      <div class="step"><span class="n">3</span><span>Tap <b>Add</b>, top right</span><span class="ic">${icon('check', 20)}</span></div>
-    </div>
+    <div class="steps">${html.raw(steps.map(([t, ic], i) => `<div class="step"><span class="n">${i + 1}</span><span>${t}</span><span class="ic">${icon(ic, 20).s}</span></div>`).join(''))}</div>
     <button class="btn btn-secondary btn-lg btn-block" data-act="no">Not now</button></div>`;
   const close = () => { pref('install', 'no'); sheet.remove(); };
   sheet.querySelectorAll('[data-act=no]').forEach(b => b.onclick = close);
