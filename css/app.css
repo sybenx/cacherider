@@ -611,3 +611,15 @@ sup.moved { font-family: var(--font-heading); font-size: 18px; font-weight: 600;
 .tc-pick .cell .was { font-size: 13px; }
 .tc-pick .cell .rel { font-size: 12.5px; color: var(--cr-muted); }
 .tc-foot { margin: 0; padding: 22px 16px 20px; font-size: 12.5px; line-height: 1.45; color: var(--cr-muted); text-wrap: pretty; }
+
+/* About: settings as rows, the control at the right */
+.setrows { border-top: 1px solid var(--cr-line); }
+.setrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 10px 16px; border-bottom: 1px solid var(--cr-line); }
+.setrow .col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.setrow .t { font-size: 16px; font-weight: 500; }
+.setrow .s { font-size: 13px; color: var(--cr-muted); }
+.setrow > .btn, .setrow > .seg { flex: none; }
+.seg { display: inline-flex; border: 1px solid var(--color-divider); border-radius: var(--radius-md); overflow: hidden; }
+.seg button { min-height: 44px; padding: 0 12px; border: 0; background: var(--color-bg); color: var(--color-text); font: 500 15px var(--font-body); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--color-divider); }
+.seg button[aria-pressed="true"] { background: var(--color-accent-100); color: var(--color-accent-700); font-weight: 600; }

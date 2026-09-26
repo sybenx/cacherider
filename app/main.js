@@ -1,7 +1,7 @@
 // Boot, the hash router, and the pieces every screen shares: the tab bar, the
 // desktop header, the location sheet, the minute tick.
 import { load, D, BASE, pref, stopIndex, loadAlerts, A } from './data.js';
-import { now } from './time.js';
+import { now, is24, set24 } from './time.js';
 import { html, icon, esc } from './ui.js';
 import { loadGrid } from './geo.js';
 import * as home from './views/home.js';
@@ -201,6 +201,12 @@ export async function nearMe(onDone) {
   if (state === 'granted') return locate(onDone);
   if (state === 'denied') pref('near', 'blocked');
   askLocation(onDone);
+}
+
+/** 12- or 24-hour, from the About page: every time on screen follows at once. */
+export function toggleClock() {
+  set24(!is24());
+  render();
 }
 
 /** Near me, off: forget the fix and stop asking. */

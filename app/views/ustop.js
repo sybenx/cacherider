@@ -3,7 +3,7 @@
 import { D, nextAt, nearest, isSaved, toggleSaved } from '../data.js';
 import { dayName, now, metres } from '../time.js';
 import { html, icon, badges, depRow, stopRow, routeLinkItems } from '../ui.js';
-import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote } from '../usu.js';
+import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote, hoursWords } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { afterSave } from '../main.js';
 
@@ -26,7 +26,7 @@ export function render({ id }, clockNow) {
   const rows = board(si);
   if (hasData() && noBuses() && !isStale()) {
     parts.push(html`<div class="blueprint nobus"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-      <span class="eyebrow">${dayName(clockNow.ymd)}</span><span class="title">No shuttles on the road</span><span class="sub">${U.hours} This page fills in by itself when a bus reports in.</span></div>`);
+      <span class="eyebrow">${dayName(clockNow.ymd)}</span><span class="title">No shuttles on the road</span><span class="sub">${hoursWords()} This page fills in by itself when a bus reports in.</span></div>`);
   } else {
     if (!hasData() && live.error) parts.push(html`<div class="callout">${icon('info', 20)}<div><b>Can't reach the live feed</b><div class="sub">USU's shuttle positions aren't answering. Nothing is wrong with the shuttles themselves; try again in a minute.</div></div></div>`);
     else if (isStale()) parts.push(html`<div class="callout">${icon('info', 20)}<div><b>Live feed hasn't updated in ${Math.round((Date.now() - live.at) / 60000)} min</b><div class="sub">Showing where buses were at ${lastSeen()}. Minutes are hidden until it's back.</div></div></div>`);

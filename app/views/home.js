@@ -81,7 +81,7 @@ function chips() {
 /** The giant time: hours, the two accent squares of the colon, minutes. */
 function giant(min, est = false) {
   const c = clock(min), [hh, mm] = c.h.split(':');
-  return html`<div class="giant${est ? ' est' : ''}" aria-label="${c.h} ${c.ap}"><span>${hh}</span><span class="colon"><i></i><i></i></span><span>${mm}</span></div>`;
+  return html`<div class="giant${est ? ' est' : ''}" aria-label="${clockText(min)}"><span>${hh}</span><span class="colon"><i></i><i></i></span><span>${mm}</span></div>`;
 }
 
 function stopHeroBlock(si, why, clockNow) {

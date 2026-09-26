@@ -177,7 +177,7 @@ function picked(s, clockNow) {
   const desc = (r.desc || '').replace(/^.*?\s+-\s+/, '').replace(/,\s*/g, ' · ');
   const dep = s.dep;
   const words = !dep ? 'Nothing scheduled in the next week.'
-    : s.off ? (dep.day === 0 ? `No bus out yet. The next leaves at ${clock(dep.min).h} ${clock(dep.min).ap}.` : `No more buses today. The next leaves ${dayName(dep.ymd)} at ${clock(dep.min).h} ${clock(dep.min).ap}.`)
+    : s.off ? (dep.day === 0 ? `No bus out yet. The next leaves at ${clockText(dep.min)}.` : `No more buses today. The next leaves ${dayName(dep.ymd)} at ${clockText(dep.min)}.`)
     : s.eta === 0 ? (s.loop ? 'The bus is at its stop.' : 'The bus is at its bay.')
     : s.eta > 0 ? `The bus is ${s.eta} min from the Transit Center${s.loop ? '.' : s.late ? `, ${s.late} min late.` : ', on time.'}`
     : s.loose ? 'The bus is out but off its scheduled trips, so there’s no estimate for it.'

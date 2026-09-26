@@ -1,7 +1,7 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
 import { D, route, stop, A, stopAlerts, lastRun, routeOrder } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
-import { clock, relative, dayName, now } from './time.js';
+import { clock, clockText, relative, dayName, now } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
@@ -12,6 +12,7 @@ html.raw = raw;
 
 const I = {
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
   fwd: '<path d="m9 18 6-6-6-6"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
@@ -123,8 +124,7 @@ function whenRaw(t, size) {
 /** For the big displays, a line above the estimate saying what the crossed-out time is: 'Scheduled ~~3:15 PM~~'. */
 export function wasLine(t) {
   if (!t.live || !t.live.delay || loopArrival(t)) return raw('');
-  const c = clock(schedOf(t));
-  return raw(`<span class="wasline">Scheduled <s>${esc(c.h)} ${c.ap}</s></span>`);
+  return raw(`<span class="wasline">Scheduled <s>${esc(clockText(schedOf(t)))}</s></span>`);
 }
 /** The night's-end word on a departure, when it's a route's last full run or its partial last run from here. */
 export function lastTag(t) {

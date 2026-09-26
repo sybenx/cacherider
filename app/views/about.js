@@ -1,8 +1,8 @@
 // What this is, where the times come from, and the offline map switch.
 import { D, BASE, pref, A, activeAlerts } from '../data.js';
-import { fmtDay } from '../time.js';
+import { fmtDay, is24 } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
-import { installState, iosSheet, app, themeButton, cycleTheme, nearMe, nearOff } from '../main.js';
+import { installState, iosSheet, app, themeButton, cycleTheme, nearMe, nearOff, toggleClock } from '../main.js';
 
 export function render({ section }, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
@@ -13,25 +13,27 @@ export function render({ section }, clockNow) {
     <div class="head"><span class="eyebrow">Unofficial</span><h1>Cache Rider</h1></div>
     <div class="pad" style="font-size:16px;line-height:1.5">
       <p>A schedule app for ${D.agency.brand}, the ${D.agency.name} bus. Made by a rider, not by the agency.</p>
-      <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Once a bus is on the road, ${D.agency.brand}'s own tracker reports where it is and when it expects to reach each stop, and those rows say <b>Live</b> instead of Scheduled. A live time is still a prediction. A bus on a detour shows on the map but can't give stop times, so its route's rows stay Scheduled.</p>
-      <p>Nothing about you leaves this phone. Your location, when you share it, is used only to sort stops by distance. There are no accounts, no analytics and no cookies. The live feed reaches the app through a small relay on Cloudflare, because the tracker refuses requests from browsers; the relay carries the feed one way and keeps nothing.</p>
-      <p>Add it to your home screen and it works offline: the timetable is kept on the phone, and the map can be too.</p>
     </div>
-    <div class="section">${icon('sunmoon', 16)}Look</div>
-    <div class="pad"><p class="muted" style="font-size:14px">Light or dark follows your phone. Tap to keep it light or dark here instead.</p>${themeButton('theme')}</div>
-    <div class="section">${icon('near', 16)}Location</div>
-    <div class="pad"><p class="muted" style="font-size:14px">${app.geo ? 'On. Used only to sort stops by distance, and never leaves this phone.' : 'Off. Turn it on to sort stops by distance; it never leaves this phone.'}</p><button class="btn btn-secondary" id="aboutnear" type="button">${icon('near', 20)}<span>${app.geo ? 'Turn location off' : 'Turn location on'}</span></button></div>
+    <div class="section">${icon('sliders', 16)}Settings</div>
+    <div class="setrows">
+      <div class="setrow"><div class="col"><span class="t">Light or dark</span><span class="s">Your phone's, or always light or dark</span></div>${themeButton('theme')}</div>
+      <div class="setrow"><div class="col"><span class="t">Clock</span><span class="s">3:10 PM or 15:10</span></div><div class="seg" role="group" aria-label="Clock"><button type="button" data-clock="12" aria-pressed="${is24() ? 'false' : 'true'}">12-hour</button><button type="button" data-clock="24" aria-pressed="${is24() ? 'true' : 'false'}">24-hour</button></div></div>
+      <div class="setrow"><div class="col"><span class="t">Location</span><span class="s">${app.geo ? 'On · sorts stops by distance' : 'Off · turn on to sort stops by distance'}</span></div><button class="btn btn-secondary" id="aboutnear" type="button">${app.geo ? 'Turn off' : 'Turn on'}</button></div>
+    </div>
     <div class="section">${icon('down', 16)}On your home screen</div>
     <div class="pad" id="install-about">${installBlock()}</div>
-    ${installState() === 'installed' ? '' : html`<div class="section">${icon('globe', 16)}Android app</div>
+    ${installState() === 'installed' || !/Android/i.test(navigator.userAgent) ? '' : html`<div class="section">${icon('globe', 16)}Android app</div>
     <div class="pad muted" style="font-size:14px"><p>On an Android phone without Chrome, GrapheneOS say, there's an app: it opens Cache Rider full screen in your own browser, nothing more. <a href="https://github.com/sybenx/cacherider/releases/latest" target="_blank" rel="noopener">Download the APK</a> from the releases, or add <b>sybenx/cacherider</b> to Obtainium to keep it updated.</p></div>`}
     <div class="section">${icon('map', 16)}Offline map</div>
     <div class="pad" id="offline"><p class="muted" style="font-size:14px" id="offline-note">Keeps the whole Cache Valley street map on this phone, so it draws with no signal. Streets you've already looked at are kept anyway.</p>
       <button class="btn btn-secondary btn-lg blueprint" id="save-map">${corners()}${icon('down', 20)}Save the map for offline</button></div>
     <div class="section" id="alerts">${icon('ban', 16)}Service alerts</div>
     ${alertsBlock(clockNow)}
-    <div class="section">${icon('info', 16)}Feed</div>
-    <div class="pad muted" style="font-size:14px"><p>${D.feed.version || ''}</p><p><a href="${D.agency.url}" target="_blank" rel="noopener">${D.agency.url}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fares</a>` : ''}</p>
+    <div class="section">${icon('info', 16)}About the data</div>
+    <div class="pad muted" style="font-size:14px;line-height:1.5">
+      <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Once a bus is on the road, ${D.agency.brand}'s own tracker reports where it is and when it expects to reach each stop, and those rows say <b>Live</b> instead of Scheduled. A live time is still a prediction. A bus on a detour shows on the map but can't give stop times, so its route's rows stay Scheduled.</p>
+      <p>Nothing about you leaves this phone. Your location, when you share it, is used only to sort stops by distance. There are no accounts, no analytics and no cookies. The live feed reaches the app through a small relay on Cloudflare, because the tracker refuses requests from browsers; the relay carries the feed one way and keeps nothing.</p>
+      <p>${D.feed.version || ''}</p><p><a href="${D.agency.url}" target="_blank" rel="noopener">${D.agency.url}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fares</a>` : ''}</p>
       <p><a href="https://github.com/sybenx/cacherider" target="_blank" rel="noopener">Source on GitHub</a> · Companion to the <a href="https://github.com/sybenx/headway" target="_blank" rel="noopener">Headway</a> Pebble watchface. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, via Protomaps.</p></div>
     <div class="fine">Cache Rider isn't affiliated with ${D.agency.name}.</div>`,
     mount,
@@ -51,6 +53,7 @@ const MARK = BASE + 'tiles/tiles.json';   // present in the map cache only once 
 async function mount(el) {
   const th = el.querySelector('#theme');
   if (th) th.onclick = cycleTheme;
+  for (const b of el.querySelectorAll('[data-clock]')) b.onclick = () => { if ((b.dataset.clock === '24') !== is24()) toggleClock(); };
   const nr = el.querySelector('#aboutnear');
   if (nr) nr.onclick = () => app.geo ? nearOff() : nearMe();
   const go = el.querySelector('#install-go');
@@ -108,7 +111,7 @@ async function mount(el) {
 function alertsBlock(clockNow) {
   const al = activeAlerts(clockNow.ymd);
   const when = A.fetched ? new Date(A.fetched) : null;
-  const upd = when ? `Checked ${when.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : '';
+  const upd = when ? `Checked ${when.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', hourCycle: is24() ? 'h23' : 'h12' })}` : '';
   if (!al.length) return html`<div class="pad muted" style="font-size:14px"><p>Nothing from ${D.agency.brand} right now. ${upd}</p></div>`;
   return html`<div class="list">${al.map(a => html`<div class="alertrow">${a.ri && a.ri.length ? badges(a.ri, 24) : ''}<b>${a.title}</b><p>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</p>${known(a).length ? html`<p class="muted">Stops: ${known(a).map(id => html`<a href="#/stop/${id}">${D.stops[D.stopById[id]].name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), [])}</p>` : ''}</div>`)}</div><div class="fine">${upd}. Alerts come from ${D.agency.brand}'s rider alerts feed, checked hourly.</div>`;
 }

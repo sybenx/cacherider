@@ -45,22 +45,36 @@ export function fmtDay(ymd, long = false) {
 }
 export function dayName(ymd, short = false) { const d = dayFrom(ymd); return short ? DAY_SHORT[d.dow] : DAY_NAMES[d.dow]; }
 
-/** Minutes past midnight → { h: '8:06', ap: 'AM' }. */
+// 12- or 24-hour: the rider's choice on the About page, else their region's custom. A web page can't see the
+// phone's own 24-hour switch, only its language and region, so a US phone starts at 12-hour whatever it's set to.
+let h24 = (() => {
+  let s = null;
+  try { s = localStorage.getItem('cr-clock'); } catch { /* storage refused: go by the region */ }
+  if (s === '12' || s === '24') return s === '24';
+  try { const c = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle; return c === 'h23' || c === 'h24'; } catch { return false; }
+})();
+export const is24 = () => h24;
+export function set24(on) { h24 = on; try { localStorage.setItem('cr-clock', on ? '24' : '12'); } catch { /* kept for this visit only */ } }
+
+/** Minutes past midnight → { h: '8:06', ap: 'AM' }, or { h: '15:10', ap: '' } on a 24-hour clock. */
 export function clock(min) {
   const m = ((min % 1440) + 1440) % 1440;
   let h = Math.floor(m / 60), mm = m % 60;
+  if (h24) return { h: String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'), ap: '' };
   const ap = h >= 12 ? 'PM' : 'AM';
   h = h % 12 || 12;
   return { h: h + ':' + String(mm).padStart(2, '0'), ap };
 }
-export function clockText(min) { const c = clock(min); return c.h + ' ' + c.ap; }
+export function clockText(min) { const c = clock(min); return c.ap ? c.h + ' ' + c.ap : c.h; }
+/** On the hour, short: '7 AM'; a 24-hour clock keeps its minutes, '07:00'. */
+export function clockShort(min) { return h24 ? clockText(min) : clockText(min).replace(':00', ''); }
 
 /** A list of minutes → '8:17, 8:33 AM' (the meridiem once, as the design writes it). */
 export function clockList(mins) {
   if (!mins.length) return '';
   const cs = mins.map(clock);
   const same = cs.every(c => c.ap === cs[0].ap);
-  return same ? cs.map(c => c.h).join(', ') + ' ' + cs[0].ap : cs.map(c => c.h + ' ' + c.ap).join(', ');
+  return same ? (cs.map(c => c.h).join(', ') + ' ' + cs[0].ap).trim() : cs.map(c => c.h + ' ' + c.ap).join(', ');
 }
 
 /** 'in 14 min', 'in 1 h 14 min', 'later today', 'this evening', 'tomorrow', 'tomorrow, Fri', 'Monday'. */

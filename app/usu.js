@@ -4,7 +4,7 @@
 // Minutes are estimated from a bus's position along its loop.
 import { BASE, D, distance } from './data.js';
 import { esc, raw, html, icon } from './ui.js';
-import { metres, now, dayFrom, clockText, DAY_NAMES } from './time.js';
+import { metres, now, dayFrom, clockShort, DAY_NAMES } from './time.js';
 
 export let U = null;
 const FEED = 'https://passiogo.com/mapGetData.php';
@@ -185,8 +185,18 @@ export function hours(ri) {
   const end = Math.max(svc.end, (svc.late || {})[U.routes[ri].name] || 0);
   const on = svc.days.map((d, i) => d ? i : -1).filter(i => i >= 0);
   const days = on.length === 5 && on[0] === 0 && on[4] === 4 ? 'weekdays' : on.map(i => DAY_NAMES[(i + 1) % 7].slice(0, 3)).join(', ');
-  const t = m => clockText(m).replace(':00', '');
+  const t = clockShort;
   return `${days}, ${t(svc.start)} to ${t(end)}`;
+}
+/** The shuttle's usual hours as a sentence, in the rider's clock: "USU lists weekday service, 7 AM to 5 PM, with
+ *  the Evening Express until 10 PM." The hints' own sentence when the numbers aren't there. */
+export function hoursWords() {
+  const svc = U && U.service;
+  if (!svc) return (U && U.hours) || '';
+  const on = svc.days.map((d, i) => d ? i : -1).filter(i => i >= 0);
+  const days = on.length === 5 && on[0] === 0 && on[4] === 4 ? 'weekday' : on.map(i => DAY_NAMES[(i + 1) % 7]).join(', ');
+  const late = Object.entries(svc.late || {}).map(([n, m]) => `the ${n} until ${clockShort(m)}`);
+  return `USU lists ${days} service, ${clockShort(svc.start)} to ${clockShort(svc.end)}${late.length ? ', with ' + late.join(' and ') : ''}.`;
 }
 /** Today's last run for a route, as "runs until 10 PM" or "ends in about 40 min", or '' when it isn't a running day. */
 export function untilWords(ri, clockNow = now()) {
@@ -195,7 +205,7 @@ export function untilWords(ri, clockNow = now()) {
   const end = Math.max(svc.end, (svc.late || {})[U.routes[ri].name] || 0);
   const left = end - clockNow.min;
   if (left <= 0 || clockNow.min < svc.start) return '';
-  return left <= 90 ? `ends in about ${left} min` : `runs until ${clockText(end).replace(':00', '')}`;
+  return left <= 90 ? `ends in about ${left} min` : `runs until ${clockShort(end)}`;
 }
 /** The note itself, only while a bus is reporting: it may be parked with its tracker on. */
 export const offNote = (ris = null) => live.buses.length && offHours(ris) ? raw(`<div class="fine offhours">Outside the shuttle's usual hours. A bus reporting now may not be in service.</div>`) : '';
