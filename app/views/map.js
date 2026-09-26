@@ -737,7 +737,7 @@ function showAt(at, app, clockNow) {
 
 /** Called by the router whenever the map is on screen. */
 let shownHash = null;
-export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }, app, clockNow) {
+export async function show({ stopId, ustopId, routeShort, uRoute, at, focus, hub, tick }, app, clockNow) {
   await init(app);
   requestAnimationFrame(() => map.resize());
   paintPanelTab(app);
@@ -761,6 +761,15 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
     selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection(); col.querySelector('#mapcard').classList.remove('open');
     if (lastFocused !== 'hub') map.easeTo({ center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 });
     lastFocused = 'hub';
+    return;
+  }
+  // A shuttle route's page: its line drawn on top, the rest faded, the map fitted to it, as a Connect route's is.
+  if (uRoute && U && U.routeById[uRoute] !== undefined) {
+    const changed = lastFocused !== 'ur:' + uRoute;
+    lastFocused = 'ur:' + uRoute;
+    selected = null; uHilite = ''; hiLines = []; hiLoops = [uRoute]; focusRoute = undefined; applySelection();
+    col.querySelector('#mapcard').classList.remove('open');
+    if (focus && changed) map.fitBounds(uRouteBounds(uRoute), { padding: 40, duration: 700, maxZoom: 16 });
     return;
   }
   if (routeShort) {
@@ -802,6 +811,12 @@ export async function show({ stopId, ustopId, routeShort, at, focus, hub, tick }
 }
 
 /** The box around a route's stops, every direction. */
+function uRouteBounds(id) {
+  const r = U.routes[U.routeById[id]], b = new maplibregl.LngLatBounds();
+  for (const p of r.shape || []) b.extend(p);
+  for (const si of r.stops) b.extend([U.stops[si].lon, U.stops[si].lat]);
+  return b;
+}
 function routeBounds(ri) {
   const b = new maplibregl.LngLatBounds();
   for (const seq of Object.values(D.routes[ri].stops || {})) for (const si of seq) b.extend([D.stops[si].lon, D.stops[si].lat]);
@@ -813,8 +828,9 @@ function routeBounds(ri) {
 export async function mini(sel, slot) {
   mmSel = sel;
   const ri = sel.route !== undefined ? D.routeByShort[sel.route] : undefined;
-  const key = ri !== undefined ? 'r:' + ri : sel.ustopId ? 'u:' + sel.ustopId : sel.stopId;
-  const s = ri !== undefined ? D.stops[(Object.values(D.routes[ri].stops || {})[0] || [])[0]] : sel.ustopId ? (U && U.stops[U.stopById[sel.ustopId]]) : D.stops[D.stopById[sel.stopId]];
+  const ur = sel.uroute && U && U.routeById[sel.uroute] !== undefined ? sel.uroute : null;
+  const key = ri !== undefined ? 'r:' + ri : ur ? 'ur:' + ur : sel.ustopId ? 'u:' + sel.ustopId : sel.stopId;
+  const s = ri !== undefined ? D.stops[(Object.values(D.routes[ri].stops || {})[0] || [])[0]] : ur ? U.stops[U.routes[U.routeById[ur]].stops[0]] : sel.ustopId ? (U && U.stops[U.stopById[sel.ustopId]]) : D.stops[D.stopById[sel.stopId]];
   if (!s) return;
   if (!mmEl) {
     await loadTiles();
@@ -832,6 +848,7 @@ export async function mini(sel, slot) {
   }
   if (mmKey !== key) {
     if (ri !== undefined) mm.fitBounds(routeBounds(ri), { padding: 24, duration: 0, maxZoom: 15.5 });
+    else if (ur) mm.fitBounds(uRouteBounds(ur), { padding: 24, duration: 0, maxZoom: 16 });
     else mm.jumpTo({ center: [s.lon, s.lat], zoom: 16 });
   }
   mmKey = key;
@@ -846,7 +863,7 @@ function miniSelection() {
   const ri = mmSel.route !== undefined ? D.routeByShort[mmSel.route] : undefined;
   const si = mmSel.stopId ? D.stopById[mmSel.stopId] : undefined;
   const lines = ri !== undefined ? [ri] : si !== undefined ? [...D.stops[si].routes] : [];
-  const loops = mmSel.ustopId && U ? U.stops[U.stopById[mmSel.ustopId]].routes.map(r => U.routes[r].id) : [];
+  const loops = mmSel.uroute ? [mmSel.uroute] : mmSel.ustopId && U ? U.stops[U.stopById[mmSel.ustopId]].routes.map(r => U.routes[r].id) : [];
   litLines(mm, lines, loops);
   tintStops(mm, ri);
 }

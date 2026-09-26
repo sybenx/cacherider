@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <color name="bars">#101214</color>
+  <color name="bars_light">#f2f2f3</color>
   <color name="splash">#101214</color>
   <color name="icon_bg">#f2f2f3</color>
 </resources>

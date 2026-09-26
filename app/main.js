@@ -148,9 +148,10 @@ async function render(tick = false) {
   if (mapOpen || isDesktop()) {
     const m = await ensureMap();
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
-    const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route';
+    const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute';
     m.show({
-      stopId: name === 'map' && !at && !mapU && !mapR ? seg[1] : name === 'stop' ? seg[1] : null,
+      stopId: name === 'map' && !at && !mapU && !mapR && !mapUR ? seg[1] : name === 'stop' ? seg[1] : null,
+      uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       routeShort: mapR ? decodeURIComponent(seg[2] || '') : name === 'route' ? decodeURIComponent(seg[1] || '') : null,
       at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: name === 'hub', tick,

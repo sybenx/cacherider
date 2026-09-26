@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Compass test · Cache Rider</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f2f2f3; --ink: #1d1f20; --muted: #5f6368; --accent: #416180; --line: #d6d8db; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #101214; --ink: #eef0f2; --muted: #a3a8ad; --accent: #b5d9fd; --line: #2a2e33; } }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 14px; }
+  button { font: inherit; font-weight: 600; min-height: 48px; padding: 0 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--accent); color: var(--bg); }
+  .needle { width: 120px; height: 120px; margin: 18px auto; display: block; transition: transform .15s linear; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font: 13px/1.4 ui-monospace, monospace; }
+  td { padding: 5px 4px; border-top: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+  td:first-child { color: var(--muted); width: 44%; }
+</style>
+</head>
+<body>
+<h1>Compass test</h1>
+<p>For finding out why the arrow in Cache Rider won't turn. Tap Start, allow anything asked, then turn slowly in a circle. A screenshot of the table below tells us what this browser gives a web page.</p>
+<button id="go" type="button">Start</button>
+<svg class="needle" id="needle" viewBox="0 0 24 24"><path d="M12 2 19 21 12 16.5 5 21z" fill="currentColor"/></svg>
+<table id="t"></table>
+<script>
+const rows = {};
+const set = (k, v) => { rows[k] = v; draw(); };
+function draw() { document.getElementById('t').innerHTML = Object.entries(rows).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join(''); }
+const n = { rel: 0, abs: 0 };
+set('browser', navigator.userAgent);
+set('secure page', String(window.isSecureContext));
+set('DeviceOrientationEvent', typeof DeviceOrientationEvent);
+set('requestPermission()', typeof DeviceOrientationEvent !== 'undefined' ? typeof DeviceOrientationEvent.requestPermission : 'n/a');
+set('AbsoluteOrientationSensor', typeof AbsoluteOrientationSensor);
+set('screen angle', String(screen.orientation ? screen.orientation.angle : window.orientation));
+for (const name of ['accelerometer', 'gyroscope', 'magnetometer']) {
+  if (navigator.permissions) navigator.permissions.query({ name }).then(r => set('permission: ' + name, r.state), e => set('permission: ' + name, 'unknown (' + e.name + ')'));
+}
+const f = x => x === null || x === undefined ? String(x) : Number(x).toFixed(1);
+const turn = deg => { document.getElementById('needle').style.transform = `rotate(${-deg}deg)`; };
+document.getElementById('go').onclick = async () => {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { set('requestPermission() said', await DeviceOrientationEvent.requestPermission()); } catch (e) { set('requestPermission() said', 'error: ' + e.name + ' ' + e.message); }
+  }
+  set('deviceorientation events', '0 so far');
+  set('deviceorientationabsolute events', '0 so far');
+  window.addEventListener('deviceorientation', e => {
+    n.rel++;
+    set('deviceorientation events', n.rel + ` · alpha ${f(e.alpha)} beta ${f(e.beta)} gamma ${f(e.gamma)} · absolute ${e.absolute}` + (e.webkitCompassHeading !== undefined ? ` · compassHeading ${f(e.webkitCompassHeading)}` : ''));
+    if (e.webkitCompassHeading !== undefined) turn(e.webkitCompassHeading);
+  });
+  window.addEventListener('deviceorientationabsolute', e => {
+    n.abs++;
+    set('deviceorientationabsolute events', n.abs + ` · alpha ${f(e.alpha)} · absolute ${e.absolute}`);
+    if (e.alpha !== null) turn(360 - e.alpha);
+  });
+  if (typeof AbsoluteOrientationSensor === 'function') {
+    try {
+      const s = new AbsoluteOrientationSensor({ frequency: 20 });
+      let k = 0;
+      s.addEventListener('reading', () => { const [x, y, z, w] = s.quaternion; const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)) * 180 / Math.PI; set('AbsoluteOrientationSensor readings', ++k + ' · heading ' + f((360 - yaw) % 360)); });
+      s.addEventListener('error', e => set('AbsoluteOrientationSensor readings', 'error: ' + e.error.name + ' ' + e.error.message));
+      s.start();
+      set('AbsoluteOrientationSensor readings', 'started, 0 so far');
+    } catch (e) { set('AbsoluteOrientationSensor readings', 'threw: ' + e.name + ' ' + e.message); }
+  }
+  document.getElementById('go').textContent = 'Listening… turn around';
+};
+</script>
+</body>
+</html>

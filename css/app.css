@@ -650,3 +650,8 @@ sup.moved { font-family: var(--font-heading); font-size: 18px; font-weight: 600;
 /* the Transit Center pick's times open the bay's stop page */
 .tc-pick a.cell { color: inherit; text-decoration: none; }
 @media (hover: hover) { .tc-pick a.cell:hover { background: var(--cr-hover); } }
+/* On a phone the buttons sit in both bottom corners: the map credit leaves the right-hand stack (it pushed it up
+   above the zoom buttons) and sits beside it at the bottom instead, the stacks level. */
+@media (max-width: 899px) {
+  #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { position: absolute; right: 60px; bottom: 0; margin: 0 0 10px 0; white-space: nowrap; }
+}
