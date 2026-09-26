@@ -6,8 +6,8 @@
 <title>Cache Rider</title>
 <meta name="description" content="Unofficial schedule app for Connect, the Cache Valley Transit District bus. Next buses at any stop, the Transit Center bay by bay, and a map.">
 <meta name="theme-color" content="#f2f2f3">
-<style>html{background:#f2f2f3;color-scheme:light}html[data-theme=dark]{background:#101214;color-scheme:dark}</style>
-<script>(function(){var r=document.documentElement,t=null;try{t=localStorage.getItem("cr-theme")}catch(e){}r.dataset.theme=t==="dark"?"dark":"light";document.querySelector("meta[name=theme-color]").content=t==="dark"?"#101214":"#f2f2f3";})()</script>
+<style>html{background:#f2f2f3;color-scheme:light}@media(prefers-color-scheme:dark){html:not([data-theme=light]){background:#101214;color-scheme:dark}}html[data-theme=dark]{background:#101214;color-scheme:dark}</style>
+<script>(function(){var m=matchMedia("(prefers-color-scheme: dark)"),t=document.querySelector("meta[name=theme-color]"),r=document.documentElement,s=null;try{s=localStorage.getItem("cr-theme")}catch(e){}if(s==="light"||s==="dark")r.dataset.theme=s;function set(){var d=m.matches&&r.dataset.theme!=="light"||r.dataset.theme==="dark";t.content=d?"#101214":"#f2f2f3";}set();m.addEventListener("change",set);document.addEventListener("visibilitychange",set);})()</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Cache Rider">
@@ -27,7 +27,6 @@
     <a class="wordmark" href="#/">Cache Rider</a>
     <nav id="topnav"></nav>
     <form class="search" id="topsearch" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" autocomplete="off" aria-label="Search stops"><span class="lead"></span></form>
-    <button class="btn btn-ghost btn-icon" id="toptheme" type="button"></button>
     <button class="btn btn-secondary" id="topnear" type="button">Near me</button>
   </header>
   <div id="body">

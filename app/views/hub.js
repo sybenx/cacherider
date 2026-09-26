@@ -27,8 +27,7 @@ const routesOf = k => D.routes.map((r, i) => i).filter(ri => keyOf(ri) === k && 
 
 /** Where a key's bus is and when it leaves: eta 0 when a bus is in, minutes when one is coming, else null, with
  *  `loose` when the bus out has no trip to time it by (off its scheduled trips: a detour) and `away` when it's on a
- *  run that doesn't pass here soon; off when nothing leaves soon and no bus is out. A route bus that gets in after its time leaves when
- *  it's ready, so its departure is the later of the feed's estimate and its arrival. */
+ *  run that doesn't pass here soon; off when nothing leaves soon and no bus is out. When it leaves is predict()'s. */
 function status(k, clockNow) {
   const ris = routesOf(k), loop = isLoop(ris[0]);
   const deps = ris.flatMap(ri => nextFromHub(ri, 3, clockNow)).sort((a, b) => (a.day - b.day) || (a.min - b.min)).slice(0, 3);
@@ -53,8 +52,7 @@ function status(k, clockNow) {
   if (dep && dep.live && dep.live.here) eta = 0;   // a loop bus waiting at its stop, however far from the hall
   const out = eta !== null || loose || away;
   const off = !today || (!out && dep.min - clockNow.min > 90);
-  let leave = dep ? dep.min : null;
-  if (today && !loop && eta) leave = Math.max(leave, clockNow.min + eta);
+  const leave = dep ? dep.min : null;   // the feed's word, with its bus's arrival, from predict(): every screen agrees
   const late = today && !loop ? Math.max(0, leave - schedOf(dep)) : 0;
   return { k, ris, loop, deps, dep, eta, out, loose: eta === null && loose, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
 }

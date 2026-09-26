@@ -160,9 +160,36 @@ export function predict(t) {
   if (t.trip === undefined || t.day || rtStale() || !D.trips) return null;
   const u = rt.trips[D.trips[t.trip]];
   if (!u) return null;
+  const p = feedSays(t, u);
+  // From a Transit Center bay, a departure can't leave before the bus that runs it is in: that bus (the trip's own
+  // vehicle) may still be finishing the trip before. Every screen reads this one rule.
+  if (p && !p.gone && D.stops[t.si].hub && !(isLoop(t.r) && loopSpacing(t.r))) {
+    const inAt = inbound(u, D.trips[t.trip]);
+    if (inAt !== null && inAt > p.min) return { ...p, min: inAt, delay: inAt - t.min };
+  }
+  return p;
+}
+/** When the bus that runs a trip gets to the Transit Center, if it's still on its way in on the trip before; else null. */
+function inbound(u, id) {
+  if (!u.v) return null;
+  const b = rt.buses.find(x => x.id === 'c:' + u.v);
+  if (!b || b.trip === id) return null;
+  const prev = rt.trips[b.trip];
+  if (!prev) return null;
+  const end = prev.stops.find(s => s[1] === prev.end);
+  if (!end || !D.stops[D.stopById[end[0]]]?.hub || end[2] < Date.now() / 1000 - 60) return null;
+  return toMin(end[2]);
+}
+function feedSays(t, u) {
   const sid = D.stops[t.si].id;
   const hit = u.at.get(sid);
   if (isLoop(t.r) && D.stops[t.si].hub && loopSpacing(t.r)) { const p = loopAtHub(t, u, sid, hit); if (p !== undefined) return p; }
+  // A route bus still listed at its bay after the feed's time for it is still there, boarding: the feed stamps a
+  // bay a bus waits at with its arrival, which then reads as gone. It leaves now (the listing drops when it goes).
+  // Not a loop: the Transit Center is mid-trip for them, and the feed can leave a passed stop listed.
+  const nowS = Date.now() / 1000;
+  if (hit && !hit.skipped && D.stops[t.si].hub && !isLoop(t.r) && hit.time < nowS - 30 && nowS - hit.time < 1800)
+    return held(t, toMin(Math.floor(nowS)) - t.min);
   if (hit) return hit.skipped ? { gone: true } : held(t, toMin(hit.time) - t.min);
   const order = (D.routes[t.r].stops || {})[String(t.dir)] || [];
   const i = order.indexOf(t.si);

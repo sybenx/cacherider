@@ -5,7 +5,7 @@
 import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
-import { nearMe, nearOff, installCard, wireInstall, themeButton, setTheme, theme } from '../main.js';
+import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { parseAddress, geocode, townState } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, liveTag, live, hasData, board } from '../usu.js';
 
@@ -29,7 +29,6 @@ function landing(clockNow, app) {
   const geo = app && app.geo;
   const [dow, date, mon] = fmtDay(clockNow.ymd).split(' ');
   const parts = [html`<div class="land-top m-only"><span class="wordmark">Cache Rider</span><span class="land-right"><span class="land-date">${dow} <span class="muted">${mon} ${date}</span></span>
-    ${themeButton('theme')}
     <button class="btn btn-ghost btn-icon" id="near" type="button" aria-label="${geo ? 'Location on · turn off' : 'Sort stops by distance'}" aria-pressed="${geo ? 'true' : 'false'}" title="${geo ? 'Location on' : 'Near me'}">${icon('near', 22)}</button>
     <a class="btn btn-ghost btn-icon" href="#/search" aria-label="Search">${icon('search', 22)}</a></span></div>`];
   for (const a of systemAlerts(clockNow.ymd)) parts.push(html`<div class="callout alert land-alert">${icon('info', 20)}<div><b>${a.title}</b><div class="sub">${a.text}</div></div></div>`);
@@ -160,8 +159,6 @@ function mount(el, app) {
     if (input.value) input.focus({ preventScroll: true });
   }
   for (const near of el.querySelectorAll('#near, #near-ask')) near.onclick = () => app.geo ? nearOff() : nearMe();
-  const th = el.querySelector('#theme');
-  if (th) th.onclick = () => setTheme(theme() === 'dark' ? 'light' : 'dark');
   wireInstall(el);
   const edit = el.querySelector('#edit-saved');
   if (edit) edit.onclick = () => { app.editSaved = !app.editSaved; window.dispatchEvent(new HashChangeEvent('hashchange')); };

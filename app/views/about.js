@@ -2,7 +2,7 @@
 import { D, BASE, pref, A, activeAlerts } from '../data.js';
 import { fmtDay } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
-import { installState, iosSheet, app, theme, setTheme } from '../main.js';
+import { installState, iosSheet, app, themeButton, cycleTheme } from '../main.js';
 
 export function render(_, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
@@ -16,8 +16,8 @@ export function render(_, clockNow) {
       <p>Nothing about you leaves this phone. Your location, when you share it, is used only to sort stops by distance. There are no accounts, no analytics and no cookies. The live feed reaches the app through a small relay on Cloudflare, because the tracker refuses requests from browsers; the relay carries the feed one way and keeps nothing.</p>
       <p>Add it to your home screen and it works offline: the timetable is kept on the phone, and the map can be too.</p>
     </div>
-    <div class="section">${icon(theme() === 'dark' ? 'moon' : 'sun', 16)}Appearance</div>
-    <div class="pad"><div class="seg" role="group" aria-label="Appearance">${['light', 'dark'].map(t => html`<button class="seg-opt${theme() === t ? ' on' : ''}" type="button" data-theme-pick="${t}" aria-pressed="${theme() === t}">${icon(t === 'dark' ? 'moon' : 'sun', 16)}${t === 'dark' ? 'Dark' : 'Light'}</button>`)}</div></div>
+    <div class="section">${icon('sunmoon', 16)}Look</div>
+    <div class="pad"><p class="muted" style="font-size:14px">Light or dark follows your phone. Tap to keep it light or dark here instead.</p>${themeButton('theme')}</div>
     <div class="section">${icon('down', 16)}On your home screen</div>
     <div class="pad" id="install-about">${installBlock()}</div>
     ${installState() === 'installed' ? '' : html`<div class="section">${icon('globe', 16)}Android app</div>
@@ -46,7 +46,8 @@ function installBlock() {
 const MARK = BASE + 'tiles/tiles.json';   // present in the map cache only once every tile is
 
 async function mount(el) {
-  for (const b of el.querySelectorAll('[data-theme-pick]')) b.onclick = () => { if (b.dataset.themePick !== theme()) setTheme(b.dataset.themePick); };
+  const th = el.querySelector('#theme');
+  if (th) th.onclick = cycleTheme;
   const go = el.querySelector('#install-go');
   if (go) go.onclick = async () => {
     const p = app.installPrompt; if (!p) return;

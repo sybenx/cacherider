@@ -275,29 +275,28 @@ function setupInstall() {
   if (isIOS() && !pref('install') && visits >= 3) setTimeout(iosSheet, 1200);
 }
 
-/** Light unless the rider picked dark; the choice is kept on the phone. index.html applies it before first paint. */
-export const theme = () => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-export function setTheme(t) {
-  document.documentElement.dataset.theme = t;
-  pref('theme', t === 'dark' ? 'dark' : null);
+/** The look: the phone's by default, or light or dark when the rider picks one; kept on the phone and applied in
+ *  index.html before first paint. The toggle steps phone → light → dark → phone, and wears the sun-and-moon, the
+ *  sun or the moon to say which it's on. */
+export const themeMode = () => document.documentElement.dataset.theme || 'auto';
+const THEME = { auto: ['sunmoon', 'Matches your phone'], light: ['sun', 'Light'], dark: ['moon', 'Dark'] };
+export function cycleTheme() {
+  const next = { auto: 'light', light: 'dark', dark: 'auto' }[themeMode()];
+  if (next === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = next;
+  pref('theme', next === 'auto' ? null : next);
+  const dark = next === 'dark' || next === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches;
   const m = document.querySelector('meta[name=theme-color]');
-  if (m) m.content = t === 'dark' ? '#101214' : '#f2f2f3';
+  if (m) m.content = dark ? '#101214' : '#f2f2f3';
   window.dispatchEvent(new Event('themechange'));
-  paintThemeButton();
-  render();
+  paintThemeButtons();
 }
-/** The toggle shows where a tap takes you: the moon in light, the sun in dark. */
-export function themeButton(id, size = 22) {
-  const dark = theme() === 'dark';
-  return html`<button class="btn btn-ghost btn-icon" id="${id}" type="button" aria-label="${dark ? 'Switch to light' : 'Switch to dark'}" title="${dark ? 'Light' : 'Dark'}">${icon(dark ? 'sun' : 'moon', size)}</button>`;
+export function themeButton(id) {
+  const [ic, label] = THEME[themeMode()];
+  return html`<button class="btn btn-secondary themebtn" id="${id}" type="button" title="${label}">${icon(ic, 20)}<span>${label}</span></button>`;
 }
-function paintThemeButton() {
-  const b = document.getElementById('toptheme');
-  if (!b) return;
-  const dark = theme() === 'dark';
-  b.innerHTML = icon(dark ? 'sun' : 'moon', 20).s;
-  b.setAttribute('aria-label', dark ? 'Switch to light' : 'Switch to dark');
-  b.title = dark ? 'Light' : 'Dark';
+function paintThemeButtons() {
+  const [ic, label] = THEME[themeMode()];
+  for (const b of document.querySelectorAll('.themebtn')) { b.innerHTML = icon(ic, 20).s + '<span>' + label + '</span>'; b.title = label; }
 }
 
 function wireHeader() {
@@ -307,8 +306,8 @@ function wireHeader() {
   const near = document.getElementById('topnear');
   near.innerHTML = icon('near', 20).s + 'Near me';
   near.onclick = () => app.geo ? nearOff() : nearMe();
-  paintThemeButton();
-  document.getElementById('toptheme').onclick = () => setTheme(theme() === 'dark' ? 'light' : 'dark');
+  // Following the phone, a change of its look reaches the maps too.
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (themeMode() === 'auto') window.dispatchEvent(new Event('themechange')); });
 }
 
 async function boot() {
