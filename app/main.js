@@ -275,6 +275,31 @@ function setupInstall() {
   if (isIOS() && !pref('install') && visits >= 3) setTimeout(iosSheet, 1200);
 }
 
+/** Light unless the rider picked dark; the choice is kept on the phone. index.html applies it before first paint. */
+export const theme = () => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+export function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  pref('theme', t === 'dark' ? 'dark' : null);
+  const m = document.querySelector('meta[name=theme-color]');
+  if (m) m.content = t === 'dark' ? '#101214' : '#f2f2f3';
+  window.dispatchEvent(new Event('themechange'));
+  paintThemeButton();
+  render();
+}
+/** The toggle shows where a tap takes you: the moon in light, the sun in dark. */
+export function themeButton(id, size = 22) {
+  const dark = theme() === 'dark';
+  return html`<button class="btn btn-ghost btn-icon" id="${id}" type="button" aria-label="${dark ? 'Switch to light' : 'Switch to dark'}" title="${dark ? 'Light' : 'Dark'}">${icon(dark ? 'sun' : 'moon', size)}</button>`;
+}
+function paintThemeButton() {
+  const b = document.getElementById('toptheme');
+  if (!b) return;
+  const dark = theme() === 'dark';
+  b.innerHTML = icon(dark ? 'sun' : 'moon', 20).s;
+  b.setAttribute('aria-label', dark ? 'Switch to light' : 'Switch to dark');
+  b.title = dark ? 'Light' : 'Dark';
+}
+
 function wireHeader() {
   const form = document.getElementById('topsearch');
   form.querySelector('.lead').innerHTML = icon('search', 20).s;
@@ -282,6 +307,8 @@ function wireHeader() {
   const near = document.getElementById('topnear');
   near.innerHTML = icon('near', 20).s + 'Near me';
   near.onclick = () => app.geo ? nearOff() : nearMe();
+  paintThemeButton();
+  document.getElementById('toptheme').onclick = () => setTheme(theme() === 'dark' ? 'light' : 'dark');
 }
 
 async function boot() {

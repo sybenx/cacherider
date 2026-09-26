@@ -27,7 +27,7 @@ let hiLines = [], hiLoops = [];   // Connect route indices and shuttle route ids
 // The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
 let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16] };
 const col = document.getElementById('mapcol');
-const dark = () => matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
+const dark = () => document.documentElement.dataset.theme === 'dark';
 
 function style(sat = true) {
   const flavor = dark() ? 'dark' : 'light';
@@ -282,7 +282,9 @@ async function init(app) {
   };
   map.on('mouseenter', 'stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'stops', () => map.getCanvas().style.cursor = '');
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((dark() ? 'dark' : 'light') !== flavorName) { ready = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); showSat(sat); }); } });
+  // The rider's light or dark, from the toggle: the basemap follows without a reload.
+  let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style()); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); showSat(sat); }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -719,7 +721,8 @@ export async function mini(sel, slot) {
     mm = new maplibregl.Map({ container: mmEl, style: style(false), center: [s.lon, s.lat], zoom: 16, minZoom: 10, maxZoom: 17.5, interactive: false, fadeDuration: 0, attributionControl: { compact: true } });
     squaresOnDemand(mm);
     mm.on('load', () => { mmReady = true; loadShapes(mm); miniSelection(); });
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (mm && (dark() ? 'dark' : 'light') !== flavorName) { mmReady = false; mm.setStyle(style(false)); mm.once('style.load', () => { mmReady = true; loadShapes(mm); miniSelection(); }); } });
+    let mmFlavor = dark() ? 'dark' : 'light';   // its own: the big map's restyle mustn't make this one think it's done
+    window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (mm && f !== mmFlavor) { mmFlavor = f; mmReady = false; mm.setStyle(style(false)); mm.once('style.load', () => { mmReady = true; loadShapes(mm); miniSelection(); }); } });
   } else if (mmEl.parentNode !== slot) {
     slot.prepend(mmEl);
     requestAnimationFrame(() => mm.resize());

@@ -272,6 +272,13 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .pulse .loop .rel { font-size: 12.5px; white-space: nowrap; }
 .pulse .foot { margin-top: 10px; }
 
+/* a two-way choice, as in About's Appearance */
+.seg { display: inline-flex; border: 1px solid var(--cr-line); }
+.seg-opt { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; font: inherit; font-size: 14px; color: inherit; background: none; border: 0; cursor: pointer; }
+.seg-opt + .seg-opt { border-left: 1px solid var(--cr-line); }
+.seg-opt:hover { background: var(--cr-hover); }
+.seg-opt.on { background: var(--color-accent); color: var(--color-bg); }
+
 /* route grid */
 .routes { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; padding: 2px 16px 14px; }
 .routes a { height: 54px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--cr-line); cursor: pointer; text-decoration: none; }
