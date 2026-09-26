@@ -2,16 +2,21 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive } from './data.js';
+import { D, setLive, distance } from './data.js';
 
 export const RT_URL = 'https://live.cacherider.com/';
 const POLL = 15000, STALE = 90000;
 
-export const rt = { at: 0, t: 0, buses: [], trips: {}, wanted: false, fetching: false, error: null };
+export const rt = { at: 0, t: 0, buses: [], trips: {}, loopMode: {}, wanted: false, fetching: false, error: null };
 let timer = null;
 /** 'trip:stop' → when the feed first stopped predicting that Transit Center bay for that trip: the bus pulled out. */
 const left = new Map();
 const LEFT_GRACE = 60000;   // a departure says now for this long after the bus leaves, rather than flip at once
+/** trip → when a loop bus on it was first seen at its Transit Center stop: it's in, waiting. The feed's time for a
+ *  stop a bus sits at is its arrival, then minutes old, so the bus's place is what says it hasn't gone. */
+const here = new Map();
+const AT_STOP = 60;   // metres from its stop: a loop bus this close is at it
+const loopVotes = {};   // ri → { mode, n }: a loop's mode changes after two polls in a row agree
 const listeners = new Set();
 export function onRt(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
@@ -96,12 +101,65 @@ async function tick(force) {
       if (!x.skipped && !left.has(k) && D.stops[D.stopById[sid]]?.hub && !(trips[id] && trips[id].at.has(sid))) left.set(k, t0);
     }
     for (const [k, ms] of left) if (t0 - ms > 600000) left.delete(k);
+    for (const ri of D.hub.loops || []) watchLoop(ri, trips, buses, t0);
     rt.trips = trips; rt.buses = buses; rt.t = j.t; rt.at = Date.now(); rt.error = null;
   } catch (e) {
     rt.error = e.message || 'unreachable';
   }
   rt.fetching = false;
   for (const fn of listeners) fn();
+}
+
+/** A loop at its Transit Center stop: which bus is in (the `here` pins), and whether the loop is running to its
+ *  timetable or spacing its buses. Spacing is the drivers' bunching screen, or a dispatcher moving every run a
+ *  trip forward: either way every bus is off by about the same, ten minutes or more, ahead or behind together. */
+function watchLoop(ri, trips, buses, t0) {
+  const bay = D.hub.bays.find(b => b.routes.includes(ri));
+  if (!bay) return;
+  const stop = D.stops[bay.stop], sid = stop.id;
+  const offs = [];
+  for (const b of buses) {
+    if (b.ri !== ri) continue;
+    const u = trips[b.trip];
+    const listed = u && u.stops.some(s => s[0] === sid);
+    if (listed && distance(b.lat, b.lon, stop.lat, stop.lon) <= AT_STOP) { if (!here.has(b.trip)) here.set(b.trip, t0); }
+    else if (here.has(b.trip)) { here.delete(b.trip); left.set(b.trip + ':' + sid, t0); }
+    // Its offset at its next stop yet to come (the feed can keep a passed one listed, its time gone stale).
+    if (u && u.ti !== undefined) {
+      let next = null;
+      for (const [s, x] of u.at) if (!x.skipped && x.time >= t0 / 1000 - 60 && (!next || x.seq < next.seq)) next = { sid: s, ...x };
+      const sm = next ? schedMin(D.stopById[next.sid], u.ti) : null;
+      if (sm !== null && sm !== undefined) offs.push(toMin(next.time) - sm);
+    }
+  }
+  for (const id of here.keys()) if (!trips[id] && D.trips && tripInfo[tripIdx.get(id)]?.r === ri) here.delete(id);
+  const spacing = offs.length >= 2 && offs.every(o => Math.abs(o) >= 10) && (offs.every(o => o > 0) || offs.every(o => o < 0))
+    && Math.max(...offs) - Math.min(...offs) <= 4;
+  const want = spacing ? 'spacing' : 'normal', v = loopVotes[ri] || (loopVotes[ri] = { mode: 'normal', n: 0 });
+  if (want === v.mode) v.n = 0; else if (++v.n >= 2) { v.mode = want; v.n = 0; }
+  rt.loopMode[ri] = v.mode;
+}
+export const loopSpacing = ri => rt.loopMode[ri] === 'spacing' && !rtStale();
+
+/** A loop's departure from its Transit Center stop. Running to its timetable, a bus that's on time or late leaves
+ *  when it's due or when it gets in, and one that's ahead waits up to ten minutes to close the gap. Spacing, it
+ *  leaves when it gets in. A bus in (`here`) keeps its row at now or later, so it never reads as gone while it
+ *  waits; once it pulls away the row says now for a minute, then goes. */
+function loopAtHub(t, u, sid, hit) {
+  const id = D.trips[t.trip], nowS = Date.now() / 1000, nowM = toMin(Math.floor(nowS));
+  const pin = here.get(id), spacing = loopSpacing(t.r);
+  let A;
+  if (pin) A = toMin(Math.floor(pin / 1000));
+  else if (hit && !hit.skipped && hit.time >= nowS - 60) A = toMin(hit.time);
+  else {
+    if (hit && hit.skipped) return { gone: true };
+    const ms = left.get(id + ':' + sid);
+    if (ms && Date.now() - ms < LEFT_GRACE) return { min: nowM, delay: nowM - t.min };
+    return hit ? { gone: true } : undefined;   // a time gone by and the bus not there: it's been
+  }
+  let dep = spacing || A >= t.min ? A : Math.min(t.min, A + 10);
+  if (pin) dep = spacing ? nowM : Math.max(dep, nowM);
+  return { min: dep, delay: dep - t.min, here: !!pin, spacing };
 }
 
 /** What the feed says about a scheduled departure today: { min, delay } with the predicted minute; { gone: true }
@@ -114,6 +172,7 @@ export function predict(t) {
   if (!u) return null;
   const sid = D.stops[t.si].id;
   const hit = u.at.get(sid);
+  if (isLoop(t.r) && D.stops[t.si].hub) { const p = loopAtHub(t, u, sid, hit); if (p !== undefined) return p; }
   if (hit) return hit.skipped ? { gone: true } : held(t, toMin(hit.time) - t.min);
   const order = (D.routes[t.r].stops || {})[String(t.dir)] || [];
   const i = order.indexOf(t.si);
