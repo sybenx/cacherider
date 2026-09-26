@@ -2,7 +2,7 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
@@ -102,7 +102,8 @@ function stopHeroBlock(si, why, clockNow) {
   // Moved by the feed, the timetable's time stands crossed out, labelled, above the estimate's side.
   const val = arrival ? '' : countdown ? time(first.min, 34, !!first.live) : first.day === 0 ? html`<span class="rt">${relative(first, clockNow)}</span>` : '';
   const sideVal = val && first.live && first.live.delay ? html`<span class="side">${wasLine(first)}${val}</span>` : val;
-  const dayWord = first.day === 0 ? '' : first.day === 1 ? 'Tomorrow' : dayName(first.ymd);
+  const quiet = first.day > 1 ? quietWords(clockNow.ymd, first.ymd) : '';   // 'Monday · no buses Sunday'
+  const dayWord = first.day === 0 ? '' : first.day === 1 ? 'Tomorrow' : dayName(first.ymd) + (quiet ? ' · ' + quiet : '');
   const then = next.slice(1, 2);   // one, so a moved time and its estimate have room
   const dest = String(headsign(first)), long = D.routes[first.r].long;
   return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span>${big}

@@ -1,8 +1,8 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and the bays as a plan (south up, as you face the hall from 500 North), each badge tagged
 // with where its bus is. Tap a badge for that route: where its bus is and its next three departures.
-import { D, nextPulse, nextFromHub, distance } from '../data.js';
-import { relative, countdown, dayName, clock, now } from '../time.js';
+import { D, nextPulse, nextFromHub, distance, servicesOn } from '../data.js';
+import { relative, countdown, dayName, clock, now, dayFrom, clockText } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag } from '../ui.js';
 import { rt, rtStale, isLoop } from '../rt.js';
 
@@ -76,6 +76,14 @@ export function render({ bay }, clockNow) {
   return { html: parts.join(''), mount, title: H.name, keepScroll: true };
 }
 
+/** On a Saturday, how often they leave together and until when: ' hourly until 6:30 PM'. */
+function satShape(p) {
+  if (dayFrom(p.ymd).dow !== 6) return '';
+  const mins = [...new Set([...servicesOn(p.ymd)].flatMap(sid => D.hub.pulse[sid] || []))].sort((a, b) => a - b);
+  if (mins.length < 2) return '';
+  const gaps = mins.slice(1).map((m, i) => m - mins[i]), g = gaps.sort((a, b) => gaps.filter(x => x === b).length - gaps.filter(x => x === a).length)[0];
+  return (g === 60 ? ' hourly' : ' every ' + g + ' min') + ' until ' + clockText(mins[mins.length - 1]);
+}
 /** The numbered routes leave together: when, the countdown, and one bar a route, filled when its bus is in. */
 function together(st, clockNow) {
   const p = nextPulse(1, clockNow)[0];
@@ -100,7 +108,7 @@ function together(st, clockNow) {
     note = html`<span class="tc-note"><b>${inN} of ${n} in.</b>${rest ? ' ' + rest.replace(/^./, c => c.toUpperCase()) + '.' : ''}</span>`;
   } else if (p.day === 0 && rtStale()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
   return html`<div class="tc-together blueprint">${corners()}
-    <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${p.day === 1 ? ' · tomorrow' : ''}</span></div><div class="end">${end}</div></div>
+    <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}${p.day === 1 ? ' · tomorrow' : ''}</span></div><div class="end">${end}</div></div>
     ${leaving.length ? html`<div class="bars"><div class="segs" style="grid-template-columns:repeat(${leaving.length},minmax(0,1fr))">${html.raw(segs)}</div>${note}</div>` : ''}</div>`;
 }
 

@@ -1,5 +1,5 @@
 // The schedule, loaded once, and the questions the screens ask of it.
-import { now, dayFrom, dayDiff, setZone } from './time.js';
+import { now, dayFrom, dayDiff, setZone, dayName, clockText } from './time.js';
 
 export let D = null;           // the reduced feed
 export const BASE = new URL('..', import.meta.url).href;   // the app's root, wherever it is served from
@@ -230,6 +230,29 @@ export function timesChange(si, start) {
   const key = ymd => timesOn(si, ymd).map(t => t.min + ':' + t.r).join(',');
   for (let k = 0; k < 7; k++) if (key(dayFrom(start, k).ymd) !== key(dayFrom(start, k - 7).ymd)) return true;
   return false;
+}
+
+/** 'no buses Sunday': the days with no service between two days, so a next bus on Monday isn't read as tomorrow's. */
+export function quietWords(fromYmd, toYmd) {
+  const q = [];
+  for (let k = 1; k < 14; k++) { const d = dayFrom(fromYmd, k).ymd; if (d >= toYmd) break; if (!servicesOn(d).size) q.push(dayName(d)); }
+  return q.length ? 'no buses ' + q.join(' or ') : '';
+}
+/** A day's shape at a stop, '12:00–6:30 PM, hourly': for Saturdays, which run shorter and thinner than weekdays.
+ *  The frequency only when every route here keeps the same one. */
+export function dayShape(si, ymd) {
+  const rows = timesOn(si, ymd);
+  if (!rows.length) return '';
+  const byRoute = {};
+  for (const t of rows) (byRoute[t.r] ||= []).push(t.min);
+  const usual = Object.values(byRoute).map(ms => {
+    const gaps = ms.slice(1).map((m, i) => m - ms[i]), n = {};
+    for (const g of gaps) n[g] = (n[g] || 0) + 1;
+    return +(Object.entries(n).sort((a, b) => b[1] - a[1])[0] || [0])[0];
+  });
+  const g = usual.every(x => x === usual[0]) ? usual[0] : 0;
+  const mins = rows.map(t => t.min);
+  return clockText(Math.min(...mins)).replace(/ (AM|PM)$/, m => Math.min(...mins) < 720 === Math.max(...mins) < 720 ? '' : m) + '–' + clockText(Math.max(...mins)) + (g === 60 ? ', hourly' : g ? ', every ' + g + ' min' : '');
 }
 
 /** The next day with service from today, for the "resumes" line. */

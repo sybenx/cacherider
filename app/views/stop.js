@@ -1,6 +1,6 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, today, newTimetable, timesChange, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert } from '../data.js';
+import { D, stopIndex, stop, nextAt, today, newTimetable, timesChange, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -70,6 +70,8 @@ export function render({ id, full }, clockNow) {
     parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   }
 
+  // A Saturday runs shorter and thinner than a weekday: say how, up front, for riders who know the weekday times.
+  if (dayFrom(clockNow.ymd).dow === 6 && td.all.length) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>Saturday service here: <b>${dayShape(si, clockNow.ymd)}</b></span></div>`);
   const prov = [...new Set(td.all.filter(t => t.prov).map(t => t.r))];
   if (prov.length) {
     const sid = td.all.find(t => t.prov).prov;
@@ -85,7 +87,10 @@ export function render({ id, full }, clockNow) {
   const first = next[0];
   const dayWord0 = first.day === 0 ? '' : first.day === 1 ? 'tomorrow, ' + dayName(first.ymd, true) : dayName(first.ymd);
   // A detour closing this stop pushes the next bus to after it ends, days off: say so, in the warning yellow.
-  const dayWord = dayWord0 && closed.has(first.r) ? html`<span class="warnmark">${dayWord0} · after the detour</span>` : dayWord0;
+  // Across a day without buses (Saturday evening to Monday): 'Monday · no buses Sunday', lest it read as tomorrow.
+  const quiet = first.day > 1 ? quietWords(clockNow.ymd, first.ymd) : '';
+  const dayWord = dayWord0 && closed.has(first.r) ? html`<span class="warnmark">${dayWord0} · after the detour</span>`
+    : quiet ? html`${dayWord0} · <b class="quiet">${quiet}</b>` : dayWord0;
   parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark(liveWord(first)) : sched()}</div>
     ${wasLine(first)}<div class="big">${loopArrival(first) ? minsOut(first, 60, clockNow) : html`${time(first.min, 60, !!first.live)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span>`}</div>
     <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div>${lastTag(first)}</div>`);
@@ -103,13 +108,13 @@ export function render({ id, full }, clockNow) {
   }
 
   const rest = next.slice(1);
-  let lastDay = first.day;
+  let lastDay = first.day, lastYmd = first.ymd;
   const rows = [];
   for (const t of rest) {
-    if (t.day !== lastDay) { rows.push(html`<div class="dayhead">${fmtDay(t.ymd, true)}${alertLink(t.ymd)}</div>`); lastDay = t.day; }
+    if (t.day !== lastDay) { rows.push(dayHead(si, t.ymd, lastYmd)); lastDay = t.day; lastYmd = t.ymd; }
     rows.push(depRow(t, clockNow, { dayShort: true, warn: t.day > 0 && closed.has(t.r) }));   // days off because of the detour
   }
-  if (first.day !== 0 && rows.length && !String(rows[0]).startsWith('<div class="dayhead"')) rows.unshift(html`<div class="dayhead">${fmtDay(first.ymd, true)}${alertLink(first.ymd)}</div>`);
+  if (first.day !== 0 && rows.length && !String(rows[0]).startsWith('<div class="dayhead"')) rows.unshift(dayHead(si, first.ymd, clockNow.ymd));
   parts.push(html`<div class="list">${html.raw(rows.join(''))}</div>`);
   const todayCount = td.all.length;
   if (todayCount) parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${s.id}/all">Full day · ${todayCount} departures</a></div>`);
@@ -137,6 +142,13 @@ function mount(el) {
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.innerHTML = icon('star', 22, 1.5, on ? 'currentColor' : 'none').s + (on ? 'Saved' : 'Save');
   };
+}
+
+/** A day's heading in a stop's list: the date, any days without buses before it, a Saturday's shorter, thinner
+ *  service ('12:00–6:30 PM, hourly'), and a system alert about the day. */
+function dayHead(si, ymd, prevYmd) {
+  const quiet = quietWords(prevYmd, ymd), sat = dayFrom(ymd).dow === 6 ? dayShape(si, ymd) : '';
+  return html`<div class="dayhead">${fmtDay(ymd, true)}${quiet ? html` · <span class="quiet">${quiet}</span>` : ''}${sat ? html` · <span class="shape">${sat}</span>` : ''}${alertLink(ymd)}</div>`;
 }
 
 /** On a day a system-wide alert is about (a parade, a late start), the day's heading says its times may not hold:
