@@ -40,13 +40,14 @@ function landing(clockNow, app) {
   if (stopHero) parts.push(hubLine(clockNow));
 
   const heroId = stopHero ? stop(heroSi).id : null;
-  if (sv.length) {
+  const others = sv.filter(id => id !== heroId);
+  if (others.length || (sv.length && app && app.editSaved)) {
+    // Only when there's something beneath: one saved stop is the big one above, star and all.
     const editing = app && app.editSaved;
-    const others = sv.filter(id => id !== heroId);
     parts.push(html`<div class="land-eye"><span class="savedmark">${icon('star', 13, 1.5, 'currentColor')}Saved</span><button class="btn btn-ghost edit" id="edit-saved">${editing ? 'Done' : 'Edit'}</button></div>`);
     if (editing) parts.push(html`<div class="list">${html.raw(sv.map((id, i) => editRow(id, i, sv.length)).join(''))}</div>`);
     else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
-  } else if (geo) {
+  } else if (geo) {   // nothing saved beneath: the other stops near you instead
     const rows = nearest(geo.lat, geo.lon, 6).filter(x => x.i !== heroSi && !stop(x.i).hub).slice(0, 3);
     if (rows.length) parts.push(html`<div class="land-eye"><span>${stopHero ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' ' + compass8(bearing(geo.lat, geo.lon, stop(i).lat, stop(i).lon)) }))}</div>`);
   }
@@ -86,10 +87,12 @@ function giant(min, est = false) {
 function stopHeroBlock(si, why, clockNow) {
   const s = stop(si);
   const next = nextAt(si, 3, clockNow);
-  // The nearest stop: how far and which way, the arrow pointing on a north-up page; a tap turns it with the phone.
-  const g = why === 'Nearest' && window.__app && window.__app.geo;
+  // How far and which way, whenever there's a fix (it costs nothing: the phone's compass and the following
+  // of the rider's steps only start on a tap). The arrow points as on a north-up map until then.
+  const g = window.__app && window.__app.geo;
+  const mine = saved().includes(s.id);   // a saved stop keeps its star, nearest or not
   const way = g ? html`<button class="pointer" id="pointer" type="button" data-lat="${s.lat}" data-lon="${s.lon}" aria-label="Point me there" title="Point me there"><i class="needle" style="transform:rotate(${Math.round(bearing(g.lat, g.lon, s.lat, s.lon))}deg)">${icon('pointer', 13)}</i><span class="pw">${metres(distance(g.lat, g.lon, s.lat, s.lon))} ${compass8(bearing(g.lat, g.lon, s.lat, s.lon))}</span></button> · ` : '';
-  const eye = html`<div class="eye"><span class="eyebrow${why === 'Saved' ? ' savedmark' : ''}">${why === 'Saved' ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · ${way}Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched()}</div>`;
+  const eye = html`<div class="eye"><span class="eyebrow${mine ? ' savedmark' : ''}">${mine ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · ${way}Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched()}</div>`;
   if (!next.length) {
     const resume = nextServiceDay(clockNow);
     return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span><div class="hero-none">Nothing scheduled${resume && resume !== clockNow.ymd ? html`<span class="sub">Buses resume ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
