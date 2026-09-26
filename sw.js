@@ -1,6 +1,6 @@
 // Cache Rider's service worker: the app and the timetable kept on the phone,
 // the map's tiles kept as they are seen, or all at once from the About page.
-const VERSION = 'cr-v3';
+const VERSION = 'cr-v4';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/data.js', './app/time.js', './app/ui.js',

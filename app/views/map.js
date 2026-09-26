@@ -280,6 +280,10 @@ async function init(app) {
   const cancelTap = () => clearTimeout(tapTimer);
   map.on('touchstart', cancelTap); map.on('movestart', cancelTap); map.on('zoomstart', cancelTap);
   map.on('click', e => {
+    // A tap on the map with search results open puts them away, the keyboard too, and picks nothing.
+    // The words stay in the box: a tap back into it brings the results back.
+    const res = col.querySelector('#mapresults');
+    if (!res.classList.contains('hidden')) { res.classList.add('hidden'); document.activeElement?.blur(); return; }
     if (!coarse()) return pick(e);
     clearTimeout(tapTimer); tapTimer = setTimeout(() => pick(e), 300);
   });
@@ -444,6 +448,7 @@ function wireChrome(app) {
     results.querySelectorAll('a:not([data-i])').forEach(a => a.onclick = clear);
   }, 200); };
   input.oninput = () => mapSearch(input.value);
+  input.onfocus = () => { if (input.value.trim()) mapSearch(input.value); };
 }
 
 function placeMe(geo) {
