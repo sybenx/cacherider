@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, stop, route, nextAt, search, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, A } from '../data.js';
 import { now, relative, fmtDay, dayName, clockText, metres } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop } from '../ui.js';
+import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop, routeLinks } from '../ui.js';
 import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -498,7 +498,7 @@ function select(id, app, fly = false, zoomIn = false) {
   // The twin across the road, one small line: a tap swaps the card to it without leaving the map.
   // The twin sits at the right of the eyebrow line, in its type: the card grows by nothing for it.
   const twinLine = s.twin ? html`<button class="eyebrow twinline" type="button" data-twin="${stop(s.twin[0]).id}" title="${stop(s.twin[0]).name}">${icon('swap', 14)}Across the road · ${metres(s.twin[1])}</button>` : '';
-  card.innerHTML = html`<div class="grip"></div><div class="head"><div class="eyerow"><span class="eyebrow">${s.town} · Stop ${s.code || s.id}${s.twin ? '' : ` · ${fromHub} from the ${D.hub.name}`}</span>${twinLine}</div><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div>${alertLine}</div>
+  card.innerHTML = html`<div class="grip"></div><div class="head"><div class="eyerow"><span class="eyebrow">${s.town} · Stop ${s.code || s.id}${s.twin ? '' : ` · ${fromHub} from the ${D.hub.name}`}</span>${twinLine}</div><div class="name"><span>${s.name}</span>${routeLinks(si)}</div>${alertLine}</div>
     ${next.length ? next.map(t => depRow(t, clockNow, { warn: t.day > 0 && closed.has(t.r) })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a></div>`;
   const tw = card.querySelector('[data-twin]');

@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, A, stopAlerts, lastRun } from './data.js';
+import { D, route, stop, A, stopAlerts, lastRun, routeOrder } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { clock, relative, dayName, now } from './time.js';
 
@@ -53,6 +53,18 @@ export function badge(ri, size = 36) {
 }
 export function badges(ris, size = 24, wide = false) {
   return raw(`<div class="badges${wide ? ' wide' : ''}">${ris.map(ri => badge(ri, size).s).join('')}</div>`);
+}
+
+/** A stop's route badges, each a link to its route's page: in the direction that calls here, landing on this stop. */
+export function routeLinks(si, size = 30) {
+  return raw(`<div class="badges wide">${routeLinkItems(si, size)}</div>`);
+}
+export function routeLinkItems(si, size = 30) {
+  const s = stop(si);
+  return s.routes.map(ri => {
+    const r = D.routes[ri], dir = Object.keys(r.stops || {}).find(k => routeOrder(ri, k).includes(si)) ?? Object.keys(r.stops || {})[0] ?? '0';
+    return `<a class="badgelink" href="#/route/${encodeURIComponent(r.short)}/${dir}/${esc(s.id)}" aria-label="Route ${esc(r.short)}: every stop">${badge(ri, size).s}</a>`;
+  }).join('');
 }
 
 /** '8:06 AM' as the heading type, the meridiem small. */
@@ -138,7 +150,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';
   const dist = `<span class="dist">${esc([opts.dist, num].filter(Boolean).join(' · '))}${alert ? (opts.dist || num ? ' · ' : '') + alert : ''}</span>`;
-  return raw(`<a class="stoprow" href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${dist}${badges(s.routes, 24).s}</div>${end}</a>`);
+  return raw(`<a class="stoprow${opts.here ? ' here' : ''}"${opts.here ? ' id="here"' : ''} href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${dist}${badges(s.routes, 24).s}</div>${end}</a>`);
 }
 
 export function stopTitle(si) {

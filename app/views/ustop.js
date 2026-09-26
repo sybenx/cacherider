@@ -2,7 +2,7 @@
 // page with the Connect stop at the same kerb.
 import { D, nextAt, nearest, isSaved, toggleSaved } from '../data.js';
 import { dayName, now, metres } from '../time.js';
-import { html, icon, badges, depRow, stopRow } from '../ui.js';
+import { html, icon, badges, depRow, stopRow, routeLinkItems } from '../ui.js';
 import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { afterSave } from '../main.js';
@@ -21,7 +21,7 @@ export function render({ id }, clockNow) {
   parts.push(miniSlot({ ustopId: s.id }));
   const eyebrow = cs ? `USU shuttle and Connect · ${metres(shared.d)} apart` : `${U.name} · ${s.routes.length} ${s.routes.length === 1 ? 'route' : 'routes'}`;
   parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${cs ? html`<span class="muted" style="font-size:14px">Connect stop: ${cs.name}</span>` : ''}
-    <div class="badges wide">${chips(s.routes, 30)}${cs ? badges(cs.routes, 30, true) : ''}</div></div>`);
+    <div class="badges wide">${chips(s.routes, 30)}${cs ? html.raw(routeLinkItems(D.stopById[cs.id])) : ''}</div></div>`);
 
   const rows = board(si);
   if (hasData() && noBuses() && !isStale()) {

@@ -4,7 +4,7 @@ import { relative, clockText } from '../time.js';
 import { html, icon, badge, badges, time, sched, stopRow } from '../ui.js';
 import { miniSlot, mountMini } from './mini.js';
 
-export function render({ short, dir }, clockNow) {
+export function render({ short, dir, at }, clockNow) {
   const ri = D.routeByShort[short];
   if (ri === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such route</h2></div>`, title: 'Route' };
   const r = route(ri);
@@ -18,12 +18,13 @@ export function render({ short, dir }, clockNow) {
     parts.push(html`<div class="chips">${dirs.map(k => html`<a class="chip" href="#/route/${encodeURIComponent(short)}/${k}" ${k === d ? html.raw('style="border-color:var(--color-accent);color:var(--color-accent-700)"') : ''}>${r.dirs[+k] || (k === '0' ? 'Outbound' : 'Return')}</a>`)}</div>`);
   }
   const seq = routeOrder(ri, d);
+  const here = at !== undefined ? D.stopById[at] : undefined;   // from a stop's badge: that stop, marked, in view
   const rows = seq.map(si => {
     // A stop the route's detour skips: say so, rather than the first bus after the detour's end, days off.
-    if (closedRoutes(si, clockNow.ymd).has(ri)) return stopRow(si, null, clockNow, { none: 'Not served · detour', warn: true });
+    if (closedRoutes(si, clockNow.ymd).has(ri)) return stopRow(si, null, clockNow, { none: 'Not served · detour', warn: true, here: si === here });
     const n = nextAt(si, 1, clockNow, 8, t => t.r === ri)[0];
-    return stopRow(si, n, clockNow, { none: 'Not today' });
+    return stopRow(si, n, clockNow, { none: 'Not today', here: si === here });
   });
   parts.push(html`<div class="section">${icon('stops', 16)}${seq.length} stops, in order</div><div class="list">${rows}</div>`);
-  return { html: parts.join(''), title: 'Route ' + r.short, mount: mountMini };
+  return { html: parts.join(''), title: 'Route ' + r.short, mount: mountMini, anchor: seq.includes(here) ? 'here' : null, anchorBlock: 'center' };
 }
