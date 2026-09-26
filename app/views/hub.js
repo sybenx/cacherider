@@ -14,6 +14,9 @@ const W = 358, Hh = 284;
 const IN_RADIUS = 110;   // metres from the hall: a bus this close is in
 
 /** A badge's key: the route's short name, 16 AM and 16 PM as one '16' (they share a bay and a rider). */
+/** The scheduled time crossed out, for a time the feed has moved off it: placed before the estimate. */
+const was = (sched, est) => html.raw(sched !== est ? `<s class="was">${clock(sched).h}</s>` : '');
+
 const keyOf = ri => D.routes[ri].short.replace(/\s+(AM|PM)$/, '');
 function keys() {
   const out = [];
@@ -112,10 +115,10 @@ function loops(st, pick, clockNow) {
   const cells = ls.map(k => {
     const s = st[k], r = D.routes[s.ris[0]], t = s.dep, then = s.deps[1];
     const where = s.off ? 'Not running now' : s.eta === 0 ? 'At its stop' : s.eta > 0 ? `Bus ${s.eta} min out` : s.away ? 'Bus on its run' : s.loose ? 'Out, no estimate' : 'Not reporting';
-    const rel = t.day === 0 ? relative(t, clockNow) + (then && then.day === 0 ? ' · then ' + clock(then.min).h : '') : dayName(t.ymd);
+    const rel = t.day === 0 ? html`${relative(t, clockNow)}${then && then.day === 0 ? html` · then ${was(schedOf(then), then.min)}${clock(then.min).h}` : ''}` : dayName(t.ymd);
     return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="#/hub${pick === k ? '' : '/' + k}">
       <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
-      <span class="when">${time(t.min, 36)}<span class="rel">${rel}</span></span>
+      <span class="when"><span class="whent">${was(schedOf(t), t.min)}${time(t.min, 36)}</span><span class="rel">${rel}</span></span>
       <span class="where${s.out && !s.off ? ' live' : ''}"><i></i>${where}</span></a>`;
   });
   return html`<div class="tc-loops blueprint">${corners()}
@@ -173,7 +176,7 @@ function picked(s, clockNow) {
   const cells = s.deps.map((t, i) => {
     const m = i === 0 && t.day === 0 ? s.leave : t.min, c = clock(m);
     const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ' · late' : '') : dayName(t.ymd);
-    return html`<div class="cell${i === 0 ? ' first' : ''}"><span class="t">${c.h}<small>${c.ap}</small></span><span class="rel">${rel}</span></div>`;
+    return html`<div class="cell${i === 0 ? ' first' : ''}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t">${c.h}<small>${c.ap}</small></span></span><span class="rel">${rel}</span></div>`;
   });
   return html`<div class="tc-pick blueprint">${corners()}
     <div class="top">${badge(s.ris[s.ris.length - 1], 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
@@ -188,7 +191,7 @@ function footnote(st) {
   const live = Object.values(st).filter(s => !s.off && s.eta === null);
   const loose = list(live.filter(s => s.loose).map(name), ' is out but off its scheduled trips, so it has no estimate.', ' are out but off their scheduled trips, so they have no estimates.');
   const quiet = list(live.filter(s => !s.out).map(name), ' isn’t reporting.', ' aren’t reporting.');
-  return html`<p class="tc-foot">Bus positions from ${D.agency.brand}’s live feed. A late bus leaves when it’s ready: the time shown is the estimate.${loose}${quiet}</p>`;
+  return html`<p class="tc-foot">Bus positions from ${D.agency.brand}’s live feed. A late bus leaves when it’s ready: a crossed-out time is the scheduled one, beside the estimate.${loose}${quiet}</p>`;
 }
 
 function mount(el) {

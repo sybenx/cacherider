@@ -556,6 +556,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .tc-loop .name { font-size: 15.5px; font-weight: 500; line-height: 1.2; }
 .tc-loop .when { display: flex; flex-direction: column; gap: 4px; }
 .tc-loop .when .t small { font-size: 16px; margin-left: 3px; }
+.tc-loop .whent .was { font-size: 20px; }
+.tc-loop .rel .was { margin-right: 4px; }
 .tc-loop .rel { font-size: 13px; color: var(--cr-muted); white-space: nowrap; }
 .tc-loop .where { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.3; }
 .tc-loop .where i { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--cr-muted); }
@@ -581,5 +583,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .tc-pick .cell.first { border-color: var(--color-accent); }
 .tc-pick .cell .t { font-size: 22px; }
 .tc-pick .cell .t small { font-size: 11px; margin-left: 2px; }
+.tc-pick .cell .whent { gap: 5px; flex-wrap: wrap; }
+.tc-pick .cell .was { font-size: 13px; }
 .tc-pick .cell .rel { font-size: 12.5px; color: var(--cr-muted); }
 .tc-foot { margin: 0; padding: 22px 16px 20px; font-size: 12.5px; line-height: 1.45; color: var(--cr-muted); text-wrap: pretty; }
