@@ -115,14 +115,14 @@ function loops(st, pick, clockNow) {
   const every = gaps.length ? [...gaps].sort((a, b) => gaps.filter(g => g === b).length - gaps.filter(g => g === a).length)[0] : null;
   const cells = ls.map(k => {
     const s = st[k], r = D.routes[s.ris[0]], t = s.dep, then = s.deps[1];
-    const where = s.off ? 'Not running now' : s.eta === 0 ? 'At its stop' : s.eta > 0 ? `Bus ${s.eta} min out` : s.away ? 'Bus on its run' : s.loose ? 'Out, no estimate' : 'Not reporting';
-    // Spacing its buses, a loop's bus at its stop leaves when it's loaded: it's here, and that's all there is to say.
+    const where = s.off ? 'Not running now' : s.eta === 0 ? 'Bus at its stop' : s.eta > 0 ? `Bus ${s.eta} min out` : s.away ? 'Bus on its run' : s.loose ? 'Out, no estimate' : 'Not reporting';
+    // Spacing its buses, a loop's bus at its stop leaves when the gap's right: it's at its stop, and that's all.
     const waiting = t.live && t.live.here && t.live.spacing;
-    const after = then && then.day === 0 ? html` · then ${was(schedOf(then), then.min)}${clock(then.min).h}` : '';
-    const rel = t.day === 0 ? html`${waiting ? 'Boarding' : relative(t, clockNow)}${after}` : dayName(t.ymd);
+    const after = then && then.day === 0 ? html`${waiting ? 'then' : ' · then'} ${was(schedOf(then), then.min)}${clock(then.min).h}` : '';
+    const rel = t.day === 0 ? html`${waiting ? '' : relative(t, clockNow)}${after}` : dayName(t.ymd);
     return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="#/hub${pick === k ? '' : '/' + k}">
       <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
-      <span class="when">${waiting ? html`<span class="t t-36">Here now</span>` : html`<span class="whent">${was(schedOf(t), t.min)}${time(t.min, 36)}</span>`}<span class="rel">${rel}</span></span>
+      <span class="when">${waiting ? html`<span class="t t-36">At its stop</span>` : html`<span class="whent">${was(schedOf(t), t.min)}${time(t.min, 36)}</span>`}<span class="rel">${rel}</span></span>
       <span class="where${s.out && !s.off ? ' live' : ''}"><i></i>${where}</span></a>`;
   });
   return html`<div class="tc-loops blueprint">${corners()}
@@ -180,7 +180,7 @@ function picked(s, clockNow) {
   const cells = s.deps.map((t, i) => {
     const m = i === 0 && t.day === 0 ? s.leave : t.min, c = clock(m);
     const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ' · late' : '') : dayName(t.ymd);
-    if (i === 0 && t.live && t.live.here && t.live.spacing) return html`<div class="cell first"><span class="t">Here now</span><span class="rel">boarding</span></div>`;
+    if (i === 0 && t.live && t.live.here && t.live.spacing) return html`<div class="cell first"><span class="t">At its stop</span></div>`;
     return html`<div class="cell${i === 0 ? ' first' : ''}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t">${c.h}<small>${c.ap}</small></span></span><span class="rel">${rel}</span></div>`;
   });
   return html`<div class="tc-pick blueprint">${corners()}

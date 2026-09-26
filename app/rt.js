@@ -123,7 +123,7 @@ function watchLoop(ri, trips, buses, t0) {
     const u = trips[b.trip];
     const listed = u && u.stops.some(s => s[0] === sid);
     if (listed && distance(b.lat, b.lon, stop.lat, stop.lon) <= AT_STOP) { if (!here.has(b.trip)) here.set(b.trip, t0); }
-    else if (here.has(b.trip)) { here.delete(b.trip); left.set(b.trip + ':' + sid, t0); }
+    else here.delete(b.trip);
     // Its offset at its next stop yet to come (the feed can keep a passed one listed, its time gone stale).
     if (u && u.ti !== undefined) {
       let next = null;
@@ -141,25 +141,15 @@ function watchLoop(ri, trips, buses, t0) {
 }
 export const loopSpacing = ri => rt.loopMode[ri] === 'spacing' && !rtStale();
 
-/** A loop's departure from its Transit Center stop. Running to its timetable, a bus that's on time or late leaves
- *  when it's due or when it gets in, and one that's ahead waits up to ten minutes to close the gap. Spacing, it
- *  leaves when it gets in. A bus in (`here`) keeps its row at now or later, so it never reads as gone while it
- *  waits; once it pulls away the row says now for a minute, then goes. */
+/** A spacing loop's departure from its Transit Center stop. Running to its timetable, a loop is like any route
+ *  (see `heldAt`); spacing, its timetable means nothing, so the bus's place does the telling. A bus at its stop
+ *  (`here`) is at its stop until it pulls away, and then its row goes; one on its way leaves about five minutes
+ *  after it gets in. */
 function loopAtHub(t, u, sid, hit) {
   const id = D.trips[t.trip], nowS = Date.now() / 1000, nowM = toMin(Math.floor(nowS));
-  const pin = here.get(id), spacing = loopSpacing(t.r);
-  let A;
-  if (pin) A = toMin(Math.floor(pin / 1000));
-  else if (hit && !hit.skipped && hit.time >= nowS - 60) A = toMin(hit.time);
-  else {
-    if (hit && hit.skipped) return { gone: true };
-    const ms = left.get(id + ':' + sid);
-    if (ms && Date.now() - ms < LEFT_GRACE) return { min: nowM, delay: nowM - t.min };
-    return hit ? { gone: true } : undefined;   // a time gone by and the bus not there: it's been
-  }
-  let dep = spacing || A >= t.min ? A : Math.min(t.min, A + 10);
-  if (pin) dep = spacing ? nowM : Math.max(dep, nowM);
-  return { min: dep, delay: dep - t.min, here: !!pin, spacing };
+  if (here.has(id)) return { min: nowM, delay: nowM - t.min, here: true, spacing: true };
+  if (hit && !hit.skipped && hit.time >= nowS - 60) { const dep = toMin(hit.time) + 5; return { min: dep, delay: dep - t.min, spacing: true }; }
+  return hit ? { gone: true } : undefined;   // skipped, or a time gone by and the bus not there: it's been
 }
 
 /** What the feed says about a scheduled departure today: { min, delay } with the predicted minute; { gone: true }
@@ -172,30 +162,30 @@ export function predict(t) {
   if (!u) return null;
   const sid = D.stops[t.si].id;
   const hit = u.at.get(sid);
-  if (isLoop(t.r) && D.stops[t.si].hub) { const p = loopAtHub(t, u, sid, hit); if (p !== undefined) return p; }
+  if (isLoop(t.r) && D.stops[t.si].hub && loopSpacing(t.r)) { const p = loopAtHub(t, u, sid, hit); if (p !== undefined) return p; }
   if (hit) return hit.skipped ? { gone: true } : held(t, toMin(hit.time) - t.min);
   const order = (D.routes[t.r].stops || {})[String(t.dir)] || [];
   const i = order.indexOf(t.si);
   if (i < 0) return null;
   const f = u.first ? order.indexOf(D.stopById[u.first.sid]) : -1, l = u.last ? order.indexOf(D.stopById[u.last.sid]) : -1;
   // Pulling out of a Transit Center bay, the bus drops the bay from its predictions at once. Rather than vanish, the
-  // row says now for a minute after it goes; and a route bus, which never leaves a bay early, holds its scheduled
-  // minute till that's out too. A loop may leave early, so it gets only the minute.
+  // row says now for a minute after it goes; and a bus, which never leaves a bay early, holds its scheduled minute
+  // till that's out too. A loop spacing its buses just goes: the next one is what matters.
   if (f >= 0 && i < f) {
-    if (!D.stops[t.si].hub) return { gone: true };
+    if (!D.stops[t.si].hub || (isLoop(t.r) && loopSpacing(t.r))) return { gone: true };
     const ms = left.get(D.trips[t.trip] + ':' + sid);
     if (ms && Date.now() - ms < LEFT_GRACE) return held(t, toMin(Math.floor(Date.now() / 1000)) - t.min);
-    return isLoop(t.r) ? { gone: true } : held(t, 0);
+    return held(t, 0);
   }
   if (l >= 0 && i > l && u.lastDelay !== null) return { ...held(t, u.lastDelay), est: true };
   return null;
 }
-/** Every route but the loops lays over at the Transit Center, and a bus that gets in ahead waits there rather
- *  than leave early: a departure from its bay is never before its scheduled minute, the feed can only make it later. */
-export const heldAt = (si, delay, ri) => D.stops[si] && D.stops[si].hub && !isLoop(ri) ? Math.max(0, delay) : delay;
+/** Every route lays over at the Transit Center, and a bus that gets in ahead waits there rather than leave early:
+ *  a departure from its bay is never before its scheduled minute, the feed can only make it later. A loop spacing
+ *  its buses is the exception (see `loopAtHub`). */
+export const heldAt = (si, delay, ri) => D.stops[si] && D.stops[si].hub && !(isLoop(ri) && loopSpacing(ri)) ? Math.max(0, delay) : delay;
 const held = (t, delay) => { const d = heldAt(t.si, delay, t.r); return { min: t.min + d, delay: d }; };
-/** The Green and Blue Loops run to their headway more than their timetable, far off it in traffic as a matter of
- *  course, early as often as late: no hold at the Transit Center for them, and no late or early word. */
+/** The Green and Blue Loops: far off their timetable in traffic as a matter of course, so no late or early word. */
 export const isLoop = ri => (D.hub.loops || []).includes(ri);
 setLive(t => { const p = predict(t); if (!p) return t; return p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p }; });
 
