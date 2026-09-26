@@ -85,14 +85,41 @@ export function upcomingServices(ymd, within = 45) {
 /** Departures at a stop on a service day, sorted, as { min, r, h, dir }.
     A route the stop serves that today's calendar leaves out entirely, but an upcoming one lists, is filled in
     from that one and marked prov: the feed sometimes publishes a new timetable without the current week's. */
+/** A loop bus starts its day at the Transit Center, but the feed cuts loop trips elsewhere (switching trips at the
+ *  Transit Center, with its layovers, breaks things), so each bus's first trip lists stops before the Transit Center
+ *  that it never runs. Those rows are left out; every later one is the end of the run before, and real. */
+let unrun = null;
+function notRun(ti, si) {
+  if (!unrun) {
+    unrun = new Set();
+    const hub = new Set(D.hub.bays.map(b => b.stop)), loops = new Set(D.hub.loops || []);
+    const trips = new Map();
+    for (const [s, per] of Object.entries(D.times)) for (const [svc, rows] of Object.entries(per)) for (const [m, r, , , t] of rows) {
+      if (!loops.has(r)) continue;
+      let x = trips.get(t);
+      if (!x) trips.set(t, x = { svcs: new Set(), rows: [] });
+      x.svcs.add(svc); x.rows.push([m, +s]);
+    }
+    const first = new Map();   // service|run (G1, B2S…) → its earliest trip, by Transit Center time
+    for (const [t, x] of trips) {
+      const tc = Math.min(...x.rows.filter(([, s]) => hub.has(s)).map(([m]) => m));
+      if (!isFinite(tc)) continue;
+      const run = D.trips[t].split('_')[0];
+      for (const svc of x.svcs) { const k = svc + '|' + run, f = first.get(k); if (!f || tc < f.tc) first.set(k, { t, tc }); }
+    }
+    for (const { t, tc } of first.values()) for (const [m, s] of trips.get(t).rows) if (m < tc) unrun.add(t + '|' + s);
+  }
+  return unrun.has(ti + '|' + si);
+}
+
 export function timesOn(si, ymd) {
   const per = D.times[si] || {};
   const out = [];
   const seen = new Set();
-  for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) { out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4] }); seen.add(t[1]); }
+  for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) { if (notRun(t[4], si)) continue; out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4] }); seen.add(t[1]); }
   const missing = (D.stops[si].routes || []).filter(r => !seen.has(r) && !routeRunsOn(r, ymd));
   if (missing.length) {
-    for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1])) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], prov: sid });
+    for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1]) && !notRun(t[4], si)) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], prov: sid });
   }
   // A detour that names this stop: that route's buses aren't calling here today.
   const closed = A.byStop[D.stops[si].id] ? closedRoutes(si, ymd) : null;

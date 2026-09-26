@@ -117,7 +117,7 @@ export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
   const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t)).s : sched().s;
-  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel">${esc(rel)}</span>`}</div></div>`);
+  return raw(`<div class="row${opts.href ? ' tap' : ''}">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
 }
 
 /** A stop row for the home and search lists, with its next bus on the right. */
@@ -126,7 +126,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const next = next0 ? lively(next0) : next0;
   const end = next
     ? `<div class="end"><div class="when">${badge(next.r, 20).s}${when(next, 22).s}</div>${loopArrival(next) ? '' : `<span class="rel">${esc(relative(next, clockNow))}</span>`}${next.live ? liveMark().s : sched().s}</div>`
-    : `<div class="end"><span class="rel">${esc(opts.none || 'No service today')}</span></div>`;
+    : `<div class="end"><span class="rel${opts.warn ? ' warnmark' : ''}">${esc(opts.none || 'No service today')}</span></div>`;
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';

@@ -52,7 +52,7 @@ export function render({ id, full }, clockNow) {
   if (alerts.length) {
     const who = [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ');
     const head = allClosed ? 'No buses stop here during the detour' : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop right now` : 'Service alert for this stop';
-    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b>${head}</b>${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
+    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
   }
 
   if (allClosed) {
@@ -83,7 +83,9 @@ export function render({ id, full }, clockNow) {
   }
 
   const first = next[0];
-  const dayWord = first.day === 0 ? '' : first.day === 1 ? 'tomorrow, ' + dayName(first.ymd, true) : dayName(first.ymd);
+  const dayWord0 = first.day === 0 ? '' : first.day === 1 ? 'tomorrow, ' + dayName(first.ymd, true) : dayName(first.ymd);
+  // A detour closing this stop pushes the next bus to after it ends, days off: say so, in the warning yellow.
+  const dayWord = dayWord0 && closed.has(first.r) ? html`<span class="warnmark">${dayWord0} · after the detour</span>` : dayWord0;
   parts.push(html`<div class="next"><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark(liveWord(first)) : sched()}</div>
     ${wasLine(first)}<div class="big">${loopArrival(first) ? minsOut(first, 60, clockNow) : html`${time(first.min, 60, !!first.live)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span>`}</div>
     <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div>${lastTag(first)}</div>`);
@@ -105,7 +107,7 @@ export function render({ id, full }, clockNow) {
   const rows = [];
   for (const t of rest) {
     if (t.day !== lastDay) { rows.push(html`<div class="dayhead">${fmtDay(t.ymd, true)}${alertLink(t.ymd)}</div>`); lastDay = t.day; }
-    rows.push(depRow(t, clockNow, { dayShort: true }));
+    rows.push(depRow(t, clockNow, { dayShort: true, warn: t.day > 0 && closed.has(t.r) }));   // days off because of the detour
   }
   if (first.day !== 0 && rows.length && !String(rows[0]).startsWith('<div class="dayhead"')) rows.unshift(html`<div class="dayhead">${fmtDay(first.ymd, true)}${alertLink(first.ymd)}</div>`);
   parts.push(html`<div class="list">${html.raw(rows.join(''))}</div>`);

@@ -29,6 +29,7 @@
   --shadow-lg: 0 12px 32px color-mix(in srgb, #2b2b2d 22%, transparent);
   --radius-md: 4px;
   --tab-h: 58px;
+  --warn-bg: #fdf0c2; --warn-ink: #4d3a00; --warn-edge: #e0a800;   /* a warning that must be seen: a stop skipped */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -39,6 +40,7 @@
     --color-divider: rgba(238,240,242,.2); --cr-muted: #b3b6bb; --cr-line: rgba(238,240,242,.13);
     --cr-hover: rgba(238,240,242,.06); --cr-scrim: rgba(0,0,0,.6);
     --shadow-md: 0 3px 10px rgba(0,0,0,.5); --shadow-lg: 0 12px 32px rgba(0,0,0,.6);
+    --warn-bg: #3b3005; --warn-ink: #ffe28a; --warn-edge: #e0a800;
     color-scheme: dark;
   }
 }
@@ -49,6 +51,7 @@
   --color-divider: rgba(238,240,242,.2); --cr-muted: #b3b6bb; --cr-line: rgba(238,240,242,.13);
   --cr-hover: rgba(238,240,242,.06); --cr-scrim: rgba(0,0,0,.6);
   --shadow-md: 0 3px 10px rgba(0,0,0,.5); --shadow-lg: 0 12px 32px rgba(0,0,0,.6);
+  --warn-bg: #3b3005; --warn-ink: #ffe28a; --warn-edge: #e0a800;
   color-scheme: dark;
 }
 
@@ -208,8 +211,11 @@ svg { display: block; flex: none; }
 .callout.alert .sub + .sub { margin-top: 8px; }
 .callout.alert .sub b { display: block; margin-bottom: 1px; }
 .callout.alert a { color: inherit; font-weight: 600; }
+/* yellow, and only for what changes a rider's trip: a route skipping a stop, a stop not served, a bus days off */
+.warnmark { display: inline-block; padding: 1px 6px; background: var(--warn-bg); color: var(--warn-ink); box-shadow: inset 3px 0 0 var(--warn-edge); font-weight: 600; }
 .stoprow .dist .alert { color: var(--color-accent-700); font-weight: 600; }
 .eyebrow.alert { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; }
+.eyebrow.alert.warnmark { padding: 3px 7px; }
 .alertrow { padding: 12px 16px; border-bottom: 1px solid var(--cr-line); display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .alertrow b { font-size: 16px; }
 .alertrow p { margin: 0; }

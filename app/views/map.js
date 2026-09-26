@@ -459,12 +459,12 @@ function select(id, app, fly = false, zoomIn = false) {
   const next = nextAt(si, 3, clockNow);
   const fromHub = metres(distance(s.lat, s.lon, D.hub.lat, D.hub.lon));
   const closed = closedRoutes(si, clockNow.ymd), al = stopAlerts(si, clockNow.ymd);
-  const alertLine = al.length ? html`<span class="eyebrow alert">${icon('ban', 14)}${closed.size ? [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ') + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' : al[0].title}</span>` : '';
+  const alertLine = al.length ? html`<span class="eyebrow alert${closed.size ? ' warnmark' : ''}">${icon('ban', 14)}${closed.size ? [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ') + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' : al[0].title}</span>` : '';
   // The twin across the road, one small line: a tap swaps the card to it without leaving the map.
   // The twin sits at the right of the eyebrow line, in its type: the card grows by nothing for it.
   const twinLine = s.twin ? html`<button class="eyebrow twinline" type="button" data-twin="${stop(s.twin[0]).id}" title="${stop(s.twin[0]).name}">${icon('swap', 14)}Across the road · ${metres(s.twin[1])}</button>` : '';
   card.innerHTML = html`<div class="grip"></div><div class="head"><div class="eyerow"><span class="eyebrow">${s.town} · Stop ${s.code || s.id}${s.twin ? '' : ` · ${fromHub} from the ${D.hub.name}`}</span>${twinLine}</div><div class="name"><span>${s.name}</span>${badges(s.routes, 30, true)}</div>${alertLine}</div>
-    ${next.length ? next.map(t => depRow(t, clockNow, { name: t.day ? undefined : undefined })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
+    ${next.length ? next.map(t => depRow(t, clockNow, { warn: t.day > 0 && closed.has(t.r) })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a></div>`;
   const tw = card.querySelector('[data-twin]');
   if (tw) tw.onclick = () => { card.scrollTop = 0; select(tw.dataset.twin, app, true); };

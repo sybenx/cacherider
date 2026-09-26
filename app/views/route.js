@@ -20,7 +20,7 @@ export function render({ short, dir }, clockNow) {
   const seq = (r.stops || {})[d] || [];
   const rows = seq.map(si => {
     // A stop the route's detour skips: say so, rather than the first bus after the detour's end, days off.
-    if (closedRoutes(si, clockNow.ymd).has(ri)) return stopRow(si, null, clockNow, { none: 'Not served · detour' });
+    if (closedRoutes(si, clockNow.ymd).has(ri)) return stopRow(si, null, clockNow, { none: 'Not served · detour', warn: true });
     const n = nextAt(si, 1, clockNow, 8, t => t.r === ri)[0];
     return stopRow(si, n, clockNow, { none: 'Not today' });
   });
