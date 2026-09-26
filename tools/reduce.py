@@ -144,12 +144,23 @@ for r in routes:
         r['stops'][di] = out_seq
 
 # ---- twins: the stop across the road, sharing a route, so the app can show a pair as one place
+# The Green and Blue Loops run the same streets in opposite directions, so a pair across the road can have
+# one loop each and no route in common. For that the two loops count as one route, but only for two stops on
+# the same street: a loop stop around the corner is somewhere else.
+LOOPS = {i for i, r in enumerate(routes) if r['short'] in H.get('loops', [])}
+WORD = {'N': 'North', 'S': 'South', 'E': 'East', 'W': 'West'}
+def street(name):
+    w = [WORD.get(x, x) for x in name.replace('.', '').split() if x not in ('St', 'Street')]
+    return ' '.join(w[2:]) if len(w) > 2 and w[0].isdigit() else None
+def pair(s, o):
+    if set(s['routes']) & set(o['routes']): return True
+    return bool(LOOPS & set(s['routes']) and LOOPS & set(o['routes'])) and street(s['name']) is not None and street(s['name']) == street(o['name'])
 for i, s in enumerate(stops):
     s['twin'] = None
     if s['hub']: continue
     best = None
     for j, o in enumerate(stops):
-        if i == j or o['hub'] or not set(s['routes']) & set(o['routes']): continue
+        if i == j or o['hub'] or not pair(s, o): continue
         d = dist(s['lat'], s['lon'], o['lat'], o['lon'])
         if d <= 90 and (best is None or d < best[0]): best = (d, j)
     if best: s['twin'] = [best[1], int(best[0])]
