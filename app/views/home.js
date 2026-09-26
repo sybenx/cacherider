@@ -2,10 +2,11 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, bearing, compass8, pref, systemAlerts, activeAlerts, quietWords } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, movedNote, star } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
+import { pointerMark, wirePointers } from '../pointer.js';
 import { parseAddress, geocode, townState } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, liveTag, live, hasData, board } from '../usu.js';
 
@@ -49,7 +50,7 @@ function landing(clockNow, app) {
     else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
   } else if (geo) {   // nothing saved beneath: the other stops near you instead
     const rows = nearest(geo.lat, geo.lon, 6).filter(x => x.i !== heroSi && !stop(x.i).hub).slice(0, 3);
-    if (rows.length) parts.push(html`<div class="land-eye"><span>${stopHero ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' ' + compass8(bearing(geo.lat, geo.lon, stop(i).lat, stop(i).lon)) }))}</div>`);
+    if (rows.length) parts.push(html`<div class="land-eye"><span>${stopHero ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
   }
   if (!stopHero && !geo) {
     parts.push(html`<div class="ask">
@@ -91,7 +92,7 @@ function stopHeroBlock(si, why, clockNow) {
   // of the rider's steps only start on a tap). The arrow points as on a north-up map until then.
   const g = window.__app && window.__app.geo;
   const mine = saved().includes(s.id);   // a saved stop keeps its star, nearest or not
-  const way = g ? html`<button class="pointer" id="pointer" type="button" data-lat="${s.lat}" data-lon="${s.lon}" aria-label="Point me there" title="Point me there"><i class="needle" style="transform:rotate(${Math.round(bearing(g.lat, g.lon, s.lat, s.lon))}deg)">${icon('pointer', 13)}</i><span class="pw">${metres(distance(g.lat, g.lon, s.lat, s.lon))} ${compass8(bearing(g.lat, g.lon, s.lat, s.lon))}</span></button> · ` : '';
+  const way = g ? html`${html.raw(pointerMark(s.lat, s.lon, g, true))} · ` : '';
   const eye = html`<div class="eye"><span class="eyebrow${mine ? ' savedmark' : ''}">${mine ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · ${way}Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched()}</div>`;
   if (!next.length) {
     const resume = nextServiceDay(clockNow);
@@ -154,70 +155,9 @@ function searchPage(q, clockNow, app) {
   return { html: parts.join(''), mount, title: 'Search' };
 }
 
-// ---- pointing. The arrow turns with the phone by itself wherever the browser shares the compass unasked
-// (Android does; it costs next to nothing). A tap asks for it where the browser insists on asking first (an
-// iPhone), and starts the distance following the rider's steps, which needs the GPS and so waits to be asked;
-// another tap, or leaving the page, stops that. No compass at all: the arrow stays north-up, right on a map.
-const pt = { heading: null, turnedAt: 0, listening: false, following: false, fix: null, watch: null };
-const asks = () => typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
-function paintPointer() {
-  const b = document.getElementById('pointer');
-  if (!b) { quiet(); return; }
-  const g = pt.fix || window.__app.geo, lat = +b.dataset.lat, lon = +b.dataset.lon;
-  const deg = bearing(g.lat, g.lon, lat, lon), turning = pt.heading !== null;
-  b.querySelector('.needle').style.transform = `rotate(${Math.round(deg - (turning ? pt.heading : 0))}deg)`;
-  b.querySelector('.pw').textContent = metres(distance(g.lat, g.lon, lat, lon)) + ' ' + compass8(deg);
-  b.classList.toggle('live', turning);
-  b.classList.toggle('ask', !turning && asks());   // a quiet button look only where a tap is what it takes
-  b.setAttribute('aria-pressed', pt.following ? 'true' : 'false');
-  b.title = pt.following ? 'Following you · tap to stop' : turning ? 'Tap to follow as you walk' : asks() ? 'Tap to point with your phone' : 'Tap to follow as you walk';
-}
-function onTurn(e) {
-  let h = typeof e.webkitCompassHeading === 'number' ? e.webkitCompassHeading : e.absolute && e.alpha !== null ? 360 - e.alpha : null;
-  if (h === null) return;
-  pt.heading = (h + ((screen.orientation && screen.orientation.angle) || 0) + 360) % 360;
-  pt.turnedAt = Date.now();
-  paintPointer();
-}
-function listen() {
-  if (pt.listening) return;
-  pt.listening = true;
-  window.addEventListener('deviceorientationabsolute', onTurn); window.addEventListener('deviceorientation', onTurn);
-}
-function quiet() {   // the pointer's gone from the page: stop everything
-  pt.listening = false; pt.heading = null;
-  window.removeEventListener('deviceorientationabsolute', onTurn); window.removeEventListener('deviceorientation', onTurn);
-  stopFollowing();
-}
-async function tapPointer() {
-  // An iPhone asks here. Chrome on Android has the same call but may say 'denied' without asking while still
-  // sending the events, so its answer isn't trusted.
-  if (asks() && pt.heading === null) { try { await DeviceOrientationEvent.requestPermission(); } catch { /* listen regardless */ } listen(); }
-  if (pt.following) stopFollowing(); else startFollowing();
-  paintPointer();
-}
-function startFollowing() {
-  if (!navigator.geolocation) return;
-  pt.following = true;
-  pt.watch = navigator.geolocation.watchPosition(p => {
-    pt.fix = { lat: p.coords.latitude, lon: p.coords.longitude, at: Date.now() };
-    window.__app.geo = pt.fix;   // the next minute's redraw picks the nearest stop from here
-    paintPointer();
-  }, () => {}, { enableHighAccuracy: true, maximumAge: 5000 });
-  document.addEventListener('visibilitychange', stopFollowing, { once: true });
-}
-function stopFollowing() {
-  if (!pt.following) return;
-  pt.following = false;
-  if (pt.watch !== null && navigator.geolocation) navigator.geolocation.clearWatch(pt.watch);
-  pt.watch = null;
-  if (document.getElementById('pointer')) paintPointer();
-}
-
 function mount(el, app) {
   window.__app = app;
-  const pb = el.querySelector('#pointer');
-  if (pb) { pb.onclick = e => { e.preventDefault(); tapPointer(); }; listen(); paintPointer(); }
+  wirePointers(el, app);
   const form = el.querySelector('#search');
   if (form) {
     const input = form.querySelector('input');

@@ -6,7 +6,8 @@ import { html, icon, badge, badges, time, sched, corners, depRow, routeLinks, he
 import { U, chips, liveTag } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
-import { afterSave } from '../main.js';
+import { afterSave, app } from '../main.js';
+import { wirePointers, pointerMark } from '../pointer.js';
 
 export function render({ id, full }, clockNow) {
   const si = stopIndex(id);
@@ -20,7 +21,8 @@ export function render({ id, full }, clockNow) {
   parts.push(miniSlot({ stopId: s.id }));
   const sd = side(si);
   const eyebrow = sd ? `${s.town} · ${sd} side` : `${s.town} · Stop ${s.code || s.id}`;
-  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${routeLinks(si)}</div>`);
+  const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
+  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}${g ? html` · ${html.raw(pointerMark(s.lat, s.lon, g, true))}` : ''}</span><h1>${s.name}</h1>${routeLinks(si)}</div>`);
 
   if (s.twin) {
     const [ti, td] = s.twin;
@@ -135,6 +137,7 @@ function describeDays(r) {
 }
 
 function mount(el) {
+  wirePointers(el, app);
   mountMini(el);
   const b = el.querySelector('#save');
   if (!b) return;

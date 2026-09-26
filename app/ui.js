@@ -1,6 +1,7 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
 import { D, route, stop, A, stopAlerts, lastRun, routeOrder } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
+import { pointerMark } from './pointer.js';
 import { clock, clockText, relative, dayName, now } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -155,7 +156,8 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';
-  const dist = `<span class="dist">${esc([opts.dist, num].filter(Boolean).join(' · '))}${alert ? (opts.dist || num ? ' · ' : '') + alert : ''}</span>`;
+  const way = opts.point ? pointerMark(s.lat, s.lon, opts.point) + (num ? ' · ' : '') : '';
+  const dist = `<span class="dist">${way}${esc([opts.dist, num].filter(Boolean).join(' · '))}${alert ? (opts.dist || num || way ? ' · ' : '') + alert : ''}</span>`;
   return raw(`<a class="stoprow${opts.here ? ' here' : ''}"${opts.here ? ' id="here"' : ''} href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${dist}${badges(s.routes, 24).s}</div>${end}</a>`);
 }
 
