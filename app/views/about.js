@@ -51,7 +51,8 @@ function feedbackHref() {
 
 function installBlock() {
   const st = installState();
-  if (st === 'installed') return html`<p class="muted" style="font-size:14px">Cache Rider is on your home screen. It opens full screen and works offline.</p>`;
+  // Only what this page knows: it's open as an app right now. Whether an icon is still on the home screen, it can't see.
+  if (st === 'installed') return html`<p class="muted" style="font-size:14px">You're in the installed app: full screen, and it works offline.</p>`;
   if (st === 'prompt') return html`<p class="muted" style="font-size:14px">One tap from your home screen, full screen, works offline.</p><button class="btn btn-secondary btn-lg blueprint" id="install-go">${corners()}${icon('install', 20)}Install Cache Rider</button>`;
   if (st === 'ios') return html`<p class="muted" style="font-size:14px">Safari can keep Cache Rider on your home screen: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p><button class="btn btn-secondary btn-lg blueprint" id="install-ios">${corners()}${icon('share', 20)}Show me the steps</button>`;
   return html`<p class="muted" style="font-size:14px">In Chrome or Edge, the browser's menu offers “Install Cache Rider” or “Add to Home screen”. In Safari on a Mac, File → Add to Dock.</p>`;

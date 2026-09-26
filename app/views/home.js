@@ -177,14 +177,14 @@ function onTurn(e) {
   paintPointer();
 }
 async function startPointing() {
-  // Refused, or no compass at all: still on, the distance following the rider, the arrow north-up.
-  let compass = true;
-  if (typeof DeviceOrientationEvent === 'undefined') compass = false;
-  else if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try { compass = await DeviceOrientationEvent.requestPermission() === 'granted'; } catch { compass = false; }
+  // An iPhone asks first. Chrome on Android has the same call but may answer 'denied' without asking while
+  // still sending the events, so its answer isn't trusted: listen anyway. No heading arriving means no compass
+  // (or none allowed), and the arrow stays north-up while the distance still follows the rider.
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { await DeviceOrientationEvent.requestPermission(); } catch { /* listen regardless */ }
   }
   pt.on = true; pt.heading = null;
-  if (compass) { window.addEventListener('deviceorientationabsolute', onTurn); window.addEventListener('deviceorientation', onTurn); }
+  window.addEventListener('deviceorientationabsolute', onTurn); window.addEventListener('deviceorientation', onTurn);
   if (navigator.geolocation) pt.watch = navigator.geolocation.watchPosition(p => {
     pt.fix = { lat: p.coords.latitude, lon: p.coords.longitude, at: Date.now() };
     window.__app.geo = pt.fix;   // the next minute's redraw picks the nearest stop from here

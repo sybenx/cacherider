@@ -3,7 +3,7 @@
 // with where its bus is. Tap a badge for that route: where its bus is and its next three departures.
 import { D, nextPulse, nextFromHub, distance, servicesOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText } from '../time.js';
-import { html, icon, badge, time, corners, schedOf, lastTag, star, movedNote } from '../ui.js';
+import { html, icon, badge, time, corners, schedOf, lastTag, star, movedNote, routeBadgeLink } from '../ui.js';
 import { rt, rtStale, isLoop } from '../rt.js';
 
 // Each route's place on the plan, in its 358 × 284 frame with 500 North along the top: read off the feed's stop
@@ -183,14 +183,18 @@ function picked(s, clockNow) {
     : s.loose ? 'The bus is out but off its scheduled trips, so there’s no estimate for it.'
     : s.away ? 'The bus is out on a run that doesn’t come back through here soon.'
     : 'This route isn’t reporting its position.';
+  // The badge opens the route, landing on its bay; each time opens that bay's stop page, the rest of its day.
+  const ri = s.ris[s.ris.length - 1], bay = D.hub.bays.find(b => b.routes.includes(ri));
+  const baySi = bay ? bay.stop : undefined;
+  const stopHref = t => { const si = t.si !== undefined ? t.si : baySi; return si !== undefined ? '#/stop/' + D.stops[si].id : '#/hub'; };
   const cells = s.deps.map((t, i) => {
     const m = i === 0 && t.day === 0 ? s.leave : t.min, c = clock(m);
     const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ' · late' : '') : dayName(t.ymd);
-    if (i === 0 && t.live && t.live.here && t.live.spacing) return html`<div class="cell first"><span class="t">At its stop</span></div>`;
-    return html`<div class="cell${i === 0 ? ' first' : ''}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}<small>${c.ap}</small></span>${t.moved !== undefined ? html.raw(star) : ''}</span><span class="rel">${rel}</span>${lastTag(t)}${movedNote(t)}</div>`;
+    if (i === 0 && t.live && t.live.here && t.live.spacing) return html`<a class="cell first" href="${stopHref(t)}"><span class="t">At its stop</span></a>`;
+    return html`<a class="cell${i === 0 ? ' first' : ''}" href="${stopHref(t)}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}<small>${c.ap}</small></span>${t.moved !== undefined ? html.raw(star) : ''}</span><span class="rel">${rel}</span>${lastTag(t)}${movedNote(t)}</a>`;
   });
   return html`<div class="tc-pick blueprint">${corners()}
-    <div class="top">${badge(s.ris[s.ris.length - 1], 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
+    <div class="top">${baySi !== undefined ? html.raw(routeBadgeLink(ri, baySi, 44, s.deps[0] && s.deps[0].dir)) : badge(ri, 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
     <span class="words">${words}</span>
     ${cells.length ? html`<div class="cells">${cells}</div>` : ''}</div>`;
 }

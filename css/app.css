@@ -647,3 +647,6 @@ sup.moved { font-family: var(--font-heading); font-size: 18px; font-weight: 600;
 .pointer.live { color: var(--color-accent-700); }
 .pointer[aria-pressed="true"] .pw { text-decoration: underline; text-underline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .pointer .needle { transition: none; } }
+/* the Transit Center pick's times open the bay's stop page */
+.tc-pick a.cell { color: inherit; text-decoration: none; }
+@media (hover: hover) { .tc-pick a.cell:hover { background: var(--cr-hover); } }
