@@ -474,10 +474,10 @@ sup.moved { font-family: var(--font-heading); font-size: 18px; font-weight: 600;
 .spot-marker { width: 10px; height: 10px; border-radius: 50%; background: var(--color-accent); border: 2px solid var(--color-bg); box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
 .me-marker { width: 16px; height: 16px; border-radius: 50%; background: var(--color-accent); border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 0 0 8px color-mix(in srgb, var(--color-accent) 25%, transparent); }
 
-/* desktop: the map's own bar hides, the header search serves */
+/* desktop: the map's own bar hides, the header search serves; the map's buttons stack top right */
 @media (min-width: 900px) {
-  #body:not(.map-open) .mapbar { display: none; }
-  #body:not(.map-open) .mapresults, #body:not(.map-open) .mapnotice { top: 12px; }
+  .mapbar { display: none; }
+  .mapresults, .mapnotice { top: 12px; }
   .mapbar, .mapresults, .mapnotice { max-width: 480px; }
   .mapcard { max-width: 480px; left: auto; right: 16px; bottom: 16px; border: 1px solid var(--cr-line); }
 }

@@ -265,11 +265,8 @@ async function init(app) {
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : [-111.8300, 41.7330];
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 10, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: { compact: true }, maxBounds: [[-112.4, 41.3], [-111.3, 42.4]] });
-  // Zoom on the left, within a left thumb's reach; the rest on the right, Near me nearest the corner.
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
-  map.addControl(nearControl(), 'bottom-right');
-  map.addControl(satControl(), 'bottom-right');
-  map.addControl(northControl(), 'bottom-right');
+  placeControls();
+  WIDE.addEventListener('change', placeControls);
   squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); });
   map.on('zoom', busScale);
@@ -367,6 +364,18 @@ function showSat(on) {
   map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, first && first.id);
 }
 
+/** On a phone, zoom bottom left within a left thumb's reach, the rest bottom right with Near me nearest the
+ *  corner. On a wide screen reach doesn't matter and the stop card sits bottom right: one stack, top right. */
+const WIDE = matchMedia('(min-width: 900px)');
+let ctrls = [];
+function placeControls() {
+  for (const c of ctrls) map.removeControl(c);
+  const nav = new maplibregl.NavigationControl({ showCompass: false }), near = nearControl(), sat = satControl(), north = northControl();
+  // Bottom corners stack upward in the order added, top corners downward.
+  ctrls = WIDE.matches ? [near, nav, sat, north] : [nav, near, sat, north];
+  for (const c of ctrls) map.addControl(c, WIDE.matches ? 'top-right' : c === nav ? 'bottom-left' : 'bottom-right');
+}
+
 /** North: a button that appears once the map is turned, and turns it back. */
 function northControl() {
   return {
@@ -377,9 +386,10 @@ function northControl() {
       b.onclick = () => m.resetNorth({ duration: 400 });
       const sync = () => { const a = m.getBearing(); el.classList.toggle('on', Math.abs(a) > 0.5); b.querySelector('svg').style.transform = `rotate(${-a}deg)`; };
       m.on('rotate', sync); m.on('rotateend', sync); sync();
+      this.off = () => { m.off('rotate', sync); m.off('rotateend', sync); };
       el.appendChild(b); this.el = el; return el;
     },
-    onRemove() { this.el.remove(); },
+    onRemove() { this.off(); this.el.remove(); },
   };
 }
 
@@ -417,9 +427,11 @@ function chrome() {
 function wireChrome(app) {
   const form = col.querySelector('#mapsearch'), input = form.querySelector('input'), results = col.querySelector('#mapresults');
   form.onsubmit = e => e.preventDefault();
+  // On a wide screen the header's search box serves the map (its own bar is hidden): both boxes run this.
+  const clear = () => { input.value = ''; const top = document.querySelector('#topsearch input'); if (top) top.value = ''; results.classList.add('hidden'); };
   let t;
-  input.oninput = () => { clearTimeout(t); t = setTimeout(() => {
-    const q = input.value.trim();
+  mapSearch = v => { clearTimeout(t); t = setTimeout(() => {
+    const q = v.trim();
     if (!q) { results.classList.add('hidden'); return; }
     const hits = search(q, 12);
     const addr = parseAddress(q);
@@ -428,9 +440,10 @@ function wireChrome(app) {
     const stopRows = hits.map(i => html`<a class="stoprow" href="#/map/${stop(i).id}" data-i="${i}"><div class="mid"><span class="name">${stopTitle(i)}</span>${badges(stop(i).routes, 20)}</div><div class="end">${icon('fwd', 18)}</div></a>`).join('');
     results.innerHTML = placeRows + stopRows || html`<div class="empty"><p>No stops or addresses match “${q}”.</p></div>`;
     results.classList.remove('hidden');
-    results.querySelectorAll('a[data-i]').forEach(a => a.onclick = e => { e.preventDefault(); input.value = ''; results.classList.add('hidden'); select(stop(+a.dataset.i).id, app, true, true); });
-    results.querySelectorAll('a:not([data-i])').forEach(a => a.onclick = () => { input.value = ''; results.classList.add('hidden'); });
+    results.querySelectorAll('a[data-i]').forEach(a => a.onclick = e => { e.preventDefault(); clear(); select(stop(+a.dataset.i).id, app, true, true); });
+    results.querySelectorAll('a:not([data-i])').forEach(a => a.onclick = clear);
   }, 200); };
+  input.oninput = () => mapSearch(input.value);
 }
 
 function placeMe(geo) {
@@ -524,6 +537,9 @@ function litBus(m) {
   return m.kind === 'c' ? hiLines.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
 }
 /** Every bus with a fix, shuttle and Connect alike, moved or placed; the ones gone from the feeds removed. */
+/** Search the map from outside it: the header's box on a wide screen. Set once the map is up. */
+export let mapSearch = () => {};
+
 export function liveUpdate(app) {
   if (!map) return;
   const seen = new Set();

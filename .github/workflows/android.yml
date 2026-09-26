@@ -52,5 +52,7 @@ jobs:
         with:
           files: android/cacherider-*.apk
           body: |
-            Cache Rider for Android. Opens cacherider.com full screen in your phone's own browser; no Chrome needed.
+            **Looking for bus times? Open [cacherider.com](https://cacherider.com).** It works in any phone's browser; nothing to install.
+
+            This release is the Android app, for phones without Chrome (GrapheneOS and the like). It opens cacherider.com full screen in your phone's own browser.
             Install the APK, or add this repository to Obtainium to keep it updated.

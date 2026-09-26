@@ -302,10 +302,11 @@ function paintThemeButtons() {
 function wireHeader() {
   const form = document.getElementById('topsearch');
   form.querySelector('.lead').innerHTML = icon('search', 20).s;
-  form.onsubmit = e => { e.preventDefault(); const q = form.querySelector('input').value.trim(); location.hash = q ? '#/search?q=' + encodeURIComponent(q) : '#/'; };
-  const near = document.getElementById('topnear');
-  near.innerHTML = icon('near', 20).s + 'Near me';
-  near.onclick = () => app.geo ? nearOff() : nearMe();
+  const input = form.querySelector('input');
+  // On the Map tab the header's box searches the map, results over it, as the phone's map bar does.
+  const onMap = () => app.route && app.route.name === 'map' && app.mapMod;
+  input.addEventListener('input', () => { if (onMap()) app.mapMod.mapSearch(input.value); });
+  form.onsubmit = e => { e.preventDefault(); if (onMap()) return; const q = input.value.trim(); location.hash = q ? '#/search?q=' + encodeURIComponent(q) : '#/'; };
   // Following the phone, a change of its look reaches the maps too.
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (themeMode() === 'auto') window.dispatchEvent(new Event('themechange')); });
 }

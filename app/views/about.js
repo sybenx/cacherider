@@ -2,7 +2,7 @@
 import { D, BASE, pref, A, activeAlerts } from '../data.js';
 import { fmtDay } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
-import { installState, iosSheet, app, themeButton, cycleTheme } from '../main.js';
+import { installState, iosSheet, app, themeButton, cycleTheme, nearMe, nearOff } from '../main.js';
 
 export function render({ section }, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
@@ -19,6 +19,8 @@ export function render({ section }, clockNow) {
     </div>
     <div class="section">${icon('sunmoon', 16)}Look</div>
     <div class="pad"><p class="muted" style="font-size:14px">Light or dark follows your phone. Tap to keep it light or dark here instead.</p>${themeButton('theme')}</div>
+    <div class="section">${icon('near', 16)}Location</div>
+    <div class="pad"><p class="muted" style="font-size:14px">${app.geo ? 'On. Used only to sort stops by distance, and never leaves this phone.' : 'Off. Turn it on to sort stops by distance; it never leaves this phone.'}</p><button class="btn btn-secondary" id="aboutnear" type="button">${icon('near', 20)}<span>${app.geo ? 'Turn location off' : 'Turn location on'}</span></button></div>
     <div class="section">${icon('down', 16)}On your home screen</div>
     <div class="pad" id="install-about">${installBlock()}</div>
     ${installState() === 'installed' ? '' : html`<div class="section">${icon('globe', 16)}Android app</div>
@@ -49,6 +51,8 @@ const MARK = BASE + 'tiles/tiles.json';   // present in the map cache only once 
 async function mount(el) {
   const th = el.querySelector('#theme');
   if (th) th.onclick = cycleTheme;
+  const nr = el.querySelector('#aboutnear');
+  if (nr) nr.onclick = () => app.geo ? nearOff() : nearMe();
   const go = el.querySelector('#install-go');
   if (go) go.onclick = async () => {
     const p = app.installPrompt; if (!p) return;
