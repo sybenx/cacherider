@@ -9,9 +9,35 @@ import { rt, rtStale, isLoop } from '../rt.js';
 // Each route's place on the plan as drawn, 358 × 267, south up (as you face the hall from 500 North, along the
 // bottom): the design's plan, squared off from the feed's stop positions and the OSM drawing, each bay where it
 // is to within a few metres. A badge's top is its point; the row along 500 North sits up clear of the street.
-const AT = { 1: [104, 78], 2: [74, 217], 3: [214, 217], 5: [74, 176], 6: [284, 217], 7: [246, 140], 8: [284, 176], 9: [112, 140],
-  11: [338, 172], 12: [254, 78], 15: [179, 70], 16: [338, 124], G: [144, 217], B: [132, 33] };
 const W = 358, Hh = 267;
+/** Where each bay's badge goes on the plan: from the timetable's own stop for the bay, so a bay swapped in the
+ *  timetable (8 and 7 changed places one spring) moves on the plan by itself. South up, as the drawing is: the
+ *  northernmost bay along 500 North's curb at the bottom, the southernmost (the Blue Loop's, on 442 North) at the
+ *  top, east to the left. Badges that land on one another are eased apart, a little air between each pair. */
+function layout() {
+  const at = {};
+  for (const k of keys()) { const bay = D.hub.bays.find(b => b.routes.includes(routesOf(k)[0])); if (bay) at[k] = { lat: bay.lat, lon: bay.lon }; }
+  const ks = Object.keys(at);
+  if (!ks.length) return {};
+  const lats = ks.map(k => at[k].lat), lons = ks.map(k => at[k].lon);
+  const la0 = Math.min(...lats), la1 = Math.max(...lats), lo0 = Math.min(...lons), lo1 = Math.max(...lons);
+  const pos = {};
+  for (const k of ks) pos[k] = { x: 65 + (lo1 === lo0 ? 0.5 : (lo1 - at[k].lon) / (lo1 - lo0)) * (337 - 65), y: 40 + (la1 === la0 ? 0.5 : (at[k].lat - la0) / (la1 - la0)) * (221 - 40) };
+  const AIR_X = 40, AIR_Y = 58;   // a badge and its tag beneath, plus a little air
+  for (let it = 0; it < 60; it++) {
+    let moved = false;
+    for (let i = 0; i < ks.length; i++) for (let j = i + 1; j < ks.length; j++) {
+      const a = pos[ks[i]], b = pos[ks[j]], dx = b.x - a.x, dy = b.y - a.y, ox = AIR_X - Math.abs(dx), oy = AIR_Y - Math.abs(dy);
+      if (ox <= 0 || oy <= 0) continue;
+      moved = true;
+      if (ox < oy) { const m = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= m; b.x += m; }
+      else { const m = (dy >= 0 || (dy === 0 && i < j) ? 1 : -1) * oy / 2; a.y -= m; b.y += m; }
+    }
+    for (const p of Object.values(pos)) { p.x = Math.max(20, Math.min(W - 20, p.x)); p.y = Math.max(20, Math.min(Hh - 44, p.y)); }
+    if (!moved) break;
+  }
+  return pos;
+}
 const IN_RADIUS = 110;   // metres from the hall: a bus this close is in
 
 /** A badge's key: the route's short name, 16 AM and 16 PM as one '16' (they share a bay and a rider). */
@@ -180,8 +206,9 @@ function loops(st, pick, clockNow) {
 /** The plan, south up: 500 North along the bottom, 442 North along the top, the drive a U between. */
 function plan(st, pick) {
   const tags = !rtStale();
-  const badges = keys().filter(k => AT[k]).map(k => {
-    const s = st[k], [x, y] = AT[k], on = pick === k;
+  const at = layout();
+  const badges = keys().filter(k => at[k]).map(k => {
+    const s = st[k], { x, y } = at[k], on = pick === k;
     const ri = s.ris[s.ris.length - 1], r = D.routes[ri];
     const tag = !tags || s.off ? '' : s.eta === 0 ? 'IN' : s.eta > 0 ? s.eta + ' MIN' : '–';
     const cls = ['tc-bay', on ? 'on' : '', pick && !on ? 'dim' : '', s.off ? 'off' : ''].filter(Boolean).join(' ');
