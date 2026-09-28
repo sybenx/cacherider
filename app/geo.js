@@ -67,6 +67,19 @@ export function geocode(addr, maxStops = 4) {
             .sort((a, b) => (a.stops[0] ? a.stops[0].d : 1e9) - (b.stops[0] ? b.stops[0].d : 1e9));
 }
 
+/** Roughly where a spot is, as the valley says it: 'about 1400 North 500 East, Logan'. A town's own grid before the
+ *  county's where both cover it; on the county's, the nearest town is named. Empty off every grid. */
+export function whereabouts(lat, lon) {
+  if (!G) return '';
+  const on = G.grids.filter(g => { const [la0, lo0, la1, lo1] = g.bounds; return lat >= la0 && lat <= la1 && lon >= lo0 && lon <= lo1; });
+  const g = on.find(x => x.towns.length === 1) || on[0];
+  if (!g) return '';
+  const n = Math.round((lat - g.lat0) / g.klat / 10) * 10, e = Math.round((lon - g.lon0) / g.klon / 10) * 10;
+  const ns = n === 0 ? 'Center' : Math.abs(n) + (n > 0 ? ' North' : ' South'), ew = e === 0 ? 'Main' : Math.abs(e) + (e > 0 ? ' East' : ' West');
+  const near = g.towns.length > 1 ? G.places.filter(p => p.pop >= 1500).map(p => ({ p, d: distance(lat, lon, p.lat, p.lon) })).sort((a, b) => a.d - b.d)[0] : null;
+  return `about ${ns} ${ew}, ${g.towns.length === 1 || !near || near.d >= 6000 || near.p.name === g.name ? g.name : 'near ' + near.p.name}`;
+}
+
 /** The stops within 4 km, or failing that the nearest one however far. */
 export function nearestTo(lat, lon, n = 4) {
   const all = nearest(lat, lon, n);

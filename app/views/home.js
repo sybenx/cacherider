@@ -148,8 +148,8 @@ function searchPage(q, clockNow, app, pick = '') {
   // Picking a starting stop for directions: every stop in the results leads to the journey from it, not its page.
   const dest = pick && D.stopById[pick] !== undefined ? stop(D.stopById[pick]) : null;
   parts.push(html`<div class="titlebar m-only"><span class="wordmark">Cache Rider</span><button class="btn btn-secondary" id="near">${icon('near', 20)}Near me${app && app.geo ? html.raw(' <span class="muted">· on</span>') : ''}</button></div>`);
-  if (dest) parts.push(html`<div class="notice pickfrom">${icon('route', 16)}<span>Where will you start from? Going to <b>${dest.hub ? D.hub.name : dest.name}</b></span></div>`);
-  parts.push(html`<div class="pad"><form class="search" id="search" role="search" data-for="${dest ? dest.id : ''}"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
+  if (dest) parts.push(html`<div class="notice pickfrom">${icon('route', 16)}<span>Where will you start from? A stop, a place or an address. Going to <b>${dest.hub ? D.hub.name : dest.name}</b></span></div>`);
+  parts.push(html`<div class="pad"><form class="search" id="search" role="search" data-for="${dest ? dest.id : ''}"><input class="input" type="search" placeholder="${dest ? 'Stop, place or address' : 'Street or address, e.g. 500 North'}" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
   if (q) { parts.push(results(q, clockNow)); return { html: parts.join(''), mount, title: 'Search' }; }
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
@@ -168,6 +168,8 @@ function mount(el, app) {
   if (pick) {
     el.querySelectorAll('a.stoprow[href^="#/stop/"]').forEach(a => { a.setAttribute('href', `#/go/${pick}/${a.getAttribute('href').slice(7)}`); });
     el.querySelectorAll('a.stoprow[data-bay]').forEach(a => { if (a.dataset.bay) a.setAttribute('href', `#/go/${pick}/${a.dataset.bay}`); });
+    // A place or an address found: its own spot is the start (the walk from it to the nearest stops is worked out).
+    el.querySelectorAll('a.note[href^="#/map/at/"]').forEach(a => { a.setAttribute('href', `#/go/${pick}/at/${a.getAttribute('href').slice(9)}`); a.textContent = 'Start from here'; });
   }
   if (form) {
     const input = form.querySelector('input');

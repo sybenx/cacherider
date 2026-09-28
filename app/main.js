@@ -179,7 +179,7 @@ async function render(tick = false) {
   try {
     if (name === 'home') view = home.render({ q: q.q || '', page: 'home' }, clockNow);
     else if (name === 'search') view = home.render({ q: q.q || '', page: 'search', pick: q.for || '' }, clockNow);
-    else if (name === 'go') view = go.render({ to: seg[1], from: seg[2] }, clockNow);
+    else if (name === 'go') view = go.render({ to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: decodeURIComponent(seg[4] || '') } : null }, clockNow);
     else if (name === 'stop') view = stopView.render({ id: seg[1], full: seg[2] === 'all', run: q.run, on: q.on }, clockNow);
     else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
     else if (name === 'route') view = routeView.render({ short: decodeURIComponent(seg[1] || ''), dir: seg[2], at: seg[3], full: q.all === '1', bus: q.bus }, clockNow);
@@ -240,8 +240,9 @@ async function render(tick = false) {
     const m = await ensureMap();
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert';
+    const from = name === 'map' && seg[1] === 'from' ? seg[2] || null : null;   // the map asked where the rider will start from, for directions to this stop
     m.show({
-      stopId: name === 'map' && !at && !mapU && !mapR && !mapUR && !mapA ? seg[1] : name === 'stop' ? seg[1] : null,
+      stopId: name === 'map' && !at && !from && !mapU && !mapR && !mapUR && !mapA ? seg[1] : name === 'stop' ? seg[1] : null, from,
       uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       routeShort: mapR ? decodeURIComponent(seg[2] || '') : name === 'route' ? decodeURIComponent(seg[1] || '') : null,
