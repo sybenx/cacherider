@@ -4,6 +4,8 @@
 //     cut to those stops, and where the feed's buses are, for small clients
 //     (Headway's phone side, which tells a bus waiting at its bay by it). Open
 //     to any origin: it is the public feed.
+//   GET /alerts → { fetched, source, alerts: [...] }: the agency's service notices as the tracker site shows
+//     them, minutes after they're posted (the GTFS-realtime alerts feed lags them, and misses some).
 // Decoded here with a plain protobuf reader (the schema is small and fixed),
 // so the app needs no protobuf library and gets a few kilobytes, not fifty.
 // A bus off its scheduled trips (a detour) isn't in GTFS-realtime at all, so for
@@ -15,6 +17,8 @@ const UA = { 'User-Agent': 'cacherider-live/1.0 (+https://cacherider.com)' };
 const ORIGINS = ['https://cacherider.com', 'https://sybenx.github.io', 'http://localhost:8794'];
 const PREVIEW = /^https:\/\/[a-z0-9-]+\.cacherider\.pages\.dev$/;   // Cloudflare's preview of each push
 const TTL = 10;   // seconds at the edge; the feeds themselves update every few seconds
+const ALERT_TTL = 300;   // a notice posted at the agency reaches riders within five minutes
+const ANNOUNCEMENTS = 'https://mycvtdbus.org/announcements.data';
 
 export default {
   async fetch(req) {
@@ -27,6 +31,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
     if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: cors });
     const url = new URL(req.url), path = url.pathname;
+    if (path === '/alerts') return alerts(cors);
     if (path !== '/' && path !== '/live') return new Response('Not found', { status: 404, headers: cors });
     const only = url.searchParams.has('stops') ? new Set(url.searchParams.get('stops').split(',').filter(Boolean).slice(0, 32)) : null;
     if (only) { cors['Access-Control-Allow-Origin'] = '*'; delete cors['Vary']; }
@@ -42,6 +47,40 @@ export default {
     }
   },
 };
+
+// ---- service notices: the tracker site's announcements, posted by the agency and on the site at once, where
+// the GTFS-realtime alerts feed lags and misses some (a stop closure assigned to routes alone). The site is a
+// React Router app, and its data endpoint answers in turbo-stream: one array, in which each object's keys and
+// values, and each array's items, are indexes into the array. Read out into the same shape as data/alerts.json.
+async function alerts(cors) {
+  try {
+    const r = await fetch(ANNOUNCEMENTS, { headers: UA, cf: { cacheTtl: ALERT_TTL, cacheEverything: true } });
+    if (!r.ok) throw new Error('announcements ' + r.status);
+    const raw = await r.json(), memo = new Map();
+    const dec = i => {
+      if (typeof i !== 'number' || i < 0) return null;
+      if (memo.has(i)) return memo.get(i);
+      const v = raw[i];
+      if (Array.isArray(v)) { const l = []; memo.set(i, l); for (const x of v) l.push(dec(x)); return l; }
+      if (v && typeof v === 'object') { const o = {}; memo.set(i, o); for (const [k, x] of Object.entries(v)) o[dec(+k.slice(1))] = dec(x); return o; }
+      return v;
+    };
+    const msgs = dec(0)?.['routes/transit']?.data?.messages;
+    if (!Array.isArray(msgs)) throw new Error('announcements: no messages');
+    const epoch = s => typeof s === 'string' && !isNaN(Date.parse(s)) ? Math.floor(Date.parse(s) / 1000) : null;
+    const list = msgs.filter(m => m && typeof m === 'object').map(m => ({
+      id: 'a' + m.id, title: String(m.name || '').trim(), text: String(m.text || '').trim(), url: '', cause: '', effect: '',
+      start: epoch(m.start), end: epoch(m.end), routeIds: [],
+      routes: (m.assignments?.routes || []).map(r => r && r.shortName).filter(Boolean),
+      stops: (m.assignments?.stops || []).map(s => s && String(s.id)).filter(Boolean),
+      global: !!m.assignments?.global,
+    }));
+    const body = JSON.stringify({ fetched: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), source: ANNOUNCEMENTS, alerts: list });
+    return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + ALERT_TTL } });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  }
+}
 
 // Only the trips that call at the asked stops, each cut to those stops, and
 // the buses as bare positions with their trips: enough to see which route's

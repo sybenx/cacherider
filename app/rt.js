@@ -2,9 +2,9 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance } from './data.js';
+import { D, setLive, distance, LIVE_URL } from './data.js';
 
-export const RT_URL = 'https://live.cacherider.com/';
+export const RT_URL = LIVE_URL;
 const POLL = 15000, STALE = 90000;
 
 export const rt = { at: 0, t: 0, buses: [], trips: {}, loopMode: {}, wanted: false, fetching: false, error: null };

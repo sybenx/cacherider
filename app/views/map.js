@@ -2,13 +2,13 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, searchPlaces, streetish, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, onRequest, A } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, searchPlaces, streetish, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, onRequest, A } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill } from '../ui.js';
 import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, busStops, lateWords, heldAt, rtStale, rtSeen } from '../rt.js';
+import { rt, findBus, busStops, nextStopOf, lateWords, heldAt, rtStale, rtSeen } from '../rt.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
@@ -1428,9 +1428,15 @@ async function routeTimes(ri, clockNow) {
   const picked = selectedBus ? buses.find(b => b.id === selectedBus) : null;
   const busOf = t => { const u = t.trip !== undefined && rt.trips[D.trips[t.trip]]; return u && u.v ? buses.find(b => b.id === 'c:' + u.v) : null; };
   const which = t => { if (picked || buses.length < 2) return ''; const b = busOf(t); return b ? ' · bus ' + b.label : ''; };
+  // A picked bus's times run from where it is to its next call at the Transit Center, and today only, so a stop it
+  // has passed gets no time (not its run tomorrow). Without a run (a trip the timetable lacks) its trip's stops.
+  const run = picked ? runAhead(picked, clockNow) : null;
+  const inRun = x => run ? !!run.trips.get(x.trip)?.has(x.si) : D.trips[x.trip] === picked.trip;
+  let late = null;   // the feed's word at the last stop of the run it has one for, carried to the run's end
   for (const si of all) {
-    const t = nextAt(si, 1, clockNow, picked ? 1 : 8, x => x.r === ri && (!picked || D.trips[x.trip] === picked.trip))[0];   // a picked bus: today only, so a stop it has passed gets no time (not its run tomorrow)
+    const t = nextAt(si, 1, clockNow, picked ? 1 : 8, x => x.r === ri && (!picked || inRun(x)))[0];
     if (!t) continue;
+    if (run && t.live && (late === null || t.min > late.min)) late = { min: t.min, delay: t.live.delay };
     // The day's first run, where it starts partway along the route: said, so the stops before it (their first bus the
     // run after) don't look out of order. Not at the Transit Center, where every run starts.
     const f = firstRun(ri, t.ymd), starts = f && f.trip === t.trip && f.si === si && !D.stops[si].hub;
@@ -1439,14 +1445,55 @@ async function routeTimes(ri, clockNow) {
     // Where one way calls only on request (16 north at Pepperidge Farms): the next bus each way, a line apiece, the
     // way it goes on each, so the one on request doesn't read as the stop's only bus.
     if (onRequest(si, ri, 0) || onRequest(si, ri, 1)) {
-      const ways = [0, 1].map(d => nextAt(si, 1, clockNow, picked ? 1 : 8, x => x.r === ri && x.dir === d && (!picked || D.trips[x.trip] === picked.trip))[0]).filter(Boolean).sort((x, y) => x.req - y.req);
+      const ways = [0, 1].map(d => nextAt(si, 1, clockNow, picked ? 1 : 8, x => x.r === ri && x.dir === d && (!picked || inRun(x)))[0]).filter(Boolean).sort((x, y) => x.req - y.req);
       lines = ways.map(x => [short(x) + ' ' + (h => /^to /.test(h) ? h : h.replace(/bound$/i, '').toLowerCase())(headsign(x)) + which(x) + (x.req ? ' · on request' : ''), colour(x)]);
       label = lines.map(l => l[0]).join('\n');
     }
     items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), props: { t: label, live: !!t.live, later: t.day > 0, t1: lines[0][0], c1: lines[0][1], t2: lines[1] ? '\n' + lines[1][0] : '', c2: lines[1] ? lines[1][1] : lines[0][1] } });
   }
+  // The run's end where the departures don't reach it: the arrival at the Transit Center that closes a numbered
+  // route's trip (nobody boards there, so the timetable's departures leave it out), as late as the run is.
+  if (run && run.end && !items.some(i => i.si === run.end.si)) {
+    const si = run.end.si, t = { min: run.end.min + (late ? late.delay : 0), day: 0, ymd: clockNow.ymd, live: !!late };
+    const label = short(t) + ' · arrives', c = colour(t);
+    items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), props: { t: label, live: !!late, later: false, t1: label, c1: c, t2: '', c2: c } });
+  }
   rtBase = { items, lines: fc ? fc.features.filter(f => f.properties.route === ri).map(f => f.geometry.coordinates) : [] };
   placeTimes();
+}
+/** The run ahead of a picked bus: its stops from where it is to its next call at the Transit Center, as
+ *  { trips: Map(trip index → Set(stop)), end: { si, min } | null }, the end being the trip's last stop when the run
+ *  gets there (the Center, for a numbered route: an arrival the departures leave out). A loop's trip runs from
+ *  55 North Main round to 55 North Main with the Center partway, so the run cuts off there; a bus past the Center
+ *  runs to its trip's end and on into the next trip, up to the Center. Null for a trip the timetable lacks. */
+function runAhead(b, clockNow) {
+  const ti0 = D.trips.indexOf(b.trip);
+  if (ti0 < 0) return null;
+  const trips = new Map(), u = rt.trips[b.trip], nowS = Date.now() / 1000;
+  // Where it is: the stop the feed says it calls at next; failing that, the first stop not long behind the clock
+  // (the times themselves drop any stop the bus has been to, so a start too early costs nothing).
+  const nextSi = nextStopOf(b);
+  let seq = tripStops(ti0), ti = ti0, ymd = clockNow.ymd;
+  let k = nextSi !== undefined ? seq.findIndex(x => x[1] === nextSi) : -1;
+  if (k < 0) k = seq.findIndex(x => x[0] >= clockNow.min - 15);
+  if (k < 0) k = seq.length;
+  // At the Center already, by the feed's word (listed there past its time, boarding): the run is the one leaving it.
+  const leaving = si => { const hit = ti === ti0 && u && u.at.get(D.stops[si].id); return hit && !hit.skipped && hit.time < nowS - 30; };
+  for (let hops = 0; hops < 3; hops++) {
+    const set = new Set();
+    trips.set(ti, set);
+    for (; k < seq.length; k++) {
+      const si = seq[k][1];
+      set.add(si);
+      if (D.stops[si].hub && k > 0 && !leaving(si)) return { trips, end: null };
+    }
+    const te = tripEnd(ti);
+    if (te && D.stops[te.si].hub) return { trips, end: te };
+    const n = nextTrip(ti, ymd), ns = n !== undefined ? tripStops(n) : [];
+    if (!ns.length || ns[0][0] - (te ? te.min : seq[seq.length - 1][0]) > 45) return { trips, end: te };
+    ti = n; seq = ns; k = 0;
+  }
+  return { trips, end: null };
 }
 // Where each time goes at this zoom and turn (a pan moves the times and the route together, so it changes nothing).
 // Facing another: the bus's side, always. Any other: the spot around its dot furthest from the route's own line, so a

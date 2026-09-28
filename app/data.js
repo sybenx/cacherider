@@ -75,20 +75,42 @@ export function searchPlaces(q, limit = 8) {
   const all = [...mine, ...pool, ...named, ...kind];
   return { list: all.slice(0, limit), more: Math.max(0, all.length - limit) };
 }
+/** The live relay, which serves the agency's notices minutes after they're posted; data/alerts.json (fetched by
+ *  GitHub every so often) stands in when it can't be reached. */
+export const LIVE_URL = 'https://live.cacherider.com/';
 export async function loadAlerts() {
   try {
-    const r = await fetch(BASE + 'data/alerts.json', { cache: 'no-cache' });
-    if (!r.ok) return;
-    const j = await r.json();
+    let j = null;
+    try { const r = await fetch(LIVE_URL + 'alerts', { cache: 'no-store' }); if (r.ok) j = await r.json(); } catch { /* the file, then */ }
+    if (!j || !Array.isArray(j.alerts)) {
+      const r = await fetch(BASE + 'data/alerts.json', { cache: 'no-cache' });
+      if (!r.ok) return;
+      j = await r.json();
+    }
     const byStop = {}, byRoute = {};
     for (const a of j.alerts) {
       a.ri = (a.routes || []).map(s => D.routeByShort[s]).filter(x => x !== undefined);
+      if (!(a.stops || []).length) a.stops = namedStops(a);
       a.names = namedDay(a.title || '', a.start);
       for (const id of a.stops || []) (byStop[id] ||= []).push(a);
       for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
     }
     A = { ...j, byStop, byRoute, loadedAt: Date.now() };
   } catch { /* the app is fine without alerts */ }
+}
+// A notice that closes a stop but assigns none ('Due to construction, the stop at 355 North Main St. in Logan is
+// closed', put on its routes alone): the stops whose names read in its words, up to where it offers alternatives,
+// so the alternatives don't count as closed too.
+const ADDR = { n: 'north', s: 'south', e: 'east', w: 'west', st: '', street: '', ave: 'avenue', rd: 'road', dr: 'drive', blvd: 'boulevard' };
+const addrWords = s => s.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean).map(x => ADDR[x] !== undefined ? ADDR[x] : x).filter(Boolean);
+const phraseIn = (hay, needle) => hay.some((_, i) => needle.every((x, j) => hay[i + j] === x));
+function namedStops(a) {
+  const words = (a.title || '') + '. ' + (a.text || '');
+  if (!/\b(closed|closure|missed|not (?:be )?servic|skip|temporar)/i.test(words)) return [];
+  const hay = addrWords(words.split(/\b(?:please use|alternate|alternative|instead|use the stops?\b)/i)[0]);
+  const out = [];
+  for (const s of D.stops) { if (s.hub) continue; const n = addrWords(s.name); if (n.length >= 2 && phraseIn(hay, n)) out.push(s.id); }
+  return out;
 }
 let ymdFmt = null;
 const ymdOf = epoch => (ymdFmt ||= new Intl.DateTimeFormat('en-CA', { timeZone: D.agency.tz, year: 'numeric', month: '2-digit', day: '2-digit' })).format(new Date(epoch * 1000)).replace(/-/g, '');

@@ -1,12 +1,14 @@
 name: service alerts
 
-# Every hour, fetch the agency's GTFS-realtime service alerts and commit them
-# if they changed. The phone can't read the feed itself: the server refuses
+# Every quarter hour (as GitHub gets to it: a schedule runs late, hours late at
+# times), fetch the agency's notices and commit them if they changed. The app
+# reads them live from the relay (live.cacherider.com/alerts); this file is what
+# it falls back on. The phone can't read the feeds itself: the server refuses
 # requests that carry a browser Origin header.
 
 on:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:

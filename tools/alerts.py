@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Fetch the agency's GTFS-realtime service alerts and write data/alerts.json:
-detours, closed stops, late starts. Decoded here without protobuf bindings, since
-the alert message is small and the app only needs its words and its targets.
+"""Fetch the agency's service notices and write data/alerts.json: detours, closed
+stops, late starts. Two sources, the tracker site's announcements first (on the
+site the minute the agency posts one, with the routes and stops each is put on)
+and the GTFS-realtime alerts feed for any the site hasn't got. The feed is
+decoded here without protobuf bindings, since the alert message is small and
+the app only needs its words and its targets.
 
   python3 tools/alerts.py
 
-The server refuses requests that carry a browser Origin header, so the phone
-can't read the feed itself; this runs hourly in GitHub Actions instead.
+The servers refuse requests that carry a browser Origin header, so the phone
+can't read them itself: the live relay (worker/) serves the site's notices,
+and this file, refreshed by GitHub Actions, is what the app falls back on.
 """
-import json, os, sys, time, urllib.request
+import datetime, json, os, sys, time, urllib.request
 
 URL = 'https://mycvtdbus.org/gtfs-rt/alerts'
+SITE = 'https://mycvtdbus.org/announcements.data'
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 CAUSE = {1: 'unknown', 2: 'other', 3: 'technical', 4: 'strike', 5: 'demonstration', 6: 'accident', 7: 'holiday', 8: 'weather', 9: 'maintenance', 10: 'construction', 11: 'police', 12: 'medical'}
 EFFECT = {1: 'no-service', 2: 'reduced', 3: 'delays', 4: 'detour', 5: 'additional', 6: 'modified', 7: 'other', 8: 'unknown', 9: 'stop-moved', 10: 'none', 11: 'accessibility'}
@@ -61,13 +66,62 @@ def alert(b, eid):
     a['routeIds'] = sorted(set(a['routeIds'])); a['stops'] = sorted(set(a['stops']))
     return a
 
-req = urllib.request.Request(URL, headers={'User-Agent': 'cacherider/1.0 (+https://cacherider.com)'})
-raw = urllib.request.urlopen(req, timeout=30).read()
-alerts = []
-for f, v in fields(raw):
-    if f != 2: continue
-    ent = dict(fields(v))
-    if 5 in ent and not ent.get(2): alerts.append(alert(ent[5], ent.get(1, b'').decode()))
+UA = {'User-Agent': 'cacherider/1.0 (+https://cacherider.com)'}
+
+def site():
+    """The tracker site's announcements, from its React Router data endpoint. Turbo-stream: one array, in which
+    each object's keys and values, and each array's items, are indexes into the array."""
+    raw = json.load(urllib.request.urlopen(urllib.request.Request(SITE, headers=UA), timeout=30))
+    memo = {}
+    def dec(i):
+        if not isinstance(i, int) or isinstance(i, bool) or i < 0: return None
+        if i in memo: return memo[i]
+        v = raw[i]
+        if isinstance(v, list):
+            memo[i] = out = []
+            for x in v: out.append(dec(x))
+            return out
+        if isinstance(v, dict):
+            memo[i] = out = {}
+            for k, x in v.items(): out[dec(int(k[1:]))] = dec(x)
+            return out
+        return v
+    msgs = dec(0)['routes/transit']['data']['messages']
+    def epoch(t):
+        try: return int(datetime.datetime.fromisoformat(t).timestamp())
+        except Exception: return None
+    out = []
+    for m in msgs:
+        if not isinstance(m, dict): continue
+        asg = m.get('assignments') or {}
+        out.append({'id': 'a%s' % m.get('id'), 'title': str(m.get('name') or '').strip(), 'text': str(m.get('text') or '').strip(), 'url': '', 'cause': '', 'effect': '',
+                    'start': epoch(m.get('start')), 'end': epoch(m.get('end')), 'routeIds': [],
+                    'routes': [r['shortName'] for r in asg.get('routes') or [] if isinstance(r, dict) and r.get('shortName')],
+                    'stops': [str(s['id']) for s in asg.get('stops') or [] if isinstance(s, dict) and s.get('id') is not None],
+                    'global': bool(asg.get('global')),
+                    # the titles the same notice goes out under elsewhere (the feed's is the app push's), to match by
+                    'aka': [str(x.get('overrideTitle') or '') for k in ('appMessage', 'webAnnouncementMessages') for x in m.get(k) or [] if isinstance(x, dict)]})
+    return out
+
+def feed():
+    raw = urllib.request.urlopen(urllib.request.Request(URL, headers=UA), timeout=30).read()
+    out = []
+    for f, v in fields(raw):
+        if f != 2: continue
+        ent = dict(fields(v))
+        if 5 in ent and not ent.get(2): out.append(alert(ent[5], ent.get(1, b'').decode()))
+    return out
+
+try: alerts = site()
+except Exception as e: print('site announcements unreachable:', e, file=sys.stderr); alerts = []
+# The feed's, for any the site hasn't (matched by title); one source down, the other still answers.
+key = lambda t: ' '.join(t.lower().split())
+have = {key(t) for a in alerts for t in [a['title'], *a.pop('aka', [])] if t.strip()}
+try: extra = [a for a in feed() if key(a['title']) not in have]
+except Exception as e:
+    print('alerts feed unreachable:', e, file=sys.stderr); extra = []
+    if not alerts: sys.exit(1)
+alerts += extra
 
 # Route ids become the short names the app uses; unknown ids stay as ids.
 try:
@@ -75,10 +129,10 @@ try:
 except Exception:
     routes = {}
 for a in alerts:
-    a['routes'] = [routes[r] for r in a['routeIds'] if r in routes]
+    a['routes'] = sorted(set(a.get('routes') or []) | {routes[r] for r in a['routeIds'] if r in routes})
     a['routeIds'] = [r for r in a['routeIds'] if r not in routes]
-alerts.sort(key=lambda a: (len(a['id']), a['id']))
-out = {'fetched': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'source': URL, 'alerts': alerts}
+alerts.sort(key=lambda a: (a['start'] or 0, a['id']))
+out = {'fetched': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'source': SITE + ' + ' + URL, 'alerts': alerts}
 p = os.path.join(ROOT, 'data', 'alerts.json')
 json.dump(out, open(p, 'w'), separators=(',', ':'), ensure_ascii=False)
 print('wrote', p, len(alerts), 'alerts')
