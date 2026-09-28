@@ -293,6 +293,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .mapcard .pickroute .pr-n b { font-weight: 600; }
 .mapcard .pickroute .pr-n small { font-size: 13px; color: var(--cr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mapcard .pickroute:last-child { border-bottom: 0; }
+.mapcard .busline .dot { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 3px var(--color-text); flex: none; margin: 0 8px; }
+.mapcard .busline .livetag { margin-left: auto; }
 .mapcard .pickroute:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 .eyerow { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 22px; }
 .eyerow .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

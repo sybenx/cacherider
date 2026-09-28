@@ -348,20 +348,27 @@ function pickRoute(ri, app, cardOpen = false) {
   if (location.hash === h || panel && location.hash.startsWith(h + '/')) {
     // The whole route: a phone's card would cover the bottom of it, so it goes; a tap on the line then brings it back.
     const card = col.querySelector('#mapcard');
-    if (!panel && !wide()) { if (!cardOpen) return routeCard(ri); card.classList.remove('open'); }
-    else if (!panel) routeCard(ri);
+    if (!panel && !wide()) { if (!cardOpen) return routeCard(ri, app); card.classList.remove('open'); }
+    else if (!panel) routeCard(ri, app);
     settlePad(); map.fitBounds(routeBounds(ri), { padding: fitPad(40), duration: 700, maxZoom: 15.5 });
     return;
   }
   stayRoute = true; location.hash = h;
 }
-function routeCard(ri) {
+function routeCard(ri, app) {
   const r = D.routes[ri], card = col.querySelector('#mapcard');
+  // Its buses on the road, a row each: which way it's heading and the feed's word on it. A tap picks the bus out,
+  // and the times on the map become that bus's.
+  const buses = rtStale() ? [] : rt.buses.filter(b => b.ri === ri);
+  const rows = buses.map(b => { const u = rt.trips[b.trip], late = u && u.lastDelay !== null && !isLoop(ri) ? lateWords(u.lastDelay) : ''; return html`<button type="button" class="pickroute busline" data-bus="${b.id}"><i class="dot" style="background:#${r.color}"></i><span class="pr-n"><b>Bus ${b.label}</b><small>heading ${compassWord(b.course)}${late ? ' · ' + late : ''}</small></span><span class="livetag"><i></i>Live</span></button>`; });
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">Route</span><div class="name"><span>${r.long}</span>${badge(ri, 30)}</div>${r.desc ? html`<div class="muted">${r.desc.replace(/,\s*/g, ' · ')}</div>` : ''}</div>
+    ${rows.length ? html`<div class="pickroutes">${rows}</div>` : ''}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/route/${encodeURIComponent(r.short)}">${corners()}Open route</a></div>`;
+  card.querySelectorAll('[data-bus]').forEach(b => { b.onclick = () => pickBus(b.dataset.bus, app); });
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
 }
+const compassWord = deg => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(((deg || 0) % 360) / 45) % 8];
 function routeChooser(ris, app) {
   const card = col.querySelector('#mapcard');
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">Routes on this road</span></div>
@@ -851,6 +858,7 @@ function selectBus(id, app) {
   applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
   busCard(app);
+  if (c && rtShown === c.ri) routeTimes(c.ri, now());   // the route's times become this bus's
 }
 /** A Connect bus: its route and headsign, where it's headed next with the feed's minutes. */
 function connectCard(b, app) {
@@ -1054,7 +1062,7 @@ async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, focu
     selected = null; uHilite = ''; hiLines = [ri]; hiLoops = []; focusRoute = ri; applySelection();
     col.querySelector('#mapcard').classList.remove('open');
     if (focus && (changed || resized) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: fitPad(40), duration: 700, maxZoom: 15.5 });
-    if (stayRoute && app.route.name === 'map') routeCard(ri);
+    if (stayRoute && app.route.name === 'map') routeCard(ri, app);
     stayRoute = false;
     if (bus && app.route.name === 'map' && !tick) pickBus(bus, app); else if (!bus) wantBus = null;
     return;
@@ -1388,7 +1396,9 @@ async function routeTimes(ri, clockNow) {
   if (!map.getSource('rtimes')) {
     map.addSource('rtimes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     const dk = dark();
-    const text = { 'text-field': ['get', 't'], 'text-font': ['Noto Sans Medium'], 'text-size': 12.5, 'text-max-width': 20 };
+    // Each line its own colour (a live estimate blue, a later day grey): a stop with a time each way, one of them
+    // the feed's, mustn't paint the timetable's line as live too.
+    const text = { 'text-field': ['format', ['get', 't1'], { 'text-color': ['get', 'c1'] }, ['get', 't2'], { 'text-color': ['get', 'c2'] }], 'text-font': ['Noto Sans Medium'], 'text-size': 12.5, 'text-max-width': 20 };
     const paint = { 'text-color': ['case', ['get', 'live'], dk ? '#94bce3' : '#416180', ['get', 'later'], dk ? '#9a9ca0' : '#6b6c70', dk ? '#eef0f2' : '#1d1f20'], 'text-halo-color': dk ? '#101214' : '#f2f2f3', 'text-halo-width': 1.6 };
     // A stop facing another of the route's: its time on the bus's side, so the two read apart. Any other: beside its
     // own dot, off the road (either side) where there's room, along it only when neither side has.
@@ -1409,20 +1419,27 @@ async function routeTimes(ri, clockNow) {
     return Math.abs(d * Math.sin(x)) < 80 && Math.abs(d * Math.cos(x)) < 800; });
   // A time as short as it reads: today's bare, a later day's with its day ("6:23 Mon"), in grey besides.
   const short = t => clock(t.min).h + (t.day === 0 ? '' : ' ' + dayName(t.ymd, true));
+  const dk = dark(), colour = t => t.live ? (dk ? '#94bce3' : '#416180') : t.day > 0 ? (dk ? '#9a9ca0' : '#6b6c70') : (dk ? '#eef0f2' : '#1d1f20');
+  // Whose time it is: a stop's next bus, whichever that is. A bus picked out (its ring, its card, from the route's
+  // card or a tap on it) narrows them to that bus's alone, at the stops still ahead of it: with two buses out on a
+  // route, that's how a rider sees which times are which without the map wearing bus numbers.
+  const picked = selectedBus && !rtStale() ? rt.buses.find(b => b.id === selectedBus && b.ri === ri) : null;
   for (const si of all) {
-    const t = nextAt(si, 1, clockNow, 8, x => x.r === ri)[0];
+    const t = nextAt(si, 1, clockNow, picked ? 1 : 8, x => x.r === ri && (!picked || D.trips[x.trip] === picked.trip))[0];   // a picked bus: today only, so a stop it has passed gets no time (not its run tomorrow)
     if (!t) continue;
     // The day's first run, where it starts partway along the route: said, so the stops before it (their first bus the
     // run after) don't look out of order. Not at the Transit Center, where every run starts.
     const f = firstRun(ri, t.ymd), starts = f && f.trip === t.trip && f.si === si && !D.stops[si].hub;
     let label = short(t) + (starts ? ' · starts here' : '');
+    let lines = [[label, colour(t)]];
     // Where one way calls only on request (16 north at Pepperidge Farms): the next bus each way, a line apiece, the
     // way it goes on each, so the one on request doesn't read as the stop's only bus.
     if (onRequest(si, ri, 0) || onRequest(si, ri, 1)) {
-      const ways = [0, 1].map(d => nextAt(si, 1, clockNow, 8, x => x.r === ri && x.dir === d)[0]).filter(Boolean).sort((x, y) => x.req - y.req);
-      label = ways.map(x => short(x) + ' ' + (h => /^to /.test(h) ? h : h.replace(/bound$/i, '').toLowerCase())(headsign(x)) + (x.req ? ' · on request' : '')).join('\n');
+      const ways = [0, 1].map(d => nextAt(si, 1, clockNow, picked ? 1 : 8, x => x.r === ri && x.dir === d && (!picked || D.trips[x.trip] === picked.trip))[0]).filter(Boolean).sort((x, y) => x.req - y.req);
+      lines = ways.map(x => [short(x) + ' ' + (h => /^to /.test(h) ? h : h.replace(/bound$/i, '').toLowerCase())(headsign(x)) + (x.req ? ' · on request' : ''), colour(x)]);
+      label = lines.map(l => l[0]).join('\n');
     }
-    items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), props: { t: label, live: !!t.live, later: t.day > 0 } });
+    items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), props: { t: label, live: !!t.live, later: t.day > 0, t1: lines[0][0], c1: lines[0][1], t2: lines[1] ? '\n' + lines[1][0] : '', c2: lines[1] ? lines[1][1] : lines[0][1] } });
   }
   rtBase = { items, lines: fc ? fc.features.filter(f => f.properties.route === ri).map(f => f.geometry.coordinates) : [] };
   placeTimes();
