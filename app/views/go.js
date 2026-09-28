@@ -86,7 +86,8 @@ function planCard(p, dest, clockNow) {
       <span class="sub"><a href="#/stop/${from.id}">${nameOf(l.from, l.r)}</a> · leaves <b>${clockText(l.on)}</b>${l.t.live ? liveMark(liveWord(l.t)) : ''}</span>
       <span class="sub">${l.n} ${l.n === 1 ? 'stop' : 'stops'} · off at <a href="#/stop/${to.id}">${to.hub ? D.hub.name : to.name}</a> · <b>${clockText(l.off)}</b></span></div></div>`);
   });
-  return html`<div class="plan"><div class="plan-top"><div class="col"><span class="eyebrow">Arrive</span>${time(p.arrive, 42, live)}</div><div class="col end"><span class="sub">Leave ${clockText(p.leave)}</span><span class="rel">${rel}</span><span class="sub">${words}</span></div></div><div class="legs">${legs}</div></div>`;
+  // Two times, one weight: when to set off and when you're there. One big arrival read as the first bus's time.
+  return html`<div class="plan"><div class="plan-top"><div class="col"><span class="eyebrow">Leave</span>${time(p.leave, 34, live)}<span class="rel">${rel}</span></div><div class="col mid"><span class="sub">${words}</span></div><div class="col end"><span class="eyebrow">Arrive</span>${time(p.arrive, 34, live)}<span class="sub">${p.legs[p.legs.length - 1].kind === 'walk' ? 'after the walk' : 'off the bus'}</span></div></div><div class="legs">${legs}</div></div>`;
 }
 
 function mount(el) {
