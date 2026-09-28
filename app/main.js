@@ -246,6 +246,7 @@ async function render(tick = false) {
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       routeShort: mapR ? decodeURIComponent(seg[2] || '') : name === 'route' ? decodeURIComponent(seg[1] || '') : null,
       alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: name === 'hub', tick,
+      bus: mapR ? q.bus || null : null,   // a route's bus, from its row on the route page: picked out on the map
     }, app, clockNow);
   }
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';

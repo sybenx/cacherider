@@ -151,7 +151,8 @@ function busRow(b, ri) {
   // Waiting at the Transit Center a bus is never early: it leaves on time or late.
   const u = rt.trips[b.trip], atHub = D.stops[nextStopOf(b)]?.hub;
   const words = u && u.lastDelay !== null && !isLoop(ri) && !(atHub && u.lastDelay < 2) ? lateWords(u.lastDelay) : '';
-  return html`<div class="busrow" id="${busAnchor(b.id)}"><i style="background:#${D.routes[ri].color}"></i><span>Bus ${b.label}${words ? ' · ' + words : ''}</span><span class="livetag"><i></i>Live</span></div>`;
+  // A tap: the map, this route framed, this bus ringed with its card. The row is where the bus is in the list.
+  return html`<a class="busrow" id="${busAnchor(b.id)}" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}?bus=${encodeURIComponent(b.id)}"><i style="background:#${D.routes[ri].color}"></i><span>Bus ${b.label}${words ? ' · ' + words : ''}</span><span class="livetag"><i></i>Live</span>${icon('map', 16)}</a>`;
 }
 
 /** Today's last run, while it's still to come or on the road: when it leaves, where its bus is, where it ends. */

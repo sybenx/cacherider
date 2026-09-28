@@ -815,6 +815,7 @@ export function liveUpdate(app) {
   if (U) for (const b of live.buses) place(b, 'u', U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
   if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, 'Route ' + D.routes[b.ri].short + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
+  if (wantBus && busMarkers.has(wantBus)) pickBus(wantBus, app);
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
 }
@@ -969,7 +970,19 @@ export async function show(o, app, clockNow) {
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   routeTimes(focusRoute !== undefined && !o.run ? focusRoute : null, clockNow);
 }
-async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, focus, hub, tick }, app, clockNow) {
+// A bus asked for before the feed has placed it: picked out as soon as it appears.
+let wantBus = null;
+/** A route's bus, from its row on the route page: its ring and card, and the map panned (never zoomed) to keep it
+ *  above the card. */
+function pickBus(id, app) {
+  const m = busMarkers.get(id);
+  if (!m) { wantBus = id; return; }
+  wantBus = null;
+  selectBus(id, app);
+  const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
+  map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: cardOffset(card), duration: 500 });
+}
+async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, focus, hub, tick, bus }, app, clockNow) {
   await init(app);
   // A map still hidden (the Map tab not on screen yet, the page behind it just gone) has no size to fit anything to:
   // a route fitted to nothing is the whole valley and further. Waited for, a few frames at most; if the address
@@ -1043,6 +1056,7 @@ async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, focu
     if (focus && (changed || resized) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: fitPad(40), duration: 700, maxZoom: 15.5 });
     if (stayRoute && app.route.name === 'map') routeCard(ri);
     stayRoute = false;
+    if (bus && app.route.name === 'map' && !tick) pickBus(bus, app); else if (!bus) wantBus = null;
     return;
   }
   if (stopId) {
