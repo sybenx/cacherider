@@ -823,7 +823,7 @@ export function liveUpdate(app) {
   if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, 'Route ' + D.routes[b.ri].short + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantBus && busMarkers.has(wantBus)) pickBus(wantBus, app);
-  if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); col.querySelector('#mapcard').classList.remove('open'); } }
+  if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimes(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
 }
 // Move a bus marker to its new fix over 600 ms in geographic coordinates, so the
@@ -858,7 +858,7 @@ function selectBus(id, app) {
   applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
   busCard(app);
-  if (c && rtShown === c.ri) routeTimes(c.ri, now());   // the route's times become this bus's
+  if (c) routeTimes(c.ri, now());   // its times along its route: the route's, if up, become this bus's; else its own appear
 }
 /** A Connect bus: its route and headsign, where it's headed next with the feed's minutes. */
 function connectCard(b, app) {
@@ -976,7 +976,8 @@ let shownHash = null;
 export async function show(o, app, clockNow) {
   await showPage(o, app, clockNow);
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
-  routeTimes(focusRoute !== undefined && !o.run ? focusRoute : null, clockNow);
+  const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
+  routeTimes(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);
 }
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
 let wantBus = null;
