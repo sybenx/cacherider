@@ -53,7 +53,7 @@ export function inPool(lat, lon) {
 }
 /** The POOL pickup at a bus stop, if it is one. */
 export const poolAt = si => POOL ? POOL.byStop.get(si) || null : null;
-const wordsOf = s => norm(s.replace(/'/g, '').replace(/[()&/·-]/g, ' ')).split(' ').filter(Boolean);   // Miller's is millers, as it's typed
+const wordsOf = s => norm(s.replace(/'/g, '').replace(/[()&/·;,-]/g, ' ')).split(' ').filter(Boolean);   // Miller's is millers, as it's typed; other names come semicolon-joined
 /** Places with every word of the query at the start of a word of its name or its town: 'walmart', 'regional hosp',
  *  'church hyrum'. The pamphlet's first; OpenStreetMap's after, less any a pamphlet place already stands for. */
 /** Whether a query reads as a street or an address ('500 north', 'main st, hyrum', '1400 N 500 E'): then the stops
