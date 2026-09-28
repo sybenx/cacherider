@@ -127,9 +127,9 @@ function pulseHeroBlock(clockNow) {
     return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${D.hub.name}</span><div class="hero-none">No buses today${resume ? html`<span class="sub">Service resumes ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
   }
   const loops = (D.hub.loops || []).map(ri => { const n = nextFromHub(ri, 1, clockNow)[0]; return n ? html`<div class="loop">${badge(ri, 28)}<div class="col"><span class="whent">${when(n, 22)}</span><span class="sub">${D.routes[ri].long}</span></div></div>` : ''; });
-  const when = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
+  const rel = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
   return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${(D.hub.pulseName || 'Every route').replace(/\s+leave$/, '')}</span>${giant(p.min)}
-    <div class="who"><span class="dest">${D.routes.length} routes from the ${D.hub.name}</span><span class="rt">${when}</span></div>
+    <div class="who"><span class="dest">${D.routes.length} routes from the ${D.hub.name}</span><span class="rt">${rel}</span></div>
     ${loops.some(Boolean) ? html`<div class="loops">${loops}</div>` : ''}</a></div>`;
 }
 
