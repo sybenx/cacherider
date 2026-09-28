@@ -1,0 +1,17 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.cacherider.android",
+      "sha256_cert_fingerprints": [
+        "CA:1F:44:73:7D:87:DD:01:09:58:87:A7:6B:BD:6A:65:E5:C1:BD:76:94:9E:D0:11:E9:D3:F0:6F:9B:E4:C5:33",
+        "9F:1D:F4:B9:65:FF:6A:FB:3E:8B:25:8B:D8:6B:43:87:E0:41:3C:74:57:BF:9A:F0:BE:5C:CA:83:4F:8F:8B:3F",
+        "F9:47:52:CC:50:99:05:69:BF:47:35:5A:C3:E3:2D:F6:ED:ED:E9:9E:B6:FD:BE:00:5E:20:F9:80:B0:47:09:89",
+        "FD:D8:7E:54:12:B5:24:FC:9A:1F:1F:9F:FD:61:FD:14:DC:3D:3D:EE:D1:9D:0A:00:56:AC:7D:B8:72:60:A1:AC"
+      ]
+    }
+  }
+]

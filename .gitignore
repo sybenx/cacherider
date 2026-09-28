@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+tools/.cvtd-sample.zip
+tools/__pycache__/
+*.jks
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+worker/.wrangler/

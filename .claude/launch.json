@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "cacherider", "runtimeExecutable": "python3", "runtimeArgs": ["tools/serve.py", "8794"], "port": 8794 }
+  ]
+}

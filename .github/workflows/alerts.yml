@@ -1,0 +1,43 @@
+name: service alerts
+
+# Every hour, fetch the agency's GTFS-realtime service alerts and commit them
+# if they changed. The phone can't read the feed itself: the server refuses
+# requests that carry a browser Origin header.
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch and decode
+        run: python3 tools/alerts.py || { echo 'alerts feed unreachable; keeping the last file'; git checkout -- data/alerts.json; exit 0; }
+      - name: Commit if changed
+        run: |
+          # The fetched time alone is not a change worth a commit.
+          changed=$(python3 - <<'EOF'
+          import json, subprocess
+          new = json.load(open('data/alerts.json')); new.pop('fetched', None)
+          try:
+              old = json.loads(subprocess.check_output(['git', 'show', 'HEAD:data/alerts.json'])); old.pop('fetched', None)
+          except Exception:
+              old = None
+          print('yes' if new != old else 'no')
+          EOF
+          )
+          if [ "$changed" != yes ]; then echo 'no change'; git checkout -- data; exit 0; fi
+          git config user.name 'service alerts'
+          git config user.email 'actions@users.noreply.github.com'
+          git add data/alerts.json
+          git commit -m "Service alerts: $(date -u +'%Y-%m-%d %H:%M')"
+          git push

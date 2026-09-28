@@ -1,0 +1,40 @@
+name: map tiles
+
+# Four times a year, cut Cache Valley from the latest Protomaps build of
+# OpenStreetMap, one file a tile, and commit it, so streets stay current
+# without anyone remembering to. Run it by hand when a road changes.
+
+on:
+  schedule:
+    - cron: '41 10 1 1,4,7,10 *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pmtiles
+        run: |
+          curl -fsSL https://github.com/protomaps/go-pmtiles/releases/download/v1.31.2/go-pmtiles_1.31.2_Linux_x86_64.tar.gz | tar -xz pmtiles
+          sudo mv pmtiles /usr/local/bin/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cut the valley into tiles
+        run: |
+          pip install -q pmtiles mapbox-vector-tile
+          python3 tools/tiles.py
+          python3 tools/grid.py
+          python3 tools/crossings.py
+      - name: Commit if changed
+        run: |
+          git config user.name 'map tiles'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A tiles data/grid.json data/crossings.json
+          git diff --cached --quiet && echo 'no change' && exit 0
+          git commit -m "Map tiles: $(date -u +%Y-%m-%d)"
+          git push

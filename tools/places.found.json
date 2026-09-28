@@ -1,0 +1,551 @@
+{
+ "Adams Elementary": {
+  "lat": 41.74132,
+  "lon": -111.82368,
+  "osm": "Adams Elementary School, 415, 500 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Bear River Charter": {
+  "lat": 41.72999,
+  "lon": -111.8459,
+  "osm": "Bear River Charter School, 75, 400 West, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Bridger Elementary": {
+  "lat": 41.75499,
+  "lon": -111.84531,
+  "osm": "Jim Bridger Elementary School, 1261, 400 West, Logan, Cache County, Utah, 84341, United States"
+ },
+ "BTECH": {
+  "lat": 41.75867,
+  "lon": -111.85736,
+  "osm": "Bridgerland Technical College West, 1400 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Cache High": {
+  "lat": 41.75384,
+  "lon": -111.85002,
+  "osm": "Cache High School, 1200 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Edith Bowen": {
+  "lat": 41.74498,
+  "lon": -111.80926,
+  "osm": "Edith Bowen Laboratory School, Aggie Boulevard, Hillcrest Neighborhood, Logan, Cache County, Utah, 84322, United States"
+ },
+ "Ellis Elementary": {
+  "lat": 41.73687,
+  "lon": -111.84417,
+  "osm": "Ellis Elementary School, 348, 300 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Fast Forward Charter High": {
+  "lat": 41.75836,
+  "lon": -111.85544,
+  "osm": "Fast Forward Charter High School, 875, 1400 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Green Canyon High": {
+  "lat": 41.78559,
+  "lon": -111.82866,
+  "osm": "Green Canyon High School, 2960, Wolf Pack Way, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "Hillcrest Elementary": {
+  "lat": 41.74858,
+  "lon": -111.79816,
+  "osm": "Hillcrest Elementary School, Ellendale Avenue, Hillcrest Neighborhood, Logan, Cache County, Utah, 84322, United States"
+ },
+ "Logan High": {
+  "lat": 41.72806,
+  "lon": -111.83966,
+  "osm": "Logan High School, 162, 100 South, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Mt Logan Middle": {
+  "lat": 41.74788,
+  "lon": -111.83127,
+  "osm": "Mount Logan Middle School, 875, 200 East, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Mtn Crest High": {
+  "lat": 41.62845,
+  "lon": -111.82893,
+  "osm": "Mountain Crest High School, 225, 800 East, Hyrum, Cache County, Utah, 84319, United States"
+ },
+ "Ridgeline High": {
+  "lat": 41.68638,
+  "lon": -111.82926,
+  "osm": "Ridgeline High School, 180, 300 West, Millville, Cache County, Utah, 84326, United States"
+ },
+ "Sky View High": {
+  "lat": 41.82604,
+  "lon": -111.82316,
+  "osm": "Sky View High School, 455 East, Smithfield, Cache County, Utah, 84335, United States"
+ },
+ "South Cache Middle": {
+  "lat": 41.63443,
+  "lon": -111.86816,
+  "osm": "South Cache Middle School, 500 West, Hyrum, Cache County, Utah, 84319, United States"
+ },
+ "Thomas Edison Charter (South)": {
+  "lat": 41.69044,
+  "lon": -111.86411,
+  "osm": "Thomas Edison Charter School South Campus, Nibley Park Avenue, Nibley, Cache County, Utah, 84323, United States"
+ },
+ "Utah State University": {
+  "lat": 41.74372,
+  "lon": -111.81396,
+  "osm": "set by hand: the Taggart Student Center, the middle of campus",
+  "fixed": true
+ },
+ "Wilson Elementary": {
+  "lat": 41.72992,
+  "lon": -111.82352,
+  "osm": "Wilson Elementary School, 89, 500 East, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Woodruff Elementary": {
+  "lat": 41.71976,
+  "lon": -111.85766,
+  "osm": "Woodruff Elementary School, 600 South, Logan, Cache County, Utah, 84323, United States"
+ },
+ "Bear River Health Dept. (Main)": {
+  "lat": 41.75612,
+  "lon": -111.81721,
+  "osm": "Bear River Health Department, 655, 1300 North, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Cache Valley Hospital": {
+  "lat": 41.77526,
+  "lon": -111.82158,
+  "osm": "Cache Valley Hospital, 2380, 400 East, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "Logan InstaCare": {
+  "lat": 41.73925,
+  "lon": -111.82883,
+  "osm": "InstaCare, 412, 200 East, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Logan Regional Hospital": {
+  "lat": 41.75605,
+  "lon": -111.82163,
+  "osm": "Logan Regional Hospital, 1400, 500 East, University Village, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Sterling Urgent Care (North)": {
+  "lat": 41.75704,
+  "lon": -111.81882,
+  "osm": "Sterling Urgent Care, 630, 1400 North, University Village, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Costco": {
+  "lat": 41.75324,
+  "lon": -111.85682,
+  "osm": "Costco, 1160, 1000 West, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Island Market": {
+  "lat": 41.73109,
+  "lon": -111.8245,
+  "osm": "The Island Market, 400, Center Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Lee's Marketplace (Logan)": {
+  "lat": 41.75874,
+  "lon": -111.82037,
+  "osm": "Lee's Marketplace, 555, 1400 North, University Village, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Lee's Marketplace (Smithfield)": {
+  "lat": 41.81919,
+  "lon": -111.83161,
+  "osm": "Lee's Marketplace, 850, Main Street, Smithfield, Cache County, Utah, 84335, United States"
+ },
+ "Macey's": {
+  "lat": 41.70887,
+  "lon": -111.83166,
+  "osm": "Macey's, 50, Macey's Pharmacy Drive-Through, Providence, Cache County, Utah, 84332, United States"
+ },
+ "Natural Grocers": {
+  "lat": 41.75116,
+  "lon": -111.83601,
+  "osm": "Natural Grocers, 1075, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Ridley's Family Markets": {
+  "lat": 41.63275,
+  "lon": -111.83392,
+  "osm": "Ridley's Family Market, 780, Main Street, Hyrum, Cache County, Utah, 84319, United States"
+ },
+ "Sam's Club": {
+  "lat": 41.75486,
+  "lon": -111.83837,
+  "osm": "Sam's Club, 145, Cache Valley Boulevard, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Smith's Marketplace": {
+  "lat": 41.74572,
+  "lon": -111.8328,
+  "osm": "Smith's Marketplace, 750, Main Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Smith's Food & Drug": {
+  "lat": 41.74572,
+  "lon": -111.8328,
+  "osm": "Smith's Marketplace, 750, Main Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Walmart (North)": {
+  "lat": 41.76035,
+  "lon": -111.83044,
+  "osm": "Walmart Supercenter, 1550, Main Street, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "Walmart (South)": {
+  "lat": 41.71205,
+  "lon": -111.83603,
+  "osm": "Walmart Supercenter, 1150, 100 West, Logan, Cache County, Utah, 84321, United States"
+ },
+ "WinCo": {
+  "lat": 41.7569,
+  "lon": -111.83705,
+  "osm": "WinCo Foods, 1341, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Aquatic Center (Logan)": {
+  "lat": 41.72334,
+  "lon": -111.8493,
+  "osm": "Logan Aquatic Center, 451, 500 West, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Cache County Fairgrounds & Event Center": {
+  "lat": 41.72156,
+  "lon": -111.84598,
+  "osm": "Cache County Fairgrounds, Logan, Cache County, Utah, United States"
+ },
+ "Cache Valley Fun Park": {
+  "lat": 41.7637,
+  "lon": -111.8272,
+  "osm": "Cache Valley Fun Park, 255, 1770 North, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "Ellen Eccles Theatre": {
+  "lat": 41.73059,
+  "lon": -111.83577,
+  "osm": "Ellen Eccles Theatre at the Cache Valley Center for the Arts, 43, Main Street, Logan, Cache County, Utah, 84321, United "
+ },
+ "Logan Lanes": {
+  "lat": 41.75361,
+  "lon": -111.83539,
+  "osm": "Logan Lanes, 1161, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Prodigy Brewing": {
+  "lat": 41.73169,
+  "lon": -111.83572,
+  "osm": "Prodigy Brewing, 25, Center Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "USU Maverik Stadium": {
+  "lat": 41.75194,
+  "lon": -111.81167,
+  "osm": "Maverik Stadium, 1200 North, Hillcrest Neighborhood, Logan, Cache County, Utah, 84322, United States"
+ },
+ "Utah Theatre": {
+  "lat": 41.73111,
+  "lon": -111.83568,
+  "osm": "Utah Theatre, 18, Center Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Al's Sporting Goods": {
+  "lat": 41.75155,
+  "lon": -111.83614,
+  "osm": "Al's Sporting Goods, 1075, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Book Table": {
+  "lat": 41.73082,
+  "lon": -111.83544,
+  "osm": "The Book Table, 29, Main Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Deseret Book": {
+  "lat": 41.756,
+  "lon": -111.83727,
+  "osm": "Deseret Book, Cache Valley Boulevard, Logan, Cache County, Utah, 84321, United States"
+ },
+ "DI Thrift Store": {
+  "lat": 41.7584,
+  "lon": -111.83813,
+  "osm": "Deseret Industries, 175, 1400 North, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Downeast": {
+  "lat": 41.75166,
+  "lon": -111.83271,
+  "osm": "Downeast, 1050, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Hobby Lobby": {
+  "lat": 41.76059,
+  "lon": -111.83642,
+  "osm": "Hobby Lobby, 1575, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Kohl's": {
+  "lat": 41.76271,
+  "lon": -111.83209,
+  "osm": "Kohl's, 1660, Main Street, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "Old Navy": {
+  "lat": 41.75145,
+  "lon": -111.83271,
+  "osm": "Old Navy, 1050, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "PetSmart": {
+  "lat": 41.75049,
+  "lon": -111.83274,
+  "osm": "PetSmart, 1050, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Plato's Closet": {
+  "lat": 41.75223,
+  "lon": -111.83394,
+  "osm": "Plato's Closet, 1114, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Roolee": {
+  "lat": 41.76158,
+  "lon": -111.83819,
+  "osm": "ROOLEE, 165, 1600 North, Oak Meadows Apartments, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Ross": {
+  "lat": 41.75899,
+  "lon": -111.83652,
+  "osm": "Ross, 1475, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Seagull Book": {
+  "lat": 41.75241,
+  "lon": -111.83394,
+  "osm": "Seagull Book, 1114, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Sierra": {
+  "lat": 41.7584,
+  "lon": -111.83652,
+  "osm": "Sierra, 1427, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "T.J. Maxx": {
+  "lat": 41.75228,
+  "lon": -111.83237,
+  "osm": "TJ Maxx, 1136, Main Street, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Walgreens": {
+  "lat": 41.74975,
+  "lon": -111.83517,
+  "osm": "Walgreens, 1000 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "BRAG Human Services": {
+  "lat": 41.73469,
+  "lon": -111.83458,
+  "osm": "Bear River Association of Governments, 170, Main Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Driver's License Division": {
+  "lat": 41.71905,
+  "lon": -111.83239,
+  "osm": "Logan Driver License Division (DLD), 110, 700 South, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Family Place": {
+  "lat": 41.76012,
+  "lon": -111.83978,
+  "osm": "The Family Place, 1525, 200 West, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Hyrum Library": {
+  "lat": 41.63447,
+  "lon": -111.85649,
+  "osm": "Hyrum Library, 50, Main Street, Hyrum, Cache County, Utah, 84319, United States"
+ },
+ "Logan Library": {
+  "lat": 41.73673,
+  "lon": -111.83523,
+  "osm": "Logan Library, 285, Main Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Logan Post Office": {
+  "lat": 41.73565,
+  "lon": -111.83691,
+  "osm": "Logan Post Office, 75, 200 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Merrill-Cazier Library": {
+  "lat": 41.74227,
+  "lon": -111.80961,
+  "osm": "Merrill-Cazier Library, Utah State University, Hillcrest Neighborhood, Logan, Cache County, Utah, 84322, United States"
+ },
+ "North Logan Library": {
+  "lat": 41.77826,
+  "lon": -111.82063,
+  "osm": "North Logan City Library, 475, 2500 North, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "Richmond Library": {
+  "lat": 41.92287,
+  "lon": -111.80972,
+  "osm": "Richmond City Library, 38, Main Street, Richmond, Cache County, Utah, 84333, United States"
+ },
+ "InTech Charter": {
+  "lat": 41.75491,
+  "lon": -111.85085,
+  "osm": "InTech Collegiate Academy, 1301, 600 West, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Barrel & Stave Bar": {
+  "lat": 41.73424,
+  "lon": -111.83396,
+  "osm": "Barrel & Stave, 33, Federal Avenue, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Eccles Ice Center": {
+  "lat": 41.78338,
+  "lon": -111.82989,
+  "osm": "Eccles Ice Center, 2825, 200 East, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Hyrum Lake State Park": {
+  "lat": 41.61475,
+  "lon": -111.85319,
+  "osm": "Hyrum State Park, Hyrum, Cache County, Utah, United States"
+ },
+ "Megaplex Theaters University": {
+  "lat": 41.75312,
+  "lon": -111.82972,
+  "osm": "Megaplex University Stadium 6, 1225, 200 East, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Old Main Hill": {
+  "lat": 41.74078,
+  "lon": -111.81413,
+  "osm": "Old Main, Champ Drive, Hillcrest Neighborhood, Logan, Cache County, Utah, 84322, United States"
+ },
+ "Willow Park/Zootah": {
+  "lat": 41.7198,
+  "lon": -111.84633,
+  "osm": "Zootah, 700 South, Logan, Cache County, Utah, 84321, United States"
+ },
+ "C-A-L Ranch": {
+  "lat": 41.76405,
+  "lon": -111.83212,
+  "osm": "C-A-L Ranch, 1750, Main Street, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "DMV": {
+  "lat": 41.7344,
+  "lon": -111.83532,
+  "osm": "Cache County Department of Motor Vehicles (DMV), Main Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Smithfield Library": {
+  "lat": 41.8371,
+  "lon": -111.8332,
+  "osm": "Smithfield Library, 25, Main Street, Smithfield, Cache County, Utah, 84335, United States"
+ },
+ "WIC": {
+  "lat": 41.75612,
+  "lon": -111.81721,
+  "osm": "set by hand: at the Bear River Health Department, 655 East 1300 North",
+  "fixed": true
+ },
+ "Dansante Theatre": {
+  "lat": 41.73033,
+  "lon": -111.8384,
+  "osm": "59, 100 West, Logan, Cache County, Utah, 84321, United States"
+ },
+ "WhySound": {
+  "lat": 41.73399,
+  "lon": -111.83399,
+  "osm": "30, Federal Avenue, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Bear River Mental Health Counseling": {
+  "lat": 41.73484,
+  "lon": -111.83275,
+  "osm": "90, 200 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Cache Food Pantry": {
+  "lat": 41.7248,
+  "lon": -111.83534,
+  "osm": "359 South Main Street, Main Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Logan Police Dept.": {
+  "lat": 41.73697,
+  "lon": -111.83646,
+  "osm": "Logan City Police, 62, 300 North, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Options for Independence": {
+  "lat": 41.75216,
+  "lon": -111.83151,
+  "osm": "106, 1120 North, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Workforce Services": {
+  "lat": 41.73492,
+  "lon": -111.83715,
+  "osm": "180, 100 West, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Centro Migrant Head Start": {
+  "lat": 41.71426,
+  "lon": -111.82937,
+  "osm": "316, Gateway Drive, Providence, Cache County, Utah, 84332, United States"
+ },
+ "North Cache Middle": {
+  "lat": 41.91055,
+  "lon": -111.81378,
+  "osm": "157 West 600 South, 600 South, Richmond, Cache County, Utah, 84333, United States"
+ },
+ "Thomas Edison Charter (North)": {
+  "lat": 41.77922,
+  "lon": -111.82952,
+  "osm": "Thomas Edison Charter School, 180, 2600 North, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "Health West (North Logan)": {
+  "lat": 41.76039,
+  "lon": -111.82376,
+  "osm": "1515, 400 East, North Logan, Cache County, Utah, 84341, United States"
+ },
+ "Health West (Providence)": {
+  "lat": 41.71079,
+  "lon": -111.83059,
+  "osm": "517, 100 North, Providence, Cache County, Utah, 84332, United States"
+ },
+ "Midtown Community Health Center": {
+  "lat": 41.75675,
+  "lon": -111.82093,
+  "osm": "550, 1400 North, University Village, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Providence Family Medicine": {
+  "lat": 41.71326,
+  "lon": -111.82755,
+  "osm": "382, 280 North, Providence, Cache County, Utah, 84332, United States"
+ },
+ "South Cache Valley Clinic": {
+  "lat": 41.63433,
+  "lon": -111.85599,
+  "osm": "26, Main Street, Hyrum, Cache County, Utah, 84319, United States"
+ },
+ "Spring Creek Medical Center": {
+  "lat": 41.71288,
+  "lon": -111.82953,
+  "osm": "267, Spring Creek Parkway, Providence, Cache County, Utah, 84332, United States"
+ },
+ "Megaplex Theaters Providence": {
+  "lat": 41.71147,
+  "lon": -111.83065,
+  "osm": "Megaplex Providence Stadium 8, 535, 100 North, Providence, Cache County, Utah, 84332, United States"
+ },
+ "The Cache Bar": {
+  "lat": 41.72967,
+  "lon": -111.83547,
+  "osm": "119, Main Street, Logan, Cache County, Utah, 84321, United States"
+ },
+ "The Event Center (Logan)": {
+  "lat": 41.75448,
+  "lon": -111.82999,
+  "osm": "set from OpenStreetMap: The Event Center, by 1206 North 200 East (Routes 2 and 5, as the pamphlet says)",
+  "fixed": true
+ },
+ "USU Russell/Wanlass Performance Hall": {
+  "lat": 41.74431,
+  "lon": -111.80769,
+  "osm": "1140, Aggie Boulevard, Hillcrest Neighborhood, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Cache Refugee and Immigrant Connection": {
+  "lat": 41.75213,
+  "lon": -111.82975,
+  "osm": "1115, 200 East, Logan, Cache County, Utah, 84341, United States"
+ },
+ "CETC": {
+  "lat": 41.72478,
+  "lon": -111.84205,
+  "osm": "Cache Employment & Training Center, 275, 400 South, Logan, Cache County, Utah, 84321, United States"
+ },
+ "Division of Child and Family Services (Logan)": {
+  "lat": 41.71587,
+  "lon": -111.83895,
+  "osm": "115 West Golf Course Road, Golf Course Road, Logan, Cache County, Utah, 84321, United States"
+ },
+ "LDS Employment Services": {
+  "lat": 41.75848,
+  "lon": -111.83813,
+  "osm": "175, 1400 North, Logan, Cache County, Utah, 84341, United States"
+ },
+ "Providence Library": {
+  "lat": 41.70841,
+  "lon": -111.81816,
+  "osm": "15, Main Street, Providence, Cache County, Utah, 84332, United States"
+ },
+ "North Cache Valley Clinic": {
+  "lat": 41.80651,
+  "lon": -111.83323,
+  "osm": "4088, US 91, Hyde Park, Cache County, Utah, 84318, United States"
+ },
+ "Sterling Urgent Care (South)": {
+  "lat": 41.7141,
+  "lon": -111.8352,
+  "osm": "set by hand: 939 South Main (US 89/91), beside the 950 South Main St stop",
+  "fixed": true
+ }
+}

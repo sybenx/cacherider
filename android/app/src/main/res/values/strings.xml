@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Cache Rider</string>
+  <string name="shortcut_map">Map</string>
+  <string name="shortcut_hub">Transit Center</string>
+  <string name="asset_statements">[{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": { \"namespace\": \"web\", \"site\": \"https://cacherider.com\" } }]</string>
+</resources>

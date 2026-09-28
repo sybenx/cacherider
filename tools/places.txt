@@ -1,0 +1,113 @@
+# Places riders go, from Connect's pamphlet ("Schools · Medical · Grocery · Entertainment · Shopping ·
+# Community Services"), transcribed from a photo. One place a line:
+#   category | name as printed | routes as printed | where to look it up (for the one-time geocode)
+# Routes: numbers, Loop (either loop), Pool (on-demand, needs an account), All (walking distance of the Transit Center).
+schools | Adams Elementary | 1, 15, Loop | Adams Elementary School, Logan
+schools | Bear River Charter | 6 | Bear River Charter School, Logan
+schools | Bridger Elementary | 9 | Bridger Elementary School, Logan
+schools | BTECH | 8 | Bridgerland Technical College, Logan
+schools | Cache High | 8 | Cache High School, Logan
+schools | Centro Migrant Head Start | 11 | 316 North Gateway Drive, Providence
+schools | Edith Bowen | 1, 15, Loop | Edith Bowen Laboratory School, Logan
+schools | Ellis Elementary | 8 | Ellis Elementary School, Logan
+schools | Fast Forward Charter High | 8 | Fast Forward Charter High School, Logan
+schools | Green Canyon High | 5 | Green Canyon High School, North Logan
+schools | Hillcrest Elementary | 1 | Hillcrest Elementary School, Logan
+schools | InTech Charter | 8 | InTech Collegiate Academy, North Logan
+schools | Logan High | 7 | Logan High School, Logan
+schools | Mt Logan Middle | 2, 5 | Mount Logan Middle School, Logan
+schools | Mtn Crest High | 12 | Mountain Crest High School, Hyrum
+schools | North Cache Middle | 15 | 157 West 600 South, Richmond
+schools | Ridgeline High | 12, Pool | Ridgeline High School, Millville
+schools | Sky View High | 15 | Sky View High School, Smithfield
+schools | South Cache Middle | 12 | South Cache Middle School, Hyrum
+schools | Thomas Edison Charter (North) | 5 | 180 East 2600 North, North Logan
+schools | Thomas Edison Charter (South) | 11 | Thomas Edison Charter School South, Nibley
+schools | Utah State University | 1, 15, Loop | Utah State University, Logan
+schools | Wilson Elementary | 3 | Wilson Elementary School, Logan
+schools | Woodruff Elementary | 6 | Woodruff Elementary School, Logan
+medical | Bear River Health Dept. (Main) | 2 | Bear River Health Department, Logan
+medical | Health West (North Logan) | 2 | 1515 North 400 East, North Logan
+medical | Health West (Providence) | Pool | 517 West 100 North, Providence
+medical | Cache Valley Hospital | 5 | Cache Valley Hospital, North Logan
+medical | Logan InstaCare | All | InstaCare, Logan
+medical | Logan Regional Hospital | 2 | Logan Regional Hospital, Logan
+medical | Midtown Community Health Center | 2 | 550 East 1400 North, Logan
+medical | North Cache Valley Clinic | 15 | 4088 US-91, Hyde Park
+medical | Providence Family Medicine | Pool | 382 West 280 North, Providence
+medical | South Cache Valley Clinic | 12 | 26 West Main Street, Hyrum
+medical | Spring Creek Medical Center | Pool | 267 Spring Creek Parkway, Providence
+medical | Sterling Urgent Care (North) | 2 | Sterling Urgent Care, North Logan
+medical | Sterling Urgent Care (South) | 7, Loop | 939 South Main Street, Logan
+grocery | Costco | 8 | Costco, Logan
+grocery | Island Market | 3 | Island Market, Logan
+grocery | Lee's Marketplace (Logan) | 2 | Lee's Marketplace, Logan
+grocery | Lee's Marketplace (Smithfield) | 15 | Lee's Marketplace, Smithfield
+grocery | Macey's | 11, Pool | Macey's, Providence
+grocery | Natural Grocers | 5, Loop | Natural Grocers, Logan
+grocery | Ridley's Family Markets | 12 | Ridley's Family Markets, Hyrum
+grocery | Sam's Club | 9, Loop | Sam's Club, Logan
+grocery | Smith's Marketplace | 5, Loop | Smith's Marketplace, Logan
+grocery | Smith's Food & Drug | All | Smith's Food and Drug, Logan
+grocery | Walmart (North) | 5, Loop | Walmart Supercenter, North Logan
+grocery | Walmart (South) | 11, 12, Loop, Pool | Walmart Supercenter, Logan
+grocery | WinCo | 9, Loop | WinCo Foods, Logan
+entertainment | Aquatic Center (Logan) | 6 | Logan Aquatic Center, Logan
+entertainment | Barrel & Stave Bar | Loop | Barrel & Stave, Logan
+entertainment | Cache County Fairgrounds & Event Center | 6 | Cache County Fairgrounds, Logan
+entertainment | Cache Valley Fun Park | 5 | Cache Valley Fun Park, Logan
+entertainment | Dansante Theatre | 7 | 59 South 100 West, Logan
+entertainment | Eccles Ice Center | 5 | Eccles Ice Center, North Logan
+entertainment | Ellen Eccles Theatre | 12, Loop | Ellen Eccles Theatre, Logan
+entertainment | Hyrum Lake State Park | 12 | Hyrum State Park
+entertainment | Logan Lanes | 5, Loop | Logan Lanes, Logan
+entertainment | Megaplex Theaters Providence | 11, Pool | 535 West 100 North, Providence
+entertainment | Megaplex Theaters University | 2, 5 | Megaplex, Logan
+entertainment | Old Main Hill | 1, 15, Loop | Old Main, Logan
+entertainment | Prodigy Brewing | 12, Loop | Prodigy Brewing, Logan
+entertainment | The Cache Bar | 7, 12, Loop | 119 South Main Street, Logan
+entertainment | The Event Center (Logan) | 2, 5 | 199 North Main Street, Logan
+entertainment | USU Maverik Stadium | 2, Loop | Maverik Stadium, Logan
+entertainment | USU Russell/Wanlass Performance Hall | 1, 15, Loop | 1140 East Aggie Boulevard, Logan
+entertainment | Utah Theatre | 12, Loop | Utah Theatre, Logan
+entertainment | WhySound | Loop | 30 Federal Avenue, Logan
+entertainment | Willow Park/Zootah | 7 | Zootah, Logan
+shopping | Al's Sporting Goods | Loop | Al's Sporting Goods, Logan
+shopping | Book Table | 12, Loop | The Book Table, Logan
+shopping | C-A-L Ranch | 5 | C-A-L Ranch, North Logan
+shopping | Deseret Book | 9, Loop | Deseret Book, Logan
+shopping | DI Thrift Store | 9 | Deseret Industries, Logan
+shopping | Downeast | 5, Loop | Downeast, Logan
+shopping | Hobby Lobby | 9 | Hobby Lobby, Logan
+shopping | Kohl's | 5 | Kohl's, Logan
+shopping | Old Navy | 5, Loop | Old Navy, Logan
+shopping | PetSmart | 5, Loop | PetSmart, Logan
+shopping | Plato's Closet | 5, Loop | Plato's Closet, Logan
+shopping | Roolee | 9 | Roolee, Logan
+shopping | Ross | 9, Loop | Ross Dress for Less, Logan
+shopping | Seagull Book | 5, Loop | Seagull Book, Logan
+shopping | Sierra | 9, Loop | Sierra, Logan
+shopping | T.J. Maxx | 5, Loop | TJ Maxx, Logan
+shopping | Walgreens | Loop | Walgreens, Logan
+community | Bear River Mental Health Counseling | 3, 7, 11 | 90 East 200 North, Logan
+community | BRAG Human Services | 12, Loop | Bear River Association of Governments, Logan
+community | Cache Food Pantry | 12, Loop | 359 South Main Street, Logan
+community | Cache Refugee and Immigrant Connection | 2 | 1115 North 200 East, Logan
+community | CETC | 7 | 275 West 400 South, Logan
+community | Division of Child and Family Services (Logan) | 7, Loop | 115 West Golf Course Road, Logan
+community | DMV | 7, Loop | Motor Vehicles, Logan
+community | Driver's License Division | 11, Loop | Driver License Division, Logan
+community | Family Place | 9 | The Family Place, Logan
+community | Hyrum Library | 12 | Hyrum Library, Hyrum
+community | LDS Employment Services | 9, Loop | 175 West 1400 North, Logan
+community | Logan Library | 7 | Logan Library, Logan
+community | Logan Police Dept. | 7 | 62 West 300 North, Logan
+community | Logan Post Office | 7 | Logan Post Office, Logan
+community | Merrill-Cazier Library | 1, 15, Loop | Merrill-Cazier Library, Logan
+community | North Logan Library | 5 | North Logan City Library, North Logan
+community | Options for Independence | 2, 5 | 106 East 1120 North, Logan
+community | Providence Library | Pool | 15 North Main Street, Providence
+community | Richmond Library | 15 | Richmond Library, Richmond
+community | Smithfield Library | 15 | Smithfield Library
+community | WIC | 2 | WIC, Logan
+community | Workforce Services | 7 | 180 North 100 West, Logan

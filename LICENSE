@@ -1,0 +1,20 @@
+Cache Rider
+Copyright (c) 2026 Aaron Herbst. All rights reserved.
+
+This source code is published so that it can be read. That is the only permission it comes with.
+
+You may read it, and you may use Cache Rider itself at cacherider.com and through its app stores, as
+any rider does. You may not copy, modify, distribute, host, or run this code, in whole or in part, or
+anything derived from it, without written permission from the copyright holder. That includes use by
+or for a transit agency, a government body, an institution or a business.
+
+Patches and suggestions are welcome; by sending one you agree that it becomes part of Cache Rider
+under these same terms.
+
+The Cache Rider name and icon, and the cacherider.com name, are likewise reserved: see TRADEMARKS.md.
+
+Third-party parts keep their own licences: MapLibre GL (BSD, vendor/LICENSE-maplibre.txt), the Barlow
+fonts (SIL OFL, fonts/OFL.txt), map data (c) OpenStreetMap contributors, and the transit data of the
+Cache Valley Transit District.
+
+For a licence to run or build on this code, contact the copyright holder.

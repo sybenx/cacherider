@@ -1,0 +1,23 @@
+# Cloudflare Pages
+/tiles/*
+  Cache-Control: public, max-age=604800
+/tiles/*.pbf
+  Content-Type: application/x-protobuf
+/data/*.json
+  Cache-Control: public, max-age=600
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+/vendor/*
+  Cache-Control: public, max-age=604800
+# The app itself revalidates on every load (cheap 304s, thanks to ETags), so a
+# deploy never leaves a rider running new HTML with old modules.
+/sw.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/app/*
+  Cache-Control: no-cache
+/css/*
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache

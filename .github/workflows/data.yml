@@ -1,0 +1,55 @@
+name: transit data
+
+# Every night, fetch the agency's GTFS, reduce it to what the app reads, and
+# commit the result if it changed. Hosting redeploys from the commit.
+
+on:
+  schedule:
+    - cron: '23 9 * * *'   # 03:23 Mountain, after the agency's overnight update
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reduce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch CVTD GTFS
+        run: curl -fsSL -o /tmp/cvtd.zip https://mycvtdbus.org/gtfs
+      - name: Reduce
+        run: |
+          pip install -q mapbox-vector-tile
+          python3 tools/reduce.py /tmp/cvtd.zip --hints tools/hints.json --out data
+      - name: Intersections along each route, from the map tiles
+        run: python3 tools/crossings.py
+      - name: Places to search for, from OpenStreetMap (once a night, one query)
+        run: python3 tools/osmplaces.py || echo 'Overpass unreachable; keeping the last places'
+      - name: Snapshot the USU shuttle's routes and stops
+        run: python3 tools/usu.py || echo 'shuttle feed unreachable; keeping the last snapshot'
+      - name: POOL's pickup points, from Connect's published Remix map
+        run: python3 tools/pool.py || echo 'Remix unreachable; keeping the last POOL points'
+      - name: Commit if changed
+        run: |
+          # The built date alone is not a change worth a commit.
+          changed=$(python3 - <<'EOF'
+          import json, subprocess
+          new = json.load(open('data/cvtd.json')); new['feed'].pop('built', None)
+          try:
+              old = json.loads(subprocess.check_output(['git', 'show', 'HEAD:data/cvtd.json'])); old['feed'].pop('built', None)
+          except Exception:
+              old = None
+          shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json', 'data/crossings.json', 'data/osm-places.json', 'data/pool.json']) != 0
+          print('yes' if new != old or shapes else 'no')
+          EOF
+          )
+          if [ "$changed" != yes ]; then echo 'no change'; git checkout -- data; exit 0; fi
+          git config user.name 'transit data'
+          git config user.email 'actions@users.noreply.github.com'
+          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json
+          git commit -m "Transit data: $(date -u +%Y-%m-%d)"
+          git push

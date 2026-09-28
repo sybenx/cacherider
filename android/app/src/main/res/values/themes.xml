@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="Theme.CacheRider" parent="android:Theme.Material.NoActionBar" />
+  <!-- The launcher shows the splash colour for the instant before the browser takes over. -->
+  <style name="Theme.CacheRider.Launcher">
+    <item name="android:windowBackground">@color/splash</item>
+    <item name="android:statusBarColor">@color/bars</item>
+    <item name="android:navigationBarColor">@color/bars</item>
+    <item name="android:windowNoTitle">true</item>
+  </style>
+</resources>

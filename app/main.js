@@ -1,0 +1,470 @@
+// Boot, the hash router, and the pieces every screen shares: the tab bar, the
+// desktop header, the location sheet, the minute tick.
+import { load, D, BASE, pref, stopIndex, loadAlerts, loadPlaces, loadPool, A } from './data.js';
+import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
+import { html, icon, esc } from './ui.js';
+import { loadGrid } from './geo.js';
+import * as home from './views/home.js';
+import * as stopView from './views/stop.js';
+import * as hub from './views/hub.js';
+import * as routeView from './views/route.js';
+import * as about from './views/about.js';
+import * as ustop from './views/ustop.js';
+import * as uroute from './views/uroute.js';
+import * as go from './views/go.js';
+import { loadUSU, setWanted, onLive, U } from './usu.js';
+import { setRtWanted, onRt } from './rt.js';
+
+const side = document.getElementById('side');
+const body = document.getElementById('body');
+const TABS = [
+  { href: '#/', label: 'Stops', icon: 'stops', match: h => /^#\/(stop|search|route|about|usu|go|$)/.test(h) },
+  { href: '#/map', label: 'Map', icon: 'map', match: h => h.startsWith('#/map') },
+  { href: '#/hub', label: 'Transit Center', icon: 'hub', match: h => h.startsWith('#/hub') },
+];
+
+export const app = {
+  installPrompt: null,  // Chrome's deferred beforeinstallprompt, when it offers one
+  editSaved: false,     // the home screen's saved list in edit mode
+  geo: null,            // { lat, lon, at } once the rider has shared their position
+  mapMod: null,         // the map module, once loaded
+  route: null,          // current { name, params }
+};
+
+function renderTabs() {
+  const h = location.hash || '#/';
+  // A tap on the Map tab (or, wider, the Map link at the top) while already on the map puts it back to the whole of Logan: the phone's habit for a
+  // tab tapped twice. (Set once: the tabs are redrawn on every page.)
+  if (!renderTabs.wired) {
+    renderTabs.wired = true;
+    const again = e => {
+      const a = e.target.closest('a[href="#/map"]');
+      if (!a || !(location.hash || '').startsWith('#/map') || !app.mapMod) return;
+      e.preventDefault();
+      if (location.hash !== '#/map') history.replaceState(null, '', '#/map');
+      app.mapMod.resetView(app);
+    };
+    for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', again);
+    // The same for the home page beside the map: the wordmark (or the Stops link) tapped while already home.
+    const home = e => {
+      if (!['', '#', '#/'].includes(location.hash) || !app.mapMod || !isDesktop()) return;
+      e.preventDefault();
+      app.mapMod.resetView(app);
+    };
+    document.querySelector('.wordmark').addEventListener('click', home);
+    document.getElementById('topnav').addEventListener('click', e => { if (e.target.closest('a[href="#/"]')) home(e); });
+  }
+  for (const id of ['tabs', 'topnav']) {
+    document.getElementById(id).innerHTML = TABS.map(t => html`<a href="${t.href}" ${t.match(h) ? html.raw('aria-current="page"') : ''}>${icon(t.icon, id === 'tabs' ? 22 : 18)}${t.label}</a>`).join('');
+  }
+}
+
+function parse() {
+  const h = (location.hash || '#/').slice(1);
+  const [path, qs] = h.split('?');
+  const seg = path.split('/').filter(Boolean);
+  const q = Object.fromEntries(new URLSearchParams(qs || ''));
+  return { seg, q, path };
+}
+
+export const isDesktop = () => matchMedia('(min-width: 900px)').matches;
+/** Wide enough for a page to take the whole width, in columns (the Transit Center). */
+
+async function ensureMap() {
+  if (!app.mapMod) app.mapMod = await import('./views/map.js');
+  return app.mapMod;
+}
+
+/** On a sheet page, a swipe down from the top follows the finger, then goes back to the map's card or springs
+ *  home. Claimed on the first move only at the top of the page with the finger heading down, like the map card. */
+function wireSheet() {
+  let y0 = null, x0 = 0, t0 = 0, claimed = false;
+  side.addEventListener('touchstart', e => {
+    if (side.dataset.sheet !== '1' || e.touches.length !== 1) { y0 = null; return; }
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = e.timeStamp; claimed = false;
+  }, { passive: true });
+  side.addEventListener('touchmove', e => {
+    if (y0 === null || e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+    if (!claimed) {
+      if (side.scrollTop > 0 || dy <= 0 || Math.abs(dx) > Math.abs(dy)) { y0 = null; return; }
+      claimed = true; side.classList.remove('sheet-in');
+    }
+    e.preventDefault();
+    side.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  }, { passive: false });
+  const end = e => {
+    if (y0 === null) return;
+    const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : y0) - y0, dt = e.timeStamp - t0;
+    y0 = null;
+    if (!claimed) return;
+    side.classList.add('sheet-in');
+    if (dy > 70 || (dy > 24 && dy / Math.max(dt, 1) > 0.5)) {
+      side.style.transform = 'translateY(100%)';
+      const back = () => { side.classList.remove('sheet-in'); side.style.transform = ''; history.back(); };
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) back(); else setTimeout(back, 260);
+    } else {
+      side.style.transform = '';
+      side.addEventListener('transitionend', () => side.classList.remove('sheet-in'), { once: true });
+    }
+  };
+  side.addEventListener('touchend', end); side.addEventListener('touchcancel', end);
+}
+
+/** Beside the map on a tablet or wider, a page came in from the left: a swipe left follows the finger and sends it
+ *  back there, to wherever the rider was, or springs home. Not the tabs' own pages (Stops, the Transit Center),
+ *  which have nowhere to go back to. Claimed on the first move only when it's sideways and leftward, and not on the
+ *  small map or anything else that drags or scrolls sideways. */
+function wireSwipeBack() {
+  let x0 = null, y0 = 0, t0 = 0, claimed = false;
+  side.addEventListener('touchstart', e => {
+    x0 = null;
+    if (!isDesktop() || !app.route || ['home', 'hub', 'map'].includes(app.route.name) || e.touches.length !== 1) return;
+    if (e.target.closest('#minimap, .maplibregl-map, input, .hours')) return;
+    for (let el = e.target; el && el !== side; el = el.parentElement) if (el.scrollWidth > el.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(el).overflowX)) return;
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = e.timeStamp; claimed = false;
+  }, { passive: true });
+  side.addEventListener('touchmove', e => {
+    if (x0 === null || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+    if (!claimed) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (dx >= 0 || Math.abs(dy) > Math.abs(dx)) { x0 = null; return; }
+      claimed = true; side.style.transition = 'none';
+    }
+    e.preventDefault();
+    side.style.transform = `translateX(${Math.min(0, dx)}px)`;
+  }, { passive: false });
+  const end = e => {
+    if (x0 === null) return;
+    const dx = (e.changedTouches[0] ? e.changedTouches[0].clientX : x0) - x0, dt = e.timeStamp - t0;
+    x0 = null;
+    if (!claimed) return;
+    side.style.transition = ''; side.style.transform = '';
+    // Far enough: the page it goes back to is simply there. Not far enough: the panel is back where it was.
+    if (-dx > side.offsetWidth * 0.3 || (-dx > 30 && -dx / Math.max(dt, 1) > 0.5)) { if (history.length > 1) history.back(); else location.hash = '#/'; }
+  };
+  side.addEventListener('touchend', end); side.addEventListener('touchcancel', end);
+}
+
+/** Make a drawn page match new markup in place, changing only what differs: text that changed, an attribute that
+ *  changed, a row added or gone. Nodes match by position, which holds for a page redrawn from the same template.
+ *  The small map's slot keeps its children (the map lives there, put in by the map module). */
+export function morph(el, markup) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = markup;
+  sync(el, tpl.content);
+}
+function sync(a, b) {
+  const ac = [...a.childNodes], bc = [...b.childNodes];
+  for (let i = 0; i < Math.max(ac.length, bc.length); i++) {
+    const x = ac[i], y = bc[i];
+    if (!y) { x.remove(); continue; }
+    if (!x) { a.appendChild(y); continue; }
+    if (x.nodeType !== y.nodeType || (x.nodeType === 1 && x.tagName !== y.tagName)) { x.replaceWith(y); continue; }
+    if (x.nodeType !== 1) { if (x.data !== y.data) x.data = y.data; continue; }
+    for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
+    for (const at of y.attributes) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
+    if (x.id === 'minimap' || x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') continue;
+    sync(x, y);
+  }
+}
+
+async function render(tick = false) {
+  const { seg, q } = parse();
+  renderTabs();
+  const name = seg[0] || 'home';
+  const clockNow = now();
+  let view;
+  try {
+    if (name === 'home') view = home.render({ q: q.q || '', page: 'home' }, clockNow);
+    else if (name === 'search') view = home.render({ q: q.q || '', page: 'search', pick: q.for || '' }, clockNow);
+    else if (name === 'go') view = go.render({ to: seg[1], from: seg[2] }, clockNow);
+    else if (name === 'stop') view = stopView.render({ id: seg[1], full: seg[2] === 'all', run: q.run, on: q.on }, clockNow);
+    else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
+    else if (name === 'route') view = routeView.render({ short: decodeURIComponent(seg[1] || ''), dir: seg[2], at: seg[3], full: q.all === '1', bus: q.bus }, clockNow);
+    else if (name === 'about') view = about.render({ section: seg[1] }, clockNow);
+    else if (name === 'usu' && seg[1] === 'route') view = uroute.render({ id: seg[2] }, clockNow);
+    else if (name === 'usu') view = ustop.render({ id: seg[1] }, clockNow);
+    else if (name === 'map') view = null;
+    else view = home.render({}, clockNow);
+  } catch (e) {
+    console.error(e);
+    view = { html: html`<div class="empty"><h2>Something went wrong</h2><p>${e.message}</p></div>` };
+  }
+  // A stop page reached from the Map tab on a phone is a sheet over the map: a swipe down at its top sends it back. The mark survives the minute's redraws of the same page.
+  const isPage = name === 'stop' || (name === 'usu' && seg[1] !== 'route');
+  const fromMap = !!app.route && app.route.name === 'map' && isPage && !isDesktop();
+  app.route = { name, seg, q };
+  const mapOpen = name === 'map';
+  setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U));
+  setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route', 'go'].includes(name));
+  body.classList.toggle('map-open', mapOpen);
+  if (view) {
+    // A page is the same page across its own picks (the Transit Center's routes): `view.key` says so, and the
+    // rider's place is kept.
+    const key = view.key || name + (seg[1] || '');
+    const same = side.dataset.view === key;
+    const keepScroll = (tick || view.keepScroll) && same;
+    // The same page again with nothing changed (the feed's poll, most of the time): left alone, so nothing blinks.
+    const markup = String(view.html), unchanged = tick && same && side.lastHtml === markup;
+    const y = side.scrollTop;
+    if (!unchanged && same && side.lastHtml) {
+      // The same page, redrawn for the minute or the feed: only what differs is touched, so the small map, the
+      // compass, the scroll and everything else on screen stay exactly as they were, and nothing blinks.
+      morph(side, markup); side.lastHtml = markup;
+    } else if (!unchanged) {
+      // A new page. The small map (one instance, kept by the map module) is moved into its slot before anything
+      // paints, so a stop after a stop keeps its map rather than showing a placeholder and a fresh map a moment later.
+      const mini = side.querySelector('#minimap > .minimap');
+      side.innerHTML = markup; side.lastHtml = markup;
+      const slot = mini && side.querySelector('#minimap');
+      if (slot) slot.prepend(mini);
+    }
+    side.dataset.view = key;
+    side.dataset.sheet = fromMap || (same && isPage && side.dataset.sheet === '1') ? '1' : '';
+    side.scrollTop = keepScroll ? y : 0;
+    // A link to a part of a page (#/about/alerts) lands on it, the first time only: a tick keeps the rider's place.
+    if (!keepScroll && view.anchor) { const a = side.querySelector('#' + view.anchor); if (a) a.scrollIntoView({ block: view.anchorBlock || 'start' }); }
+    // A run's sheet over the page (a phone's stop): over the page and its map, its list kept where it was scrolled.
+    let rs = document.getElementById('runsheet');
+    if (view.sheet) {
+      const y = rs && rs.querySelector('.rs-list') ? rs.querySelector('.rs-list').scrollTop : 0;
+      if (!rs) { rs = document.createElement('div'); rs.id = 'runsheet'; body.appendChild(rs); }
+      rs.innerHTML = view.sheet;
+      if (rs.querySelector('.rs-list')) rs.querySelector('.rs-list').scrollTop = y;
+    } else if (rs) rs.remove();
+    if (!unchanged) view.mount && view.mount(side, app);
+  } else document.getElementById('runsheet')?.remove();
+  if (mapOpen || isDesktop()) {
+    const m = await ensureMap();
+    const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
+    const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert';
+    m.show({
+      stopId: name === 'map' && !at && !mapU && !mapR && !mapUR && !mapA ? seg[1] : name === 'stop' ? seg[1] : null,
+      uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
+      ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
+      routeShort: mapR ? decodeURIComponent(seg[2] || '') : name === 'route' ? decodeURIComponent(seg[1] || '') : null,
+      alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: name === 'hub', tick,
+    }, app, clockNow);
+  }
+  document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';
+}
+
+// ---- location: asked for in words first, then of the browser
+export function askLocation(onDone) {
+  const blocked = pref('near') === 'blocked';
+  const sheet = document.createElement('div');
+  sheet.innerHTML = html`<div class="scrim"></div><div class="sheet" role="dialog" aria-modal="true">
+    <div class="grip"></div>
+    <div class="title">${icon(blocked ? 'ban' : 'near', 26)}<h2>${blocked ? 'Location is blocked' : 'Sort stops by distance?'}</h2></div>
+    ${blocked
+      ? html`<p>Your browser is refusing to share your location with Cache Rider. Allow it in the site settings for this page, then try again.</p><p class="sub">Search and browsing by route work without it.</p>`
+      : html`<p>Your browser will ask to share your location. Cache Rider uses it on this device to list the nearest stops first. It isn't sent anywhere or stored.</p><p class="sub">Search and browsing by route work without it.</p>`}
+    <button class="btn btn-primary btn-lg blueprint" data-act="go"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>${blocked ? 'Try again' : 'Use my location'}</button>
+    <button class="btn btn-secondary btn-lg" data-act="no">Not now</button>
+  </div>`;
+  const close = () => sheet.remove();
+  sheet.querySelector('.scrim').onclick = close;
+  sheet.querySelector('[data-act=no]').onclick = close;
+  sheet.querySelector('[data-act=go]').onclick = () => { close(); locate(onDone); };
+  body.appendChild(sheet);
+}
+
+export function locate(onDone) {
+  if (!navigator.geolocation) { pref('near', 'blocked'); onDone && onDone(null); return; }
+  navigator.geolocation.getCurrentPosition(p => {
+    app.geo = { lat: p.coords.latitude, lon: p.coords.longitude, at: Date.now() };
+    pref('near', 'on');
+    onDone && onDone(app.geo);
+    render();
+  }, err => {
+    pref('near', err.code === err.PERMISSION_DENIED ? 'blocked' : null);
+    app.geo = null;
+    onDone && onDone(null);
+    if (err.code === err.PERMISSION_DENIED) askLocation(onDone);
+  }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
+}
+
+/** Near me: silent when the browser already allows it, the explaining sheet only when the browser is about to ask. */
+export async function nearMe(onDone) {
+  // A fix from the last two minutes is where the rider is: no browser call, so no prompt.
+  if (app.geo && Date.now() - app.geo.at < 120000) { onDone && onDone(app.geo); return; }
+  // Allowed before: straight to the browser, without our explaining sheet. (Firefox answers 'prompt' for a
+  // permission it has given unless the rider ticked Remember, so its answer isn't trusted here.)
+  if (pref('near') === 'on') return locate(onDone);
+  let state = 'prompt';
+  try {
+    if (navigator.permissions) state = (await navigator.permissions.query({ name: 'geolocation' })).state;
+  } catch { /* the browser won't say; go by what we remember */ }
+  if (state === 'granted') return locate(onDone);
+  if (state === 'denied') pref('near', 'blocked');
+  askLocation(onDone);
+}
+
+/** 12- or 24-hour, from the About page: every time on screen follows at once. */
+export function toggleClock() {
+  set24(!is24());
+  render();
+}
+
+/** Miles or kilometres, from the About page: every distance on screen follows at once. */
+export function toggleUnits() {
+  setKm(!isKm());
+  render();
+}
+
+/** Near me, off: forget the fix and stop asking. */
+export function nearOff() {
+  app.geo = null;
+  pref('near', null);
+  render();
+}
+
+/** On load, locate only when the browser says it's already allowed: never a prompt before a tap. */
+async function autoLocate() {
+  if (pref('near') !== 'on' || !navigator.permissions) return;
+  try {
+    const st = await navigator.permissions.query({ name: 'geolocation' });
+    if (st.state === 'granted') locate();
+  } catch { /* the browser won't say; wait for the tap */ }
+}
+
+// ---- install: the browser's own prompt where there is one; on iPhone Safari, the steps. Either only once the rider
+// has saved a stop, the sign they'll be back, and never over a page they're just opening.
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => !/Android/i.test(navigator.userAgent) && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));   // an iPad says it's a Mac with a touchscreen
+/** Just after a rider saves a stop, the first time: on iPhone Safari, the home-screen steps (once; Not now is final). */
+export function afterSave() {
+  if (isIOS() && !standalone() && !pref('install')) setTimeout(iosSheet, 400);
+}
+export function installCard() {
+  if (!app.installPrompt || standalone() || pref('install')) return '';
+  return html`<div class="blueprint install" id="install-card">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}
+    <div class="who"><span class="cr">CR</span><div class="col"><span class="title">Install Cache Rider</span><span class="sub">One tap from your home screen. Works offline.</span></div></div>
+    <div class="acts"><button class="btn btn-ghost" data-act="no">Not now</button><button class="btn btn-primary blueprint" data-act="go">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}${icon('install', 18)}Install</button></div></div>`;
+}
+export function wireInstall(el) {
+  const card = el.querySelector('#install-card');
+  if (!card) return;
+  card.querySelector('[data-act=no]').onclick = () => { pref('install', 'no'); card.remove(); };
+  card.querySelector('[data-act=go]').onclick = async () => {
+    const p = app.installPrompt; if (!p) return;
+    p.prompt();
+    const r = await p.userChoice.catch(() => null);
+    if (r && r.outcome === 'accepted') pref('install', 'done');
+    app.installPrompt = null; card.remove();
+  };
+}
+/** What the About page can offer: Chrome's prompt, the iPhone steps, or nothing because it's already installed. */
+export function installState() {
+  if (standalone()) return 'installed';
+  if (app.installPrompt) return 'prompt';
+  if (isIOS()) return 'ios';
+  return 'none';
+}
+
+/** The steps for a browser with no install prompt a page can raise: Safari's Share, or a menu elsewhere. */
+export function iosSheet() { installSheet(true); }
+export function installSheet(ios = isIOS()) {
+  const android = /Android/i.test(navigator.userAgent);
+  const steps = ios
+    ? [['Tap <b>Share</b> in Safari\'s toolbar', 'share'], ['Choose <b>Add to Home Screen</b>', 'plusSquare'], ['Tap <b>Add</b>, top right', 'check']]
+    : android
+      ? [['Open your browser\'s <b>menu</b> (⋮)', 'more'], ['Choose <b>Install</b> or <b>Add to Home screen</b>', 'plusSquare'], ['Confirm', 'check']]
+      : [['Open your browser\'s <b>menu</b>', 'more'], ['Choose <b>Install Cache Rider</b> (Safari: <b>File → Add to Dock</b>)', 'plusSquare'], ['Confirm', 'check']];
+  const sheet = document.createElement('div');
+  sheet.className = 'ios-install';
+  sheet.innerHTML = html`<div class="scrim"></div><div class="sheet blueprint" role="dialog" aria-label="Add to Home Screen">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}
+    <div class="who"><span class="cr big">CR</span><div class="col"><span class="title">Keep Cache Rider on your home screen</span><span class="sub">Opens full screen on your saved stops. Works offline with the last timetable it downloaded.</span></div><button class="btn btn-ghost btn-icon" data-act="no" aria-label="Close">${icon('close', 22)}</button></div>
+    <div class="steps">${html.raw(steps.map(([t, ic], i) => `<div class="step"><span class="n">${i + 1}</span><span>${t}</span><span class="ic">${icon(ic, 20).s}</span></div>`).join(''))}</div>
+    <button class="btn btn-secondary btn-lg btn-block" data-act="no">Not now</button></div>`;
+  const close = () => { pref('install', 'no'); sheet.remove(); };
+  sheet.querySelectorAll('[data-act=no]').forEach(b => b.onclick = close);
+  sheet.querySelector('.scrim').onclick = close;
+  body.appendChild(sheet);
+}
+function setupInstall() {
+  if (standalone()) return;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); app.installPrompt = e; if (app.route && app.route.name === 'home') render(); });
+  window.addEventListener('appinstalled', () => { pref('install', 'done'); app.installPrompt = null; const c = document.getElementById('install-card'); if (c) c.remove(); });
+}
+
+/** The look: the phone's by default, or light or dark when the rider picks one; kept on the phone and applied in
+ *  index.html before first paint. The toggle steps phone → light → dark → phone, and wears the sun-and-moon, the
+ *  sun or the moon to say which it's on. */
+export const themeMode = () => document.documentElement.dataset.theme || 'auto';
+const THEME = { auto: ['sunmoon', 'Matches this device'], light: ['sun', 'Light'], dark: ['moon', 'Dark'] };
+export function cycleTheme() {
+  const next = { auto: 'light', light: 'dark', dark: 'auto' }[themeMode()];
+  if (next === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = next;
+  pref('theme', next === 'auto' ? null : next);
+  const dark = next === 'dark' || next === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches;
+  const m = document.querySelector('meta[name=theme-color]');
+  if (m) m.content = dark ? '#101214' : '#f2f2f3';
+  window.dispatchEvent(new Event('themechange'));
+  paintThemeButtons();
+}
+export function themeButton(id) {
+  const [ic, label] = THEME[themeMode()];
+  return html`<button class="btn btn-secondary themebtn" id="${id}" type="button" title="${label}">${icon(ic, 20)}<span>${label}</span></button>`;
+}
+function paintThemeButtons() {
+  const [ic, label] = THEME[themeMode()];
+  for (const b of document.querySelectorAll('.themebtn')) { b.innerHTML = icon(ic, 20).s + '<span>' + label + '</span>'; b.title = label; }
+}
+
+function wireHeader() {
+  const form = document.getElementById('topsearch');
+  form.querySelector('.lead').innerHTML = icon('search', 20).s;
+  const input = form.querySelector('input');
+  // On the Map tab the header's box searches the map, results over it, as the phone's map bar does.
+  const onMap = () => app.route && app.route.name === 'map' && app.mapMod;
+  input.addEventListener('input', () => { if (onMap()) app.mapMod.mapSearch(input.value); });
+  input.addEventListener('focus', () => { if (onMap() && input.value.trim()) app.mapMod.mapSearch(input.value); });
+  form.onsubmit = e => { e.preventDefault(); if (onMap()) return; const q = input.value.trim(); location.hash = q ? '#/search?q=' + encodeURIComponent(q) : '#/'; };
+  // Following the phone, a change of its look reaches the maps too.
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (themeMode() === 'auto') window.dispatchEvent(new Event('themechange')); });
+}
+
+async function boot() {
+  try {
+    await Promise.all([load(), loadGrid()]);
+    await Promise.all([loadUSU(), loadAlerts(), loadPlaces(), loadPool()]);   // after the timetable: shared kerbs and alerts need its stops and routes
+  } catch (e) {
+    side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;
+    return;
+  }
+  wireHeader();
+  setupInstall();
+  wireSheet();
+  wireSwipeBack();
+  // Not `render` itself: the event would arrive as the tick flag and the map would sit still.
+  window.addEventListener('hashchange', () => render());
+  matchMedia('(min-width: 900px)').addEventListener('change', () => render());
+  render();
+  autoLocate();
+  // The day and time at the right of the desktop header: to the minute, as the buses run.
+  const tc = document.getElementById('topclock');
+  const tick = () => {
+    if (!isDesktop() || document.visibilityState !== 'visible') return;
+    const c = now(), d = dayFrom(c.ymd), k = clock(c.min);
+    tc.innerHTML = html`<span>${d.date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })} <span class="md">${MON_SHORT[d.date.getUTCMonth()]} ${d.date.getUTCDate()}</span></span><span class="hm">${k.h}${k.ap ? html`<small>${k.ap}</small>` : ''}</span>`;
+  };
+  tick(); setInterval(tick, 5000);
+  // Relative times drift by the minute: redraw when the minute turns, never mid-tap or mid-typing.
+  let lastMin = now().min;
+  setInterval(() => {
+    const m = now().min;
+    if (m === lastMin || document.visibilityState !== 'visible' || !app.route || app.route.name === 'map') return;
+    if (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    lastMin = m;
+    render(true);
+  }, 5000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (Date.now() - A.loadedAt > 3600e3) loadAlerts().then(() => render()); else render(); });
+  // Fresh bus positions redraw a live screen in place.
+  onLive(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
+  onRt(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').catch(() => {});
+}
+boot();
