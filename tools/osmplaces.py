@@ -21,10 +21,13 @@ QUERY = f"""[out:json][timeout:120];
   nwr["name"]["amenity"]({BOX}); nwr["name"]["shop"]({BOX}); nwr["name"]["leisure"]({BOX});
   nwr["name"]["office"]({BOX}); nwr["name"]["tourism"]({BOX}); nwr["name"]["healthcare"]({BOX});
   nwr["name"]["building"~"school|university|college|hospital|civic|public|stadium|government|retail|commercial"]({BOX});
+  nwr["name"]["man_made"="works"]({BOX}); nwr["name"]["landuse"~"industrial|commercial|retail"]({BOX});
 );
 out center tags;"""
 
-KEYS = ['amenity', 'shop', 'leisure', 'healthcare', 'tourism', 'office', 'building']
+KEYS = ['amenity', 'shop', 'leisure', 'healthcare', 'tourism', 'office', 'building', 'man_made', 'landuse']
+# Names a place also goes by (a brand, an old name, what's on the sign): searched, never shown.
+ALSO = ['alt_name', 'short_name', 'old_name', 'brand', 'operator', 'official_name']
 # Kinds nobody takes a bus to find.
 SKIP = {
     'amenity': {'parking', 'parking_space', 'parking_entrance', 'bench', 'waste_basket', 'bicycle_parking', 'fire_hydrant',
@@ -50,6 +53,7 @@ WORDS = {
     'department_store': 'Department store', 'mall': 'Mall', 'clothes': 'Clothing', 'government': 'Government office',
     'civic': 'Public building', 'public': 'Public building', 'retail': 'Shop', 'commercial': 'Business',
     'stadium': 'Stadium', 'yes': '', 'doityourself': 'Hardware', 'hardware': 'Hardware', 'car': 'Car dealer',
+    'works': 'Plant', 'industrial': 'Industrial area',
 }
 
 def dist(a, b, c, d):
@@ -82,7 +86,8 @@ for e in els:
     if dist(lat, lon, near['lat'], near['lon']) > WALK: continue
     word = WORDS.get(kind, kind.replace('_', ' ').capitalize())
     if kind == 'university' and campus: word = campus
-    found.append({'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'word': word, 'rank': rank[key], 'town': near['town'], 'stop': near['name']})
+    also = ' '.join(dict.fromkeys(w for k in ALSO for w in [(t.get(k) or '').strip()] if w and w.lower() != name.lower()))
+    found.append({'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'word': word, 'rank': rank[key], 'town': near['town'], 'stop': near['name'], 'also': also})
 
 # Once each: the same name within 150 m is one place (a point and its building); the better-described is kept.
 found.sort(key=lambda p: (p['rank'], p['name']))
@@ -93,6 +98,6 @@ for p in found:
 # A name that repeats in a town says which one: the stop it's by.
 count = {}
 for p in kept: count[(p['name'].lower(), p['town'])] = count.get((p['name'].lower(), p['town']), 0) + 1
-out = [[p['name'], p['lat'], p['lon'], p['word'], p['town'] + (' · by ' + p['stop'] if count[(p['name'].lower(), p['town'])] > 1 else '')] for p in sorted(kept, key=lambda p: p['name'].lower())]
+out = [[p['name'], p['lat'], p['lon'], p['word'], p['town'] + (' · by ' + p['stop'] if count[(p['name'].lower(), p['town'])] > 1 else '')] + ([p['also']] if p['also'] else []) for p in sorted(kept, key=lambda p: p['name'].lower())]
 json.dump({'from': 'OpenStreetMap contributors', 'campus': campus, 'places': out}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(f'{len(out)} places, {os.path.getsize(OUT) // 1024} KB, campus {campus or "none"}', file=sys.stderr)

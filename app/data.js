@@ -25,7 +25,7 @@ export async function loadPlaces() {
   const get = async f => { try { const r = await fetch(BASE + 'data/' + f, { cache: 'no-cache' }); return r.ok ? await r.json() : {}; } catch { return {}; } };
   const [pj, oj] = await Promise.all([get('places.json'), get('osm-places.json')]);
   P = pj.places || [];
-  O = (oj.places || []).map(([name, lat, lon, word, area]) => ({ name, lat, lon, word, area, osm: true }));
+  O = (oj.places || []).map(([name, lat, lon, word, area, also]) => ({ name, lat, lon, word, area, also: also || '', osm: true }));   // `also`: names it goes by, searched, not shown
   O.campus = oj.campus || '';   // the university's initials, the word its buildings are listed under
 }
 // ---- POOL, Connect's on-demand ride: its zone and its pickup points (tools/pool.py), an optional file; the app
@@ -68,7 +68,7 @@ export function searchPlaces(q, limit = 8) {
   const town = p => (p.area || '').split(' · ')[0];
   const mine = P.filter(p => hit(p.name));
   const fresh = p => !mine.some(m => distance(m.lat, m.lon, p.lat, p.lon) < 150);
-  const named = O.filter(p => hit(p.name + ' ' + town(p)) && fresh(p));
+  const named = O.filter(p => hit(p.name + ' ' + town(p) + ' ' + p.also) && fresh(p));
   const kind = O.filter(p => !named.includes(p) && hit(p.word + ' ' + town(p)) && fresh(p));
   // POOL's pickup points by name, after the pamphlet's places: each a place served by POOL, with its nearest stops.
   const pool = POOL ? POOL.stops.filter(s => hit(s.name)).map(s => ({ name: s.name, lat: s.lat, lon: s.lon, word: 'POOL pickup', area: '', osm: true, pool: true, pickup: true })) : [];
