@@ -387,24 +387,36 @@ function wireGrip(app) {
   // Swiped down, the card shrinks to its head (the stop's name and routes) and the map shows through; swiped down
   // again it goes. Up, or a tap on the head, opens it out. The size chosen stays for the next stop tapped.
   const peeked = () => card.classList.contains('peek');
-  const peekIn = () => { fitPeek(card); card.classList.add('peek'); card.scrollTop = 0; };
-  // Let go, the card eases to its new size (or off): a short transition for the settle only, then none, so a tap
-  // elsewhere still shows its card at once.
-  const ease = () => { card.style.transition = 'transform .25s ease, max-height .25s ease'; setTimeout(() => { card.style.transition = ''; }, 300); };
+  // Between its two sizes the card only ever slides: its height changes in one go, before or after the slide, with
+  // the transform holding its top edge where it was, so nothing bounces. A short transition for the settle only,
+  // then none, so a tap elsewhere still shows its card at once.
+  const slide = (fromY, toY, then) => {
+    card.style.transition = 'none'; card.style.transform = `translateY(${fromY}px)`;
+    card.getBoundingClientRect();   // the start is laid out before the transition begins
+    card.style.transition = 'transform .25s ease'; card.style.transform = `translateY(${toY}px)`;
+    let done = false;
+    const finish = () => { if (done) return; done = true; card.style.transition = 'none'; then && then(); card.style.transform = ''; card.getBoundingClientRect(); card.style.transition = ''; };
+    card.addEventListener('transitionend', finish, { once: true }); setTimeout(finish, 320);
+  };
+  // Down to the peek: the head slides to where it will rest, then the card is cut to it.
+  const toPeek = (dy = 0) => { const full = card.offsetHeight; fitPeek(card); const peekH = parseFloat(card.style.getPropertyValue('--peek')) || full; slide(dy, Math.max(0, full - peekH), () => { card.classList.add('peek'); card.scrollTop = 0; }); };
+  // Up to the whole card: it grows first, held down where the peek was, then slides up.
+  const toFull = (dy = 0) => { const peekH = card.offsetHeight; card.classList.remove('peek'); const full = card.offsetHeight; slide(full - peekH + dy, 0); };
+  // Off the map: the card's own transform (its closed state) with a transition on it.
+  const away = () => { card.style.transition = 'transform .25s ease'; close(); setTimeout(() => { card.style.transition = ''; }, 300); };
   let y0 = null, x0 = 0, t0 = 0, claimed = false;
   const settle = (dy, dt) => {
-    ease(); card.style.transform = '';
     const far = Math.abs(dy) > 70 || (Math.abs(dy) > 24 && Math.abs(dy) / Math.max(dt, 1) > 0.5);   // far enough, or a flick
-    if (!far) return;
-    if (claimed === 'down') { if (peeked()) close(); else peekIn(); }
-    else if (peeked()) card.classList.remove('peek');
-    else { const href = pageHref(); if (href) location.hash = href; }   // the page slides up over the map
+    const at = claimed === 'down' ? Math.max(0, dy) : Math.max(-24, Math.min(0, dy / 4));   // where the finger left it
+    if (!far) { slide(at, 0); return; }
+    if (claimed === 'down') { if (peeked()) away(); else toPeek(at); }
+    else if (peeked()) toFull(at);
+    else { slide(at, 0); const href = pageHref(); if (href) location.hash = href; }   // the page slides up over the map
   };
   card.addEventListener('click', e => {
     if (e.target.closest('a, button')) return;
-    ease();
-    if (peeked()) card.classList.remove('peek');
-    else if (e.target.closest('.grip')) peekIn();
+    if (peeked()) toFull();
+    else if (e.target.closest('.grip')) toPeek();
   });
   card.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) { y0 = null; return; }
