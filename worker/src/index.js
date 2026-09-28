@@ -25,6 +25,8 @@ const ANNOUNCEMENTS = 'https://mycvtdbus.org/announcements.data';
 // by trip and place (GET /uta?trips=5912862:12,5913774:30) and the feed is skimmed for just those.
 // The answer has the shape of the few-stops one, a null where the stop id would be:
 //   { t, trips: { "<trip_id>": { s: [[null, stop_sequence, predicted_epoch_s, schedule_relationship]] } } }
+// A trip the feed says is cancelled comes back as { c: 1, s: [] }. t is the feed header's own
+// timestamp, 0 when it has none, so a client that checks freshness treats it as stale.
 const UTA_TRIPS = 'https://apps.rideuta.com/tms/gtfs/TripUpdate';
 async function uta(url, cors) {
   const headers = { ...cors, 'Access-Control-Allow-Origin': '*' };
@@ -34,7 +36,7 @@ async function uta(url, cors) {
   const want = new Map();
   for (const pair of ask.split(',').slice(0, 40)) {
     const [id, seq] = pair.split(':');
-    if (!id || !(Number(seq) >= 0)) continue;
+    if (!id || !Number.isInteger(Number(seq)) || Number(seq) < 0) continue;
     if (!want.has(id)) want.set(id, new Set());
     want.get(id).add(Number(seq));
   }
@@ -69,17 +71,18 @@ function walk(b, from, to, fn) {   // fn(field, wireType, valueOrStart, end)
 }
 const utf8 = new TextDecoder();
 function skimTrips(b, want) {
-  const out = { t: Math.floor(Date.now() / 1000), trips: {} };
+  const out = { t: 0, trips: {} };
   walk(b, 0, b.length, (f, wt, s, e) => {
     if (f === 1 && wt === 2) walk(b, s, e, (g, w, v) => { if (g === 3 && w === 0) out.t = v; });   // the header's timestamp
     if (f !== 2 || wt !== 2) return;
     walk(b, s, e, (g, w, s2, e2) => {
       if (g !== 3 || w !== 2) return;   // the entity's trip_update
-      let id = null, seqs = null;
+      let id = null, seqs = null, cancelled = false;
       const hits = [];
       walk(b, s2, e2, (h, w3, s3, e3) => {
         if (h === 1 && w3 === 2) walk(b, s3, e3, (k, w4, s4, e4) => {
           if (k === 1 && w4 === 2) { id = utf8.decode(b.subarray(s4, e4)); seqs = want.get(id) || null; }
+          else if (k === 4 && w4 === 0 && s4 === 3) cancelled = true;   // the trip's schedule_relationship: CANCELED
         });
         else if (h === 2 && w3 === 2 && seqs) {
           let seq = null, arr = null, dep = null, rel = 0;
@@ -94,7 +97,8 @@ function skimTrips(b, want) {
           if (seq !== null && seqs.has(seq) && (time || rel === 1)) hits.push([null, seq, time || 0, rel]);
         }
       });
-      if (id && hits.length) out.trips[id] = { s: hits };
+      if (id && seqs && cancelled) out.trips[id] = { c: 1, s: [] };
+      else if (id && hits.length) out.trips[id] = { s: hits };
     });
   });
   return out;
