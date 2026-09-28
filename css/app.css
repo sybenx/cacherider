@@ -144,6 +144,9 @@ svg { display: block; flex: none; }
 .section { display: flex; align-items: center; gap: 8px; padding: 16px 16px 8px; font-family: var(--font-heading); font-weight: 600; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); }
 .section.between { justify-content: space-between; align-items: baseline; padding: 14px 16px 10px; }
 .section .note { font-family: var(--font-body); font-weight: 400; font-size: 13px; letter-spacing: 0; text-transform: none; }
+/* a place's heading as the start of a journey: the whole line taps, the note says what the tap does */
+a.section.pick { color: var(--color-text); text-decoration: none; min-height: 48px; align-items: center; }
+a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--color-accent); font-weight: 500; white-space: nowrap; }
 .sched { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); white-space: nowrap; }
 .rel { font-size: 13.5px; color: var(--cr-muted); }
 .fine { padding: 14px 16px 18px; font-size: 12.5px; line-height: 1.45; color: var(--cr-muted); }

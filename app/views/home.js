@@ -151,7 +151,7 @@ function searchPage(q, clockNow, app, pick = '') {
   parts.push(html`<div class="titlebar m-only"><span class="wordmark">Cache Rider</span><button class="btn btn-secondary" id="near">${icon('near', 20)}Near me${app && app.geo ? html.raw(' <span class="muted">· on</span>') : ''}</button></div>`);
   if (dest) parts.push(html`<div class="notice pickfrom">${icon('route', 16)}<span>Where will you start from? A stop, a place or an address. Going to <b>${dest.hub ? D.hub.name : dest.name}</b></span></div>`);
   parts.push(html`<div class="pad"><form class="search" id="search" role="search" data-for="${dest ? dest.id : ''}"><input class="input" type="search" placeholder="${dest ? 'Stop, place or address' : 'Street or address, e.g. 500 North'}" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
-  if (q) { parts.push(results(q, clockNow)); return { html: parts.join(''), mount, title: 'Search' }; }
+  if (q) { parts.push(results(q, clockNow, pick)); return { html: parts.join(''), mount, title: 'Search' }; }
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
   if (rec.length) parts.push(html`<div class="section">${icon('history', 16)}Recent on this device</div><div class="list">${rec.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
@@ -206,15 +206,18 @@ function go(q, live = false) {
   if (live) { const i = document.querySelector('#search input'); if (i) { i.focus({ preventScroll: true }); i.setSelectionRange(i.value.length, i.value.length); } }
 }
 
-function results(q, clockNow) {
+function results(q, clockNow, pick = '') {
   const hits = search(q);
   const addr = parseAddress(q);
   const places = addr ? geocode(addr, 4) : [];
+  // Choosing where to start from, the whole heading of a place or an address is the start: a small link beside
+  // it was missed on a phone, the tap landing on the words.
   const addrHtml = places.map(pl => html`
-    <div class="section between"><span>${pl.label} · ${pl.town}${townState(pl.town)}${pl.near ? html.raw(`<span class="note"> · near ${esc(pl.near)}</span>`) : ''}</span><a class="note" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}">Show on map</a></div>
+    ${pick ? html`<a class="section between pick" href="#/go/${pick}/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}"><span>${pl.label} · ${pl.town}${townState(pl.town)}</span><span class="note">Start from here ${icon('fwd', 16)}</span></a>`
+    : html`<div class="section between"><span>${pl.label} · ${pl.town}${townState(pl.town)}${pl.near ? html.raw(`<span class="note"> · near ${esc(pl.near)}</span>`) : ''}</span><a class="note" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}">Show on map</a></div>`}
     <div class="list">${pl.stops.length ? pl.stops.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops near there.</p></div>`}</div>`).join('');
   const found = searchPlaces(q), spots = found.list;
-  const spotHtml = spots.map(p => placeBlock(p, clockNow)).join('')
+  const spotHtml = spots.map(p => placeBlock(p, clockNow, pick)).join('')
     + (found.more ? html`<div class="fine">${found.more} more ${found.more === 1 ? 'place matches' : 'places match'}: add a word, a town say, to narrow it.</div>`.s : '');
   const us = searchUSU(q);
   const campusHtml = (us.stops.length || us.routes.length) ? html`
@@ -248,7 +251,7 @@ const CATS = { schools: 'School', medical: 'Medical', grocery: 'Grocery', entert
 const POOL = 'https://rideconnectutah.gov/pool/';
 /** A place from the pamphlet: its nearest stops with their next buses; the Transit Center when it's a short walk from it;
  *  and Pool, where Connect's on-demand ride serves it. */
-function placeBlock(p, clockNow) {
+function placeBlock(p, clockNow, pick = '') {
   const near = nearest(p.lat, p.lon, 8).filter(x => !stop(x.i).hub);
   const close = near.filter(x => x.d <= 600).slice(0, 3);
   const shown = close.length ? close : near.slice(0, 2);   // nothing close: the nearest two anyway, their distance says it
@@ -256,7 +259,9 @@ function placeBlock(p, clockNow) {
   const pool = p.pickup ? html`<div class="notice">${icon('info', 16)}<span>A <b>POOL</b> pickup point: Connect's on-demand ride, zero fare, booked in their app or by phone. <a href="${POOL}" target="_blank" rel="noopener">How POOL works</a></span></div>`
     : p.pool ? html`<div class="notice">${icon('info', 16)}<span>${close.length ? 'Also served by' : 'Served by'} POOL, Connect's on-demand ride: zero fare, booked in their app. <a href="${POOL}" target="_blank" rel="noopener">How POOL works</a></span></div>` : '';
   const what = [p.osm ? p.word : CATS[p.cat], p.osm ? p.area : ''].filter(Boolean).join(' · ');
-  return html`<div class="section between"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><a class="note" href="#/map/at/${p.lat.toFixed(5)},${p.lon.toFixed(5)}/${encodeURIComponent(p.name)}">Show on map</a></div>
+  const head = pick ? html`<a class="section between pick" href="#/go/${pick}/at/${p.lat.toFixed(5)},${p.lon.toFixed(5)}/${encodeURIComponent(p.name)}"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><span class="note">Start from here ${icon('fwd', 16)}</span></a>`
+    : html`<div class="section between"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><a class="note" href="#/map/at/${p.lat.toFixed(5)},${p.lon.toFixed(5)}/${encodeURIComponent(p.name)}">Show on map</a></div>`;
+  return html`${head}
     ${pool}<div class="list">${hub}${shown.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' }))}</div>`.s;
 }
 
