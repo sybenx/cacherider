@@ -815,7 +815,7 @@ export function liveUpdate(app) {
     let m = busMarkers.get(b.id);
     if (!m) {
       const el = document.createElement('div');
-      el.className = 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';
+      el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
       el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind };
       busMarkers.set(b.id, m);

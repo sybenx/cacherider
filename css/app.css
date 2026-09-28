@@ -435,6 +435,12 @@ a.twinline { text-decoration: none; }
 #map.bus-small .bus-marker svg { overflow: visible; filter: drop-shadow(0 0 1px var(--color-bg)); }
 #map.bus-small .bus-marker path { fill: var(--bus-color); stroke: color-mix(in srgb, var(--color-text) 62%, var(--color-bg)); stroke-width: 4; stroke-linejoin: round; paint-order: stroke fill; }
 #map.bus-small .bus.on .bus-marker path { stroke: var(--color-accent); stroke-width: 2.5; }
+/* The Aggie Shuttle's buses, told from Connect's at a glance whatever their colour (its reds and oranges are
+   Connect's too, on the same streets): squared where Connect's are round, and far off a hollow arrow, the paper
+   showing through, where Connect's are solid. Its lines are dashed on the same principle. */
+.bus.shuttle .bus-marker { border-radius: 6px; }
+#map.bus-small .bus.shuttle .bus-marker path { fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3.5; paint-order: normal; }
+#map.bus-small .bus.shuttle.on .bus-marker path { stroke: var(--color-accent); }
 /* a bus on the lit route keeps its badge and its tap at any zoom, so tapping a stop finds its buses */
 #map.bus-small .bus.lit, #map.bus-small .bus.on { pointer-events: auto; }
 #map.bus-small .bus.lit .bus-marker, #map.bus-small .bus.on .bus-marker { transform: none; border-color: #fff; background: var(--bus-color); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); }
