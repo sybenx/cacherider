@@ -185,7 +185,7 @@ function plan(st, pick) {
     const ri = s.ris[s.ris.length - 1], r = D.routes[ri];
     const tag = !tags || s.off ? '' : s.eta === 0 ? 'IN' : s.eta > 0 ? s.eta + ' MIN' : '–';
     const cls = ['tc-bay', on ? 'on' : '', pick && !on ? 'dim' : '', s.off ? 'off' : ''].filter(Boolean).join(' ');
-    return `<a class="${cls}" href="#/hub${on ? '' : '/' + k}" title="Route ${k}" style="left:${(x / W * 100).toFixed(2)}%;top:${(y / Hh * 100).toFixed(2)}%">`
+    return `<a class="${cls}" href="#/hub${on ? '' : '/' + k}" title="${isLoop(s.ris[0]) ? D.routes[s.ris[0]].long : 'Route ' + k}" style="left:${(x / W * 100).toFixed(2)}%;top:${(y / Hh * 100).toFixed(2)}%">`
       + `<span class="b" style="background:#${r.color};color:#${r.text}">${k}</span>`
       + (tag ? `<span class="tag${s.eta === 0 ? ' in' : s.eta === null ? ' quiet' : ''}">${tag}</span>` : '') + '</a>';
   }).join('');

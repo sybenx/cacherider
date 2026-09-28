@@ -57,7 +57,7 @@ export function render({ short, dir, at, full, bus }, clockNow) {
   parts.push(html`<div class="section">${icon('stops', 16)}${!whole ? `${coming.length} of ${seq.length} stops still to come today` : split ? `${seq.length} stops · tonight's first` : `${seq.length} stops, in order`}</div><div class="list">${rows}</div>`);
   if (onward.later) parts.push(onward.later);
   if (!whole) parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/route/${encodeURIComponent(short)}/${d}?all=1">The whole route · all ${seq.length} stops</a></div>`);
-  return { html: parts.join(''), title: 'Route ' + r.short, mount: mountMini, anchor: here !== undefined ? null : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : buses.length ? busAnchor(buses[0].id) : null, anchorBlock: 'center' };
+  return { html: parts.join(''), title: isLoop(ri) ? r.long : 'Route ' + r.short, mount: mountMini, anchor: here !== undefined ? null : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : buses.length ? busAnchor(buses[0].id) : null, anchorBlock: 'center' };
 }
 
 // ---- staying on the bus. A bus swaps routes at the Transit Center all day (9 and 1 on a Saturday): its next
