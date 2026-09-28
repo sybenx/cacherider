@@ -1420,23 +1420,26 @@ async function routeTimes(ri, clockNow) {
   // A time as short as it reads: today's bare, a later day's with its day ("6:23 Mon"), in grey besides.
   const short = t => clock(t.min).h + (t.day === 0 ? '' : ' ' + dayName(t.ymd, true));
   const dk = dark(), colour = t => t.live ? (dk ? '#94bce3' : '#416180') : t.day > 0 ? (dk ? '#9a9ca0' : '#6b6c70') : (dk ? '#eef0f2' : '#1d1f20');
-  // Whose time it is: a stop's next bus, whichever that is. A bus picked out (its ring, its card, from the route's
-  // card or a tap on it) narrows them to that bus's alone, at the stops still ahead of it: with two buses out on a
-  // route, that's how a rider sees which times are which without the map wearing bus numbers.
-  const picked = selectedBus && !rtStale() ? rt.buses.find(b => b.id === selectedBus && b.ri === ri) : null;
+  // Whose time it is. With two buses out on the route a stop's next bus could be either, so each time says which
+  // ('6:10 · bus 4006'), the same numbers the route's card lists. A bus picked out (its ring, its card) narrows the
+  // times to that bus's alone, at the stops still ahead of it, and the numbers come off. One bus out: plain times.
+  const buses = rtStale() ? [] : rt.buses.filter(b => b.ri === ri);
+  const picked = selectedBus ? buses.find(b => b.id === selectedBus) : null;
+  const busOf = t => { const u = t.trip !== undefined && rt.trips[D.trips[t.trip]]; return u && u.v ? buses.find(b => b.id === 'c:' + u.v) : null; };
+  const which = t => { if (picked || buses.length < 2) return ''; const b = busOf(t); return b ? ' · bus ' + b.label : ''; };
   for (const si of all) {
     const t = nextAt(si, 1, clockNow, picked ? 1 : 8, x => x.r === ri && (!picked || D.trips[x.trip] === picked.trip))[0];   // a picked bus: today only, so a stop it has passed gets no time (not its run tomorrow)
     if (!t) continue;
     // The day's first run, where it starts partway along the route: said, so the stops before it (their first bus the
     // run after) don't look out of order. Not at the Transit Center, where every run starts.
     const f = firstRun(ri, t.ymd), starts = f && f.trip === t.trip && f.si === si && !D.stops[si].hub;
-    let label = short(t) + (starts ? ' · starts here' : '');
+    let label = short(t) + which(t) + (starts ? ' · starts here' : '');
     let lines = [[label, colour(t)]];
     // Where one way calls only on request (16 north at Pepperidge Farms): the next bus each way, a line apiece, the
     // way it goes on each, so the one on request doesn't read as the stop's only bus.
     if (onRequest(si, ri, 0) || onRequest(si, ri, 1)) {
       const ways = [0, 1].map(d => nextAt(si, 1, clockNow, picked ? 1 : 8, x => x.r === ri && x.dir === d && (!picked || D.trips[x.trip] === picked.trip))[0]).filter(Boolean).sort((x, y) => x.req - y.req);
-      lines = ways.map(x => [short(x) + ' ' + (h => /^to /.test(h) ? h : h.replace(/bound$/i, '').toLowerCase())(headsign(x)) + (x.req ? ' · on request' : ''), colour(x)]);
+      lines = ways.map(x => [short(x) + ' ' + (h => /^to /.test(h) ? h : h.replace(/bound$/i, '').toLowerCase())(headsign(x)) + which(x) + (x.req ? ' · on request' : ''), colour(x)]);
       label = lines.map(l => l[0]).join('\n');
     }
     items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), props: { t: label, live: !!t.live, later: t.day > 0, t1: lines[0][0], c1: lines[0][1], t2: lines[1] ? '\n' + lines[1][0] : '', c2: lines[1] ? lines[1][1] : lines[0][1] } });
