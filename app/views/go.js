@@ -3,7 +3,7 @@
 import { D, stop, stopIndex, distance, tripStops } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, relative, metres, fmtDay, dayName } from '../time.js';
-import { html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle } from '../ui.js';
+import { routeName, html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
 import { nearMe, app } from '../main.js';
@@ -56,7 +56,7 @@ function nameOf(si, ri) {
   const s = stop(si);
   if (!s.hub) return s.name;
   const r = ri !== undefined && D.hub.bays.some(b => b.stop === si && b.routes.includes(ri)) ? ri : (D.hub.bays.find(b => b.stop === si) || {}).routes?.[0];
-  return r !== undefined ? `${D.hub.name} · Route ${D.routes[r].short} bay` : D.hub.name;
+  return r !== undefined ? `${D.hub.name} · ${routeName(r, false)} bay` : D.hub.name;
 }
 /** One way there: when you'll arrive, when to set off, then each leg in order. */
 function planCard(p, dest, clockNow) {
@@ -72,7 +72,7 @@ function planCard(p, dest, clockNow) {
       // Between two buses: the change, with the walk to the other stop (a bay across the Transit Center) in it.
       if (prev && prev.kind === 'ride' && next && next.kind === 'ride') {
         const at = stop(prev.to), wait = next.on - prev.off;
-        legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">Change at ${at.hub ? D.hub.name : at.name}</span><span class="sub">Walk ${metres(l.d)} to ${at.hub ? `Route ${D.routes[next.r].short}'s bay` : nameOf(next.from)} · ${wait <= l.mins ? 'the next bus leaves as you get there' : `${wait} min until it leaves`}</span></div></div>`);
+        legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">Change at ${at.hub ? D.hub.name : at.name}</span><span class="sub">Walk ${metres(l.d)} to ${at.hub ? `${routeName(next.r)}'s bay` : nameOf(next.from)} · ${wait <= l.mins ? 'the next bus leaves as you get there' : `${wait} min until it leaves`}</span></div></div>`);
         return;
       }
       const target = l.to !== undefined ? stop(l.to) : null;

@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, stop, route, nextAt, search, searchPlaces, streetish, townish, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, onRequest, A } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill } from '../ui.js';
 import { nearMe } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo, whereabouts } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -633,7 +633,7 @@ function select(id, app, fly = false, zoomIn = false) {
   const fromHub = metres(distance(s.lat, s.lon, D.hub.lat, D.hub.lon));
   const closed = closedRoutes(si, clockNow.ymd), al = stopAlerts(si, clockNow.ymd);
   const end = al.length ? alertsUntil(al) : null, until = end ? (end === clockNow.ymd ? ' today' : ' until ' + fmtDay(end)) : '';
-  const alertLine = al.length ? html`<span class="eyebrow alert${closed.size ? ' warnmark' : ''}">${icon('ban', 14)}${closed.size ? [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ') + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' + until : al[0].title}</span>` : '';
+  const alertLine = al.length ? html`<span class="eyebrow alert${closed.size ? ' warnmark' : ''}">${icon('ban', 14)}${closed.size ? routeNames([...closed]) + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' + until : al[0].title}</span>` : '';
   // The twin across the road, the stop for the other way: a pill at the right of the eyebrow, with its next bus, so
   // the card grows by nothing for it; a tap swaps the card to it without leaving the map.
   const twinLine = s.twin ? acrossPill(si, clockNow, { button: true }) : '';
@@ -830,7 +830,7 @@ export function liveUpdate(app) {
     m.el.classList.toggle('lit', litBus(m));
   };
   if (U) for (const b of live.buses) place(b, 'u', U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
-  if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, 'Route ' + D.routes[b.ri].short + ' · bus ' + b.label);
+  if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantBus && busMarkers.has(wantBus)) pickBus(wantBus, app);
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimes(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }

@@ -2,7 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, today, newTimetable, timesChange, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, depRow, routeLinks, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
+import { routeNames, html, icon, badge, badges, time, sched, corners, depRow, routeLinks, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
@@ -54,7 +54,7 @@ export function render({ id, full, run, on }, clockNow) {
   // A bus stop that is also a POOL pickup: the on-demand ride goes from here too.
   if (poolAt(si)) parts.push(html`<div class="notice">${icon('info', 16)}<span>Also a <b>POOL</b> pickup: ${D.agency.brand}'s on-demand ride around ${POOL.towns.slice(0, 3).join(', ')}, zero fare, booked in the On-Demand app or on <a href="tel:${POOL.phone}">${POOL.phone}</a>. <a href="${POOL.url}" target="_blank" rel="noopener">How it works</a></span></div>`);
   if (alerts.length) {
-    const who = [...closed].map(ri => 'Route ' + D.routes[ri].short).join(' and ');
+    const who = routeNames([...closed]);
     // Through when: the alert's end date, in the agency's words ('until Tue 29 Sep'), or today's when it ends tonight.
     const end = alertsUntil(alerts), until = end ? (end === clockNow.ymd ? ' today' : end === dayFrom(clockNow.ymd, 1).ymd ? ' until tomorrow' : ' until ' + fmtDay(end)) : '';
     const head = allClosed ? `No buses stop here${until ? ' ' + until.trim() : ' during the detour'}` : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${until || ' right now'}` : 'Service alert for this stop';
@@ -82,7 +82,7 @@ export function render({ id, full, run, on }, clockNow) {
   if (prov.length) {
     const sid = td.all.find(t => t.prov).prov;
     const from = D.services.find(x => x.id === sid);
-    const names = prov.map(ri => 'Route ' + D.routes[ri].short).join(' and ');
+    const names = routeNames(prov);
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${names} ${prov.length > 1 ? 'are' : 'is'} missing from this week's published timetable</b><div class="sub">Times shown are from the one starting ${from ? fmtDay(from.start) : 'soon'}. The bus is running; check a detour.</div></div></div>`);
   }
   if (!next.length) {

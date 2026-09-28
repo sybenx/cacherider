@@ -115,6 +115,17 @@ export function lively(t) {
 /** The timetable's minute for a departure, live or not. The big time is always this one. */
 export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
 export { isLoop };
+/** A route as riders say it: 'Route 12', or a loop by its name, 'the Blue Loop'. Never 'Route B'. */
+export const routeName = (ri, the = true) => isLoop(ri) ? (the ? 'the ' : '') + D.routes[ri].long : 'Route ' + D.routes[ri].short;
+/** Several: 'Routes 2, 3 and 5', 'Route 12 and the Blue Loop', 'the Blue and Green Loops'. */
+export function routeNames(ris) {
+  const nums = [...new Set(ris.filter(ri => !isLoop(ri)))].sort((a, b) => +D.routes[a].short - +D.routes[b].short || D.routes[a].short.localeCompare(D.routes[b].short)).map(ri => D.routes[ri].short);
+  const loops = [...new Set(ris.filter(isLoop))].map(ri => D.routes[ri].long);
+  const and = xs => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1] : xs[0] || '';
+  const num = nums.length ? (nums.length > 1 ? 'Routes ' : 'Route ') + and(nums) : '';
+  const lp = loops.length > 1 && loops.every(l => / Loop$/.test(l)) ? 'the ' + and(loops.map(l => l.replace(/ Loop$/, ''))) + ' Loops' : loops.length ? 'the ' + and(loops) : '';
+  return [num, lp].filter(Boolean).join(' and ');
+}
 /** 'Live · 3 min late'; 'Estimated · …' where the minute is worked out from the bus's place, not the feed's word. */
 export const liveWord = t => isLoop(t.r) ? (t.live.est ? 'Estimated' : 'Live') : (t.live.est ? 'Estimated · ' : 'Live · ') + lateWords(t.live.delay);
 /** A loop spacing its buses, away from the Transit Center: its timetable means nothing then, so its rows give

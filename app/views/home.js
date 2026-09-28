@@ -4,7 +4,7 @@
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords, searchPlaces, streetish, townish } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
+import { routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { parseAddress, geocode, townState } from '../geo.js';
@@ -65,8 +65,8 @@ function landing(clockNow, app) {
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   const detours = activeAlerts(clockNow.ymd).filter(a => (a.stops || []).length || (a.routes || []).length);
   if (detours.length) {
-    const rs = [...new Set(detours.flatMap(a => a.routes || []))].sort((x, y) => +x - +y);
-    parts.push(html`<div class="notice">${icon('ban', 16)}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on route' + (rs.length > 1 ? 's ' : ' ') + rs.join(', ') : ''} · <a href="#/about/alerts">details</a></span></div>`);
+    const rs = [...new Set(detours.flatMap(a => a.ri || []))];
+    parts.push(html`<div class="notice">${icon('ban', 16)}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on ' + routeNames(rs).replace(/^Route/, 'route') : ''} · <a href="#/about/alerts">details</a></span></div>`);
   }
   if (sv.length) parts.push(installCard());   // the offer waits until a rider has saved a stop: proof it's their app
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);

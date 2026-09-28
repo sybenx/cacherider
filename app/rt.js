@@ -190,7 +190,9 @@ export const loopSpacing = ri => rt.loopMode[ri] === 'spacing' && !rtStale();
  *  after it gets in. */
 function loopAtHub(t, u, sid, hit) {
   const id = D.trips[t.trip], nowS = Date.now() / 1000, nowM = toMin(Math.floor(nowS));
-  if (here.has(id)) return { min: nowM, delay: nowM - t.min, here: true, spacing: true };
+  // In early, within ten minutes of its timetabled departure, it waits for that minute; earlier than that it's
+  // being spaced and may go at any time, and past it it's going now.
+  if (here.has(id)) { const wait = t.min - nowM, dep = wait > 0 && wait <= 10 ? t.min : nowM; return { min: dep, delay: dep - t.min, here: true, spacing: true, leaves: dep > nowM }; }
   if (hit && !hit.skipped && hit.time >= nowS - 60) { const dep = toMin(hit.time) + 5; return { min: dep, delay: dep - t.min, spacing: true }; }
   return hit ? { gone: true } : undefined;   // skipped, or a time gone by and the bus not there: it's been
 }
