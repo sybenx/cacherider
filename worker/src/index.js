@@ -20,6 +20,86 @@ const TTL = 10;   // seconds at the edge; the feeds themselves update every few 
 const ALERT_TTL = 300;   // a notice posted at the agency reaches riders within five minutes
 const ANNOUNCEMENTS = 'https://mycvtdbus.org/announcements.data';
 
+// ---- UTA, for Headway's phone side. UTA's predictions name no stop, only a place in the trip,
+// and decoding its whole feed takes more CPU than the free plan gives a request, so the phone asks
+// by trip and place (GET /uta?trips=5912862:12,5913774:30) and the feed is skimmed for just those.
+// The answer has the shape of the few-stops one, a null where the stop id would be:
+//   { t, trips: { "<trip_id>": { s: [[null, stop_sequence, predicted_epoch_s, schedule_relationship]] } } }
+const UTA_TRIPS = 'https://apps.rideuta.com/tms/gtfs/TripUpdate';
+async function uta(url, cors) {
+  const headers = { ...cors, 'Access-Control-Allow-Origin': '*' };
+  delete headers['Vary'];
+  const ask = url.searchParams.get('trips');
+  if (!ask) return new Response('Not found', { status: 404, headers });
+  const want = new Map();
+  for (const pair of ask.split(',').slice(0, 40)) {
+    const [id, seq] = pair.split(':');
+    if (!id || !(Number(seq) >= 0)) continue;
+    if (!want.has(id)) want.set(id, new Set());
+    want.get(id).add(Number(seq));
+  }
+  try {
+    const r = await fetch(UTA_TRIPS, { headers: UA, cf: { cacheTtl: TTL, cacheEverything: true } });
+    if (!r.ok) throw new Error('uta tripupdates ' + r.status);
+    const body = JSON.stringify(skimTrips(new Uint8Array(await r.arrayBuffer()), want));
+    return new Response(body, { headers: { ...headers, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + TTL } });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...headers, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  }
+}
+
+// A lean protobuf walk: no field is copied out unless it's wanted, and numbers stay numbers (the
+// times and sequences fit well inside 2^53), so a big feed costs a fraction of a millisecond.
+function uvarint(b, i) {
+  let v = 0, m = 1, c;
+  do { c = b[i++]; v += (c & 0x7f) * m; m *= 128; } while (c & 0x80);
+  return [v, i];
+}
+function walk(b, from, to, fn) {   // fn(field, wireType, valueOrStart, end)
+  let i = from;
+  while (i < to) {
+    let k; [k, i] = uvarint(b, i);
+    const f = Math.floor(k / 8), wt = k & 7;
+    if (wt === 0) { let v; [v, i] = uvarint(b, i); fn(f, 0, v); }
+    else if (wt === 2) { let n; [n, i] = uvarint(b, i); fn(f, 2, i, i + n); i += n; }
+    else if (wt === 5) i += 4;
+    else if (wt === 1) i += 8;
+    else return;
+  }
+}
+const utf8 = new TextDecoder();
+function skimTrips(b, want) {
+  const out = { t: Math.floor(Date.now() / 1000), trips: {} };
+  walk(b, 0, b.length, (f, wt, s, e) => {
+    if (f === 1 && wt === 2) walk(b, s, e, (g, w, v) => { if (g === 3 && w === 0) out.t = v; });   // the header's timestamp
+    if (f !== 2 || wt !== 2) return;
+    walk(b, s, e, (g, w, s2, e2) => {
+      if (g !== 3 || w !== 2) return;   // the entity's trip_update
+      let id = null, seqs = null;
+      const hits = [];
+      walk(b, s2, e2, (h, w3, s3, e3) => {
+        if (h === 1 && w3 === 2) walk(b, s3, e3, (k, w4, s4, e4) => {
+          if (k === 1 && w4 === 2) { id = utf8.decode(b.subarray(s4, e4)); seqs = want.get(id) || null; }
+        });
+        else if (h === 2 && w3 === 2 && seqs) {
+          let seq = null, arr = null, dep = null, rel = 0;
+          walk(b, s3, e3, (k, w5, v5, e5) => {
+            if (k === 1 && w5 === 0) seq = v5;
+            else if ((k === 2 || k === 3) && w5 === 2) walk(b, v5, e5, (m, w6, v6) => {
+              if (m === 2 && w6 === 0) { if (k === 3) dep = v6; else arr = v6; }
+            });
+            else if (k === 5 && w5 === 0) rel = v5;
+          });
+          const time = dep || arr;
+          if (seq !== null && seqs.has(seq) && (time || rel === 1)) hits.push([null, seq, time || 0, rel]);
+        }
+      });
+      if (id && hits.length) out.trips[id] = { s: hits };
+    });
+  });
+  return out;
+}
+
 export default {
   async fetch(req) {
     const origin = req.headers.get('Origin') || '';
@@ -32,6 +112,7 @@ export default {
     if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: cors });
     const url = new URL(req.url), path = url.pathname;
     if (path === '/alerts') return alerts(cors);
+    if (path === '/uta') return uta(url, cors);
     if (path !== '/' && path !== '/live') return new Response('Not found', { status: 404, headers: cors });
     const only = url.searchParams.has('stops') ? new Set(url.searchParams.get('stops').split(',').filter(Boolean).slice(0, 32)) : null;
     if (only) { cors['Access-Control-Allow-Origin'] = '*'; delete cors['Vary']; }
