@@ -57,6 +57,7 @@ function style(sat = true) {
       lines: { type: 'geojson', data: drawn.lines || { type: 'FeatureCollection', features: [] } },
       lclosed: { type: 'geojson', data: drawn.closed || { type: 'FeatureCollection', features: [] } },   // the stretches of route we can't vouch for
       spot: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+      busrun: { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features: [] } },
       ustops: { type: 'geojson', data: usuStopsGeo() },
       pool: { type: 'geojson', data: poolGeo() },
       ulines: { type: 'geojson', data: usuLinesGeo() },
@@ -72,6 +73,8 @@ function style(sat = true) {
       { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': '#007AB8', 'circle-opacity': 0.15, 'circle-stroke-color': '#007AB8', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
+      // a picked bus's run ahead: bright at the bus, fading towards the Transit Center (the gradient is set with the run)
+      { id: 'bus-run', type: 'line', source: 'busrun', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 4, 14, 8, 17, 12], 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0)'] } },
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
@@ -584,6 +587,7 @@ function applySelection() {
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
   litLines(map, hiLines, hiLoops);
   tintStops(map, focusRoute);
+  if (!selectedBus) drawBusRun(null);
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
   for (const [id, m] of busMarkers) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); m.el.classList.toggle('on', id === selectedBus); }
 }
@@ -809,6 +813,7 @@ export let mapSearch = () => {};
 export function liveUpdate(app) {
   if (rtShown !== null) routeTimes(rtShown, now());   // the feed's word moves a route's next buses
   if (!map) return;
+  if (selectedBus) drawBusRun(selectedBus, now());   // the line follows the bus
   const seen = new Set();
   const place = (b, kind, color, title) => {
     seen.add(b.id);
@@ -864,10 +869,12 @@ function selectBus(id, app) {
   if (wide() && app.route.name !== 'map') { const h = busRouteHref(id); if (h) { location.hash = h; return; } }
   const c = findBus(id), b = c || live.buses.find(x => x.id === id);
   selectedBus = id; selectedU = null; selected = null; uHilite = '';
-  hiLines = c ? [c.ri] : []; hiLoops = b && !c ? [U.routes[b.ri].id] : [];
+  // A Connect bus lights its run ahead, not its whole route (a route picked lights the route): the line is the bus's.
+  hiLines = c && focusRoute === c.ri ? [c.ri] : []; hiLoops = b && !c ? [U.routes[b.ri].id] : [];
   applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
   busCard(app);
+  drawBusRun(id, now());
   if (c) routeTimes(c.ri, now());   // its times along its route: the route's, if up, become this bus's; else its own appear
 }
 /** A Connect bus: its route and headsign, where it's headed next with the feed's minutes. */
@@ -1277,7 +1284,7 @@ function runBounds(R) {
 // page's sheet (MT). Each keeps what's drawn on it, so a redraw of the same run changes nothing.
 const RT = { m: null, R: null, key: null, labels: null, ready: () => rmReady, pad: 36 };
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60, main: true };
-const RUN_HIDE = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'pool-zone', 'pool-edge', 'pool-stops'];
+const RUN_HIDE = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'bus-run', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
@@ -1493,7 +1500,7 @@ async function routeTimes(ri, clockNow) {
 function runAhead(b, clockNow) {
   const ti0 = D.trips.indexOf(b.trip);
   if (ti0 < 0) return null;
-  const trips = new Map(), u = rt.trips[b.trip], nowS = Date.now() / 1000;
+  const trips = new Map(), u = rt.trips[b.trip], nowS = Date.now() / 1000, path = [];   // path: [minute, stop] from the stop just passed to the run's end
   // Where it is: the stop the feed says it calls at next; failing that, the first stop not long behind the clock
   // (the times themselves drop any stop the bus has been to, so a start too early costs nothing).
   const nextSi = nextStopOf(b);
@@ -1503,21 +1510,47 @@ function runAhead(b, clockNow) {
   if (k < 0) k = seq.length;
   // At the Center already, by the feed's word (listed there past its time, boarding): the run is the one leaving it.
   const leaving = si => { const hit = ti === ti0 && u && u.at.get(D.stops[si].id); return hit && !hit.skipped && hit.time < nowS - 30; };
+  if (k > 0 && k <= seq.length) path.push(seq[k - 1]);
   for (let hops = 0; hops < 3; hops++) {
     const set = new Set();
     trips.set(ti, set);
     for (; k < seq.length; k++) {
       const si = seq[k][1];
-      set.add(si);
-      if (D.stops[si].hub && k > 0 && !leaving(si)) return { trips, end: null };
+      set.add(si); path.push(seq[k]);
+      if (D.stops[si].hub && k > 0 && !leaving(si)) return { trips, end: null, path };
     }
     const te = tripEnd(ti);
-    if (te && D.stops[te.si].hub) return { trips, end: te };
+    if (te) path.push([te.min, te.si]);
+    if (te && D.stops[te.si].hub) return { trips, end: te, path };
     const n = nextTrip(ti, ymd), ns = n !== undefined ? tripStops(n) : [];
-    if (!ns.length || ns[0][0] - (te ? te.min : seq[seq.length - 1][0]) > 45) return { trips, end: te };
+    if (!ns.length || ns[0][0] - (te ? te.min : seq[seq.length - 1][0]) > 45) return { trips, end: te, path };
     ti = n; seq = ns; k = 0;
   }
-  return { trips, end: null };
+  return { trips, end: null, path };
+}
+/** A picked bus's line: its run ahead to the Transit Center along its route's shape, bright at the bus and fading
+ *  towards the end, so a bus reads as going somewhere where a route reads as a route. Null clears it. */
+let busRunKey = null;
+async function drawBusRun(id, clockNow) {
+  if (!map || !ready || !map.getSource('busrun')) return;
+  const empty = { type: 'FeatureCollection', features: [] };
+  const c = id ? findBus(id) : null;
+  if (!c) { if (busRunKey !== null) { busRunKey = null; map.getSource('busrun').setData(empty); } return; }
+  const run = runAhead(c, clockNow);
+  if (!run || run.path.length < 2) { busRunKey = null; map.getSource('busrun').setData(empty); return; }
+  const fc = await shapes();
+  if (!map || !map.getSource('busrun') || selectedBus !== id) return;
+  let path = fc ? runPath(fc, c.ri, run.path) : run.path.map(([, si]) => [D.stops[si].lon, D.stops[si].lat]);
+  // From the bus itself: the path cut at its nearest point, unless the bus is off the line (a detour) altogether.
+  let bi = 0, best = Infinity;
+  for (let i = 0; i < path.length; i++) { const d = distance(c.lat, c.lon, path[i][1], path[i][0]); if (d < best) { best = d; bi = i; } }
+  if (best < 150) path = [[c.lon, c.lat], ...path.slice(bi + 1)];
+  if (path.length < 2) { busRunKey = null; map.getSource('busrun').setData(empty); return; }
+  const col = dark() ? lift('#' + D.routes[c.ri].color) : '#' + D.routes[c.ri].color;
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16)), rgba = a => `rgba(${r},${g},${b},${a})`;
+  map.setPaintProperty('bus-run', 'line-gradient', ['interpolate', ['linear'], ['line-progress'], 0, rgba(1), 0.6, rgba(0.6), 1, rgba(0.06)]);
+  map.getSource('busrun').setData({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: path } }] });
+  busRunKey = id;
 }
 // Where each time goes at this zoom and turn (a pan moves the times and the route together, so it changes nothing).
 // Facing another: the bus's side, always. Any other: the spot around its dot furthest from the route's own line, so a
