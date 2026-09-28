@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, searchPlaces, streetish, townish, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, onRequest, A } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, searchPlaces, streetish, townish, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill } from '../ui.js';
 import { nearMe } from '../main.js';
@@ -1500,7 +1500,7 @@ async function routeTimes(ri, clockNow) {
 function runAhead(b, clockNow) {
   const ti0 = D.trips.indexOf(b.trip);
   if (ti0 < 0) return null;
-  const trips = new Map(), u = rt.trips[b.trip], nowS = Date.now() / 1000, path = [];   // path: [minute, stop] from the stop just passed to the run's end
+  const trips = new Map(), u = rt.trips[b.trip], nowS = Date.now() / 1000;
   // Where it is: the stop the feed says it calls at next; failing that, the first stop not long behind the clock
   // (the times themselves drop any stop the bus has been to, so a start too early costs nothing).
   const nextSi = nextStopOf(b);
@@ -1510,37 +1510,70 @@ function runAhead(b, clockNow) {
   if (k < 0) k = seq.length;
   // At the Center already, by the feed's word (listed there past its time, boarding): the run is the one leaving it.
   const leaving = si => { const hit = ti === ti0 && u && u.at.get(D.stops[si].id); return hit && !hit.skipped && hit.time < nowS - 30; };
-  if (k > 0 && k <= seq.length) path.push(seq[k - 1]);
   for (let hops = 0; hops < 3; hops++) {
     const set = new Set();
     trips.set(ti, set);
     for (; k < seq.length; k++) {
       const si = seq[k][1];
-      set.add(si); path.push(seq[k]);
-      if (D.stops[si].hub && k > 0 && !leaving(si)) return { trips, end: null, path };
+      set.add(si);
+      if (D.stops[si].hub && k > 0 && !leaving(si)) return { trips, end: null };
     }
     const te = tripEnd(ti);
-    if (te) path.push([te.min, te.si]);
-    if (te && D.stops[te.si].hub) return { trips, end: te, path };
+    if (te && D.stops[te.si].hub) return { trips, end: te };
     const n = nextTrip(ti, ymd), ns = n !== undefined ? tripStops(n) : [];
-    if (!ns.length || ns[0][0] - (te ? te.min : seq[seq.length - 1][0]) > 45) return { trips, end: te, path };
+    if (!ns.length || ns[0][0] - (te ? te.min : seq[seq.length - 1][0]) > 45) return { trips, end: te };
     ti = n; seq = ns; k = 0;
   }
-  return { trips, end: null, path };
+  return { trips, end: null };
 }
-/** A picked bus's line: its run ahead to the Transit Center along its route's shape, bright at the bus and fading
- *  towards the end, so a bus reads as going somewhere where a route reads as a route. Null clears it. */
+/** The line a picked bus draws, as [[minute, stop] …]: from the stop it has just passed, on round its run and
+ *  through its next trip on the same route until it comes back to itself, that stop or the one across the road
+ *  from it (a route that runs out and back comes back down the other side). A bus that changes route at the
+ *  Transit Center (a Saturday's 2 and 5, 9 and 1) gets its run to the Center and a short tail on the other route.
+ *  Empty for a trip the timetable lacks. */
+function busPath(b, clockNow) {
+  const ti0 = D.trips.indexOf(b.trip);
+  if (ti0 < 0) return [];
+  const seq0 = tripStops(ti0), nextSi = nextStopOf(b);
+  let k = nextSi !== undefined ? seq0.findIndex(x => x[1] === nextSi) : -1;
+  if (k < 0) k = seq0.findIndex(x => x[0] >= clockNow.min - 15);
+  if (k < 0) k = seq0.length;
+  const passed = k > 0 ? seq0[k - 1][1] : null, self = si => passed !== null && (si === passed || (D.stops[si].twin && D.stops[si].twin[0] === passed));
+  const path = k > 0 ? [seq0[k - 1]] : [];
+  let ti = ti0, seq = seq0, ymd = clockNow.ymd;
+  for (let hops = 0; hops < 2; hops++) {
+    for (; k < seq.length; k++) { path.push(seq[k]); if (hops > 0 && self(seq[k][1])) return path; }
+    const te = tripEnd(ti);
+    if (te) { path.push([te.min, te.si]); if (hops > 0 && self(te.si)) return path; }
+    const n = nextTrip(ti, ymd), ns = n !== undefined ? tripStops(n) : [];
+    if (!ns.length || ns[0][0] - (te ? te.min : seq[seq.length - 1][0]) > 45) return path;
+    if (tripRoute(n) !== b.ri) { path.push(...ns.slice(0, 3).map(x => [x[0], x[1], tripRoute(n)])); return path; }   // the tail onto the other route, marked with its route
+    ti = n; seq = ns; k = 0;
+  }
+  return path;
+}
+const tripRouteOfStop = (stops, i, own) => stops[i][2] !== undefined ? stops[i][2] : own;
+/** A picked bus's line, along its route's shape, bright at the bus and fading round to where it comes back to
+ *  itself, so a bus reads as going somewhere where a route reads as a route. Null clears it. */
 let busRunKey = null;
 async function drawBusRun(id, clockNow) {
   if (!map || !ready || !map.getSource('busrun')) return;
   const empty = { type: 'FeatureCollection', features: [] };
   const c = id ? findBus(id) : null;
   if (!c) { if (busRunKey !== null) { busRunKey = null; map.getSource('busrun').setData(empty); } return; }
-  const run = runAhead(c, clockNow);
-  if (!run || run.path.length < 2) { busRunKey = null; map.getSource('busrun').setData(empty); return; }
+  const stops = busPath(c, clockNow);
+  if (stops.length < 2) { busRunKey = null; map.getSource('busrun').setData(empty); return; }
   const fc = await shapes();
   if (!map || !map.getSource('busrun') || selectedBus !== id) return;
-  let path = fc ? runPath(fc, c.ri, run.path) : run.path.map(([, si]) => [D.stops[si].lon, D.stops[si].lat]);
+  // The shape of each route in turn: the tail onto another route is that route's shape.
+  let path = [];
+  for (let i = 0; i < stops.length;) {
+    const r = tripRouteOfStop(stops, i, c.ri); let j = i;
+    while (j + 1 < stops.length && tripRouteOfStop(stops, j + 1, c.ri) === r) j++;
+    const part = fc ? runPath(fc, r, stops.slice(i, j + 1)) : stops.slice(i, j + 1).map(([, si]) => [D.stops[si].lon, D.stops[si].lat]);
+    path.push(...(path.length && part.length ? part.slice(1) : part));
+    i = j + 1;
+  }
   // From the bus itself: the path cut at its nearest point, unless the bus is off the line (a detour) altogether.
   let bi = 0, best = Infinity;
   for (let i = 0; i < path.length; i++) { const d = distance(c.lat, c.lon, path[i][1], path[i][0]); if (d < best) { best = d; bi = i; } }
@@ -1548,7 +1581,7 @@ async function drawBusRun(id, clockNow) {
   if (path.length < 2) { busRunKey = null; map.getSource('busrun').setData(empty); return; }
   const col = dark() ? lift('#' + D.routes[c.ri].color) : '#' + D.routes[c.ri].color;
   const [r, g, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16)), rgba = a => `rgba(${r},${g},${b},${a})`;
-  map.setPaintProperty('bus-run', 'line-gradient', ['interpolate', ['linear'], ['line-progress'], 0, rgba(1), 0.6, rgba(0.6), 1, rgba(0.06)]);
+  map.setPaintProperty('bus-run', 'line-gradient', ['interpolate', ['linear'], ['line-progress'], 0, rgba(1), 0.55, rgba(0.6), 1, rgba(0.1)]);
   map.getSource('busrun').setData({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: path } }] });
   busRunKey = id;
 }
