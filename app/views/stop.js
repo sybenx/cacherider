@@ -22,7 +22,7 @@ export function render({ id, full, run, on }, clockNow) {
   const desk = matchMedia('(min-width: 900px)').matches;   // the map beside the page
   if (!desk) parts.push(miniSlot({ stopId: s.id }));   // beside the big map, no small one
   const sd = side(si);
-  const eyebrow = `${s.town} · Stop ${s.code || s.id}${sd ? ` · ${sd} side` : ''}`;   // the number stays: it's what a rider quotes on the phone
+  const eyebrow = `${s.town} · Stop ${s.code || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces
   const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
   // Across the road, the stop for the other way and the commonest wrong one to stand at: a pill of its own under the
   // routes, room enough to say where that side's next bus is going.

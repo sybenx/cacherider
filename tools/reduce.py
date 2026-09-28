@@ -73,6 +73,18 @@ def split_name(name):
     town = towns.get(town, town or towns.get('', H.get('town_suffix_default', '')))
     return name, town, bay
 
+def landmark(desc, name, town=''):
+    """What the stop is by, from the feed's stop_desc ('Smiths', 'Across from Cache Valley Hospital'): the same
+    landmarks the bus announces. Not the agency's housekeeping ('(Timepoint)', 'Temp Stop', a detour's date stamp),
+    not the address again, not the Transit Center's own name at its bays."""
+    d = re.sub(r'\s*\((?:Timepoint|Detour)\)\s*', ' ', desc or '', flags=re.I)
+    d = re.sub(r'\s*added \d+/\d+/\d+.*$', '', d, flags=re.I).strip(' -–·,')
+    if d.count('(') > d.count(')'): d += ')'   # 'Tabernacle (Back)' with its stamp cut off after it
+    if not d or re.fullmatch(r'(temp stop|timepoint|intermodal transit center)', d, re.I): return ''
+    plain = lambda x: re.sub(r'\W', '', x).lower()
+    if plain(d) in (plain(name), plain(town)): return ''   # the address or the town again says nothing
+    return d
+
 raw_stops = table('stops.txt')
 stops, stop_idx = [], {}
 for s in raw_stops:
@@ -81,7 +93,8 @@ for s in raw_stops:
     la, lo = float(s['stop_lat']), float(s['stop_lon'])
     stop_idx[s['stop_id']] = len(stops)
     stops.append({'id': s['stop_id'], 'code': s.get('stop_code', ''), 'name': name, 'town': town,
-                  'lat': round(la, 5), 'lon': round(lo, 5), 'routes': [], 'hub': dist(la, lo) <= hub['radius'] and (bay or True)})
+                  'lat': round(la, 5), 'lon': round(lo, 5), 'routes': [], 'hub': dist(la, lo) <= hub['radius'] and (bay or True),
+                  'by': landmark(s.get('stop_desc', ''), name, town)})
 
 # ---- departures: one row per (stop, service): [minute, route index, headsign index, direction, trip index]
 # The trip index names the trip in the realtime feed, whose ids match the static ones without any -N suffix.

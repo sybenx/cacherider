@@ -426,6 +426,9 @@ a.twinline { text-decoration: none; }
 #map.bus-small .bus { pointer-events: none; }
 #map.bus-small .bus-marker { border-color: transparent; background: transparent; box-shadow: none; }
 #map.bus-small .bus-marker svg { width: 22px; height: 22px; }
+/* zoomed out, an arrow in its route's colour sits on its route's line: a halo in the map's own background colour
+   (paper by day, near-black by night) lifts it off, and a thin dark edge keeps it crisp on either */
+#map.bus-small .bus-marker svg { filter: drop-shadow(0 0 1.5px var(--color-bg)) drop-shadow(0 0 1.5px var(--color-bg)); }
 #map.bus-small .bus-marker path { fill: var(--bus-color); stroke: rgba(0,0,0,.55); stroke-width: 1.5; stroke-linejoin: round; }
 #map.bus-small .bus.on .bus-marker path { stroke: var(--color-accent); stroke-width: 2.5; }
 /* a bus on the lit route keeps its badge and its tap at any zoom, so tapping a stop finds its buses */

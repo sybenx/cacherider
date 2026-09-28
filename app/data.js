@@ -527,7 +527,7 @@ export function nearest(lat, lon, n = 8) {
 const norm = s => s.toLowerCase().replace(/[.,]/g, ' ').replace(/\b(street|st)\b/g, 'st').replace(/\b(drive|dr)\b/g, 'dr').replace(/\b(north)\b/g, 'north').replace(/\bn\b/g, 'north').replace(/\bs\b/g, 'south').replace(/\be\b/g, 'east').replace(/\bw\b/g, 'west').replace(/\bhwy\b/g, 'highway').replace(/\s+/g, ' ').trim();
 let index = null;
 export function search(q, limit = 40) {
-  index = index || D.stops.map((s, i) => ({ i, text: norm(s.name + ' ' + s.town + ' ' + s.code + ' ' + s.id) }));
+  index = index || D.stops.map((s, i) => ({ i, text: norm(s.name + ' ' + s.town + ' ' + s.code + ' ' + s.id + ' ' + (s.by || '')) }));
   const words = norm(q).split(' ').filter(Boolean);
   if (!words.length) return [];
   // The Transit Center's bays share one address: the first stands for them all (the screens show it as the Transit Center).
