@@ -1,6 +1,7 @@
 // Directions to a stop: from where the rider is, or from a stop they name. Each way there is one card: the walk
 // to the first stop, the bus, where to change, where to get off, in order, with when.
-import { D, stop, stopIndex, distance } from '../data.js';
+import { D, stop, stopIndex, distance, tripStops } from '../data.js';
+import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, relative, metres, fmtDay, dayName } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle } from '../ui.js';
 import { journeys } from '../plan.js';
@@ -85,12 +86,41 @@ function planCard(p, dest, clockNow) {
       legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">Change at ${at.hub ? D.hub.name : at.name}</span><span class="sub">Same stop · ${wait <= 0 ? 'the next bus is waiting' : `${wait} min until it leaves`}</span></div></div>`);
     }
     const from = stop(l.from), to = stop(l.to);
+    // The first bus, where it is: the proof the plan is real, in the bus card's own words. Later buses mostly
+    // haven't started yet, and a loop's stop count means little, so those just say it's coming.
+    const where = l === rides[0] && l.t.live ? whereabouts(l) : '';
     legs.push(html`<div class="leg ride">${badge(l.r, 36)}<div class="mid"><span class="name">${headsign(l.t)}</span>
-      <span class="sub"><a href="#/stop/${from.id}">${nameOf(l.from, l.r)}</a> · leaves <b>${clockText(l.on)}</b>${l.t.live ? liveMark(liveWord(l.t)) : ''}</span>
+      <span class="sub"><a href="#/stop/${from.id}">${nameOf(l.from, l.r)}</a> · leaves <b>${clockText(l.on)}</b>${l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${where ? html`<span class="sub">${where}</span>` : ''}
       <span class="sub">${l.n} ${l.n === 1 ? 'stop' : 'stops'} · off at <a href="#/stop/${to.id}">${to.hub ? D.hub.name : to.name}</a> · <b>${clockText(l.off)}</b></span></div></div>`);
   });
   // Two times, one weight: when to set off and when you're there. One big arrival read as the first bus's time.
   return html`<div class="plan"><div class="plan-top"><div class="col"><span class="eyebrow">Leave</span>${time(p.leave, 34, live)}<span class="rel">${rel}</span></div><div class="col mid"><span class="sub">${words}</span></div><div class="col end"><span class="eyebrow">Arrive</span>${time(p.arrive, 34, live)}<span class="sub">${p.legs[p.legs.length - 1].kind === 'walk' ? 'after the walk' : 'off the bus'}</span></div></div><div class="legs">${legs}</div></div>`;
+}
+
+/** 'Bus 4005 · 4 stops away, next 704 North 200 East' for a ride's bus, from the feed; '' when it has no bus. A bus
+ *  still on its trip before (Route 15 runs out as one trip and back as another, the feed predicting the return
+ *  while it heads out) is counted from where it is: its stops left on that trip, then ours up to the boarding stop. */
+function whereabouts(l) {
+  if (l.t.trip === undefined) return '';
+  const u = rt.trips[D.trips[l.t.trip]], on = busOn(l.t.trip);
+  let bus = on && on.bus, next = on ? on.next : undefined, before = 0;
+  if (!bus && u && u.v) {
+    bus = rt.buses.find(x => x.id === 'c:' + u.v) || null;
+    const pti = bus ? D.trips.indexOf(bus.trip) : -1;
+    if (!bus) return '';
+    if (pti < 0) return `Bus ${bus.label} · on its way`;
+    const ps = tripStops(pti).map(x => x[1]), a = (next = nextStopOf(bus)) !== undefined ? ps.indexOf(next) : -1;
+    if (a < 0) return `Bus ${bus.label} · on its way`;
+    before = ps.length - a;
+  }
+  if (!bus) return '';
+  const who = 'Bus ' + bus.label;
+  if (isLoop(l.r) || next === undefined) return who + ' · on its way';
+  const seq = tripStops(l.t.trip).map(x => x[1]), a = before ? 0 : seq.indexOf(next), b = seq.indexOf(l.from);
+  if (a < 0 || b < 0 || a > b) return who + ' · on its way';
+  const n = before + b - a, ns = stop(next);
+  if (n === 0) return who + ' · at your stop';
+  return `${who} · ${n} ${n === 1 ? 'stop' : 'stops'} away, next ${ns.hub ? D.hub.name : ns.name}`;
 }
 
 function mount(el) {
