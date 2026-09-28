@@ -10,19 +10,41 @@ import { rt, rtStale, isLoop } from '../rt.js';
 // bottom): the design's plan, squared off from the feed's stop positions and the OSM drawing, each bay where it
 // is to within a few metres. A badge's top is its point; the row along 500 North sits up clear of the street.
 const W = 358, Hh = 267;
-/** Where each bay's badge goes on the plan: from the timetable's own stop for the bay, so a bay swapped in the
- *  timetable (8 and 7 changed places one spring) moves on the plan by itself. South up, as the drawing is: the
- *  northernmost bay along 500 North's curb at the bottom, the southernmost (the Blue Loop's, on 442 North) at the
- *  top, east to the left. Badges that land on one another are eased apart, a little air between each pair. */
+let countIv = 0;   // the pulse countdown's ticker
+/** The bays as drawn by hand, aligned to read well (the timetable's coordinates aren't on a perfect grid), each
+ *  with the stop it was drawn for. Kept while the timetable still puts every route at that stop, within a few
+ *  metres of where it was; the day a bay moves or a new one appears, the timetable places them all instead. */
+const HAND = {
+  1: { at: [104, 78], stop: '7503601', lat: 41.74048, lon: -111.83073 },
+  2: { at: [74, 217], stop: '7504862', lat: 41.74079, lon: -111.83063 },
+  3: { at: [214, 217], stop: '7505649', lat: 41.74081, lon: -111.83105 },
+  5: { at: [74, 176], stop: '7506836', lat: 41.74064, lon: -111.83055 },
+  6: { at: [284, 217], stop: '7730352', lat: 41.74081, lon: -111.83127 },
+  7: { at: [246, 140], stop: '10628498', lat: 41.74061, lon: -111.83124 },
+  8: { at: [284, 176], stop: '10628499', lat: 41.74074, lon: -111.8314 },
+  9: { at: [112, 140], stop: '7568044', lat: 41.74056, lon: -111.83073 },
+  11: { at: [338, 172], stop: '7537373', lat: 41.74064, lon: -111.83151 },
+  12: { at: [254, 78], stop: '7509446', lat: 41.74046, lon: -111.83114 },
+  15: { at: [179, 70], stop: '7546686', lat: 41.74043, lon: -111.83087 },
+  16: { at: [338, 124], stop: '7537373', lat: 41.74064, lon: -111.83151 },
+  G: { at: [144, 217], stop: '7573958', lat: 41.74081, lon: -111.83081 },
+  B: { at: [132, 33], stop: '7606926', lat: 41.74035, lon: -111.83082 },
+};
+/** Where each bay's badge goes on the plan: as drawn by hand while the timetable matches the drawing; else from
+ *  the timetable's own stop for each bay, so a bay swapped in the timetable (8 and 7 changed places one spring)
+ *  moves on the plan by itself even with nobody minding the app. South up, as the drawing is: the northernmost
+ *  bay along 500 North's curb at the bottom, the southernmost (the Blue Loop's, on 442 North) at the top, east to
+ *  the left. Either way, badges that land on one another are eased apart, a little air between each pair. */
 function layout() {
   const at = {};
-  for (const k of keys()) { const bay = D.hub.bays.find(b => b.routes.includes(routesOf(k)[0])); if (bay) at[k] = { lat: bay.lat, lon: bay.lon }; }
+  for (const k of keys()) { const bay = D.hub.bays.find(b => b.routes.includes(routesOf(k)[0])); if (bay) at[k] = { lat: bay.lat, lon: bay.lon, stop: D.stops[bay.stop].id }; }
   const ks = Object.keys(at);
   if (!ks.length) return {};
+  const drawn = ks.every(k => HAND[k] && HAND[k].stop === at[k].stop && distance(HAND[k].lat, HAND[k].lon, at[k].lat, at[k].lon) < 8);
   const lats = ks.map(k => at[k].lat), lons = ks.map(k => at[k].lon);
   const la0 = Math.min(...lats), la1 = Math.max(...lats), lo0 = Math.min(...lons), lo1 = Math.max(...lons);
   const pos = {};
-  for (const k of ks) pos[k] = { x: 65 + (lo1 === lo0 ? 0.5 : (lo1 - at[k].lon) / (lo1 - lo0)) * (337 - 65), y: 40 + (la1 === la0 ? 0.5 : (at[k].lat - la0) / (la1 - la0)) * (221 - 40) };
+  for (const k of ks) pos[k] = drawn ? { x: HAND[k].at[0], y: HAND[k].at[1] } : { x: 65 + (lo1 === lo0 ? 0.5 : (lo1 - at[k].lon) / (lo1 - lo0)) * (337 - 65), y: 40 + (la1 === la0 ? 0.5 : (at[k].lat - la0) / (la1 - la0)) * (221 - 40) };
   const AIR_X = 40, AIR_Y = 58;   // a badge and its tag beneath, plus a little air
   for (let it = 0; it < 60; it++) {
     let moved = false;
@@ -286,18 +308,18 @@ function mount(el) {
     if (r.bottom > bottom || r.top < 0) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
   shownPick = pick;
-  // The countdown runs by the second while this screen is up.
+  // The countdown runs by the second while this screen is up: one ticker, however many times the page is redrawn
+  // in place (each redraw used to start another, and after a pulse an old one wrote 0:00 over the new one's
+  // minutes), reading the departure off the element each second, as a redraw moves it on.
+  clearInterval(countIv);
   const c = el.querySelector('[data-countdown]');
   if (!c) return;
-  const dep = +c.dataset.countdown;
   const tick = () => {
-    if (!document.body.contains(c)) return clearInterval(iv);
-    const n = nowSec();
-    const s = dep * 60 - n;
-    if (s <= 0) { c.textContent = '0:00'; return; }
-    c.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    if (!document.body.contains(c)) return clearInterval(countIv);
+    const s = +c.dataset.countdown * 60 - nowSec();
+    c.textContent = s <= 0 ? '0:00' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   };
-  const iv = setInterval(tick, 1000);
+  countIv = setInterval(tick, 1000);
   tick();
 }
 const nowSec = () => { const n = now(); return n.min * 60 + n.sec; };
