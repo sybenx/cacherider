@@ -58,6 +58,9 @@ const wordsOf = s => norm(s.replace(/'/g, '').replace(/[()&/·;,-]/g, ' ')).spli
  *  'church hyrum'. The pamphlet's first; OpenStreetMap's after, less any a pamphlet place already stands for. */
 /** Whether a query reads as a street or an address ('500 north', 'main st, hyrum', '1400 N 500 E'): then the stops
  *  come first in the results, else the places ('walmart', 'library') do. */
+let townSet = null;
+/** A town's name alone ('Smithfield', 'hyde park'): the search puts the town's stops first, as it does a street's. */
+export const townish = q => { townSet = townSet || new Set(D.stops.map(s => norm(s.town))); return townSet.has(norm(q)); };
 export const streetish = q => /\d/.test(q) || /\b(main|center|st|street|ave|avenue|rd|road|dr|drive|blvd|hwy|highway|north|south|east|west|n|s|e|w)\b/i.test(q);
 export function searchPlaces(q, limit = 8) {
   const words = wordsOf(q);

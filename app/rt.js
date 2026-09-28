@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, LIVE_URL } from './data.js';
+import { D, setLive, distance, LIVE_URL, tripStops, tripEnd } from './data.js';
 
 export const RT_URL = LIVE_URL;
 const POLL = 15000, STALE = 90000;
@@ -98,6 +98,10 @@ async function tick(force) {
       if (ri === undefined || ri < 0) continue;
       buses.push({ id: 'c:' + b.id, label: b.label || b.id, trip: b.trip, ri, lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: info ? info.h : null, dir: info ? info.dir : null });
     }
+    // A detoured route's buses report where they are, but the tracker predicts nothing for them (off the route it
+    // knows, it gives up): their times are worked out here from the bus's place along its trip, the timetable's
+    // minute there set against the clock and carried to every stop ahead. Marked `est`, as a carried delay is.
+    for (const b of buses) if (!trips[b.trip] && tripIdx.has(b.trip) && j.t - b.ts < 180) { const u = fromPlace(b, tripIdx.get(b.trip), j.t); if (u) trips[b.trip] = u; }
     const t0 = Date.now();
     for (const [id, old] of Object.entries(rt.trips)) for (const [sid, x] of old.at) {
       const k = id + ':' + sid;
@@ -111,6 +115,42 @@ async function tick(force) {
   }
   rt.fetching = false;
   for (const fn of listeners) fn();
+}
+
+/** Predictions for a trip from where its bus is: the nearest leg of the trip (stop to stop, as the crow flies),
+ *  how far along it, the timetable's minute there, and the clock's lead on that carried to every stop ahead. Null
+ *  when the bus is nowhere near its trip (a detour can take it blocks off, not miles). */
+function fromPlace(b, ti, nowS) {
+  const pts = tripStops(ti).slice(), te = tripEnd(ti);
+  if (te) pts.push([te.min, te.si]);
+  if (pts.length < 2) return null;
+  let best = null;
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const p = along(b.lat, b.lon, D.stops[pts[k][1]], D.stops[pts[k + 1][1]]);
+    if (!best || p.d < best.d) best = { ...p, k };
+  }
+  if (!best || best.d > 1200) return null;
+  const there = pts[best.k][0] + (pts[best.k + 1][0] - pts[best.k][0]) * best.f;
+  const nowM = toMin(nowS), delay = Math.round(nowM - there);
+  const from = best.f < 0.1 ? best.k : best.k + 1;   // still at the leg's first stop, or short of it: that one's ahead too
+  const stops = [], at = new Map(), end = pts.length - 1;
+  let first = null, last = null;
+  for (let i = from; i < pts.length; i++) {
+    const [m, si] = pts[i], sid = D.stops[si].id, time = Math.round(nowS + (m + delay - nowM) * 60);
+    stops.push([sid, i, time, 0]);
+    if (i === end) continue;
+    at.set(sid, { seq: i, time, skipped: false });
+    if (!first) first = { sid, seq: i, time };
+    last = { sid, seq: i, time };
+  }
+  return { v: b.id.slice(2), ts: b.ts, at, first, last, lastDelay: delay, ti, stops, end, est: true };
+}
+/** A point against the leg between two stops: the distance to the leg in metres, and the fraction along it. */
+function along(lat, lon, a, c) {
+  const kx = 111000 * Math.cos(lat * Math.PI / 180), ky = 111000;
+  const ax = (a.lon - lon) * kx, ay = (a.lat - lat) * ky, dx = (c.lon - lon) * kx - ax, dy = (c.lat - lat) * ky - ay;
+  const len2 = dx * dx + dy * dy, f = len2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2)) : 0;
+  return { d: Math.hypot(ax + dx * f, ay + dy * f), f };
 }
 
 /** A loop at its Transit Center stop: which bus is in (the `here` pins), and whether the loop is running to its
@@ -195,7 +235,7 @@ function feedSays(t, u) {
   const nowS = Date.now() / 1000, cap = isLoop(t.r) ? 600 : 1800;
   if (hit && !hit.skipped && D.stops[t.si].hub && hit.time < nowS - 30 && nowS - hit.time < cap)
     return held(t, toMin(Math.floor(nowS)) - t.min);
-  if (hit) return hit.skipped ? { gone: true } : held(t, toMin(hit.time) - t.min);
+  if (hit) return hit.skipped ? { gone: true } : u.est ? { ...held(t, toMin(hit.time) - t.min), est: true } : held(t, toMin(hit.time) - t.min);
   const order = (D.routes[t.r].stops || {})[String(t.dir)] || [];
   const i = order.indexOf(t.si);
   if (i < 0) return null;

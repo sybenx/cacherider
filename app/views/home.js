@@ -2,7 +2,7 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords, searchPlaces, streetish } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords, searchPlaces, streetish, townish } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
 import { html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
@@ -23,7 +23,8 @@ function landing(clockNow, app) {
   const firstSaved = sv.find(id => !id.startsWith('u:') && D.stopById[id] !== undefined);
   // The big one: the stop you're standing near, when location is on and it's close enough to walk to; else your
   // first saved stop; else the Transit Center. Saved stops are the list beneath, every one but the hero.
-  const near = app && app.geo ? nearest(app.geo.lat, app.geo.lon, 3).find(x => !stop(x.i).hub) : null;
+  // Past the Transit Center's bays, a dozen stops at one address: standing there, the nearest is still a street's stop.
+  const near = app && app.geo ? nearest(app.geo.lat, app.geo.lon, 24).filter(x => !stop(x.i).hub)[0] : null;
   let heroSi, heroWhy = '';
   if (near && near.d <= 800) { heroSi = near.i; heroWhy = 'Nearest'; }
   else if (firstSaved !== undefined) { heroSi = D.stopById[firstSaved]; heroWhy = 'Saved'; }
@@ -50,7 +51,7 @@ function landing(clockNow, app) {
     else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
   }
   if (geo) {   // the stops near you, under whatever is saved: a saved stop across town mustn't hide the one you're standing at
-    const rows = nearest(geo.lat, geo.lon, 8).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)).slice(0, 3);
+    const rows = nearest(geo.lat, geo.lon, 24).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)).slice(0, 3);
     if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy === 'Nearest' ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
   }
   if (!stopHero && !geo) {
@@ -229,7 +230,7 @@ function results(q, clockNow) {
   const where = towns.length === 1 ? ' in ' + towns[0] : '';
   if (!hits.length) return html`${html.raw(spotHtml)}${html.raw(campusHtml)}${html.raw(addrHtml)}${places.length ? html`<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>` : ''}`;
   // A street or a number is after stops: they come first, the places on that street after. A name is after a place.
-  const street = streetish(q);
+  const street = streetish(q) || townish(q);
   const stopsHtml = html`<div class="${street && !places.length ? 'notice' : 'section'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}</span></div>
     <div class="list">${hits.map(i => stop(i).hub ? hubRow() : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`.s;
   const blocks = street ? [addrHtml, stopsHtml, campusHtml, spotHtml] : [spotHtml, campusHtml, addrHtml, stopsHtml];

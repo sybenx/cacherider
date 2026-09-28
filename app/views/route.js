@@ -2,7 +2,7 @@
 import { D, route, stop, nextAt, routeAlerts, closedRoutes, routeOrder, timesOn, tripStops, runEnd, tripEnd, tripRoute, nextTrip, prevTrip, lastTripOn, onRequest, dirName } from '../data.js';
 import { relative, clockText, dayName } from '../time.js';
 import { rt, rtStale, nextStopOf, lateWords, isLoop, predict } from '../rt.js';
-import { html, icon, badge, badges, time, sched, stopRow, lively, routeBadgeLink, corners, when, liveMark } from '../ui.js';
+import { html, icon, badge, badges, time, sched, stopRow, lively, routeBadgeLink, corners, when, liveMark, liveTag } from '../ui.js';
 import { miniSlot, mountMini } from './mini.js';
 
 export function render({ short, dir, at, full, bus }, clockNow) {
@@ -131,7 +131,7 @@ function yourStop(ri, si, seq, buses, clockNow) {
   else if (!t) line = html`<span class="rel">Nothing scheduled in the next week</span>`;
   else if (t.day > 0) line = html`<span class="rel">No more ${name} here today · next ${t.day === 1 ? 'tomorrow' : dayName(t.ymd)} ${clockText(t.min)}</span>`;
   else {
-    line = html`${badge(ri, 20)}${when(t, 22)}<span class="rel">${relative(t, clockNow)}</span>${t.live ? liveMark() : sched(t)}`;
+    line = html`${badge(ri, 20)}${when(t, 22)}<span class="rel">${relative(t, clockNow)}</span>${t.live ? liveTag(t) : sched(t)}`;
     // Which bus: the one on that trip. How far: stops from where it calls next to here, round the loop for a loop.
     const b = buses.find(x => x.trip === D.trips[t.trip]);
     if (b) {

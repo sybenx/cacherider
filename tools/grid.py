@@ -72,8 +72,18 @@ big = [t for t in towns if t['pop'] >= 300]
 def nearest_town(lat, lon):
     return min(big, key=lambda t: dist((lat, lon), (t['lat'], t['lon'])))
 
-def fit(pairs):
-    """Least squares y = a + b x, twice: the second time without the outliers of the first."""
+def fit(pairs, seed=None, win=None):
+    """Least squares y = a + b x, twice: the second time without the outliers of the first. With a seed slope and a
+    window (a town's own fit, where streets of two numberings lie mixed: Millville's own beside Providence's and
+    Logan's), the points are first narrowed to the densest cluster of origins they imply (y - seed·x) within the
+    window of one another: one numbering's streets, the rest another town's."""
+    if seed is not None and len(pairs) >= 3:
+        o = sorted((y - seed * x, (x, y)) for x, y in pairs)
+        best, j = (0, 0), 0
+        for i in range(len(o)):
+            while j < len(o) and o[j][0] - o[i][0] <= win: j += 1
+            if j - i > best[0]: best = (j - i, i)
+        pairs = [p for _, p in o[best[1]:best[1] + best[0]]]
     if len(set(x for x, _ in pairs)) < 3: return None
     def lsq(ps):
         n = len(ps); sx = sum(x for x, _ in ps); sy = sum(y for _, y in ps)
@@ -103,7 +113,10 @@ def fit_grid(pts, borrow=None, local=False):
     if local:
         own = lambda ax: [p for p in ax if abs(p[0]) <= 1500]
         ns, ew = own(ns), own(ew)
-    fn, fe = fit(ns), fit(ew)
+        lat = sum(p[2] for p in pts) / len(pts)
+        fn = fit(ns, 215 / 100 / 111000, 150 / 111000)   # a block about 215 m, the valley over; one numbering's origins within 150 m
+        fe = fit(ew, 215 / 100 / (111000 * math.cos(math.radians(lat))), 150 / (111000 * math.cos(math.radians(lat))))
+    else: fn, fe = fit(ns), fit(ew)
     bn, be = not fn and borrow is not None, not fe and borrow is not None
     if bn: fn = (borrow['lat0'], borrow['klat'], 0, 0)
     if be: fe = (borrow['lon0'], borrow['klon'], 0, 0)
@@ -158,6 +171,9 @@ for name, pts in sorted(local.items(), key=lambda kv: -len(kv[1])):
     mine = [p for p in pts if residual(g, *p) < 250]
     if len(mine) < 25: continue
     g = fit_grid(mine, borrow, local=True) or g
+    # A hamlet on its neighbour's grid (Greens Corner on Wellsville's) fits the same origin: one grid, not two.
+    if any(dist((g['lat0'], g['lon0']), (o['lat0'], o['lon0'])) < 300 for o in grids[len(county):]):
+        print('%-12s on its neighbour\'s grid' % name); continue
     g.update({'name': name, 'towns': [name], 'bounds': bounds(mine, 1000)})
     grids.append(g)
     print('%-12s local grid:  origin %.5f,%.5f  100 units = %3.0f m N %3.0f m E  fit ±%d/%d m  %d pts  N %d..%d E %d..%d%s' % (

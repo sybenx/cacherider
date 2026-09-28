@@ -104,6 +104,8 @@ export function headsign(t) {
 
 /** One departure row: badge · headsign + Scheduled · time + relative. */
 export const liveMark = (text = 'Live') => raw(`<span class="livetag"><i></i>${esc(text)}</span>`);
+/** The bare tag for a row: 'Live', or 'Estimated' where the minute comes from the bus's place rather than the feed's word. */
+export const liveTag = t => liveMark(t.live && t.live.est ? 'Estimated' : 'Live');
 /** The feed's word on a departure, when it has one: the row then shows the predicted time. */
 export function lively(t) {
   if (t.live || t.gone) return t;
@@ -113,7 +115,8 @@ export function lively(t) {
 /** The timetable's minute for a departure, live or not. The big time is always this one. */
 export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
 export { isLoop };
-export const liveWord = t => isLoop(t.r) ? 'Live' : 'Live · ' + lateWords(t.live.delay);
+/** 'Live · 3 min late'; 'Estimated · …' where the minute is worked out from the bus's place, not the feed's word. */
+export const liveWord = t => isLoop(t.r) ? (t.live.est ? 'Estimated' : 'Live') : (t.live.est ? 'Estimated · ' : 'Live · ') + lateWords(t.live.delay);
 /** A loop spacing its buses, away from the Transit Center: its timetable means nothing then, so its rows give
  *  only how long till the bus is there. */
 export const loopArrival = t => !!t.live && isLoop(t.r) && !D.stops[t.si]?.hub && loopSpacing(t.r);
@@ -157,7 +160,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const s = stop(si);
   const next = next0 ? lively(next0) : next0;
   const end = next
-    ? `<div class="end"><div class="when">${badge(next.r, 20).s}${when(next, 22).s}</div>${loopArrival(next) ? '' : `<span class="rel">${esc(relative(next, clockNow))}</span>`}${next.live ? liveMark().s : sched(next).s}</div>`
+    ? `<div class="end"><div class="when">${badge(next.r, 20).s}${when(next, 22).s}</div>${loopArrival(next) ? '' : `<span class="rel">${esc(relative(next, clockNow))}</span>`}${next.live ? liveTag(next).s : sched(next).s}</div>`
     : `<div class="end"><span class="rel${opts.warn ? ' warnmark' : ''}">${esc(opts.none || 'No service today')}</span></div>`;
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
@@ -205,7 +208,7 @@ export function acrossRow(si, clockNow) {
   const [ti, td] = stop(si).twin, t = stop(ti), n = nextAt(ti, 1, clockNow)[0], sd = side(ti);
   const dest = n && tellsApart(n) ? headsign(n) : '';
   const end = n
-    ? `<span class="when">${badge(n.r, 20).s}${time(n.min, 20, !!n.live).s}</span><span class="rel">${esc(relative(n, clockNow))}</span>${n.live ? liveMark().s : sched(n).s}`
+    ? `<span class="when">${badge(n.r, 20).s}${time(n.min, 20, !!n.live).s}</span><span class="rel">${esc(relative(n, clockNow))}</span>${n.live ? liveTag(n).s : sched(n).s}`
     : '<span class="rel">No service today</span>';
   return raw(`<a class="acrossrow" href="#/stop/${esc(t.id)}">${icon('swap', 18).s}
     <span class="mid"><span class="eyebrow">Across the road${sd ? ' · ' + esc(sd) : ''} · ${esc(metres(td))}</span><span class="name">${esc(t.name)}</span>${dest ? `<span class="sub">${esc(dest)}</span>` : ''}</span>
