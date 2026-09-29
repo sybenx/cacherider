@@ -490,12 +490,17 @@ async function boot() {
   }).catch(() => {});
 }
 /** 'Cache Rider has updated', with a reload: once, above the tabs. */
+/** A new version has taken over: a strip in the layout, above the tabs (a wide screen's bottom edge), the page and
+ *  the map drawn smaller to make room, so it covers nothing. Put away with its ×, it comes back with the next update. */
 function updateBar() {
   if (document.querySelector('.updatebar')) return;
   const bar = document.createElement('div');
   bar.className = 'updatebar'; bar.setAttribute('role', 'status');
-  bar.innerHTML = html`<span>Cache Rider has updated</span><button class="btn btn-primary" type="button">Reload</button>`;
-  bar.querySelector('button').onclick = () => location.reload();
-  document.body.appendChild(bar);
+  bar.innerHTML = html`<span>Cache Rider has updated</span><button class="btn btn-primary" type="button" data-reload>Reload</button><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Not now">${icon('close', 20)}</button>`;
+  const fit = () => window.dispatchEvent(new Event('resize'));   // the map measures its new room
+  bar.querySelector('[data-reload]').onclick = () => location.reload();
+  bar.querySelector('[data-close]').onclick = () => { bar.remove(); fit(); };
+  document.getElementById('tabs').before(bar);
+  fit();
 }
 boot();

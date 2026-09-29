@@ -94,8 +94,10 @@ svg { display: block; flex: none; }
 }
 #tabs a[aria-current] { font-weight: 600; color: var(--color-accent-700); box-shadow: inset 0 2px 0 var(--color-accent); }
 /* A new version of the app is in, the open one old: a bar above the tabs with a reload. */
-.updatebar { position: fixed; left: 12px; right: 12px; bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) + 12px); z-index: 600; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 10px 10px 16px; background: var(--color-text); color: var(--color-bg); box-shadow: var(--shadow-lg); font-size: 15px; }
+.updatebar { flex: none; position: relative; z-index: 500; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; background: var(--color-text); color: var(--color-bg); font-size: 15px; }   /* a strip in the frame, above the tabs: it takes room, it covers nothing */
+.updatebar > span { flex: 1; min-width: 0; }
 .updatebar .btn { min-height: 40px; padding: 0 16px; }
+.updatebar .btn-icon { padding: 0; width: 40px; color: inherit; }
 
 @media (min-width: 900px) {
   #top {
@@ -113,7 +115,6 @@ svg { display: block; flex: none; }
   #top .search .input { height: 44px; font-size: 15px; padding-left: 40px; }
   #top .search .lead { left: 12px; }
   #tabs { display: none; }
-  .updatebar { left: auto; right: 20px; bottom: 20px; max-width: 420px; }
   /* the day and time: Tue Sep 29 12:22 PM */
   .topclock { flex: 1 1 0; display: flex; justify-content: flex-end; align-items: baseline; gap: 14px; padding-left: 4px; font-family: var(--font-heading); font-weight: 600; font-size: 22px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
   .topclock .md { color: var(--cr-muted); }
