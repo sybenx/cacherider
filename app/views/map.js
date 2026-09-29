@@ -91,9 +91,15 @@ function style(sat = true) {
       // The way on from a picked bus or stop: bright there, fading as it goes, in pieces each with its own strength (a
       // gradient is one per layer, and a stop with three routes needs three). Butt ends, so the pieces meet without
       // beads. Several ways from one stop run as strands side by side (`lane`, in widths), each a little narrower (`wf`).
-      { id: 'runs', type: 'line', source: 'runs', filter: ['!', ['to-boolean', ['get', 'approx']]], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]] } },
+      { id: 'runs', type: 'line', source: 'runs', filter: ['all', ['!', ['to-boolean', ['get', 'approx']]], ['!', ['to-boolean', ['get', 'arrow']]]], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]] } },
       // A shuttle loop drawn stop to stop (no shape to follow): its way on dashed, as its line is.
-      { id: 'runs-approx', type: 'line', source: 'runs', filter: ['to-boolean', ['get', 'approx']], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]], 'line-dasharray': [2, 1.2] } },
+      { id: 'runs-approx', type: 'line', source: 'runs', filter: ['all', ['to-boolean', ['get', 'approx']], ['!', ['to-boolean', ['get', 'arrow']]]], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]], 'line-dasharray': [2, 1.2] } },
+      // Which way a lit route goes, and a way on: small arrows along the line from the streets in, each in its line's
+      // colour edged in the paper's. A lit route's sit a little to the right of the way they point, so two loops on one
+      // street, or a route's out and back, show both ways side by side; a way on's ride its own strand. Never over a
+      // stop's name or a time: placed after them, they give way, and they push nothing else aside.
+      { id: 'route-arrows', type: 'symbol', source: 'lines', minzoom: 14, filter: ['in', ['get', 'route'], ['literal', []]], layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['slice', ['get', col], 1], '-' + flavor[0]], 'icon-offset': [0, 3.5] } },
+      { id: 'runs-arrows', type: 'symbol', source: 'runs', minzoom: 14, filter: ['to-boolean', ['get', 'arrow']], layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['get', 'hex'], '-' + flavor[0]], 'icon-offset': ['interpolate', ['linear'], ['zoom'], 14, ['array', 'number', 2, ['get', 'o14']], 17, ['array', 'number', 2, ['get', 'o17']]] }, paint: { 'icon-opacity': ['get', 'op'] } },
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
@@ -272,6 +278,20 @@ function squareImage(hex) {
   }
   return { width: n, height: n, data: d };
 }
+/** An arrow for a line, pointing along it (+x, as line placement lays an icon): a chevron in the line's colour edged
+ *  in the paper's, drawn at twice the size for a sharp screen. Made on demand, one per colour and look. */
+const ARROWS = { 'symbol-placement': 'line', 'symbol-spacing': 120, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': false, 'icon-ignore-placement': true, 'icon-padding': 1 };
+function arrowImage(hex, darkPaper) {
+  const k = 2, n = 12 * k, c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d');
+  g.scale(k, k); g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(4, 2.5); g.lineTo(8.5, 6); g.lineTo(4, 9.5);
+  g.strokeStyle = darkPaper ? '#101214' : '#f2f2f3'; g.lineWidth = 4.6; g.stroke();
+  g.strokeStyle = '#' + hex; g.lineWidth = 2; g.stroke();
+  const im = g.getImageData(0, 0, n, n);
+  return { width: n, height: n, data: im.data };
+}
 function addUsuImages() {
   if (!U) return;
   for (const r of U.routes) { const name = 'usq-' + r.color.slice(1); if (!map.hasImage(name)) map.addImage(name, squareImage(r.color)); }
@@ -311,7 +331,11 @@ function loadTiles() {
   return tilesLoaded;
 }
 function squaresOnDemand(m) {
-  m.on('styleimagemissing', e => { if (e.id.startsWith('usq-') && !m.hasImage(e.id)) m.addImage(e.id, squareImage('#' + e.id.slice(4))); });
+  m.on('styleimagemissing', e => {
+    if (e.id.startsWith('usq-') && !m.hasImage(e.id)) m.addImage(e.id, squareImage('#' + e.id.slice(4)));
+    const a = /^arw-([0-9a-f]{6})-([dl])$/i.exec(e.id);
+    if (a && !m.hasImage(e.id)) m.addImage(e.id, arrowImage(a[1], a[2] === 'd'), { pixelRatio: 2 });
+  });
 }
 
 async function init(app) {
@@ -941,7 +965,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (a
 // badge's IN says so). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5, HUB_IN = 110;   // metres from the hall: a bus this close is in
-const HUB_HIDE = ['route-lines', 'route-on', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -1074,6 +1098,7 @@ function tintStops(m, ri) {
  *  from a bus or stop (`soft`), everything fades back, the lit route too, so the way stands out from the road. */
 function litLines(m, lines, loops, soft = false) {
   m.setFilter('route-on', ['in', ['get', 'route'], ['literal', lines]]);
+  m.setFilter('route-arrows', ['in', ['get', 'route'], ['literal', soft ? [] : lines]]);   // a way on's strands carry the arrows then
   m.setFilter('usu-line-on', ['in', ['get', 'id'], ['literal', loops]]);
   const any = lines.length > 0 || loops.length > 0 || soft, dk = dark();
   m.setPaintProperty('route-on', 'line-color', ['get', soft ? (dk ? 'dsoft' : 'soft') : dk ? 'dcolor' : 'color']);
@@ -1722,7 +1747,7 @@ function runBounds(R) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60, main: true };
-const RUN_HIDE = ['stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'runs', 'runs-approx', 'pool-zone', 'pool-edge', 'pool-stops'];
+const RUN_HIDE = ['stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', 'runs', 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
@@ -2202,6 +2227,20 @@ function fadePieces(path, hex, props) {
   }
   return out;
 }
+/** A strand's arrows, in its lane: the way in a few long stretches (its pieces are too short to carry one each), each
+ *  as strong as the strand is there, so where a loop comes back past, the sooner way's arrows are the plain ones. */
+function arrowLines(path, hex, lane) {
+  const c = dark() ? lift('#' + hex).slice(1) : hex.toLowerCase(), L = [0];
+  for (let i = 1; i < path.length; i++) L.push(L[i - 1] + Math.hypot((path[i][0] - path[i - 1][0]) * KX, (path[i][1] - path[i - 1][1]) * KY));
+  const T = L[L.length - 1], N = Math.max(1, Math.min(6, Math.round(T / 700))), out = [];
+  for (let n = 0, i = 0; n < N; n++) {
+    const z = T * (n + 1) / N, pts = [path[i]];
+    while (i + 1 < path.length && L[i + 1] <= z) pts.push(path[++i]);
+    if (n === N - 1) while (i + 1 < path.length) pts.push(path[++i]);
+    if (pts.length > 1) out.push({ type: 'Feature', properties: { arrow: true, hex: c, op: Math.max(0.35, 1 - 0.92 * (n + 0.5) / N), o14: [0, lane * 8], o17: [0, lane * 12] }, geometry: { type: 'LineString', coordinates: pts } });
+  }
+  return out;
+}
 /** The way on from what's picked, drawn: a bus's from the bus, a stop's from the stop, each along its route's shape,
  *  bright there and fading round to where it comes back to itself. Nothing picked, or nothing to draw: cleared. */
 let runsKey = null;
@@ -2253,10 +2292,10 @@ async function drawRuns() {
         path = [w.from, ...path.slice(bi + 1), ...(round ? [...path.slice(1, bi + 1), w.from] : [])];
       }
     }
-    if (path.length > 1) feats.push(...fadePieces(path, D.routes[w.ri].color, { wf, lane: lane(idx) }));
+    if (path.length > 1) feats.push(...fadePieces(path, D.routes[w.ri].color, { wf, lane: lane(idx) }), ...arrowLines(path, D.routes[w.ri].color, lane(idx)));
   }
-  for (const [k, w] of loops.entries()) feats.push(...fadePieces(w.path, U.routes[w.ri].color.slice(1), { wf, lane: lane(wants.length + k), approx: !U.routes[w.ri].shape.length }));
-  feats.sort((x, y) => x.properties.a - y.properties.a);   // the brightest pieces drawn last, on top, where ways share a road
+  for (const [k, w] of loops.entries()) feats.push(...fadePieces(w.path, U.routes[w.ri].color.slice(1), { wf, lane: lane(wants.length + k), approx: !U.routes[w.ri].shape.length }), ...arrowLines(w.path, U.routes[w.ri].color.slice(1), lane(wants.length + k)));
+  feats.sort((x, y) => (x.properties.a ?? 0) - (y.properties.a ?? 0));   // the brightest pieces drawn last, on top, where ways share a road
   runsKey = key;
   map.getSource('runs').setData({ type: 'FeatureCollection', features: feats });
 }
