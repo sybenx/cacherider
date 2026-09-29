@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -432,7 +432,8 @@ async function init(app) {
     }
     // No stop there, but a route's line: that route lit up with its times, where the map is. Where several share the
     // road, the card asks which.
-    const ris = [...new Set(map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['route-lines'] }).map(f => f.properties.route))].sort((a, b) => a - b);
+    // A route the timetable splits by time of day (16 AM and PM) is one route here: the half on the road now or next.
+    const ris = [...new Map(map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['route-lines'] }).map(f => f.properties.route).sort((a, b) => a - b).map(ri => [familyKey(ri), ri])).values()].map(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute) ? focusRoute : familyNow(ri, now()));   // the half up stays up
     const card = col.querySelector('#mapcard'), cardOpen = card.classList.contains('open');
     // A route up on the Map tab, its sheet (or a card over it) open: a tap on nothing puts the card away and leaves the
     // route lit; the next tap puts the route away.
@@ -442,7 +443,7 @@ async function init(app) {
       return;
     }
     // Another route's line tapped with one up on the Map tab: that one put away first; a tap on the line then picks it.
-    if (ris.length && !ris.includes(focusRoute) && app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) {
+    if (ris.length && !ris.some(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute)) && app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) {
       card.classList.remove('open', 'peek'); location.hash = '#/map'; return;
     }
     selectedBus = null; selectedU = null; select(null, app);
@@ -539,7 +540,13 @@ function routeSheet({ short, dir, at, full, bus }, clockNow) {
   const count = !whole ? `${coming.length} of ${seq.length} stops left` : split ? `${seq.length} stops · tonight's first` : `${seq.length} stops, in order`;
   // The head is what a swiped-down sheet keeps: the route, and which way with how much of it is left.
   const chipsRow = html`<div class="rs-ways">${dirs.length > 1 ? dirs.map((k, i) => html`<a class="chip${k === d ? ' on' : ''}" href="${base}/${k}">${apart ? names[i] : r.dirs[+k] || (k === '0' ? 'Outbound' : 'Return')}</a>`) : ''}<span class="rs-count">${count}</span></div>`;
-  const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</div></div>${chipsRow}</div>`;
+  // The route's other half (16 PM from 16 AM), a tap away, with when it next leaves today: one route to a rider.
+  const also = family(ri).filter(x => x !== ri).map(x => {
+    const next = Object.keys(D.routes[x].stops || {}).flatMap(k => runsOn(x, clockNow.ymd, k)).filter(t => t.min > clockNow.min).sort((p, q) => p.min - q.min)[0];
+    const lt = next ? null : lastTripOn(x, clockNow.ymd), out = lt && lt.start[0] <= clockNow.min && lt.end[0] >= clockNow.min;
+    return html`<a class="rs-also" href="#/map/route/${encodeURIComponent(D.routes[x].short)}">${badge(x, 22)}<span class="rs-also-t">Also ${routeName(x, false)}${next ? ` · next run ${clockText(next.min)}` : out ? ' · its last run on the road now' : ' · no more runs today'}</span>${icon('fwd', 16)}</a>`;
+  });
+  const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</div></div>${also}${chipsRow}</div>`;
   // Alerts folded to their titles: the line on the map already shows where; the words are a tap away.
   const alerts = routeAlerts(ri, clockNow.ymd).map(a => html`<details class="callout alert rs-alert"><summary>${icon('ban', 20)}<b>${a.title}</b><span class="more">More</span></summary><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></details>`);
   // Come from a stop's badge: the answer for that stop first, so the list below is for those who want the route.

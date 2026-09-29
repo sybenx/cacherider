@@ -865,6 +865,10 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 /* on a phone the route's stops are the map's card: a little over half the screen, the map framed above it, and
    its head held at the top while the list scrolls under it */
 .mapcard:has(> .routesheet):not(.peek) { max-height: 55%; }
+/* a route's other half (16 PM from 16 AM) */
+.rs-also { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font: 400 14px/1.35 var(--font-body); letter-spacing: 0; color: var(--color-text); text-decoration: none; }
+.rs-also-t { flex: 1; min-width: 0; }
+.rs-also svg { color: var(--cr-muted); }
 .mapcard > .routehead { position: sticky; top: 0; z-index: 1; background: var(--color-bg); border-bottom: 1px solid var(--cr-line); }
 .rs-alert { display: block; padding: 10px 12px; }
 .rs-alert summary { list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer; }

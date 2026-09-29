@@ -352,6 +352,29 @@ export function prevTrip(ti, ymd) {
 }
 /** A route's last trip today, one way when `dir` is given: of its trips today, the one that ends last. Not simply the last to leave the Transit
  *  Center: the feed cuts a loop's trips elsewhere, so its last run may not pass the Transit Center at all. */
+/** A route's family: the halves a timetable splits one route into by time of day (Connect's 16 AM and 16 PM, a few
+ *  runs each), one route to a rider. Itself alone for most. */
+export const familyKey = ri => D.routes[ri].short.replace(/\s+(AM|PM)$/i, '');
+export const family = ri => D.routes.map((r, i) => i).filter(i => familyKey(i) === familyKey(ri));
+/** Of a route's family, the half on the road now or next today (its soonest run not yet finished); the route itself
+ *  when it's alone or nothing more runs today. */
+export function familyNow(ri, clockNow) {
+  const fam = family(ri);
+  if (fam.length < 2) return ri;
+  let best = null;
+  for (const r of fam) {
+    const done = new Set();
+    for (const si of new Set(Object.values(D.routes[r].stops || {}).flat())) for (const t of timesOn(si, clockNow.ymd)) {
+      if (t.r !== r || done.has(t.trip)) continue;
+      done.add(t.trip);
+      const st = tripStops(t.trip), te = tripEnd(t.trip);
+      if (!st.length || (te ? te.min : st[st.length - 1][0]) < clockNow.min) continue;
+      const k = Math.max(st[0][0], clockNow.min);
+      if (!best || k < best.k) best = { r, k };
+    }
+  }
+  return best ? best.r : ri;
+}
 export function lastTripOn(ri, ymd, dir) {
   const seen = new Set(Object.values(D.routes[ri].stops || {}).flat());
   let best = null, end = -1;
