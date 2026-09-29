@@ -24,7 +24,7 @@ export function render({ id }, clockNow) {
   // A shuttle stop is a place like any other: the way here, or on from here, by whatever runs near it. The planner
   // finds the Connect stops within a walk; a rider here wants to get somewhere, not to ride this loop.
   const key = spotKey(s.lat, s.lon, s.name);
-  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${cs ? html`<span class="muted" style="font-size:14px">Connect stop: ${cs.name}</span>` : ''}
+  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${cs ? html`<span class="muted" style="font-size:0.875rem">Connect stop: ${cs.name}</span>` : ''}
     <div class="badges wide">${chips(s.routes, 30)}${cs ? html.raw(routeLinkItems(D.stopById[cs.id])) : ''}</div>
     <div class="golinks"><a class="golink" href="#/go/${key}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div></div>`);
 
@@ -37,7 +37,7 @@ export function render({ id }, clockNow) {
     else if (isStale()) parts.push(html`<div class="callout">${icon('info', 20)}<div><b>Live feed hasn't updated in ${Math.round((Date.now() - live.at) / 60000)} min</b><div class="sub">Showing where buses were at ${lastSeen()}. Minutes are hidden until it's back.</div></div></div>`);
     else parts.push(notice());
     if (hasData()) parts.push(html`<div class="list">${rows.map(r => liveRow(r))}</div>`, offNote(s.routes));
-    else if (!live.error) parts.push(html`<div class="list">${rows.map(r => html`<div class="row urow"><span class="uchip" style="min-width:36px;height:36px;font-size:17px;background:${U.routes[r.ri].color};color:${U.routes[r.ri].text}">${U.routes[r.ri].short}</span><div class="mid"><span class="name">${U.routes[r.ri].name}</span><span class="sub">Finding the bus…</span></div><span></span></div>`)}</div>`);
+    else if (!live.error) parts.push(html`<div class="list">${rows.map(r => html`<div class="row urow"><span class="uchip" style="min-width:36px;height:36px;font-size:1.0625rem;background:${U.routes[r.ri].color};color:${U.routes[r.ri].text}">${U.routes[r.ri].short}</span><div class="mid"><span class="name">${U.routes[r.ri].name}</span><span class="sub">Finding the bus…</span></div><span></span></div>`)}</div>`);
   }
 
   if (cs) {

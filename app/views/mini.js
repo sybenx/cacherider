@@ -1,8 +1,9 @@
 // The small map at the top of a stop page on a phone: where the stop is, and a tap to open the Map tab there. The
 // map module docks the one map into the slot; the desktop has the map beside the page.
 import { html, icon } from '../ui.js';
+import { isWide } from '../wide.js';
 
-const desktop = () => matchMedia('(min-width: 900px)').matches;
+const desktop = isWide;
 
 /** Markup for the slot; `sel` is { stopId }, { ustopId } or { uroute: id }. */
 export function miniSlot(sel) {

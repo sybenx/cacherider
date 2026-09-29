@@ -11,13 +11,14 @@ import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, me
 import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap } from './find.js';
+import { WIDE_MQ, isWide } from '../wide.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
 let sat = false;   // aerial imagery: a tap each visit, never remembered
 const satOn = () => sat;
 const coarse = () => matchMedia('(pointer: coarse)').matches;
-const wide = () => matchMedia('(min-width: 900px)').matches;
+const wide = isWide;
 /** So wide a stop's page takes the whole screen, map and all: a tap on the map shows its card instead. */
 /** A stop link opened on the Map tab of a wide screen becomes its page, without a history entry to loop back into. */
 const asPage = hash => location.replace(location.href.split('#')[0] + hash);
@@ -932,7 +933,7 @@ function showSat(on) {
 
 /** Near me nearest the bottom right corner on a phone; on a wide screen, where the stop card sits bottom right, one
  *  stack top right. Zoom buttons only for a mouse: fingers pinch. */
-const WIDE = matchMedia('(min-width: 900px)');
+const WIDE = matchMedia(WIDE_MQ);
 let ctrls = [];
 function placeControls() {
   for (const c of ctrls) map.removeControl(c);

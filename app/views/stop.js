@@ -9,6 +9,7 @@ import { metres as m2 } from '../time.js';
 import { afterSave, app } from '../main.js';
 import { restOfDay, runSheet, wireSheet, sheetRun } from './stopwide.js';
 import { wirePointers, pointerDial } from '../pointer.js';
+import { isWide } from '../wide.js';
 
 export function render({ id, full, run, on }, clockNow) {
   const si = stopIndex(id);
@@ -19,7 +20,7 @@ export function render({ id, full, run, on }, clockNow) {
   const sv = isSaved(s.id);
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
-  const desk = matchMedia('(min-width: 900px)').matches;   // the map beside the page
+  const desk = isWide();   // the map beside the page
   if (!desk) parts.push(miniSlot({ stopId: s.id }));   // beside the big map, no small one
   const sd = side(si);
   const eyebrow = `${s.town} · Stop ${s.code || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces

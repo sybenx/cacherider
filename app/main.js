@@ -4,6 +4,7 @@ import { load, D, BASE, pref, stopIndex, loadAlerts, loadPlaces, loadPool, A } f
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
 import { html, icon, esc } from './ui.js';
 import { loadGrid , loadElevation, spotKey } from './geo.js';
+import { WIDE_MQ, isWide } from './wide.js';
 import * as home from './views/home.js';
 import * as stopView from './views/stop.js';
 import * as hub from './views/hub.js';
@@ -76,7 +77,7 @@ function parse() {
   return { seg, q, path };
 }
 
-export const isDesktop = () => matchMedia('(min-width: 900px)').matches;
+export const isDesktop = isWide;
 /** Wide enough for a page to take the whole width, in columns (the Transit Center). */
 
 async function ensureMap() {
@@ -476,7 +477,7 @@ async function boot() {
   wireSwipeBack();
   // Not `render` itself: the event would arrive as the tick flag and the map would sit still.
   window.addEventListener('hashchange', () => render());
-  matchMedia('(min-width: 900px)').addEventListener('change', () => render());
+  matchMedia(WIDE_MQ).addEventListener('change', () => render());
   render();
   autoLocate();
   // The day and time at the right of the desktop header: to the minute, as the buses run.

@@ -9,10 +9,10 @@ export function render({ section }, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
   const left = html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div>
     <div class="head"><span class="eyebrow">Unofficial</span><h1>Cache Rider</h1></div>
-    <div class="pad" style="font-size:16px;line-height:1.5">
+    <div class="pad" style="font-size:1rem;line-height:1.5">
       <p>A schedule app for ${D.agency.brand}, the ${D.agency.name} bus. Made by a rider, not by the agency.</p>
       <a class="btn btn-secondary" href="${feedbackHref()}">${icon('mail', 20)}Send feedback</a>
-      <p class="muted" style="font-size:13px;margin-top:8px">A wrong time, a stop that isn't where the map says, an idea: it goes to the person who makes this, not to ${D.agency.brand}.</p>
+      <p class="muted" style="font-size:0.8125rem;margin-top:8px">A wrong time, a stop that isn't where the map says, an idea: it goes to the person who makes this, not to ${D.agency.brand}.</p>
     </div>
     <div class="section">${icon('sliders', 16)}Settings</div>
     <div class="setrows">
@@ -24,16 +24,16 @@ export function render({ section }, clockNow) {
     ${installState() === 'installed' ? '' : html`<div class="section">${icon('down', 16)}On your home screen</div>
     <div class="pad" id="install-about">${installBlock()}</div>`}
     ${installState() === 'installed' || !/Android/i.test(navigator.userAgent) ? '' : html`<div class="section">${icon('globe', 16)}Android app</div>
-    <div class="pad muted" style="font-size:14px"><p>On an Android phone without Chrome, GrapheneOS say, there's an app: it opens Cache Rider full screen in your own browser, nothing more. <a href="https://github.com/sybenx/cacherider/releases/latest" target="_blank" rel="noopener">Download the APK</a> from the releases, or add <b>sybenx/cacherider</b> to Obtainium to keep it updated.</p>
+    <div class="pad muted" style="font-size:0.875rem"><p>On an Android phone without Chrome, GrapheneOS say, there's an app: it opens Cache Rider full screen in your own browser, nothing more. <a href="https://github.com/sybenx/cacherider/releases/latest" target="_blank" rel="noopener">Download the APK</a> from the releases, or add <b>sybenx/cacherider</b> to Obtainium to keep it updated.</p>
       <p>For the compass on GrapheneOS: the app runs inside Vanadium, which keeps motion sensors from every site until you allow them. In Vanadium, open Settings → Site settings → Motion sensors and allow cacherider.com, or tap the lock in the address bar on the site and allow them there.</p></div>`}
     <div class="section">${icon('map', 16)}Offline map</div>
-    <div class="pad" id="offline"><p class="muted" style="font-size:14px" id="offline-note">Keeps the whole Cache Valley street map on this device, so it draws with no signal. Streets you've already looked at are kept anyway.</p>
+    <div class="pad" id="offline"><p class="muted" style="font-size:0.875rem" id="offline-note">Keeps the whole Cache Valley street map on this device, so it draws with no signal. Streets you've already looked at are kept anyway.</p>
       <button class="btn btn-secondary btn-lg blueprint" id="save-map">${corners()}${icon('down', 20)}Save the map for offline</button></div>
 `;
   const right = html`<div class="section" id="alerts">${icon('ban', 16)}Service alerts</div>
     ${alertsBlock(clockNow)}
     <div class="section">${icon('info', 16)}About the data</div>
-    <div class="pad muted" style="font-size:14px;line-height:1.5">
+    <div class="pad muted" style="font-size:0.875rem;line-height:1.5">
       <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Once a bus is on the road, ${D.agency.brand}'s own tracker reports where it is and when it expects to reach each stop, and those rows say <b>Live</b> instead of Scheduled. A live time is still a prediction. A bus on a detour shows on the map but can't give stop times, so its route's rows stay Scheduled.</p>
       <p>Nothing about you leaves this device. Your location, when you share it, is used only to sort stops by distance. There are no accounts, no analytics and no cookies. The live feed reaches the app through a small relay on Cloudflare, because the tracker refuses requests from browsers; the relay carries the feed one way and keeps nothing.</p>
       <p>${D.feed.version || ''}</p>
@@ -59,7 +59,7 @@ function installBlock() {
   // Never in the installed app (the section isn't drawn there). Elsewhere, always a button: large until it's
   // been used once, then small. It raises the browser's own install prompt where there is one (Chrome), else the steps.
   const used = !!pref('install');
-  return html`${used ? '' : html`<p class="muted" style="font-size:14px">One tap from your home screen, full screen, and it works offline.</p>`}<button class="btn btn-secondary${used ? '' : ' btn-lg blueprint'}" id="install-go" type="button">${used ? '' : corners()}${icon('install', 20)}Add to home screen</button>`;
+  return html`${used ? '' : html`<p class="muted" style="font-size:0.875rem">One tap from your home screen, full screen, and it works offline.</p>`}<button class="btn btn-secondary${used ? '' : ' btn-lg blueprint'}" id="install-go" type="button">${used ? '' : corners()}${icon('install', 20)}Add to home screen</button>`;
 }
 
 const MARK = BASE + 'tiles/tiles.json';   // present in the map cache only once every tile is
@@ -132,7 +132,7 @@ function alertsBlock(clockNow) {
   const al = activeAlerts(clockNow.ymd).sort((a, b) => (b.start || 0) - (a.start || 0) || num(b) - num(a));
   const when = A.fetched ? new Date(A.fetched) : null;
   const upd = when ? `Checked ${when.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', hourCycle: is24() ? 'h23' : 'h12' })}` : '';
-  if (!al.length) return html`<div class="pad muted" style="font-size:14px"><p>Nothing from ${D.agency.brand} right now. ${upd}</p></div>`;
+  if (!al.length) return html`<div class="pad muted" style="font-size:0.875rem"><p>Nothing from ${D.agency.brand} right now. ${upd}</p></div>`;
   return html`<div class="list">${al.map(a => html`<div class="alertrow"><a class="alerthead" href="#/map/alert/${a.id}">${alertRoutes(a).length ? badges(alertRoutes(a), 24) : ''}<b>${a.title}</b><span class="alertmap">${icon('map', 16)}Map</span></a><p>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</p>${known(a).length ? html`<p class="muted">Stops: ${known(a).map(id => html`<a href="#/stop/${id}">${D.stops[D.stopById[id]].name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), [])}</p>` : ''}</div>`)}</div><div class="fine">${upd}. Alerts come from ${D.agency.brand}'s rider alerts feed, checked hourly.</div>`;
 }
 // Stops the alert names that are in the timetable; the others are in its words already.

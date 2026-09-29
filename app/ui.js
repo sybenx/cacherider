@@ -145,7 +145,7 @@ function whenRaw(t, size) {
   if (loopArrival(t)) return minsOut(t, size);
   if (!t.live) return time(t.min, size);
   if (!t.live.delay) return time(t.min, size, true);
-  return raw(`<span class="whent"><s class="was" style="font-size:${Math.max(12, Math.round(size * .55))}px">${esc(clock(schedOf(t)).h)}</s>${time(t.min, size, true).s}</span>`);
+  return raw(`<span class="whent"><s class="was" style="font-size:${Math.max(12, Math.round(size * .55)) / 16}rem">${esc(clock(schedOf(t)).h)}</s>${time(t.min, size, true).s}</span>`);
 }
 /** For the big displays, a line above the estimate saying what the crossed-out time is: 'Scheduled ~~3:15 PM~~'. */
 export function wasLine(t) {
