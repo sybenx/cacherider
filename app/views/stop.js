@@ -137,9 +137,9 @@ export function render({ id, full, run, on }, clockNow) {
   // its own (?run=trip&on=day), so Back closes it.
   const pick = run !== undefined && run !== '' ? { trip: +run } : { trip: null };
   parts.push(restOfDay(si, next, clockNow, pick));
-  // Beside the big map (a tablet, a narrower window) the run is drawn there, not on a small map of the sheet's own.
+  // Beside the big map (a tablet, a narrower window) the run is drawn there; on a phone, on the one map docked in the sheet.
   const sheet = pick.trip !== null ? runSheet(si, next, clockNow, pick.trip, on || clockNow.ymd, desk) : null;
-  return { html: html`<div class="phone-stop" data-stop="${s.id}">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true, sheet, run: sheet && desk ? sheetRun() : null };
+  return { html: html`<div class="phone-stop" data-stop="${s.id}">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true, sheet, run: sheet ? sheetRun() : null };
 }
 
 function servicesOnDays(r) { return true; }
