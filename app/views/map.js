@@ -44,7 +44,11 @@ function mix(hex, paper, k) {
   const c = i => Math.round(parseInt(hex.slice(i, i + 2), 16) * k + parseInt(paper.slice(i, i + 2), 16) * (1 - k));
   return '#' + [1, 3, 5].map(i => c(i).toString(16).padStart(2, '0')).join('');
 }
+let darkOf = null;   // a Connect route's colour → its dark map shade, drawn apart where two are alike (data.js)
 function lift(hex) {
+  darkOf ??= new Map(D.routes.filter(r => r.dcolor).map(r => [r.color.toUpperCase(), '#' + r.dcolor]));
+  const own = darkOf.get(hex.slice(1).toUpperCase());
+  if (own) return own;
   const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
   const lum = v => { const [r, g, b] = v.map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
   let t = 0, v = c;

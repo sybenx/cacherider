@@ -21,7 +21,15 @@ export async function load() {
  *  are drawn apart in lightness, the lighter lighter and the darker darker, each hue kept, a step at a time till
  *  they're far enough. Two halves of one route (16 AM and PM, never out together) are left be. The badge's text
  *  turns black or white if the new shade needs it; the feed's own colour is kept as `gtfsColor`. */
-const NEED = 22;
+const NEED = 22, NEED_DARK = 30;
+/** A colour lightened toward white just till it stands off the dark map (relative luminance 0.2); bright ones as they are. */
+export function liftHex(hex) {
+  const c = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const lum = v => { const [r, g, b] = v.map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  let t = 0, v = c;
+  while (lum(v) < 0.2 && t < 1) { t += 0.05; v = c.map(x => Math.round(x + (255 - x) * t)); }
+  return v.map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
 function apart(routes) {
   const lin = c => (c /= 255) <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4, gam = c => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
   const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116, fi = t => t ** 3 > 0.008856 ? t ** 3 : (t - 16 / 116) / 7.787;
@@ -38,17 +46,29 @@ function apart(routes) {
   const lum = hex => { const [r, g, b] = [0, 2, 4].map(i => lin(parseInt(hex.slice(i, i + 2), 16))); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
   const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
   const same = (a, b) => a.short.split(' ')[0] === b.short.split(' ')[0];
-  const L = routes.map(r => /^[0-9a-f]{6}$/i.test(r.color || '') ? toLab(r.color) : null);
-  for (let pass = 0; pass < 24; pass++) {
-    let moved = false;
-    for (let i = 0; i < routes.length; i++) for (let j = i + 1; j < routes.length; j++) {
-      if (!L[i] || !L[j] || same(routes[i], routes[j]) || Math.hypot(L[i][0] - L[j][0], L[i][1] - L[j][1], L[i][2] - L[j][2]) >= NEED) continue;
-      const [lo, hi] = L[i][0] <= L[j][0] ? [i, j] : [j, i];
-      L[lo][0] = Math.max(8, L[lo][0] - 1); L[hi][0] = Math.min(92, L[hi][0] + 1);
-      moved = true;
+  const alike = new Set();   // the pairs that had to be drawn apart
+  const spread = (L, need, floor, ceil, only) => {
+    for (let pass = 0; pass < 24; pass++) {
+      let moved = false;
+      for (let i = 0; i < routes.length; i++) for (let j = i + 1; j < routes.length; j++) {
+        if (only && !only.has(i + ',' + j)) continue;
+        if (!L[i] || !L[j] || same(routes[i], routes[j]) || Math.hypot(L[i][0] - L[j][0], L[i][1] - L[j][1], L[i][2] - L[j][2]) >= need) continue;
+        if (!only) alike.add(i + ',' + j);
+        const [lo, hi] = L[i][0] <= L[j][0] ? [i, j] : [j, i];
+        L[lo][0] = Math.max(floor, L[lo][0] - 1); L[hi][0] = Math.min(ceil, L[hi][0] + 1);
+        moved = true;
+      }
+      if (!moved) break;
     }
-    if (!moved) break;
-  }
+  };
+  const L = routes.map(r => /^[0-9a-f]{6}$/i.test(r.color || '') ? toLab(r.color) : null);
+  spread(L, NEED, 8, 92);
+  // On the dark map every line is lifted till it stands off the paper, and bright colours glow alike there: two
+  // greens that read apart on the light map (8 and Green) didn't on the dark. So the pairs that had to be drawn apart
+  // are drawn further apart for the dark map (`dcolor`), from their lifted shades; the rest are only lifted.
+  const DL = routes.map((r, i) => L[i] && toLab(liftHex(toHex(L[i]))));
+  spread(DL, NEED_DARK, 52, 95, alike);
+  routes.forEach((r, i) => { if (DL[i]) r.dcolor = toHex(DL[i]); });
   routes.forEach((r, i) => {
     if (!L[i]) return;
     const hex = toHex(L[i]);
