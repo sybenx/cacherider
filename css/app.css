@@ -672,6 +672,14 @@ a.twinline { text-decoration: none; }
 .ask .btn-lg { min-height: 52px; font-family: var(--font-heading); font-weight: 600; font-size: 19px; letter-spacing: .01em; gap: 8px; }
 .ask-note { font-size: 12.5px; line-height: 1.45; color: var(--cr-muted); text-align: center; text-wrap: pretty; }
 @media (min-width: 900px) { .land-top { display: none; } .hero { margin-top: 16px; } }
+/* a tablet upright: the phone's page, not stretched to it. A column of a phone's reading width in the middle, and
+   the page gathered there, not the hero at the top and the search at the foot of a tall empty screen */
+@media (min-width: 600px) and (max-width: 899px) {
+  .land { width: min(100%, 600px); margin-inline: auto; padding-bottom: 8px; }
+  .land .spacer { flex: 0 0 36px; }
+  .land-top { margin-bottom: auto; }   /* the header at the top, the notes at the foot, the rest between */
+  .land > .fine { margin-top: auto; }
+}
 
 /* the Transit Center board */
 .tc-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; padding: 14px 16px 12px; }
