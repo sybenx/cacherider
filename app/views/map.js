@@ -432,7 +432,18 @@ async function init(app) {
     // No stop there, but a route's line: that route lit up with its times, where the map is. Where several share the
     // road, the card asks which.
     const ris = [...new Set(map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['route-lines'] }).map(f => f.properties.route))].sort((a, b) => a - b);
-    const cardOpen = col.querySelector('#mapcard').classList.contains('open');
+    const card = col.querySelector('#mapcard'), cardOpen = card.classList.contains('open');
+    // A route up on the Map tab, its sheet (or a card over it) open: a tap on nothing puts the card away and leaves the
+    // route lit; the next tap puts the route away.
+    if (!ris.length && cardOpen && app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) {
+      card.classList.remove('open', 'peek');
+      if (selectedBus) { selectedBus = null; hiLines = [focusRoute]; applySelection(); routeTimes(focusRoute, now()); }
+      return;
+    }
+    // Another route's line tapped with one up on the Map tab: that one put away first; a tap on the line then picks it.
+    if (ris.length && !ris.includes(focusRoute) && app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) {
+      card.classList.remove('open', 'peek'); location.hash = '#/map'; return;
+    }
     selectedBus = null; selectedU = null; select(null, app);
     if (ris.length === 1) pickRoute(ris[0], app);
     else if (ris.length > 1) routeChooser(ris, app);
@@ -748,7 +759,8 @@ function ringBus(id) {
   const m = busMarkers.get(id);
   if (!m) { wantRing = id; return; }
   wantRing = null; ringed = id;
-  for (const [bid, x] of busMarkers) x.el.classList.toggle('on', bid === id || bid === selectedBus);
+  applySelection();   // its way on from where it is, the route stepped back behind it, as a bus picked on the map
+  if (focusRoute !== undefined) routeTimes(focusRoute, now());   // and the route's times, that bus's
   const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
   map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: wide() ? [0, 0] : cardOffset(card), duration: 500 });
 }
@@ -860,9 +872,12 @@ function wireGrip(app) {
     if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) stepWay(dx < 0 ? 1 : -1);
   });
   card.addEventListener('click', e => {
-    const g = e.target.closest('[data-go]'), bk = e.target.closest('[data-back]');
+    const g = e.target.closest('[data-go]'), bk = e.target.closest('[data-back]'), a = e.target.closest('a[href^="#"]');
     if (g) asPage(g.dataset.go);
     else if (bk) { e.preventDefault(); backToWays(); }
+    // A card's link to the address already up (a bus's Open route, on its route): nothing to change to, so the tap
+    // did nothing. It's shown again instead: the route's sheet back, the bus ringed.
+    else if (a && a.getAttribute('href') === location.hash) { e.preventDefault(); shownHash = null; window.dispatchEvent(new HashChangeEvent('hashchange')); }
   });
   // a mouse drags the grip
   let my0 = null;
@@ -1169,7 +1184,7 @@ function select(id, app, fly = false, zoomIn = false) {
   const keep = focusRoute !== undefined && (si === undefined || stop(si).routes.includes(focusRoute));
   // A stop draws the way its buses go on from it (both ways of a road can't be told apart lit whole); the hub, where
   // every route calls, lights them all.
-  selected = id; selectedBus = null; selectedU = null; uHilite = ''; hiLoops = []; hiLines = keep ? [focusRoute] : si !== undefined && stop(si).hub ? [...stop(si).routes] : [];
+  selected = id; selectedBus = null; selectedU = null; uHilite = ''; hiLoops = []; ringed = null; wantRing = null; hiLines = keep ? [focusRoute] : si !== undefined && stop(si).hub ? [...stop(si).routes] : [];
   if (!keep) focusRoute = undefined;
   applySelection();
   routeTimes(focusRoute !== undefined ? focusRoute : null, now());
@@ -1388,7 +1403,7 @@ export let mapSearch = () => {};
 export function liveUpdate(app) {
   if (rtShown !== null) routeTimes(rtShown, now());   // the feed's word moves a route's next buses
   if (!map) return;
-  if (selectedBus) drawRuns();   // the line follows the bus
+  if (selectedBus || ringed) drawRuns();   // the line follows the bus
   const seen = new Set();
   const place = (b, kind, color, title) => {
     seen.add(b.id);
@@ -1656,7 +1671,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
-  if (!routeShort) { ringed = null; wantRing = null; }   // a bus ringed from its route's list goes with the route
+  if (!routeShort && ringed !== null) { ringed = null; wantRing = null; applySelection(); }   // a bus ringed from its route's list goes with the route
   if (!routeShort && !alertId && focusRoute !== undefined) { focusRoute = undefined; applySelection(); }   // off the route's page: stops back to their own colours
   // The address is acted on once. A redraw with the same one (the app coming back to the front, say)
   // leaves whatever the rider has since tapped on the map alone.
@@ -2137,7 +2152,7 @@ async function routeTimes(ri, clockNow) {
   // ('6:10 · bus 4006'), the same numbers the route's card lists. A bus picked out (its ring, its card) narrows the
   // times to that bus's alone, at the stops still ahead of it, and the numbers come off. One bus out: plain times.
   const buses = rtStale() ? [] : rt.buses.filter(b => b.ri === ri);
-  const picked = selectedBus ? buses.find(b => b.id === selectedBus) : null;
+  const sb = selectedBus || ringed, picked = sb ? buses.find(b => b.id === sb) : null;   // one ringed from the route's list, as one picked
   const busOf = t => { const u = t.trip !== undefined && rt.trips[D.trips[t.trip]]; return u && u.v ? buses.find(b => b.id === 'c:' + u.v) : null; };
   const which = t => { if (picked || buses.length < 2) return ''; const b = busOf(t); return b ? ' · bus ' + b.label : ''; };
   // A picked bus's times run from where it is to its next call at the Transit Center, and today only, so a stop it
@@ -2259,7 +2274,8 @@ function stopPaths(si, ris, clockNow) {
  *  its; the hub's none, its bays say). */
 function routesInPlay() {
   if (JR) return JR.routes;   // a way drawn: its buses bright, the rest dim
-  if (selectedBus) { const c = findBus(selectedBus); return c ? [c.ri] : []; }
+  const sb = selectedBus || ringed;   // a bus ringed from its route's list draws its way on as one picked does
+  if (sb) { const c = findBus(sb); return c ? [c.ri] : []; }
   const si = selected ? D.stopById[selected] : undefined;
   if (si === undefined || stop(si).hub) return [];
   return focusRoute !== undefined && stop(si).routes.includes(focusRoute) ? [focusRoute] : [...stop(si).routes];
@@ -2270,7 +2286,8 @@ function routesInPlay() {
 function loopsInPlay() {
   if (!U || JR) return [];
   const drawn = ri => U.routes[ri].shape.length || U.routes[ri].stops.length >= 3;
-  if (selectedBus) { if (findBus(selectedBus)) return []; const b = live.buses.find(x => x.id === selectedBus); return b && drawn(b.ri) ? [b.ri] : []; }
+  const sb = selectedBus || ringed;
+  if (sb) { if (findBus(sb)) return []; const b = live.buses.find(x => x.id === sb); return b && drawn(b.ri) ? [b.ri] : []; }
   const usi = selectedU !== null ? selectedU : uHilite ? U.stopById[uHilite] : selected && D.stopById[selected] !== undefined && U.sharedByCvtd[D.stopById[selected]] ? U.sharedByCvtd[D.stopById[selected]].i : undefined;
   return usi === undefined ? [] : U.stops[usi].routes.filter(drawn);
 }
@@ -2335,21 +2352,21 @@ let runsKey = null;
 async function drawRuns() {
   if (!map || !ready || !map.getSource('runs')) return;
   const clockNow = now(), empty = { type: 'FeatureCollection', features: [] };
-  const c = selectedBus ? findBus(selectedBus) : null, si = !selectedBus && selected ? D.stopById[selected] : undefined, ris = routesInPlay();
+  const sb = selectedBus || ringed, c = sb ? findBus(sb) : null, si = !sb && selected ? D.stopById[selected] : undefined, ris = routesInPlay();
   let wants = [];
   if (c) wants = [{ ri: c.ri, stops: busPath(c, clockNow), from: [c.lon, c.lat] }];
   else if (si !== undefined && ris.length) wants = stopPaths(si, ris, clockNow);
   wants = wants.filter(w => w.stops.length > 1);
   // The shuttle's: no timetable, so each loop's line itself, from the bus or the stop round to it again.
-  const ub = selectedBus && !c ? live.buses.find(x => x.id === selectedBus) : null;
+  const ub = sb && !c ? live.buses.find(x => x.id === sb) : null;
   const usi = ub ? undefined : selectedU !== null ? selectedU : uHilite ? U.stopById[uHilite] : si !== undefined && U && U.sharedByCvtd[si] ? U.sharedByCvtd[si].i : undefined;
   const loops = loopsInPlay().map(ri => ({ ri, path: ub ? loopPath(ri, [ub.lon, ub.lat], ub.along) : loopPath(ri, [U.stops[usi].lon, U.stops[usi].lat], U.routes[ri].stopAlong[usi]) })).filter(w => w.path.length > 1);
   if (!wants.length && !loops.length) { if (runsKey !== null) { runsKey = null; map.getSource('runs').setData(empty); } return; }
-  const pick = [selectedBus, selected, selectedU, uHilite].join('|');
+  const pick = [sb, selected, selectedU, uHilite].join('|');
   const key = (c ? c.id + '@' + c.lat.toFixed(4) + ',' + c.lon.toFixed(4) : ub ? ub.id + '@' + ub.lat.toFixed(4) + ',' + ub.lon.toFixed(4) : pick) + '|' + (dark() ? 'd' : 'l') + '|' + wants.map(w => w.ri + ':' + w.stops.map(x => x[1]).join('.')).join(';') + '|' + loops.map(w => w.ri).join('.');
   if (key === runsKey) return;
   const fc = wants.length ? await shapes() : null;
-  if (!map || !map.getSource('runs') || pick !== [selectedBus, selected, selectedU, uHilite].join('|')) return;   // moved on while the shapes came
+  if (!map || !map.getSource('runs') || pick !== [selectedBus || ringed, selected, selectedU, uHilite].join('|')) return;   // moved on while the shapes came
   const n = wants.length + loops.length, feats = [], wf = n === 1 ? 1 : n === 2 ? 0.75 : 0.6;   // strands side by side, each narrower
   const lane = idx => (idx - (n - 1) / 2) * wf * 1.15;
   for (const [idx, w] of wants.entries()) {
