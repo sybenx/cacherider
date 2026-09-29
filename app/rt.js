@@ -82,7 +82,7 @@ async function tick(force) {
         const sm = schedMin(D.stopById[last.sid], ti);
         if (sm !== null) lastDelay = toMin(last.time) - sm;
       }
-      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s, end };
+      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s, end, hub: hubAhead(ti, at, j.t) };
     }
     const buses = [];
     for (const b of j.buses || []) {
@@ -117,6 +117,17 @@ async function tick(force) {
   for (const fn of listeners) fn();
 }
 
+/** A trip's Transit Center call while its bus is yet to leave it: where in the trip it is, the timetable's minute
+ *  there and the feed's. The feed runs a bus on from the Center as soon as it gets in, and has the loops (whose
+ *  timetable has no wait there) in early and away early, every stop after as early as they are: seven to twelve
+ *  minutes, the day through. A bus waits. Null when the trip has no call there, or the bus has been. */
+function hubAhead(ti, at, nowS) {
+  if (ti === undefined) return null;
+  const seq = tripStops(ti), k = seq.findIndex(([, si]) => D.stops[si].hub);
+  if (k < 0 || k === seq.length - 1) return null;
+  const x = at.get(D.stops[seq[k][1]].id);
+  return x && !x.skipped && x.time >= nowS - 60 ? { k, sched: seq[k][0], at: toMin(x.time), seq } : null;
+}
 /** Predictions for a trip from where its bus is: the nearest leg of the trip (stop to stop, as the crow flies),
  *  how far along it, the timetable's minute there, and the clock's lead on that carried to every stop ahead. Null
  *  when the bus is nowhere near its trip (a detour can take it blocks off, not miles). */
@@ -212,6 +223,15 @@ export function predict(t) {
     const inAt = inbound(u, D.trips[t.trip]);
     if (inAt !== null && inAt > p.min) return { ...p, min: inAt, delay: inAt - t.min };
   }
+  // Past the Transit Center, before the bus has left it: no sooner than leaving it and keeping to the timetable from
+  // there. A route leaves no earlier than its minute; a loop ahead waits, up to ten minutes (spacing, it waits for
+  // nothing). The feed's time for a stop on the far side then, not the timetable's, is the one that's off: said
+  // as an estimate.
+  const h = u.hub;
+  if (p && !p.gone && h && !(isLoop(t.r) && loopSpacing(t.r)) && h.seq.findIndex(([m, si]) => si === t.si && m === t.min) > h.k) {
+    const leaves = isLoop(t.r) ? Math.max(h.at, Math.min(h.sched, h.at + 10)) : Math.max(h.at, h.sched), floor = leaves + t.min - h.sched;
+    if (floor > p.min) return { ...p, min: floor, delay: floor - t.min, est: true };
+  }
   return p;
 }
 /** When the bus that runs a trip gets to the Transit Center, if it's still on its way in on the trip before; else null. */
@@ -284,8 +304,16 @@ export function lateWords(delay) {
 export function busStops(b, n = 5) {
   const u = rt.trips[b.trip];
   if (!u) return [];
+  const h = u.hub && !(isLoop(b.ri) && loopSpacing(b.ri)) ? u.hub : null, sched = h && tripInfo[u.ti] ? h.seq : null;
+  // Past the Transit Center it hasn't left yet, no sooner than it leaves there and keeps to the timetable (predict()).
+  const held = (si, min) => {
+    const k = sched ? sched.findIndex(([, x], i) => x === si && i > h.k) : -1;
+    if (k < 0) return min;
+    const leaves = isLoop(b.ri) ? Math.max(h.at, Math.min(h.sched, h.at + 10)) : Math.max(h.at, h.sched);
+    return Math.max(min, leaves + sched[k][0] - h.sched);
+  };
   return u.stops.filter(([, , , rel]) => rel !== 1)
-    .map(([sid, seq, time]) => ({ si: D.stopById[sid], seq, min: toMin(time), time, end: seq === u.end }))
+    .map(([sid, seq, time]) => ({ si: D.stopById[sid], seq, min: held(D.stopById[sid], toMin(time)), time, end: seq === u.end }))
     .filter(x => x.si !== undefined && x.time >= rt.t - 30).sort((a, b) => a.seq - b.seq).slice(0, n);
 }
 /** The stop a bus calls at next, from its trip's predictions; undefined when the feed doesn't say. */
