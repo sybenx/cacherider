@@ -1157,6 +1157,9 @@ function hubBadges() {
     let m = hubMarks.get(b.k);
     if (!m) {
       const el = document.createElement('a');
+      // The badge's tap is the badge's: let through to the map it was a tap on nothing there, which put away the
+      // route's card it had just opened (a moment later on a phone, the map's tap waiting out a double tap).
+      el.addEventListener('click', e => e.stopPropagation());
       m = { el, marker: new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([b.lon, b.lat]).addTo(map), at: [b.lon, b.lat] };
       hubMarks.set(b.k, m);
     }
