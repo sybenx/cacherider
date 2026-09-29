@@ -468,6 +468,25 @@ async function boot() {
   // Fresh bus positions redraw a live screen in place.
   onLive(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   onRt(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').then(reg => {
+    // A new worker taking over while the app is open means what's running is the old app (a phone keeps it open for
+    // days): a quiet bar offers a reload. Not on a fresh load, where the page is fresh already and the new worker
+    // simply catches up behind it. The check runs on coming back to the app and hourly, since the browser's own
+    // only runs on a navigation.
+    const openedAt = Date.now();
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (Date.now() - openedAt > 60e3) updateBar(); });
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    setInterval(check, 3600e3);
+  }).catch(() => {});
+}
+/** 'Cache Rider has updated', with a reload: once, above the tabs. */
+function updateBar() {
+  if (document.querySelector('.updatebar')) return;
+  const bar = document.createElement('div');
+  bar.className = 'updatebar'; bar.setAttribute('role', 'status');
+  bar.innerHTML = html`<span>Cache Rider has updated</span><button class="btn btn-primary" type="button">Reload</button>`;
+  bar.querySelector('button').onclick = () => location.reload();
+  document.body.appendChild(bar);
 }
 boot();
