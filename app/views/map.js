@@ -1781,7 +1781,8 @@ function openingPeek(card) {
 /** A stop framed above its sheet: at the streets, in the middle of the map left over. */
 function frameStop(ll) {
   const card = col.querySelector('#mapcard');
-  requestAnimationFrame(() => map.easeTo({ padding: pad(), center: ll, zoom: Math.max(map.getZoom(), 16), offset: cardOffset(card), duration: 650, essential: true }));
+  // A run up by the frame (a time opened): the run's framing is the one, however the two land.
+  requestAnimationFrame(() => { if (!MT.R) map.easeTo({ padding: pad(), center: ll, zoom: Math.max(map.getZoom(), 16), offset: cardOffset(card), duration: 650, essential: true }); });
 }
 
 /** The map asked where the rider will start from, for directions to a stop: the ask on the card, the map left as it is. */
@@ -2183,6 +2184,10 @@ function mainRun(R) {
   if (R) {
     if (!MT.m) { MT.m = map; map.on('rotateend', () => placeRunLabels(MT)); }
     MT.R = R;
+    // the Center's view put away (its badges, the washed-out streets, the south-up turn): a run is drawn like any other
+    const was = hubOn;
+    hubCheck();
+    if (was && hubTurned) { hubTurned = false; northDue = false; }
     return drawRun(MT);
   }
   if (!MT.R) return;
@@ -2192,6 +2197,7 @@ function mainRun(R) {
   map.setFilter('stops', null);
   map.setLayerZoomRange('stops', 14, 24);
   applySelection();
+  quiet();   // back at the Center, its view again
 }
 const liveRun = () => MT;
 /** A row in the list pointed at: its stop lit on the run's map. */
