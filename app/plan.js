@@ -84,16 +84,21 @@ function boardAt(t, seq) {
   return i;
 }
 
+/** The lateness a ride carries past where it's boarded: the feed's, as it is for a route. A loop's only when late
+ *  (it doesn't catch up): one ahead holds, up to ten minutes, to its timetable, and one spacing its buses keeps no
+ *  timetable to be ahead of, so its minutes on stay the timetable's, the safe side of a guess. */
+const carried = t => !t.live ? 0 : isLoop(t.r) ? Math.max(0, t.live.delay) : t.live.delay;
+
 /** The ride from a departure to the first of the stops wanted that its trip reaches, or null. Minutes carry the
- *  feed's delay for the whole ride: a bus late leaving is late all the way. To a spot (`best`), whose stops spread a
- *  walk wide, the stop it gets there soonest from, walk and all, however many stops on. */
+ *  feed's delay for the whole ride: a bus late leaving is late all the way, and never off before it's on. To a spot
+ *  (`best`), whose stops spread a walk wide, the stop it gets there soonest from, walk and all, however many stops on. */
 function rideTo(t, seq, i, wanted, best = false) {
-  const delay = t.live && !isLoop(t.r) ? t.live.delay : 0;
+  const delay = carried(t);
   let got = null;
   for (let k = i + 1; k < seq.length; k++) {
     const [m, s] = seq[k];
     if (!wanted.has(s)) continue;
-    const ride = { kind: 'ride', t, from: t.si, to: s, on: t.min, off: m + delay, n: k - i, ti: t.trip, r: t.r };
+    const ride = { kind: 'ride', t, from: t.si, to: s, on: t.min, off: Math.max(t.min, m + delay), n: k - i, ti: t.trip, r: t.r };
     if (!best) return ride;
     if (!got || ride.off + wanted.get(s) < got.off + wanted.get(got.to)) got = ride;
   }
@@ -155,13 +160,13 @@ function search(starts, wanted, dest, ymd, min0, live, day) {
       const direct = rideTo(t, seq, i, wanted, spot);
       if (direct) { done([direct], st); continue; }   // a bus straight there: no change from it is worth a look
       // One change: off at any later stop, on to another route's next buses from there.
-      const delay = t.live && !isLoop(t.r) ? t.live.delay : 0;
+      const delay = carried(t);
       const seen = new Set();
       for (let k = i + 1; k < seq.length; k++) {
         const [m, x] = seq[k];
         if (seen.has(x)) break;   // a loop back round: nothing new after
         seen.add(x);
-        const off = m + delay;
+        const off = Math.max(t.min, m + delay);
         // On to the next bus from this stop, or one a short walk away: the Transit Center's bays are stops of their own.
         for (const y of nearOf(x)) {
           let took = false;
