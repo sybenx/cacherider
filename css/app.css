@@ -559,6 +559,10 @@ a.twinline { text-decoration: none; }
 .golink { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 500; color: var(--color-accent-700); text-decoration: none; }
 @media (hover: hover) { .golink:hover { text-decoration: underline; text-underline-offset: 3px; } }
 .golinks { display: flex; gap: 18px; flex-wrap: wrap; }
+/* no bus there: POOL where it goes, and the phone's maps for the rest */
+.nobus-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.nobus-maps { padding: 4px 16px 16px; font-size: 15px; }
+.nobus-maps a { color: var(--color-accent-700); }
 .fromline { display: flex; align-items: center; gap: 8px; padding: 6px 16px 10px; font-size: 14.5px; color: var(--cr-muted); border-bottom: 1px solid var(--cr-line); }
 .fromline > svg { color: var(--color-accent-700); flex: none; }
 .fromline > span:not(.fromacts) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

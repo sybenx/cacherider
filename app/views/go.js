@@ -1,6 +1,6 @@
 // Directions to a stop or a spot: from where the rider is, or from a stop they name. Each way there is one card: the walk
 // to the first stop, the bus, where to change, where to get off, in order, with when.
-import { D, stop, stopIndex, distance, tripStops } from '../data.js';
+import { D, stop, stopIndex, distance, tripStops, POOL, inPool } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, relative, metres, fmtDay, dayName } from '../time.js';
 import { routeName, html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle } from '../ui.js';
@@ -45,6 +45,8 @@ export function render({ to, from, at }, clockNow) {
     return { html: parts.join(''), mount, title: 'Directions' };
   }
   if (!found.plans.length) {
+    const o = origin.si !== undefined ? stop(origin.si) : origin, apart = distance(o.lat, o.lon, d.lat, d.lon);
+    if (apart > 1000) return { html: parts.concat(noBus(d, name, apart)).join(''), mount, title: 'Directions' };
     parts.push(html`<div class="empty"><h2>No way there by bus</h2><p>Nothing in the timetable joins these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
     if (hubBay && origin.si !== D.hub.bays[0].stop) parts.push(html`<div class="chips"><a class="chip" href="#/go/${to}/${hubBay}">Try from the ${D.hub.name}</a></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
@@ -62,6 +64,20 @@ const where = x => isU(x) ? U.stops[+x.slice(1)] : stop(x);
 const stopHref = x => isU(x) ? '#/usu/' + where(x).id : '#/stop/' + where(x).id;
 /** A ride's bus as the rider looks for it: a shuttle loop by its name, a Connect route as ever. */
 const rideName = l => l.u ? U.routes[l.r].name : routeName(l.r);
+/** No bus goes there, and it's beyond a walk: said plainly, with what does go. How far; POOL, Connect's own
+ *  on-demand ride, where the place is in its zone; and the phone's own maps for the rest. No driving worked out here. */
+function noBus(d, name, apart) {
+  const miles = apart / 1609.344, far = miles >= 10 ? Math.round(miles) + ' miles' : miles.toFixed(1) + ' miles';
+  const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1), android = /Android/.test(ua);
+  const ll = `${d.lat.toFixed(5)},${d.lon.toFixed(5)}`;
+  const maps = android ? `geo:${ll}?q=${ll}(${encodeURIComponent(name)})` : ios ? `https://maps.apple.com/?daddr=${ll}&dirflg=d` : `https://www.google.com/maps/dir/?api=1&destination=${ll}&travelmode=driving`;
+  const pool = POOL && inPool(d.lat, d.lon) ? html`<div class="callout nobus-pool">${icon('info', 20)}<div><b>POOL goes there</b>
+      <div class="sub">${D.agency.brand}'s on-demand ride, zero fare: book it and a van picks you up within its zone. ${POOL.hours}.</div>
+      <div class="nobus-acts"><a class="btn btn-primary blueprint" href="${ios ? POOL.ios : POOL.android}" target="_blank" rel="noopener">${corners()}Book in the On-Demand app</a><a class="btn btn-secondary" href="tel:${POOL.phone}">Call ${POOL.phone}</a></div></div></div>` : '';
+  return html`<div class="empty"><h2>No bus goes there</h2><p>${name} is ${far} away, as the crow flies, and nothing in the timetable reaches within a walk of it.</p></div>
+    ${pool}<p class="nobus-maps"><a href="${maps}" target="_blank" rel="noopener">Too far to walk. Open in your maps app</a></p>`;
+}
+
 /** A stop's name in a leg: a Transit Center bay by its route, since every bay has the one street address. */
 function nameOf(si, ri) {
   if (isU(si)) return where(si).name;
