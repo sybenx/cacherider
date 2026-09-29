@@ -9,6 +9,7 @@ import { nearMe, morph } from '../main.js';
 import { parseAddress, geocode, townState, nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
+import { bays, hubSheet, mount as hubMount } from './hub.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
@@ -673,7 +674,8 @@ function fitPeek(card) {
 function wireGrip(app) {
   const card = col.querySelector('#mapcard');
   // A route's sheet swiped away puts the route away with it, as a tap on nothing does.
-  const close = () => { if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; } selectedBus = null; selectedU = null; select(null, app); };
+  const close = () => { if (card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
+    if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; } selectedBus = null; selectedU = null; select(null, app); };
   const pageHref = () => { const a = card.querySelector(':scope > .open a'); return a ? a.getAttribute('href') : null; };   // the card's own Open button: the card itself is .open too
   // Swiped down, the card shrinks to its head (the stop's name and routes) and the map shows through; swiped down
   // again it goes. Up, or a tap on the head, opens it out. The size chosen stays for the next stop tapped.
@@ -885,6 +887,92 @@ function quiet() {
   const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
   show(U_LAYERS, near(campusBox) || selectedU !== null || !!uHilite || hiLoops.length > 0 || runLoops.length > 0);
   show(POOL_LAYERS, near(poolBox));
+  hubCheck();
+}
+
+// ---- the Transit Center close up. From the streets in (HUB_Z) with the Center on screen, the bays are the map:
+// each bay's stop wears its route's badge with where its bus is, as the timetable places it; the route lines, stop
+// dots and times, all converging on one block, are put away, and the buses standing in their bays with them (a
+// badge's IN says so). Badges that land on one another are eased apart on the screen, afresh at each zoom.
+const HUB_Z = 17.5, HUB_IN = 110;   // metres from the hall: a bus this close is in
+const HUB_HIDE = ['route-lines', 'route-on', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels'];
+let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
+function hubCheck() {
+  const on = !!D.hub && !MT.R && map.getZoom() >= HUB_Z && map.getBounds().contains([D.hub.lon, D.hub.lat]);
+  if (on || hubOn) for (const id of HUB_HIDE) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') === on) map.setLayoutProperty(id, 'visibility', on ? 'none' : 'visible');
+  if (on !== hubOn) {
+    hubOn = on;
+    if (on) hubBadges(); else { for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); }
+    hubBuses();
+  }
+  if (on) easeBays();
+}
+/** The badges drawn, or brought up to date (the feed, the minute, a route picked). */
+function hubBadges() {
+  if (!hubOn) return;
+  const items = bays(hubBay, now());
+  for (const b of items) {
+    let m = hubMarks.get(b.k);
+    if (!m) {
+      const el = document.createElement('a');
+      m = { el, marker: new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([b.lon, b.lat]).addTo(map), at: [b.lon, b.lat] };
+      hubMarks.set(b.k, m);
+    }
+    m.el.classList.add('hbay');   // toggled, not set: the marker's own classes place it
+    for (const [c, on] of [['on', b.on], ['dim', b.dim], ['off', b.off]]) m.el.classList.toggle(c, on);
+    m.el.href = b.on ? '#/hub' : '#/hub/' + b.k;
+    m.el.title = b.title;
+    const inner = `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag${b.tag === 'IN' ? ' in' : ''}">${b.tag.replace(' MIN', "'")}</span>` : '');
+    if (m.el.innerHTML !== inner) m.el.innerHTML = inner;
+  }
+  easeBays();
+}
+/** Badges that would touch pushed apart on the screen, a little air between each pair, each still pointing from
+ *  as near its own stop as the others let it. */
+function easeBays() {
+  const ms = [...hubMarks.values()], AIR_X = 34, AIR_Y = 38;
+  const p = ms.map(m => { const q = map.project(m.at); return { x: q.x, y: q.y, x0: q.x, y0: q.y }; });
+  for (let it = 0; it < 60; it++) {
+    let moved = false;
+    for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) {
+      const a = p[i], b = p[j], dx = b.x - a.x, dy = b.y - a.y, ox = AIR_X - Math.abs(dx), oy = AIR_Y - Math.abs(dy);
+      if (ox <= 0 || oy <= 0) continue;
+      moved = true;
+      if (ox < oy) { const k = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= k; b.x += k; }
+      else { const k = (dy > 0 || (dy === 0 && i < j) ? 1 : -1) * oy / 2; a.y -= k; b.y += k; }
+    }
+    if (!moved) break;
+  }
+  ms.forEach((m, i) => m.marker.setOffset([p[i].x - p[i].x0, p[i].y - p[i].y0]));
+}
+/** The buses standing at the Center out of the way of its badges while they're up. */
+function hubBuses() {
+  for (const m of busMarkers.values()) { const ll = m.marker.getLngLat(); m.el.classList.toggle('athub', hubOn && distance(ll.lat, ll.lng, D.hub.lat, D.hub.lon) <= HUB_IN); }
+}
+/** The board as a phone's card: the countdown alone at first (the map's the thing), the loops and the next hour a
+ *  swipe up; a route picked, its card alone, the badges still in view above it. Redrawn in place for the minute and
+ *  the feed. */
+let hubKey = null;
+function hubCard(clockNow) {
+  const s = hubSheet({ bay: hubBay }, clockNow), card = col.querySelector('#mapcard');
+  const markup = html`<div class="grip"></div><div class="head hubhead">${s.head}</div><div class="hubsheet">${s.body}</div>`.s;
+  const again = hubKey === (s.pick || '') && !!card.querySelector(':scope > .hubsheet');
+  if (again) morph(card, markup);
+  else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); hubKey = s.pick || ''; }
+  card.classList.remove('hidden');
+  card.classList.add('open');
+  if (!again) { fitPeek(card); card.classList.add('peek'); }
+  hubMount(card);
+}
+/** The Center framed: every bay in view, above a phone's card or beside a wide screen's panel. */
+function fitHub() {
+  const bb = new maplibregl.LngLatBounds();
+  for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
+  const card = col.querySelector('#mapcard'), p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
+  if (!wide() && card.classList.contains('open')) p.bottom += card.offsetHeight;
+  settlePad();
+  const cam = map.cameraForBounds(bb, { padding: p, maxZoom: 18.4 });
+  if (cam) map.easeTo({ ...cam, zoom: Math.max(HUB_Z + 0.2, cam.zoom), bearing: map.getBearing(), duration: 700 });
 }
 
 /** A route in view paints every stop it calls at in its own colour; otherwise a stop wears its first route's. */
@@ -1142,6 +1230,7 @@ export function liveUpdate(app) {
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantBus && busMarkers.has(wantBus)) pickBus(wantBus, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
+  if (hubOn) { hubBadges(); hubBuses(); }
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimes(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
 }
@@ -1315,6 +1404,9 @@ export async function show(o, app, clockNow) {
   await showPage(o, app, clockNow);
   // The minute or the feed: a phone's route sheet redrawn in place, its scroll kept.
   if (o.tick && o.routeArgs && app.route.name === 'map' && !wide() && col.querySelector('#mapcard > .routesheet')) sheetCard(o.routeArgs, clockNow);
+  if (o.tick && o.hub && app.route.name === 'map' && !wide() && col.querySelector('#mapcard > .hubsheet')) hubCard(clockNow);
+  if (o.tick) hubBadges();
+  if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   routeTimes(still() ? null : focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
@@ -1331,7 +1423,7 @@ function pickBus(id, app) {
   const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
   map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: cardOffset(card), duration: 500 });
 }
-async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, focus, hub, tick, bus }, app, clockNow) {
+async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, focus, hub, hubPick, tick, bus }, app, clockNow) {
   await init(app);
   // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
   // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
@@ -1372,9 +1464,13 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (at) return showAt(at, app, clockNow);
   if (from) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(from, app); }
   if (hub) {
-    selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection(); col.querySelector('#mapcard').classList.remove('open');
-    if (lastFocused !== 'hub') map.easeTo({ padding: pad(), center: [D.hub.lon, D.hub.lat], zoom: 16, duration: 700 });
+    selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
+    hubBay = hubPick || null;
+    // On a phone the board is the map's card; beside a wide screen's panel, the panel.
+    if (app.route.name === 'map' && !wide()) hubCard(clockNow); else col.querySelector('#mapcard').classList.remove('open');
+    if (lastFocused !== 'hub') fitHub();
     lastFocused = 'hub';
+    hubBadges();
     return;
   }
   // A shuttle route's page: its line drawn on top, the rest faded, the map fitted to it, as a Connect route's is.

@@ -1,65 +1,12 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
-// in, the two loops, and the bays as a plan (south up, as you face the hall from 500 North), each badge tagged
-// with where its bus is. Tap a badge for that route: where its bus is and its next three departures.
+// in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
+// bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
 import { D, nextPulse, nextFromHub, distance, servicesOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord } from '../ui.js';
 import { rt, rtStale, isLoop } from '../rt.js';
 
-// Each route's place on the plan as drawn, 358 × 267, south up (as you face the hall from 500 North, along the
-// bottom): the design's plan, squared off from the feed's stop positions and the OSM drawing, each bay where it
-// is to within a few metres. A badge's top is its point; the row along 500 North sits up clear of the street.
-const W = 358, Hh = 267;
 let countIv = 0;   // the pulse countdown's ticker
-/** The bays as drawn by hand, aligned to read well (the timetable's coordinates aren't on a perfect grid), each
- *  with the stop it was drawn for. Kept while the timetable still puts every route at that stop, within a few
- *  metres of where it was; the day a bay moves or a new one appears, the timetable places them all instead. */
-const HAND = {
-  1: { at: [104, 78], stop: '7503601', lat: 41.74048, lon: -111.83073 },
-  2: { at: [74, 217], stop: '7504862', lat: 41.74079, lon: -111.83063 },
-  3: { at: [214, 217], stop: '7505649', lat: 41.74081, lon: -111.83105 },
-  5: { at: [74, 176], stop: '7506836', lat: 41.74064, lon: -111.83055 },
-  6: { at: [284, 217], stop: '7730352', lat: 41.74081, lon: -111.83127 },
-  7: { at: [246, 140], stop: '10628498', lat: 41.74061, lon: -111.83124 },
-  8: { at: [284, 176], stop: '10628499', lat: 41.74074, lon: -111.8314 },
-  9: { at: [112, 140], stop: '7568044', lat: 41.74056, lon: -111.83073 },
-  11: { at: [338, 172], stop: '7537373', lat: 41.74064, lon: -111.83151 },
-  12: { at: [254, 78], stop: '7509446', lat: 41.74046, lon: -111.83114 },
-  15: { at: [179, 70], stop: '7546686', lat: 41.74043, lon: -111.83087 },
-  16: { at: [338, 124], stop: '7537373', lat: 41.74064, lon: -111.83151 },
-  G: { at: [144, 217], stop: '7573958', lat: 41.74081, lon: -111.83081 },
-  B: { at: [132, 33], stop: '7606926', lat: 41.74035, lon: -111.83082 },
-};
-/** Where each bay's badge goes on the plan: as drawn by hand while the timetable matches the drawing; else from
- *  the timetable's own stop for each bay, so a bay swapped in the timetable (8 and 7 changed places one spring)
- *  moves on the plan by itself even with nobody minding the app. South up, as the drawing is: the northernmost
- *  bay along 500 North's curb at the bottom, the southernmost (the Blue Loop's, on 442 North) at the top, east to
- *  the left. Either way, badges that land on one another are eased apart, a little air between each pair. */
-function layout() {
-  const at = {};
-  for (const k of keys()) { const bay = D.hub.bays.find(b => b.routes.includes(routesOf(k)[0])); if (bay) at[k] = { lat: bay.lat, lon: bay.lon, stop: D.stops[bay.stop].id }; }
-  const ks = Object.keys(at);
-  if (!ks.length) return {};
-  const drawn = ks.every(k => HAND[k] && HAND[k].stop === at[k].stop && distance(HAND[k].lat, HAND[k].lon, at[k].lat, at[k].lon) < 8);
-  const lats = ks.map(k => at[k].lat), lons = ks.map(k => at[k].lon);
-  const la0 = Math.min(...lats), la1 = Math.max(...lats), lo0 = Math.min(...lons), lo1 = Math.max(...lons);
-  const pos = {};
-  for (const k of ks) pos[k] = drawn ? { x: HAND[k].at[0], y: HAND[k].at[1] } : { x: 65 + (lo1 === lo0 ? 0.5 : (lo1 - at[k].lon) / (lo1 - lo0)) * (337 - 65), y: 40 + (la1 === la0 ? 0.5 : (at[k].lat - la0) / (la1 - la0)) * (221 - 40) };
-  const AIR_X = 40, AIR_Y = 58;   // a badge and its tag beneath, plus a little air
-  for (let it = 0; it < 60; it++) {
-    let moved = false;
-    for (let i = 0; i < ks.length; i++) for (let j = i + 1; j < ks.length; j++) {
-      const a = pos[ks[i]], b = pos[ks[j]], dx = b.x - a.x, dy = b.y - a.y, ox = AIR_X - Math.abs(dx), oy = AIR_Y - Math.abs(dy);
-      if (ox <= 0 || oy <= 0) continue;
-      moved = true;
-      if (ox < oy) { const m = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= m; b.x += m; }
-      else { const m = (dy >= 0 || (dy === 0 && i < j) ? 1 : -1) * oy / 2; a.y -= m; b.y += m; }
-    }
-    for (const p of Object.values(pos)) { p.x = Math.max(20, Math.min(W - 20, p.x)); p.y = Math.max(20, Math.min(Hh - 44, p.y)); }
-    if (!moved) break;
-  }
-  return pos;
-}
 const IN_RADIUS = 110;   // metres from the hall: a bus this close is in
 
 /** A badge's key: the route's short name, 16 AM and 16 PM as one '16' (they share a bay and a rider). */
@@ -111,20 +58,23 @@ function status(k, clockNow) {
   return { k, ris, loop, deps, dep, eta, out, loose: eta === null && loose, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
 }
 
+/** Every key's status, and the picked one: a key, or (from older links) a bay's stop id. */
+function board(bay, clockNow) {
+  const st = Object.fromEntries(keys().map(k => [k, status(k, clockNow)]));
+  let pick = bay && st[bay] ? bay : null;
+  if (bay && !pick) { const b = D.hub.bays.find(x => D.stops[x.stop].id === bay); if (b) pick = keyOf(b.routes[0]); }
+  return { st, pick };
+}
+
+/** The board as a page, beside the map on a wide screen. */
 export function render({ bay }, clockNow) {
   const H = D.hub;
-  const all = keys();
-  const st = Object.fromEntries(all.map(k => [k, status(k, clockNow)]));
-  // The picked badge: a key, or (from older links) a bay's stop id.
-  let pick = bay && st[bay] ? bay : null;
-  if (bay && !pick) { const b = H.bays.find(x => D.stops[x.stop].id === bay); if (b) pick = keyOf(b.routes[0]); }
+  const { st, pick } = board(bay, clockNow);
 
   const parts = [];
   parts.push(html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1></div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`);
   parts.push(together(st, clockNow));
   parts.push(loops(st, pick, clockNow));
-  parts.push(html`<div class="section between"><span>Bays</span><span class="note">Tap a bay for its next buses</span></div>`);
-  parts.push(plan(st, pick));
   if (pick) parts.push(picked(st[pick], clockNow));
   parts.push(nextHour(st, pick, clockNow));
   parts.push(footnote(st));
@@ -225,38 +175,26 @@ function loops(st, pick, clockNow) {
     <div class="grid">${cells}</div></div>`;
 }
 
-/** The plan, south up: 500 North along the bottom, 442 North along the top, the drive a U between. */
-function plan(st, pick) {
-  const tags = !rtStale();
-  const at = layout();
-  const badges = keys().filter(k => at[k]).map(k => {
-    const s = st[k], { x, y } = at[k], on = pick === k;
-    const ri = s.ris[s.ris.length - 1], r = D.routes[ri];
-    const tag = !tags || s.off ? '' : s.eta === 0 ? 'IN' : s.eta > 0 ? s.eta + ' MIN' : '–';
-    const cls = ['tc-bay', on ? 'on' : '', pick && !on ? 'dim' : '', s.off ? 'off' : ''].filter(Boolean).join(' ');
-    return `<a class="${cls}" href="#/hub${on ? '' : '/' + k}" title="${isLoop(s.ris[0]) ? D.routes[s.ris[0]].long : 'Route ' + k}" style="left:${(x / W * 100).toFixed(2)}%;top:${(y / Hh * 100).toFixed(2)}%">`
-      + `<span class="b" style="background:#${r.color};color:#${r.text}">${k}</span>`
-      + (tag ? `<span class="tag${s.eta === 0 ? ' in' : s.eta === null ? ' quiet' : ''}">${tag}</span>` : '') + '</a>';
-  }).join('');
-  const street = 'fill:color-mix(in srgb, var(--color-text) 8%, transparent)', edge = 'stroke:color-mix(in srgb, var(--color-text) 13%, transparent)';
-  const label = 'font:600 11px var(--font-heading);letter-spacing:.14em;fill:var(--cr-muted)', small = 'font:500 9.5px var(--font-body);letter-spacing:.12em;fill:var(--cr-muted)';
-  const road = 'M322 245 L 322 170 L 270 118 L 179 90 L 88 118 L 36 170 L 36 245';   // the drive, a U in from 500 North
-  return html.raw(`<div class="tc-plan blueprint">${corners().s}
-    <svg viewBox="0 0 ${W} ${Hh}" aria-hidden="true">
-      <rect x="0" y="245" width="${W}" height="22" style="${street}"/><line x1="0" y1="245" x2="${W}" y2="245" style="${edge}"/>
-      <text x="348" y="260" text-anchor="end" style="${label}">500 NORTH</text>
-      <text x="10" y="260" style="font:500 10.5px var(--font-body);fill:var(--cr-muted)">← 200 East</text>
-      <rect x="0" y="22" width="${W}" height="22" style="${street}"/><line x1="0" y1="22" x2="${W}" y2="22" style="${edge}"/><line x1="0" y1="44" x2="${W}" y2="44" style="${edge}"/>
-      <text x="348" y="37" text-anchor="end" style="${label}">442 NORTH</text>
-      <path d="${road}" fill="none" stroke-width="26" stroke-linejoin="round" style="stroke:color-mix(in srgb, var(--color-text) 9%, transparent)"/>
-      <path d="${road}" fill="none" stroke-dasharray="4 5" style="stroke:color-mix(in srgb, var(--color-text) 16%, transparent)"/>
-      <rect x="133" y="158" width="92" height="42" fill="none" style="stroke:var(--cr-muted)"/>
-      <text x="179" y="176" text-anchor="middle" style="font:600 10.5px var(--font-heading);letter-spacing:.1em;fill:var(--cr-muted)">TRANSIT CENTER</text>
-      <text x="179" y="189" text-anchor="middle" style="font:600 10.5px var(--font-heading);letter-spacing:.1em;fill:var(--cr-muted)">HALL</text>
-      <text x="179" y="136" text-anchor="middle" style="${small}">INNER CURB</text>
-      <g style="stroke:var(--cr-muted)"><line x1="22" y1="60" x2="22" y2="80"/><path d="M18 75 L22 81 L26 75" fill="none"/></g>
-      <text x="22" y="92" text-anchor="middle" style="font:600 10px var(--font-heading);fill:var(--cr-muted)">N</text>
-    </svg>${badges}</div>`);
+/** The board as a phone's map card: its head, all a swiped-down card keeps, the countdown to the routes leaving
+ *  together (or, a bay picked, that route's card); under it the loops, the next hour and the footnote. */
+export function hubSheet({ bay }, clockNow) {
+  const { st, pick } = board(bay, clockNow);
+  return pick
+    ? { pick, head: picked(st[pick], clockNow), body: html`${nextHour(st, pick, clockNow)}${footnote(st)}` }
+    : { pick, head: together(st, clockNow), body: html`${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` };
+}
+
+/** The bays for the map, one badge a route (16 AM and PM as one), at its bay's stop as the timetable places it: the
+ *  route's colours, its tag (IN, minutes away, or nothing when it isn't out), whether it's quiet today, the one
+ *  picked. The map eases badges that land on one another apart; nothing is drawn by hand. */
+export function bays(bay, clockNow) {
+  const { st, pick } = board(bay, clockNow), tags = !rtStale();
+  return keys().map(k => {
+    const s = st[k], ri = s.ris[s.ris.length - 1], r = D.routes[ri], b = D.hub.bays.find(x => x.routes.includes(ri));
+    if (!b) return null;
+    const tag = !tags || s.off ? '' : s.eta === 0 ? 'IN' : s.eta > 0 ? s.eta + ' MIN' : '';
+    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
+  }).filter(Boolean);
 }
 
 /** The picked route: where its bus is, in words, and its next three departures. */
@@ -299,8 +237,9 @@ function footnote(st) {
 }
 
 let shownPick = null;
-function mount(el) {
-  // A route just picked: its card opens below the plan, so bring it into view if it's off the screen. Once per
+/** The countdown's ticker, and a picked route's card brought into view: for the page and the map's card alike. */
+export function mount(el) {
+  // A route just picked: its card opens below the loops, so bring it into view if it's off the screen. Once per
   // pick, not on the minute's redraw, which keeps the rider's place.
   const card = el.querySelector('.tc-pick'), pick = card ? location.hash : null;
   if (card && pick !== shownPick) {

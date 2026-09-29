@@ -179,7 +179,9 @@ async function render(tick = false) {
   renderTabs();
   // A route on a wide screen is a page beside the map, as a stop is; on a phone, the Map tab with its stops as the card.
   const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: decodeURIComponent(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus } : null;
-  const name = routeArgs && isDesktop() ? 'route' : seg[0] || 'home';
+  // The Transit Center on a phone is the map too, at the Center, the board its card; on a wide screen a page beside it.
+  const hubMap = seg[0] === 'hub' && !isDesktop();
+  const name = routeArgs && isDesktop() ? 'route' : hubMap ? 'map' : seg[0] || 'home';
   const clockNow = now();
   let view;
   try {
@@ -249,11 +251,11 @@ async function render(tick = false) {
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert';
     const from = name === 'map' && seg[1] === 'from' ? seg[2] || null : null;   // the map asked where the rider will start from, for directions to this stop
     m.show({
-      stopId: name === 'map' && !at && !from && !mapU && !mapR && !mapUR && !mapA ? seg[1] : name === 'stop' ? seg[1] : null, from,
+      stopId: name === 'map' && !hubMap && !at && !from && !mapU && !mapR && !mapUR && !mapA ? seg[1] : name === 'stop' ? seg[1] : null, from,
       uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       routeShort: routeArgs ? routeArgs.short : null, routeArgs,
-      alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: name === 'hub', tick,
+      alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
     }, app, clockNow);
   }
