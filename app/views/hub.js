@@ -28,7 +28,7 @@ function status(k, clockNow) {
   const ris = routesOf(k), loop = isLoop(ris[0]);
   const deps = ris.flatMap(ri => nextFromHub(ri, 3, clockNow)).sort((a, b) => (a.day - b.day) || (a.min - b.min)).slice(0, 3);
   const dep = deps[0];
-  let eta = null, loose = false, away = false;
+  let eta = null, loose = false, away = false, bus = null;
   if (!rtStale()) {
     const nowSec = Date.now() / 1000;
     // Buses swap between routes all day (2 and 5, 3 and 8): the bus that runs this route's next departure is the
@@ -44,9 +44,9 @@ function status(k, clockNow) {
       else if (!u) loose = true;
       else {
         const next = u.stops.filter(([sid, , time, rel]) => rel !== 1 && time >= nowSec - 30 && D.stops[D.stopById[sid]]?.hub).sort((x, y) => x[1] - y[1])[0];
-        if (next) e = Math.max(1, Math.round((next[2] - nowSec) / 60)); else away = true;
+        if (next) e = Math.max(1, Math.round((next[2] - nowSec) / 60)); else { away = true; if (own) bus = bus || b.id; }
       }
-      if (e !== null && (eta === null || e < eta)) eta = e;
+      if (e !== null && (eta === null || e < eta)) { eta = e; bus = b.id; }
     }
   }
   const today = !!dep && dep.day === 0;
@@ -55,8 +55,11 @@ function status(k, clockNow) {
   const off = !today || (!out && dep.min - clockNow.min > 90);
   const leave = dep ? dep.min : null;   // the feed's word, with its bus's arrival, from predict(): every screen agrees
   const late = today && !loop ? Math.max(0, leave - schedOf(dep)) : 0;
-  return { k, ris, loop, deps, dep, eta, out, loose: eta === null && loose, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
+  return { k, ris, loop, deps, dep, eta, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
 }
+/** Where a route's card on the board goes: to its bus on the map while it's on its way in or still on the run before
+ *  (where is it, and how it comes), else the route picked on the board, or put back. */
+const cardHref = (s, pick) => s.bus && pick !== s.k ? '#/map/bus/' + encodeURIComponent(s.bus) : '#/hub' + (pick === s.k ? '' : '/' + s.k);
 
 /** Every key's status, and the picked one: a key, or (from older links) a bay's stop id. */
 function board(bay, clockNow) {
@@ -102,7 +105,7 @@ function nextHour(st, pick, clockNow) {
   const tags = !rtStale();
   const out = rows.map(({ t, s, first }) => {
     const tag = !first || !tags || s.off ? '' : s.eta === 0 ? 'IN' : s.eta > 0 ? s.eta + ' MIN' : '';
-    return html`<a class="tcb-row${pick === s.k ? ' on' : ''}" href="#/hub${pick === s.k ? '' : '/' + s.k}">
+    return html`<a class="tcb-row${pick === s.k ? ' on' : ''}" href="${first ? cardHref(s, pick) : '#/hub' + (pick === s.k ? '' : '/' + s.k)}">
       <span class="tcb-t">${was(schedOf(t), t.min)}<span class="t${t.live ? ' est' : ''}">${clock(t.min).h}</span></span>
       ${badge(t.r, 26)}<span class="tcb-mid"><span class="dest">${headsign(t)}</span><span class="sub${t.live ? ' live' : ''}">${t.live ? liveWord(t) : 'Scheduled'}</span></span>
       <span class="tcb-tag">${tag ? html.raw(`<span class="tag${tag === 'IN' ? ' in' : ''}">${tag}</span>`) : ''}</span></a>`;
@@ -165,7 +168,7 @@ function loops(st, pick, clockNow) {
     const here = t.day === 0 && !s.off && s.eta === 0, waiting = here && t.min > clockNow.min;
     const thenTime = then && then.day === 0 ? html`${was(schedOf(then), then.min)}<span class="${then.live ? 'est' : ''}">${clock(then.min).h}</span>` : '';
     const rel = waiting ? html`At its stop · leaves ${relative(t, clockNow)}` : here ? (thenTime ? html`Next bus ${thenTime}` : '') : t.day === 0 ? html`${relative(t, clockNow)}${thenTime ? html` · then ${thenTime}` : ''}` : dayName(t.ymd);
-    return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="#/hub${pick === k ? '' : '/' + k}">
+    return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="${cardHref(s, pick)}">
       <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
       <span class="when">${here && !waiting ? html`<span class="t t-36 est">NOW</span>` : html`<span class="whent">${was(schedOf(t), t.min)}${time(t.min, 36, !!t.live)}</span>`}<span class="rel">${rel}</span></span>
       ${lastTag(t)}<span class="where${s.out && !s.off ? ' live' : ''}"><i></i>${where}</span></a>`;

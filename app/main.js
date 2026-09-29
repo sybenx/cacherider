@@ -257,15 +257,16 @@ async function render(tick = false) {
   if (mapOpen || isDesktop() || side.querySelector('#minimap') || document.querySelector('#runsheet #runmap')) {
     const m = await ensureMap();
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
-    const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert';
+    const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert', mapB = name === 'map' && seg[1] === 'bus';
     const from = name === 'map' && seg[1] === 'from' ? seg[2] || null : null;   // the map asked where the rider will start from, for directions to this stop
     m.show({
-      stopId: name === 'map' && !hubMap && !goMap && !at && !from && !mapU && !mapR && !mapUR && !mapA ? seg[1] : name === 'stop' ? seg[1] : null, from,
+      stopId: name === 'map' && !hubMap && !goMap && !at && !from && !mapU && !mapR && !mapUR && !mapA && !mapB ? seg[1] : name === 'stop' ? seg[1] : null, from,
       uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       routeShort: routeArgs ? routeArgs.short : null, routeArgs,
       alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
+      busId: mapB && seg[2] ? decodeURIComponent(seg[2]) : null,   // a bus from the Transit Center's board: it, on its way in
       journey: goMap ? go.journey(goArgs, q.plan, clockNow) : view && view.journey || null,   // a way from the directions page, drawn
     }, app, clockNow);
   }

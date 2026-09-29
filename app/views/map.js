@@ -1404,6 +1404,7 @@ export function liveUpdate(app) {
   if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantBus && busMarkers.has(wantBus)) pickBus(wantBus, app);
+  if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
   if (hubOn) { hubBadges(); hubBuses(); }
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimes(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
@@ -1593,7 +1594,20 @@ export async function show(o, app, clockNow) {
   routeTimes(still() ? null : focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
-let wantBus = null;
+let wantBus = null, wantIn = null;
+/** A bus on its way to the Transit Center, from the board: its card and its way on, framed with the Center, so where
+ *  it is and how it comes in read at once. North up: off the Center, its turn is put away. */
+function busIn(id, app) {
+  const m = busMarkers.get(id);
+  if (!m) { wantIn = id; return; }
+  wantIn = null;
+  col.querySelector('#mapcard').classList.remove('peek');   // the board's opening size, not the rider's: its next stops shown
+  selectBus(id, app);
+  const ll = m.marker.getLngLat(), b = new maplibregl.LngLatBounds([ll.lng, ll.lat], [ll.lng, ll.lat]);
+  b.extend([D.hub.lon, D.hub.lat]);
+  settlePad();
+  requestAnimationFrame(() => map.fitBounds(b, { padding: routePad(), duration: 700, maxZoom: 16, bearing: 0 }));
+}
 /** A route's bus, from its row on the route page: its ring and card, and the map panned (never zoomed) to keep it
  *  above the card. */
 function pickBus(id, app) {
@@ -1604,7 +1618,7 @@ function pickBus(id, app) {
   const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
   map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: cardOffset(card), duration: 500 });
 }
-async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, focus, hub, hubPick, tick, bus, journey }, app, clockNow) {
+async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, focus, hub, hubPick, tick, bus, journey, busId }, app, clockNow) {
   await init(app);
   // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
   // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
@@ -1647,6 +1661,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');   // a card tapped up beside one page isn't the next's
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
   if (stopId || ustopId || routeShort || alertId || hub || at || from) { selectedBus = null; selectedU = null; }
+  if (busId) { lastFocused = 'b:' + busId; focusRoute = undefined; return busIn(busId, app); }
   if (at) return showAt(at, app, clockNow);
   if (from) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(from, app); }
   if (hub) {
