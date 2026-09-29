@@ -490,7 +490,7 @@ function routeSheet({ short, dir, at, full, bus }, clockNow) {
   const buses = rtStale() ? [] : rt.buses.filter(b => b.ri === ri && (b.dir === null || String(b.dir) === d));
   const busBefore = new Map();
   for (const b of buses) { const n = nextStopOf(b); if (n !== undefined && seq.includes(n)) busBefore.set(n, [...(busBefore.get(n) || []), b]); }
-  const last = lastRun(ri, d, seq, clockNow, dirWord);
+  const last = lastRun(ri, d, seq, clockNow, dirWord), first = last ? null : firstRunNote(ri, d, clockNow, dirWord);
   // Each stop with its next call. Late in the day most of a route is done, its next calls tomorrow's: the stops a bus
   // still has to reach today come first, and the whole route, the next day's times and all, is behind a button.
   const each = seq.map(si => {
@@ -524,7 +524,7 @@ function routeSheet({ short, dir, at, full, bus }, clockNow) {
   const alerts = routeAlerts(ri, clockNow.ymd).map(a => html`<details class="callout alert rs-alert"><summary>${icon('ban', 20)}<b>${a.title}</b><span class="more">More</span></summary><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></details>`);
   // Come from a stop's badge: the answer for that stop first, so the list below is for those who want the route.
   const yours = here !== undefined && seq.includes(here) ? yourStop(ri, here, seq, buses, clockNow) : '';
-  const body = html`<div class="routesheet">${alerts}${yours}${last ? last.note : ''}${onward.now || ''}<div class="list rs-list">${rows}</div>${onward.later || ''}
+  const body = html`<div class="routesheet">${alerts}${yours}${last ? last.note : first || ''}${onward.now || ''}<div class="list rs-list">${rows}</div>${onward.later || ''}
     ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}/${d}?all=1">The whole route · all ${seq.length} stops</a></div>` : ''}</div>`;
   // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus. Else at
   // the top: the stops still to come start there.
@@ -642,9 +642,41 @@ function busRow(b, ri) {
 /** Today's last run this way, while it's still to come or on the road: when and where it leaves, where and about
  *  when it ends. An out-and-back (15's to Preston and back) is one run of two timetable trips, so the note says the
  *  bus comes back, not that it ends at the far end; and each way has its own last run, the other way's list its own. */
+/** A way's runs today, each trip once with where and when it starts, in order: found once per route, way and day. */
+const runsCache = new Map();
+function runsOn(ri, ymd, d) {
+  const k = ri + ':' + ymd + ':' + d;
+  if (!runsCache.has(k)) {
+    const out = [], done = new Set();
+    for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const t of timesOn(si, ymd)) {
+      if (t.r !== ri || String(t.dir) !== String(d) || done.has(t.trip)) continue;
+      done.add(t.trip);
+      const st = tripStops(t.trip);
+      if (st.length) out.push({ trip: t.trip, min: st[0][0], si: st[0][1] });
+    }
+    runsCache.set(k, out.sort((a, b) => a.min - b.min));
+  }
+  return runsCache.get(k);
+}
+/** Where a run leaves from, as the notes say it: 'Preston ', 'the Transit Center '; a loop's '' (it starts wherever the
+ *  feed cuts its trip). */
+function runFrom(ri, si) {
+  if (isLoop(ri)) return '';
+  const s0 = stop(si), town = (s0.town || '').replace(/,\s*[A-Z][a-z]+$/, '');
+  return (s0.hub ? 'the ' + D.hub.name : town && town !== D.hub.town ? town : s0.name) + ' ';
+}
+/** Before the day's first run has left: when it does. Morning's word, where the evening's is the last run's. */
+function firstRunNote(ri, d, clockNow, dirWord) {
+  const f = runsOn(ri, clockNow.ymd, d)[0];
+  if (!f || f.min <= clockNow.min) return null;
+  return html`<div class="notice lastrun-note">${icon('sun', 16)}<span>Today's first run${dirWord} leaves ${runFrom(ri, f.si)}at <b>${clockText(f.min)}</b>.</span></div>`;
+}
 function lastRun(ri, d, seq, clockNow, dirWord) {
   const lt = lastTripOn(ri, clockNow.ymd, d);
   if (!lt) return null;
+  // Said once it's near: out already, or one of the way's next two runs to leave (an hourly route's from two hours
+  // before, a half-hourly one's from one). All day long it was last night's word still up at dawn.
+  if (lt.start[0] > clockNow.min && runsOn(ri, clockNow.ymd, d).filter(x => x.min > clockNow.min).length > 2) return null;
   const t = { min: lt.start[0], si: lt.start[1], r: ri, dir: lt.dir, h: lt.h, trip: lt.trip };
   const run = runOf(t.trip, clockNow.ymd), lastTi = run[run.length - 1], onward = run.slice(run.indexOf(t.trip) + 1);
   const stops = tripStops(lastTi);
