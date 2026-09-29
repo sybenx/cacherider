@@ -174,7 +174,9 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
   font-family: var(--font-heading); font-weight: 600; line-height: 1; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14);
   min-width: 36px; height: 36px; padding: 0 6px; border-radius: 6px; font-size: 1.25rem;
 }
-.badge small { font-size: .55em; letter-spacing: .02em; }
+.badge small { font-size: .6em; letter-spacing: .03em; }
+/* 16's AM and PM in the small badges: at .6em of a 20 or 24 px badge they came out 7 px, a smudge on its navy */
+.badge-20 small, .badge-24 small { font-size: .75em; letter-spacing: .02em; }
 .badge-44 { min-width: 44px; height: 44px; padding: 0 7px; border-radius: 7px; font-size: 1.5625rem; }
 .badge-32 { min-width: 32px; height: 32px; padding: 0 5px; border-radius: 5px; font-size: 1.125rem; }
 .badge-30 { min-width: 30px; height: 30px; padding: 0 5px; border-radius: 5px; font-size: 1.0625rem; }
@@ -813,7 +815,10 @@ html:has(#body.map-open), html:has(#body.map-open) body { overscroll-behavior: n
 .hr.now .hr-h { color: var(--color-accent-700); }
 .hr-dep { display: flex; align-items: center; gap: 6px; font-family: var(--font-heading); font-weight: 600; font-size: 1.0625rem; font-variant-numeric: tabular-nums; }
 .hr-dep .est { color: var(--color-accent-700); }
-.hr-dep.past { opacity: .4; }
+/* gone: the time muted, the badge only a little, so 16's navy stays navy and its AM or PM readable (at .4 the whole
+   of it went gray, its suffix white on gray) */
+.hr-dep.past > span { color: var(--cr-muted); }
+.hr-dep.past .badge { opacity: .7; }
 button.hr-dep { background: none; border: 0; padding: 2px 4px; margin: 0 -4px; color: inherit; cursor: pointer; text-align: left; }
 button.hr-dep:hover { background: var(--cr-hover); }
 a.hr-dep { color: inherit; text-decoration: none; padding: 2px 4px; margin: 0 -4px; }
