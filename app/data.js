@@ -581,6 +581,20 @@ export function search(q, limit = 40) {
   return hits.slice(0, limit);
 }
 
+/** The routes a search names: by number ('12', 'route 12', '#12', '01'; '16' is both of 16's), by letter ('B'), or by
+ *  name ('blue', 'green loop'); 'routes', every one. What a routes grid was for, typed. */
+export function searchRoutes(q) {
+  if (/^(all )?(routes?|buses)$/.test(norm(q))) return D.routes.map((r, i) => i);   // 'routes': the whole list, asked for
+  const w = norm(q).replace(/^(route|rt)\s*|^#/, '').replace(/^the\s+/, '').trim();
+  if (!w) return [];
+  return D.routes.map((r, i) => i).filter(i => {
+    const short = D.routes[i].short.toLowerCase(), long = D.routes[i].long.toLowerCase();
+    if (short === w || short.startsWith(w + ' ')) return true;
+    if (/^\d+$/.test(w) && parseInt(short) === +w) return true;
+    return /[a-z]/.test(w) && w.length >= 3 && w.split(' ').every(x => long.split(' ').some(y => y.startsWith(x)));
+  });
+}
+
 // ---- what this phone remembers
 const RECENT = 'cr-recent';
 export function recent() { try { return JSON.parse(localStorage.getItem(RECENT) || '[]').filter(id => id in D.stopById); } catch { return []; } }

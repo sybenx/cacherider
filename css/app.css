@@ -336,9 +336,6 @@ a.twinline { text-decoration: none; }
 .pulse .foot { margin-top: 10px; }
 
 /* route grid */
-.routes { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; padding: 2px 16px 14px; }
-.routes a { height: 54px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--cr-line); cursor: pointer; text-decoration: none; }
-.routes a:hover { border-color: var(--color-accent); }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 16px 12px; }
 .chip { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1px solid var(--cr-line); text-decoration: none; color: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
 .chip:hover { border-color: var(--color-accent); }
@@ -597,8 +594,6 @@ a.twinline { text-decoration: none; }
 .land-date { font-family: var(--font-heading); font-weight: 600; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; padding-right: 8px; }
 .land-top .btn-icon { width: 44px; height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--color-text); }
 .land-top .btn-icon[aria-pressed="true"] { color: var(--color-accent-700); background: var(--color-accent-100); }
-.routes.campus { display: flex; flex-wrap: wrap; gap: 8px; }
-.routes.campus a { display: inline-flex; width: auto; height: auto; aspect-ratio: auto; border: 0; padding: 0; }
 .land-alert { margin-top: 10px; }
 /* the hero: the right-hand rule from the watchface, one answer set large */
 .hero { display: flex; flex-direction: column; gap: 14px; margin: 18px 12px 0 16px; padding-right: 16px; border-right: 2px solid var(--color-text); color: inherit; text-decoration: none; }

@@ -250,8 +250,9 @@ export function searchUSU(q) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return { stops: [], routes: [] };
   const hit = t => words.every(w => t.toLowerCase().includes(w));
+  const all = words.every(w => /^(aggie|shuttles?)$/.test(w));   // 'aggie shuttle': every loop of it
   return {
     stops: U.stops.map((s, i) => i).filter(i => hit(U.stops[i].name)),
-    routes: U.routes.map((r, i) => i).filter(i => U.routes[i].stops.length && hit(U.routes[i].name)),
+    routes: U.routes.map((r, i) => i).filter(i => U.routes[i].stops.length && (all || hit(U.routes[i].name))),
   };
 }

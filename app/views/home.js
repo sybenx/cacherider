@@ -2,9 +2,9 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords, searchPlaces, streetish, townish } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, searchRoutes, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords, searchPlaces, streetish, townish } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { parseAddress, geocode, townState, spotKey, spotOf, atPath } from '../geo.js';
@@ -56,11 +56,10 @@ function landing(clockNow, app) {
   }
   if (!stopHero && !geo) {
     parts.push(html`<div class="ask">
-      <form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street or address, e.g. 500 North" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form>
+      <form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street, place or route, e.g. 500 North" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
       <button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
       <span class="ask-note">Location stays on this device, used only to sort stops.</span></div>`);
   }
-  parts.push(chips());
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   const detours = activeAlerts(clockNow.ymd).filter(a => (a.stops || []).length || (a.routes || []).length);
@@ -72,13 +71,6 @@ function landing(clockNow, app) {
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
   if (app) app.hasCampusSaved = sv.some(id => id.startsWith('u:'));
   return { html: html`<div class="land">${html.raw(parts.join(''))}</div>`.s, mount, title: '' };
-}
-
-/** Every route as a chip: Connect's badges, then the shuttle's in their own colours. */
-function chips() {
-  const connect = D.routes.map((r, i) => html`<a href="#/route/${encodeURIComponent(r.short)}" aria-label="Route ${r.short}">${badge(i, 36)}</a>`);
-  const campus = U ? U.routes.map((r, ri) => r.stops.length ? html`<a href="#/usu/route/${r.id}" aria-label="${r.name}">${chip(ri, 36)}</a>` : '') : [];
-  return html`<div class="land-eye"><span>Routes</span></div><div class="routes">${connect}</div>${campus.some(Boolean) ? html`<div class="land-eye"><span>Aggie Shuttle</span></div><div class="routes campus">${campus}</div>` : ''}`;
 }
 
 /** The giant time: hours, the two accent squares of the colon, minutes, and AM or PM small. */
@@ -163,12 +155,11 @@ function searchPage(q, clockNow, app, pick = null) {
   // Picking one end for directions: every stop in the results leads to the journey from it (or to it), not its page.
   parts.push(html`<div class="titlebar m-only"><span class="wordmark">Cache Rider</span><button class="btn btn-secondary" id="near">${icon('near', 20)}Near me${app && app.geo ? html.raw(' <span class="muted">· on</span>') : ''}</button></div>`);
   if (pick) parts.push(html`<div class="notice pickfrom">${icon('route', 16)}<span>${pick.to ? 'Where will you start from?' : 'Where to?'} A stop, a place or an address. ${pick.to ? 'Going to' : 'Setting off from'} <b>${pick.name}</b></span></div>`);
-  parts.push(html`<div class="pad"><form class="search" id="search" role="search" data-for="${pick && pick.to || ''}" data-from="${pick && pick.from || ''}"><input class="input" type="search" placeholder="${pick ? 'Stop, place or address' : 'Street or address, e.g. 500 North'}" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
+  parts.push(html`<div class="pad"><form class="search" id="search" role="search" data-for="${pick && pick.to || ''}" data-from="${pick && pick.from || ''}"><input class="input" type="search" placeholder="${pick ? 'Stop, place or address' : 'Street, place or route, e.g. 500 North'}" value="${q}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form></div>`);
   if (q) { parts.push(results(q, clockNow, pick)); return { html: parts.join(''), mount, title: 'Search' }; }
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
   if (rec.length) parts.push(html`<div class="section">${icon('history', 16)}Recent on this device</div><div class="list">${rec.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
-  parts.push(html`<div class="section">${icon('route', 16)}Browse by route</div><div class="routes">${D.routes.map((r, i) => html`<a href="#/route/${encodeURIComponent(r.short)}" aria-label="Route ${r.short}">${badge(i, 36)}</a>`)}</div>`);
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
   return { html: parts.join(''), mount, title: 'Search' };
 }
@@ -237,20 +228,23 @@ function results(q, clockNow, pick = null) {
     <div class="notice"><span>${us.stops.length ? us.stops.length + (us.stops.length === 1 ? ' campus stop' : ' campus stops') : ''}${us.stops.length && us.routes.length ? ' · ' : ''}${us.routes.length ? us.routes.length + (us.routes.length === 1 ? ' route' : ' routes') : ''}</span></div>
     ${us.stops.length ? html`<div class="section">${icon('stops', 16)}Campus stops</div><div class="list">${us.stops.map(i => stopRowU(i))}</div>` : ''}
     ${us.routes.length ? html`<div class="section">${icon('route', 16)}Shuttle routes</div><div class="list">${us.routes.map(ri => { const r = U.routes[ri]; const n = live.buses.filter(b => b.ri === ri).length; return html`<a class="row" href="#/usu/route/${r.id}">${chip(ri, 36)}<div class="mid"><span class="name">${r.name}</span><span class="sub">${r.stops.length} stops · ${hasData() ? (n ? n + (n === 1 ? ' bus' : ' buses') + ' on the road' : 'no bus on the road') : 'finding buses…'}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`; })}</div>` : ''}`.s : '';
-  if (!hits.length && !places.length && !campusHtml && !spots.length) {
+  // A route named ('12', 'blue'): its page first, above any stop with the number in its address. Not while an end of a
+  // journey is being picked: a route is neither.
+  const ris = pick ? [] : searchRoutes(q);
+  const routeHtml = ris.length ? html`<div class="list">${ris.map(ri => html`<a class="row" href="#/route/${encodeURIComponent(D.routes[ri].short)}">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span><span class="sub">${D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`)}</div>`.s : '';
+  if (!hits.length && !places.length && !campusHtml && !spots.length && !routeHtml) {
     return html`<div class="empty"><h2>No stops match “${q}”</h2><p>Stop names are street addresses. Try a street or a town, or any address in the valley, like “1400 N 500 E, Logan”, for the stops nearest it.</p></div>
-      <div class="chips">${['Main St', '400 North', 'Hyrum', 'USU', 'Smithfield'].map(s => html`<a class="chip" href="#/search?q=${encodeURIComponent(s)}" data-q="${s}">${s}</a>`)}</div>
-      <div class="section">${icon('route', 16)}Or browse by route</div><div class="routes">${D.routes.map((r, i) => html`<a href="#/route/${encodeURIComponent(r.short)}">${badge(i, 36)}</a>`)}</div>`;
+      <div class="chips">${['Main St', '400 North', 'Hyrum', 'USU', 'Smithfield'].map(s => html`<a class="chip" href="#/search?q=${encodeURIComponent(s)}" data-q="${s}">${s}</a>`)}</div>`;
   }
   const towns = [...new Set(hits.map(i => stop(i).town))];
   const where = towns.length === 1 ? ' in ' + towns[0] : '';
-  if (!hits.length) return html`${html.raw(spotHtml)}${html.raw(campusHtml)}${html.raw(addrHtml)}${places.length ? html`<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>` : ''}`;
+  if (!hits.length) return html`${html.raw(routeHtml)}${html.raw(spotHtml)}${html.raw(campusHtml)}${html.raw(addrHtml)}${places.length ? html`<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>` : ''}`;
   // A street or a number is after stops: they come first, the places on that street after. A name is after a place.
   const street = streetish(q) || townish(q);
   const stopsHtml = html`<div class="${street && !places.length ? 'notice' : 'section'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}</span></div>
     <div class="list">${hits.map(i => stop(i).hub ? hubRow() : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`.s;
   const blocks = street ? [addrHtml, stopsHtml, campusHtml, spotHtml] : [spotHtml, campusHtml, addrHtml, stopsHtml];
-  return html`${html.raw(blocks.join(''))}
+  return html`${html.raw(routeHtml)}${html.raw(blocks.join(''))}
     <div class="fine">Matches street, number and town: “500 north”, “main st, hyrum” and “hyrum main” all work. So does any address in the valley, like “1400 N 500 E, Logan”, for the stops nearest it.</div>`;
 }
 

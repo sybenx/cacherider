@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, searchPlaces, streetish, townish, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, searchRoutes, searchPlaces, streetish, townish, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill } from '../ui.js';
 import { nearMe } from '../main.js';
@@ -579,7 +579,7 @@ function satControl() {
 }
 
 function chrome() {
-  return html`<div class="mapbar"><form class="search" id="mapsearch" role="search"><input class="input" type="search" placeholder="Search streets" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div><div class="mapresults hidden" id="mapresults"></div><div class="mapnotice" id="mapnotice"></div><div class="mapcard hidden" id="mapcard"></div>`;
+  return html`<div class="mapbar"><form class="search" id="mapsearch" role="search"><input class="input" type="search" placeholder="Streets, places, routes" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form></div><div class="mapresults hidden" id="mapresults"></div><div class="mapnotice" id="mapnotice"></div><div class="mapcard hidden" id="mapcard"></div>`;
 }
 
 function wireChrome(app) {
@@ -600,7 +600,9 @@ function wireChrome(app) {
     const stopRows = hits.map(i => stop(i).hub
       ? html`<a class="stoprow" href="#/hub"><div class="mid"><span class="name">${D.hub.name}</span><span class="dist">${D.hub.address} · every route</span></div><div class="end">${icon('hub', 18)}</div></a>`
       : html`<a class="stoprow" href="#/map/${stop(i).id}" data-i="${i}"><div class="mid"><span class="name">${stopTitle(i)}</span>${badges(stop(i).routes, 20)}</div><div class="end">${icon('fwd', 18)}</div></a>`).join('');
-    results.innerHTML = (streetish(q) || townish(q) ? placeRows + stopRows + spotRows : spotRows + placeRows + stopRows) || html`<div class="empty"><p>No stops, places or addresses match “${q}”.</p></div>`;
+    // A route named: lit on the map with its times, first.
+    const routeRows = searchRoutes(q).map(ri => html`<a class="stoprow" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}"><div class="mid"><span class="name">${routeName(ri, false)}</span><span class="dist">${D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span></div><div class="end">${badge(ri, 24)}</div></a>`).join('');
+    results.innerHTML = routeRows + (streetish(q) || townish(q) ? placeRows + stopRows + spotRows : spotRows + placeRows + stopRows) || html`<div class="empty"><p>No stops, places or addresses match “${q}”.</p></div>`;
     results.classList.remove('hidden');
     results.querySelectorAll('a[data-i]').forEach(a => a.onclick = e => { e.preventDefault(); clear(); select(stop(+a.dataset.i).id, app, true, true); });
     results.querySelectorAll('a:not([data-i])').forEach(a => a.onclick = clear);
