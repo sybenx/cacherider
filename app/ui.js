@@ -74,7 +74,7 @@ export function routeLinkItems(si, size = 30) {
 export function routeBadgeLink(ri, si, size, dir) {
   const r = D.routes[ri], dirs = Object.keys(r.stops || {});
   const d = dir !== undefined && routeOrder(ri, String(dir)).includes(si) ? String(dir) : dirs.find(k => routeOrder(ri, k).includes(si)) ?? dirs[0] ?? '0';
-  return `<a class="badgelink" href="#/route/${encodeURIComponent(r.short)}/${d}/${esc(stop(si).id)}" aria-label="Route ${esc(r.short)}: every stop">${badge(ri, size).s}</a>`;
+  return `<a class="badgelink" href="#/map/route/${encodeURIComponent(r.short)}/${d}/${esc(stop(si).id)}" aria-label="Route ${esc(r.short)}: every stop">${badge(ri, size).s}</a>`;
 }
 
 /** '8:06 AM' as the heading type, the meridiem small. */

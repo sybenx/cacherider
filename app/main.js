@@ -7,7 +7,6 @@ import { loadGrid } from './geo.js';
 import * as home from './views/home.js';
 import * as stopView from './views/stop.js';
 import * as hub from './views/hub.js';
-import * as routeView from './views/route.js';
 import * as about from './views/about.js';
 import * as ustop from './views/ustop.js';
 import * as uroute from './views/uroute.js';
@@ -18,7 +17,7 @@ import { setRtWanted, onRt } from './rt.js';
 const side = document.getElementById('side');
 const body = document.getElementById('body');
 const TABS = [
-  { href: '#/', label: 'Stops', icon: 'stops', match: h => /^#\/(stop|search|route|about|usu|go|$)/.test(h) },
+  { href: '#/', label: 'Stops', icon: 'stops', match: h => /^#\/(stop|search|about|usu|go|$)/.test(h) },
   { href: '#/map', label: 'Map', icon: 'map', match: h => h.startsWith('#/map') },
   { href: '#/hub', label: 'Transit Center', icon: 'hub', match: h => h.startsWith('#/hub') },
 ];
@@ -174,9 +173,13 @@ function sync(a, b) {
 function park(el) { const m = el && el.querySelector('#map'); if (m) document.getElementById('mapcol').prepend(m); }
 
 async function render(tick = false) {
+  // The route page is the map's now: an old address lands there, in place of itself in the history.
+  if (/^#\/route\//.test(location.hash)) history.replaceState(null, '', location.hash.replace(/^#\/route\//, '#/map/route/'));
   const { seg, q } = parse();
   renderTabs();
-  const name = seg[0] || 'home';
+  // A route on a wide screen is a page beside the map, as a stop is; on a phone, the Map tab with its stops as the card.
+  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: decodeURIComponent(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus } : null;
+  const name = routeArgs && isDesktop() ? 'route' : seg[0] || 'home';
   const clockNow = now();
   let view;
   try {
@@ -185,7 +188,7 @@ async function render(tick = false) {
     else if (name === 'go') view = go.render({ to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: decodeURIComponent(seg[4] || '') } : null }, clockNow);
     else if (name === 'stop') view = stopView.render({ id: seg[1], full: seg[2] === 'all', run: q.run, on: q.on }, clockNow);
     else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
-    else if (name === 'route') view = routeView.render({ short: decodeURIComponent(seg[1] || ''), dir: seg[2], at: seg[3], full: q.all === '1', bus: q.bus }, clockNow);
+    else if (name === 'route') view = (await ensureMap()).routePage(routeArgs, clockNow);
     else if (name === 'about') view = about.render({ section: seg[1] }, clockNow);
     else if (name === 'usu' && seg[1] === 'route') view = uroute.render({ id: seg[2] }, clockNow);
     else if (name === 'usu') view = ustop.render({ id: seg[1] }, clockNow);
@@ -249,9 +252,9 @@ async function render(tick = false) {
       stopId: name === 'map' && !at && !from && !mapU && !mapR && !mapUR && !mapA ? seg[1] : name === 'stop' ? seg[1] : null, from,
       uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
-      routeShort: mapR ? decodeURIComponent(seg[2] || '') : name === 'route' ? decodeURIComponent(seg[1] || '') : null,
+      routeShort: routeArgs ? routeArgs.short : null, routeArgs,
       alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: name === 'hub', tick,
-      bus: mapR ? q.bus || null : null,   // a route's bus, from its row on the route page: picked out on the map
+      bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
     }, app, clockNow);
   }
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';

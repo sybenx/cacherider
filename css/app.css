@@ -823,7 +823,42 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 /* staying on the bus: its next route's stops, dimmed until the bus is past the Transit Center */
 .section.onward { gap: 8px; letter-spacing: .06em; }
 .section.onward span { flex: 1; }
-.later .stoprow { opacity: .5; }
+.later .stoprow, .later .croute { opacity: .5; }
+/* a route: its head (what a swiped-down sheet keeps), then its stops a line each, time first */
+.routehead { display: grid; gap: 10px; }
+.rs-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.rs-name .mid { display: grid; min-width: 0; }
+.rs-name .name { font: 600 22px var(--font-heading); line-height: 1.1; }
+.rs-name .sub { font-size: 13px; color: var(--cr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rs-ways { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rs-ways .chip.on { border-color: var(--color-accent); color: var(--color-accent-700); }
+.rs-count { margin-left: auto; font: 600 13px var(--font-heading); letter-spacing: .08em; text-transform: uppercase; color: var(--cr-muted); }
+.routepage .routehead { padding: 4px 16px 12px; }
+/* on a phone the route's stops are the map's card: a little over half the screen, the map framed above it, and
+   its head held at the top while the list scrolls under it */
+.mapcard:has(> .routesheet):not(.peek) { max-height: 55%; }
+.mapcard > .routehead { position: sticky; top: 0; z-index: 1; background: var(--color-bg); border-bottom: 1px solid var(--cr-line); }
+.rs-alert { display: block; padding: 10px 12px; }
+.rs-alert summary { list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.rs-alert summary::-webkit-details-marker { display: none; }
+.rs-alert summary b { flex: 1; min-width: 0; }
+.rs-alert summary .more { font-size: 13px; opacity: .75; }
+.rs-alert[open] summary .more { display: none; }
+.rs-alert > .sub { margin-top: 6px; }
+.rs-list { border-top: 1px solid var(--cr-line); }
+.croute { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 16px; border-bottom: 1px solid var(--cr-line); color: inherit; text-decoration: none; }
+@media (hover: hover) { a.croute:hover { background: var(--cr-hover); } }
+.croute.here { background: var(--color-accent-100); box-shadow: inset 4px 0 0 var(--color-accent); }
+.croute .c-t { flex: none; width: 78px; display: flex; align-items: center; color: var(--cr-muted); }
+.croute .c-t .t, .croute .c-t .whent { color: var(--color-text); }
+.croute .c-n { flex: 1; min-width: 0; font-size: 15px; line-height: 1.25; }
+.croute .c-n .town { color: var(--cr-muted); }
+.croute .c-n small { display: block; font-size: 12.5px; color: var(--color-accent-700); }
+.croute .c-b { display: flex; gap: 3px; margin-top: 4px; }
+.croute .c-r { flex: none; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--cr-muted); white-space: nowrap; }
+.croute .ld { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); }
+.rs-all { padding: 12px 16px; }
+.rs-all .btn { min-height: 48px; }
 /* on a stop's list, between tonight's last bus and the next day's first */
 .endservice { display: flex; align-items: center; gap: 12px; padding: 18px 16px 4px; font: 600 15px var(--font-heading); letter-spacing: .14em; text-transform: uppercase; color: var(--color-text); }
 .endservice::before, .endservice::after { content: ''; flex: 1; border-top: 2px solid var(--color-text); }
