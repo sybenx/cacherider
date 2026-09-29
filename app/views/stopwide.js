@@ -3,6 +3,7 @@
 import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest } from '../data.js';
 import { clock, clockText, clockShort, fmtDay } from '../time.js';
 import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard } from '../ui.js';
+import { isWide } from '../wide.js';
 
 // The run last laid out, for its map.
 let shown = null;
@@ -154,10 +155,24 @@ export function wireSheet(sheet, { open, swap, close }) {
     if (!b.classList.contains('hot')) { e.preventDefault(); sheet.querySelectorAll('.run-stop.hot').forEach(a => a.classList.remove('hot')); b.classList.add('hot'); map().then(m => m.runFocus(+b.dataset.si)); }
   };
   const top = sheet.querySelector('.rs-grip'), box = sheet.querySelector('.rs');
+  // On a phone or a tablet, over the map: a swipe down folds it to its head (which run, and the day's times to switch
+  // to), the map the finger's; up, or a tap on the grip, opens it again. Only × (or Back) closes it. Beside a wide
+  // screen's map it's the panel, and a swipe down closes it, as ever.
+  const fold = on => {
+    if (on && !sheet.classList.contains('folded')) { const list = sheet.querySelector('.rs-list'); if (list) sheet.style.setProperty('--rs-fold', Math.round(list.getBoundingClientRect().top - box.getBoundingClientRect().top) + 'px'); }
+    sheet.classList.toggle('folded', on);
+  };
+  if (top) top.onclick = () => { if (!isWide()) fold(!sheet.classList.contains('folded')); };
   let y0 = null;
   const start = e => { y0 = e.touches[0].clientY; box.style.transition = 'none'; };
   const move = e => { if (y0 === null) return; const dy = Math.max(0, e.touches[0].clientY - y0); box.style.transform = `translateY(${dy}px)`; };
-  const end = e => { if (y0 === null) return; const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : y0) - y0; y0 = null; box.style.transition = ''; if (dy > 90) close(); else box.style.transform = ''; };
+  const end = e => {
+    if (y0 === null) return;
+    const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : y0) - y0;
+    y0 = null; box.style.transition = ''; box.style.transform = '';
+    if (isWide()) { if (dy > 90) close(); return; }
+    if (dy > 60) fold(true); else if (dy < -40) fold(false);
+  };
   // Set, not added: the sheet is redrawn in place as the feed comes in, its elements kept, and wired again each time.
   for (const el of [top, sheet.querySelector('.run-top')]) if (el) { el.ontouchstart = start; el.ontouchmove = move; el.ontouchend = end; }
 }
