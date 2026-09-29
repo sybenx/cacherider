@@ -1,5 +1,5 @@
-// The small map at the top of a stop page on a phone: where the stop is, and a
-// tap to open the Map tab there. The desktop has the real map beside the page.
+// The small map at the top of a stop page on a phone: where the stop is, and a tap to open the Map tab there. The
+// map module docks the one map into the slot; the desktop has the map beside the page.
 import { html, icon } from '../ui.js';
 
 const desktop = () => matchMedia('(min-width: 900px)').matches;
@@ -10,12 +10,11 @@ export function miniSlot(sel) {
   return html`<div class="minimap-slot" id="minimap" role="link" tabindex="0" aria-label="Show ${sel.route !== undefined || sel.uroute ? 'this route' : 'this stop'} on the map" data-href="${href}" data-stop="${sel.stopId || ''}" data-ustop="${sel.ustopId || ''}" data-route="${sel.route ?? ''}" data-uroute="${sel.uroute || ''}"><div class="minimap-ph">${icon('map', 20)}</div><span class="minimap-open">${icon('map', 16)}Map</span></div>`;
 }
 
-/** Wire the slot and, on a phone, draw the map into it. */
+/** Wire the slot: a tap opens the Map tab there. */
 export function mountMini(el) {
   const slot = el.querySelector('#minimap');
-  if (!slot || desktop()) return;   // beside the big map there's no small one to draw
+  if (!slot || desktop()) return;   // beside the big map there's no small one
   const go = () => { location.hash = slot.dataset.href; };
   slot.onclick = e => { if (!e.target.closest('.maplibregl-ctrl')) go(); };
   slot.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
-  import('./map.js').then(m => m.mini({ stopId: slot.dataset.stop || null, ustopId: slot.dataset.ustop || null, route: slot.dataset.route || undefined, uroute: slot.dataset.uroute || null }, slot)).catch(e => console.warn('minimap', e));
 }

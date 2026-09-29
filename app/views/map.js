@@ -22,7 +22,7 @@ const asPage = hash => location.replace(location.href.split('#')[0] + hash);
 
 let focusRoute;   // the route whose page is open, its stops in its colour
 let fitSize = '', map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
-let mm = null, mmEl = null, mmReady = false, mmKey = null, mmSel = null;   // the small map on a stop page
+let docked = null;   // the slot the one map is docked in on a phone (a stop or route page's small map, a run sheet's); null in its own column
 const busMarkers = new Map();   // bus id → { marker, el }
 let selectedBus = null, selectedU = null;
 let pickFor = null;   // the stop directions are wanted to, while the map is asked where from
@@ -277,7 +277,7 @@ function refreshClosed(clockNow) {
   const key = A.loadedAt + ':' + clockNow.ymd;
   if (closedKey === key) return;
   closedKey = key;
-  for (const m of [map, mm]) if (m && m.getSource('stops')) { m.getSource('stops').setData(stopsGeo()); loadShapes(m); }
+  for (const m of [map]) if (m && m.getSource('stops')) { m.getSource('stops').setData(stopsGeo()); loadShapes(m); }
 }
 let tilesLoaded = null;
 function loadTiles() {
@@ -299,6 +299,7 @@ async function init(app) {
   squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimes(focusRoute, now()); });
   map.on('zoom', busScale);
+  for (const ev of ['dragstart', 'wheel', 'touchstart']) map.on(ev, () => { MT.moved = true; });   // a run's map moved by the rider stays where they put it
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   map.on('mouseenter', 'pool-stops', () => map.getCanvas().style.cursor = 'pointer');
@@ -311,6 +312,7 @@ async function init(app) {
   const cancelTap = () => clearTimeout(tapTimer);
   map.on('touchstart', cancelTap); map.on('movestart', cancelTap); map.on('zoomstart', cancelTap);
   map.on('click', e => {
+    if (still()) return;   // docked as a page's picture, a tap is the slot's: it opens the Map tab
     // A tap on the map with search results open puts them away, the keyboard too, and picks nothing.
     // The words stay in the box: a tap back into it brings the results back.
     const res = col.querySelector('#mapresults');
@@ -837,7 +839,7 @@ export function liveUpdate(app) {
     if (!m) {
       const el = document.createElement('div');
       el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
-      el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
+      el.onclick = ev => { if (still()) return; ev.stopPropagation(); selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind };
       busMarkers.set(b.id, m);
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
@@ -1022,7 +1024,7 @@ export async function show(o, app, clockNow) {
   await showPage(o, app, clockNow);
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
-  routeTimes(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);
+  routeTimes(still() ? null : focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
 let wantBus = null;
@@ -1038,6 +1040,10 @@ function pickBus(id, app) {
 }
 async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, from, focus, hub, tick, bus }, app, clockNow) {
   await init(app);
+  // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
+  // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
+  // cheap tablet, which dropped one and went gray.
+  dock(!wide() && app.route.name !== 'map' ? document.querySelector('#runsheet #runmap') || document.querySelector('#minimap') : null);
   // A map still hidden (the Map tab not on screen yet, the page behind it just gone) has no size to fit anything to:
   // a route fitted to nothing is the whole valley and further. Waited for, a few frames at most; if the address
   // moves on meanwhile, the newer call does the work.
@@ -1084,7 +1090,7 @@ async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, from
     lastFocused = 'ur:' + uRoute;
     selected = null; uHilite = ''; hiLines = []; hiLoops = [uRoute]; focusRoute = undefined; applySelection();
     col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized)) settlePad(), map.fitBounds(uRouteBounds(uRoute), { padding: fitPad(40), duration: 700, maxZoom: 16 });
+    if (focus && (changed || resized)) settlePad(), map.fitBounds(uRouteBounds(uRoute), { padding: still() ? 24 : fitPad(40), duration: still() ? 0 : 700, maxZoom: 16 });
     return;
   }
   // An alert from the About page: its route drawn on top, the stops it closes framed (marked already, as every
@@ -1109,7 +1115,7 @@ async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, from
     lastFocused = 'r:' + ri;
     selected = null; uHilite = ''; hiLines = [ri]; hiLoops = []; focusRoute = ri; applySelection();
     col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: fitPad(40), duration: 700, maxZoom: 15.5 });
+    if (focus && (changed || resized) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: still() ? 24 : fitPad(40), duration: still() ? 0 : 700, maxZoom: 15.5 });
     if (stayRoute && app.route.name === 'map') routeCard(ri, app);
     stayRoute = false;
     if (bus && app.route.name === 'map' && !tick) pickBus(bus, app); else if (!bus) wantBus = null;
@@ -1125,7 +1131,7 @@ async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, from
       // On the Map tab the card decides the framing, so the stop sits above it; beside the
       // stop list there is no card, and a fresh arrival eases to the stop itself.
       if (app.route.name === 'map') select(stopId, app, changed, changed && map.getZoom() < 15);
-      else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
+      else if (focus && changed && (still() || !map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: still() ? 16 : Math.max(map.getZoom(), 15), duration: still() ? 0 : 700 });
     }
   } else if (ustopId && U) {
     const si = U.stopById[ustopId];
@@ -1136,7 +1142,7 @@ async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, from
     const pole = U.shared[si];   // at a Connect stop's pole: that dot is this stop on the map
     selected = pole ? D.stops[pole.j].id : null; uHilite = pole ? '' : ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
     if (app.route.name === 'map') { if (pole) select(D.stops[pole.j].id, app, changed); else if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
-    else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
+    else if (focus && changed && (still() || !map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: still() ? 16 : Math.max(map.getZoom(), 15.5), duration: still() ? 0 : 700 });
   } else if (app.route && app.route.name === 'map') {
     lastFocused = null;
     select(null, app);
@@ -1156,54 +1162,22 @@ function routeBounds(ri) {
   return b;
 }
 
-// ---- the small map on a stop or route page (phones): one instance, moved from page to page
-/** Draw the stop into `slot`; `sel` is { stopId } or { ustopId }. */
-export async function mini(sel, slot) {
-  mmSel = sel;
-  const ri = sel.route !== undefined ? D.routeByShort[sel.route] : undefined;
-  const ur = sel.uroute && U && U.routeById[sel.uroute] !== undefined ? sel.uroute : null;
-  const key = ri !== undefined ? 'r:' + ri : ur ? 'ur:' + ur : sel.ustopId ? 'u:' + sel.ustopId : sel.stopId;
-  const s = ri !== undefined ? D.stops[(Object.values(D.routes[ri].stops || {})[0] || [])[0]] : ur ? U.stops[U.routes[U.routeById[ur]].stops[0]] : sel.ustopId ? (U && U.stops[U.stopById[sel.ustopId]]) : D.stops[D.stopById[sel.stopId]];
-  if (!s) return;
-  if (!mmEl) {
-    await loadTiles();
-    if (!slot.isConnected) return;   // the page moved on while the tile index loaded
-    mmEl = document.createElement('div'); mmEl.className = 'minimap';
-    slot.prepend(mmEl);
-    mm = new maplibregl.Map({ container: mmEl, style: style(false), center: [s.lon, s.lat], zoom: 16, minZoom: 10, maxZoom: 17.5, interactive: false, fadeDuration: 0, attributionControl: { compact: true } });
-    squaresOnDemand(mm);
-    mm.on('load', () => { mmReady = true; loadShapes(mm); miniSelection(); });
-    let mmFlavor = dark() ? 'dark' : 'light';   // its own: the big map's restyle mustn't make this one think it's done
-    window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (mm && f !== mmFlavor) { mmFlavor = f; mmReady = false; mm.setStyle(style(false), { diff: false }); mm.once('style.load', () => { mmReady = true; loadShapes(mm); miniSelection(); }); } });
-  } else if (mmEl.parentNode !== slot) {
-    slot.prepend(mmEl);
-    requestAnimationFrame(() => mm.resize());
-  }
-  if (mmKey !== key) {
-    if (ri !== undefined) mm.fitBounds(routeBounds(ri), { padding: 24, duration: 0, maxZoom: 15.5 });
-    else if (ur) mm.fitBounds(uRouteBounds(ur), { padding: 24, duration: 0, maxZoom: 16 });
-    else mm.jumpTo({ center: [s.lon, s.lat], zoom: 16 });
-  }
-  mmKey = key;
-  miniSelection();
-}
-function miniSelection() {
-  if (!mm || !mmReady || !mmSel) return;
-  // a shuttle stop at a Connect stop's pole is drawn as that stop's dot, so that dot is the one marked
-  const pole = mmSel.ustopId && U && U.shared[U.stopById[mmSel.ustopId]];
-  mm.setFilter('stop-selected', ['==', ['get', 'id'], pole ? D.stops[pole.j].id : mmSel.stopId || '']);
-  mm.setFilter('usu-selected', ['==', ['get', 'id'], pole ? '' : mmSel.ustopId || '']);
-  const ri = mmSel.route !== undefined ? D.routeByShort[mmSel.route] : undefined;
-  const si = mmSel.stopId ? D.stopById[mmSel.stopId] : undefined;
-  const lines = ri !== undefined ? [ri] : si !== undefined ? [...D.stops[si].routes] : [];
-  const loops = mmSel.uroute ? [mmSel.uroute] : mmSel.ustopId && U ? U.stops[U.stopById[mmSel.ustopId]].routes.map(r => U.routes[r].id) : [];
-  litLines(mm, lines, loops);
-  tintStops(mm, ri);
+// ---- the one map, docked: on a phone, into a stop or route page's small slot as a picture of where the stop or
+// route is (a tap opens the Map tab there), or into a run sheet's slot, where it's the rider's to move; on the Map
+// tab, in its own column. The page's markup is replaced around it, so it's parked in its column meanwhile (main.js).
+const still = () => !!docked && docked.id === 'minimap';
+function dock(slot) {
+  const box = map.getContainer(), to = slot || col;
+  docked = slot;
+  if (box.parentNode === to) return;
+  to.prepend(box);
+  lastFocused = null;   // moved, it frames the page's stop or route afresh
+  box.classList.toggle('docked', !!slot);
+  for (const h of [map.dragPan, map.scrollZoom, map.touchZoomRotate, map.doubleClickZoom, map.keyboard]) still() ? h.disable() : h.enable();
+  col.querySelector('#mapcard').classList.remove('open');
+  map.resize();
 }
 
-// ---- one run on a wide stop page: its path from this stop to its end, a time by each stop. Its own small map,
-// kept and moved into each redraw of the page, so the minute's redraw doesn't rebuild it.
-let rmEl = null, rm = null, rmReady = false, rmRun = null, rmFlavor = null;
 /** The road a run drives between its stops, from the route's drawn lines: for each pair of stops in turn, the
  *  shortest forward way along any of the route's shapes; a straight line where none has one. A stop is found anywhere
  *  along a line, not only at its points: out in the country a line's points can be half a mile apart. */
@@ -1248,57 +1222,12 @@ function runPath(fc, ri, seq) {
   }
   return out;
 }
-/** Draw `R` into `slot`: { key, legs: [{ ri, seq: [[min, si]…] }…] from this stop on, the same bus's runs in turn,
- *  points: [{ si, t (its label), rank, leg, r }…], hot }. */
-export async function runMap(slot, R) {
-  rmRun = R; RT.R = R;
-  if (rm && rmFlavor !== (dark() ? 'dark' : 'light')) { rm.remove(); rm = null; rmEl = null; rmReady = false; RT.key = null; }
-  if (!rmEl) {
-    await loadTiles();
-    if (!slot.isConnected) return;
-    rmEl = document.createElement('div'); rmEl.className = 'runmap-map';
-    slot.prepend(rmEl);
-    rmFlavor = dark() ? 'dark' : 'light';
-    rm = new maplibregl.Map({ container: rmEl, style: style(false), bounds: runBounds(R), fitBoundsOptions: { padding: 36 }, minZoom: 8, maxZoom: 18,   // out far enough for 16 from Logan to Preston, labels and all
-      dragRotate: false,   // the wheel zooms it, as the big map: it's a pane of its own, beside the list
-      touchPitch: false, pitchWithRotate: false, fadeDuration: 0, attributionControl: { compact: true } });
-    rm.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    squaresOnDemand(rm);
-    rm.on('load', async () => {
-      addRunLayers(rm);
-      await loadShapes(rm);
-      rmReady = true; RT.key = null; drawRun(RT);
-    });
-    rm.on('rotateend', () => placeRunLabels(RT));
-    // A drag, a pinch or the wheel is the rider's: the map stays where they put it. (A resize carries an event too,
-    // the window's, so a move alone can't tell.)
-    for (const ev of ['dragstart', 'wheel', 'touchstart']) rm.on(ev, () => { RT.moved = true; });
-    // a stop on the map lights its row in the list beside it
-    rm.on('mousemove', e => {
-      const f = rm.queryRenderedFeatures([[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]], { layers: ['stops'] })[0];
-      const id = f ? f.properties.id : null;
-      rm.getCanvas().style.cursor = id ? 'pointer' : '';
-      document.querySelectorAll('.run-stop').forEach(a => a.classList.toggle('hot', a.dataset.id === id));
-    });
-    rm.on('click', e => {
-      const f = rm.queryRenderedFeatures([[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]], { layers: ['stops'] })[0];
-      if (f && rmRun && rmRun.points.some(p => D.stops[p.si].id === f.properties.id)) location.hash = '#/stop/' + f.properties.id;
-    });
-  } else if (rmEl.parentNode !== slot) {
-    slot.prepend(rmEl);
-    requestAnimationFrame(() => rm.resize());
-  }
-  RT.m = rm;
-  drawRun(RT);
-}
 function runBounds(R) {
   const b = new maplibregl.LngLatBounds();
   for (const p of R.points) b.extend([D.stops[p.si].lon, D.stops[p.si].lat]);
   return b;
 }
-// A run is drawn on a map through one of these: the wide stop page's own map (RT), or the big map beside a narrower
-// page's sheet (MT). Each keeps what's drawn on it, so a redraw of the same run changes nothing.
-const RT = { m: null, R: null, key: null, labels: null, ready: () => rmReady, pad: 36 };
+// A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60, main: true };
 const RUN_HIDE = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'runs', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
@@ -1384,14 +1313,14 @@ function mainRun(R) {
   map.setFilter('stops', null);
   applySelection();
 }
-const liveRun = () => MT.R ? MT : RT;
+const liveRun = () => MT;
 /** A row in the list pointed at: its stop lit on the run's map. */
 export function runHot(si) { const T = liveRun(); if (T.R) { T.R.hot = si; if (T.m && T.ready() && T.m.getLayer('run-hot')) T.m.setFilter('run-hot', ['==', ['get', 'si'], si ?? -1]); } }
 /** The run's map after its box changed size (the sheet's 'Whole map'): measured again and the run fitted. */
 export function runResize() {
-  if (!rm || !RT.R) return;
+  if (!map || !MT.R) return;
   // fitted again to its new room, unless the rider has moved it: then it stays where they put it
-  requestAnimationFrame(() => { rm.resize(); if (!RT.moved) rm.fitBounds(runBounds(RT.R), { padding: 36, duration: 250, maxZoom: 16 }); });
+  requestAnimationFrame(() => { map.resize(); if (!MT.moved) map.fitBounds(runBounds(MT.R), { padding: 36, duration: 250, maxZoom: 16 }); });
 }
 /** A stop picked in the run's list: lit, and brought to the middle of the map, in to the streets. */
 export function runFocus(si) {
@@ -1440,6 +1369,7 @@ function firstRun(ri, ymd) {
 }
 const bear = (p, q) => Math.atan2((q.lon - p.lon) * Math.cos(p.lat * Math.PI / 180), q.lat - p.lat) * 180 / Math.PI;
 async function routeTimes(ri, clockNow) {
+  if (still()) ri = null;   // a page's picture is a picture: no times on it
   if (!map || !ready) return;
   if (!map.getSource('rtimes')) {
     map.addSource('rtimes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });

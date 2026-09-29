@@ -170,6 +170,9 @@ function sync(a, b) {
   }
 }
 
+/** The one map, if it's docked inside `el`, back to its column before `el` is replaced or removed. */
+function park(el) { const m = el && el.querySelector('#map'); if (m) document.getElementById('mapcol').prepend(m); }
+
 async function render(tick = false) {
   const { seg, q } = parse();
   renderTabs();
@@ -216,10 +219,10 @@ async function render(tick = false) {
     } else if (!unchanged) {
       // A new page. The small map (one instance, kept by the map module) is moved into its slot before anything
       // paints, so a stop after a stop keeps its map rather than showing a placeholder and a fresh map a moment later.
-      const mini = side.querySelector('#minimap > .minimap');
+      // The one map, docked in this page's slot, is parked in its column while the page is replaced; the map
+      // module docks it into the new page's slot before anything paints, so a stop after a stop keeps its map.
+      park(side);
       side.innerHTML = markup; side.lastHtml = markup;
-      const slot = mini && side.querySelector('#minimap');
-      if (slot) slot.prepend(mini);
     }
     side.dataset.view = key;
     side.dataset.sheet = fromMap || (same && isPage && side.dataset.sheet === '1') ? '1' : '';
@@ -231,12 +234,13 @@ async function render(tick = false) {
     if (view.sheet) {
       const y = rs && rs.querySelector('.rs-list') ? rs.querySelector('.rs-list').scrollTop : 0;
       if (!rs) { rs = document.createElement('div'); rs.id = 'runsheet'; body.appendChild(rs); }
-      rs.innerHTML = view.sheet;
+      park(rs); rs.innerHTML = view.sheet;
       if (rs.querySelector('.rs-list')) rs.querySelector('.rs-list').scrollTop = y;
-    } else if (rs) rs.remove();
+    } else if (rs) { park(rs); rs.remove(); }
     if (!unchanged) view.mount && view.mount(side, app);
-  } else document.getElementById('runsheet')?.remove();
-  if (mapOpen || isDesktop()) {
+  } else { const rs = document.getElementById('runsheet'); if (rs) { park(rs); rs.remove(); } }
+  // The map is drawn for the Map tab, beside a wide screen's pages, and docked into a phone's page or run sheet.
+  if (mapOpen || isDesktop() || side.querySelector('#minimap') || document.querySelector('#runsheet #runmap')) {
     const m = await ensureMap();
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert';

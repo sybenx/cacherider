@@ -77,13 +77,6 @@ function runParts(t, si, ymd) {
     foot, has: stopsRows.length > 0,
   };
 }
-/** The run's map into its slot, drawn from this stop on. */
-function mountRun(el) {
-  const slot = el.querySelector('#runmap');
-  if (!slot || !shown) return;
-  const R = shown;
-  import('./map.js').then(m => m.runMap(slot, R)).catch(e => console.warn('run map', e));
-}
 
 /** The picked time in the middle of the day's row, if the row is wider than its room. */
 function centreStrip(el) {
@@ -142,7 +135,6 @@ export function runSheet(si, next, clockNow, trip, on, bigMap = false) {
  *  map and, tapped again, open, 'Whole map' swaps map and list, and × , the shade or a drag down on its top close it. */
 export function wireSheet(sheet, { open, swap, close }) {
   if (!sheet) return;
-  mountRun(sheet);
   centreStrip(sheet);
   const map = () => import('./map.js');
   sheet.onclick = e => {
