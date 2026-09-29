@@ -1966,7 +1966,12 @@ async function mainJourney(J, app) {
   map.getSource('runt').setData({ type: 'FeatureCollection', features: [] });
   map.getSource('jr').setData({ type: 'FeatureCollection', features: marks });
   // Framed when it's a new way (not when the feed only moved its minutes): the whole of it, above a phone's card.
+  // A map just shown (a reload straight onto the way) may have no size yet: waited for, a few frames, and the way
+  // framed only once it has one, or it's fitted to nothing and left there.
   if (jrFramed === J.hrefs[J.i]) return;
+  const box = map.getContainer();
+  for (let i = 0; i < 10 && box.clientHeight < 200; i++) await new Promise(requestAnimationFrame);
+  if (box.clientHeight < 200 || jrKey !== key) return;
   jrFramed = J.hrefs[J.i];
   const b = new maplibregl.LngLatBounds();
   for (const f of [...lines, ...marks]) for (const c of f.geometry.type === 'Point' ? [f.geometry.coordinates] : f.geometry.coordinates) b.extend(c);
@@ -1984,6 +1989,8 @@ function journeyCard(J, app) {
   card.dataset.way = J.base;
   card.classList.remove('hidden');
   card.classList.add('open');
+  // A long way's card would leave the map a sliver: it opens at its head (which way, the times), the legs a swipe up.
+  if (!again && card.offsetHeight > 0.45 * map.getContainer().clientHeight) { fitPeek(card); card.classList.add('peek'); }
 }
 /** Back to the directions page the way was picked on. */
 function backToWays() {
