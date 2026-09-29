@@ -1198,6 +1198,10 @@ async function showPage({ stopId, ustopId, routeShort, uRoute, alertId, at, from
   } else if (app.route && app.route.name === 'map') {
     lastFocused = null;
     select(null, app);
+  } else {
+    // A page with nothing of its own on the map (home, search, About, directions): every line back as it was,
+    // not the last route's drawn on top of the rest faded.
+    hiLines = []; hiLoops = []; applySelection();
   }
 }
 
