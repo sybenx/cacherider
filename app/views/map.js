@@ -1598,16 +1598,16 @@ function routesInPlay() {
   return focusRoute !== undefined && stop(si).routes.includes(focusRoute) ? [focusRoute] : [...stop(si).routes];
 }
 const KX = Math.cos(41.74 * Math.PI / 180) * 111320, KY = 110540;   // degrees to metres, near enough for the valley
-/** A way in pieces of equal length, each coloured with the strength of its place along: full at the start, falling
- *  fast, so the way ahead reads first and the way back round, which can pass right by on the other side of the road,
- *  reads as what comes later; faint at the end, where it melts into the road. */
+/** A way in pieces of equal length, each coloured with the strength of its place along, fading evenly from full at
+ *  the start to faint at the end, where it melts into the road: where two stretches of the way share a road, the
+ *  stronger is the sooner. */
 function fadePieces(path, hex, props) {
   const col = dark() ? lift('#' + hex) : '#' + hex, [r, g, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
   const L = [0];
   for (let i = 1; i < path.length; i++) L.push(L[i - 1] + Math.hypot((path[i][0] - path[i - 1][0]) * KX, (path[i][1] - path[i - 1][1]) * KY));
   const T = L[L.length - 1];
   if (!(T > 0)) return [];
-  const N = Math.max(6, Math.min(48, Math.round(T / 150))), strength = p => p < 0.25 ? 1 - 0.45 * p / 0.25 : p < 0.5 ? 0.55 - 0.25 * (p - 0.25) / 0.25 : 0.3 - 0.22 * (p - 0.5) / 0.5;   // full, half at a quarter, a third at the middle, faint at the end
+  const N = Math.max(6, Math.min(48, Math.round(T / 150))), strength = p => 1 - 0.92 * p;   // a straight fade: two ways of a route can share a road anywhere along it, and the line's strength says which comes first
   const at = d => { let i = 1; while (i < L.length - 1 && L[i] < d) i++; const f = L[i] > L[i - 1] ? (d - L[i - 1]) / (L[i] - L[i - 1]) : 0; return [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * f, path[i - 1][1] + (path[i][1] - path[i - 1][1]) * f]; };
   const out = [];
   for (let n = 0; n < N; n++) {
