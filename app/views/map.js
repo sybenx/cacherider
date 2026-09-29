@@ -1011,7 +1011,7 @@ function placeMe(geo) {
   meMarker.setLngLat([geo.lon, geo.lat]).addTo(map);
 }
 
-let labelsHeard = false;
+let labelsHeard = false, asking = false;
 function applySelection() {
   if (!map || !ready) return;
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
@@ -1030,6 +1030,9 @@ function applySelection() {
     labelsHeard = heardOn;
     map.setLayoutProperty('stop-labels', 'text-field', heardOn ? ['case', ['!=', ['get', 'by'], ''], ['format', ['get', 'by'], {}, '\n', {}, ['get', 'name'], { 'font-scale': 0.85, 'text-color': dark() ? '#9a9ca0' : '#6b6c70' }], ['get', 'name']] : ['get', 'name']);
   }
+  // Asked for a spot, the map's places are named from further out: they're what a rider picks by.
+  const placeZ = asking ? 13 : 15;
+  if (map.getLayer('place-labels') && map.getLayer('place-labels').minzoom !== placeZ) map.setLayerZoomRange('place-labels', placeZ, 24);
   quiet();
   drawRuns();
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
@@ -1749,6 +1752,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');   // a card tapped up beside one page isn't the next's
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
   if (stopId || ustopId || routeShort || alertId || hub || at || from || to) { selectedBus = null; selectedU = null; }
+  if (asking !== !!(from || to || goPick)) { asking = !asking; applySelection(); }
   if (busId) { lastFocused = 'b:' + busId; focusRoute = undefined; return busIn(busId, app); }
   if (at) return showAt(at, app, clockNow);
   if (from) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(from, app); }
