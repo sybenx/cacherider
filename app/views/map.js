@@ -1112,6 +1112,7 @@ function hubCard(clockNow) {
 }
 /** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
 function fitHub() {
+  if (!hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };   // where the map was, for the Map tab to go back to
   const bb = new maplibregl.LngLatBounds();
   for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
   const card = col.querySelector('#mapcard'), h = map.getContainer().clientHeight, p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
@@ -1359,13 +1360,18 @@ function panelPad(app) {
 /** The Map tab tapped again: the whole of Logan, north up, nothing picked. */
 const HOME = [-111.8300, 41.7330];
 let resetDue = false;   // asked for as the Map tab opens: done once it's drawn (the panel's room going would stop it)
-export function resetView(app, once = false) {
+export function resetView(app, once = false, to = null) {
   if (once) { resetDue = true; return; }
   if (!map) return;
   selectedBus = null; selectedU = null; lastFocused = null; hubTurned = false; northDue = false;
   select(null, app);
-  map.easeTo({ padding: pad(), center: HOME, zoom: 13, bearing: 0, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
+  map.easeTo({ padding: pad(), center: to ? to.center : HOME, zoom: to ? to.zoom : 13, bearing: 0, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
 }
+/** The Map tab from the Transit Center: the map as it was before the Center framed itself, north up, nothing picked
+ *  (a tab keeps its place; a second tap is the reset). The whole of Logan when the app opened at the Center. Done
+ *  once the Map tab is drawn, as the reset is. */
+let beforeHub = null, backDue = false;
+export function leaveHub() { backDue = true; }
 
 /** Search the map from outside it: the header's box on a wide screen. Set once the map is up. */
 export let mapSearch = () => {};
@@ -1582,7 +1588,7 @@ export async function show(o, app, clockNow) {
   if (!o.hub && hubTurned && !o.tick) { northDue = true; if (!map.isMoving()) northAgain(); }   // another tab: north up again
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   mainJourney(o.journey || null, app);   // a way from the directions page
-  if (resetDue && app.route.name === 'map' && !o.hub) { resetDue = false; resetView(app); }
+  if ((resetDue || backDue) && app.route.name === 'map' && !o.hub) { const to = backDue ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to); }
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   routeTimes(still() ? null : focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
