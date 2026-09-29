@@ -779,7 +779,8 @@ function fitPeek(card) {
 function wireGrip(app) {
   const card = col.querySelector('#mapcard');
   // A route's sheet swiped away puts the route away with it, as a tap on nothing does.
-  const close = () => { if (card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
+  // The Center's board swiped away is the board put away: the Center stays, the map as the rider has it.
+  const close = () => { if (card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash)) { card.classList.remove('open', 'peek'); return; }
     if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
     if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); backToWays(); return; } selectedBus = null; selectedU = null; select(null, app); };
   const pageHref = () => { const a = card.querySelector(':scope > .open a'); return a ? a.getAttribute('href') : null; };   // the card's own Open button: the card itself is .open too
@@ -1019,7 +1020,9 @@ function hubCheck() {
   if (on !== hubOn) {
     hubOn = on;
     paper(on);
-    if (on) hubBadges(); else { for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); if (hubTurned) northDue = true; }
+    // Zoomed or panned off the Center, the turn stays: the rider's hands moved the map, not the page. North comes back
+    // with the page (the Map tab, another tab).
+    if (on) hubBadges(); else { for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); }
     hubBuses();
   }
   if (on) easeBays();
@@ -1029,7 +1032,7 @@ function hubCheck() {
 function northAgain() {
   if (!northDue) return;
   northDue = false; hubTurned = false;
-  if (map.getBearing() !== 0) map.jumpTo({ bearing: 0 });
+  if (map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 500 });   // turned back, not snapped
 }
 /** The basemap stepped back at the Center, so the bays read like a plan: the hall's footprint, the drives and paths,
  *  and 500 North (its band and its name) as they are; every other street, the parks, water, labels and all washed
@@ -1111,8 +1114,9 @@ function hubCard(clockNow) {
   hubMount(card);
 }
 /** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
-function fitHub() {
-  if (!hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };   // where the map was, for the Map tab to go back to
+function fitHub(arriving = false) {
+  // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
+  if (arriving && !hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
   const bb = new maplibregl.LngLatBounds();
   for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
   const card = col.querySelector('#mapcard'), h = map.getContainer().clientHeight, p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
@@ -1670,7 +1674,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     // On a phone the board is the map's card; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide()) hubCard(clockNow); else col.querySelector('#mapcard').classList.remove('open');
     // Framed whenever the tab opens; from one of its routes to another, the rider's zoom and turn are kept.
-    if (!cameFrom.startsWith('#/hub') || !hubOn) fitHub();
+    if (!cameFrom.startsWith('#/hub') || !hubOn) fitHub(!cameFrom.startsWith('#/hub'));
     lastFocused = 'hub';
     hubBadges();
     return;
