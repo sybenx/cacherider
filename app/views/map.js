@@ -802,7 +802,9 @@ function wireGrip(app) {
   // Up to the whole card: it grows first, held down where the peek was, then slides up.
   const toFull = (dy = 0) => { const peekH = card.offsetHeight; card.classList.remove('peek'); const full = card.offsetHeight; slide(full - peekH + dy, 0); };
   // Off the map: the card's own transform (its closed state) with a transition on it.
-  const away = () => { card.style.transition = 'transform .25s ease'; close(); setTimeout(() => { card.style.transition = ''; }, 300); };
+  // The finger's offset goes with it: left on the card, the next card opened (a stop, the routes on a road) came up
+  // that far short, its last rows under the tabs.
+  const away = () => { card.style.transition = 'transform .25s ease'; card.style.transform = ''; close(); setTimeout(() => { card.style.transition = ''; }, 300); };
   let y0 = null, x0 = 0, t0 = 0, claimed = false;
   const settle = (dy, dt) => {
     const far = Math.abs(dy) > 70 || (Math.abs(dy) > 24 && Math.abs(dy) / Math.max(dt, 1) > 0.5);   // far enough, or a flick
