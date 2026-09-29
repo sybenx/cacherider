@@ -81,7 +81,8 @@ function runParts(t, si, ymd) {
 /** The picked time in the middle of the day's row, if the row is wider than its room. */
 function centreStrip(el) {
   const s = el.querySelector('.day-strip'), on = s && s.querySelector('.on');
-  if (on) s.scrollLeft = on.offsetLeft - (s.clientWidth - on.offsetWidth) / 2;
+  // Once for each run picked: redrawn for the feed, the strip stays where the rider has scrolled it.
+  if (on && s._centred !== on) { s._centred = on; s.scrollLeft = on.offsetLeft - (s.clientWidth - on.offsetWidth) / 2; }
 }
 
 /** The day at a stop, an hour to a column, from the current hour; the next day with buses once today's are done.
@@ -157,7 +158,8 @@ export function wireSheet(sheet, { open, swap, close }) {
   const start = e => { y0 = e.touches[0].clientY; box.style.transition = 'none'; };
   const move = e => { if (y0 === null) return; const dy = Math.max(0, e.touches[0].clientY - y0); box.style.transform = `translateY(${dy}px)`; };
   const end = e => { if (y0 === null) return; const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : y0) - y0; y0 = null; box.style.transition = ''; if (dy > 90) close(); else box.style.transform = ''; };
-  for (const el of [top, sheet.querySelector('.run-top')]) if (el) { el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchmove', move, { passive: true }); el.addEventListener('touchend', end); }
+  // Set, not added: the sheet is redrawn in place as the feed comes in, its elements kept, and wired again each time.
+  for (const el of [top, sheet.querySelector('.run-top')]) if (el) { el.ontouchstart = start; el.ontouchmove = move; el.ontouchend = end; }
 }
 /** The run the sheet shows, for the big map to draw beside a narrower page. */
 export const sheetRun = () => shown;

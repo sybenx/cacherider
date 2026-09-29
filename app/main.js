@@ -166,7 +166,7 @@ function sync(a, b) {
     if (x.nodeType !== 1) { if (x.data !== y.data) x.data = y.data; continue; }
     for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
     for (const at of y.attributes) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
-    if (x.id === 'minimap' || x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') continue;
+    if (x.id === 'minimap' || x.id === 'runmap' || x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') continue;   // a map's slot: the map in it is left be
     sync(x, y);
   }
 }
@@ -237,16 +237,18 @@ async function render(tick = false) {
     }
     side.dataset.view = key;
     side.dataset.sheet = fromMap || (same && isPage && side.dataset.sheet === '1') ? '1' : '';
-    side.scrollTop = keepScroll ? y : 0;
+    // Written only when it has to move: setting it, even to where it is, stops a phone's fling dead, and the feed
+    // redraws a live page every few seconds.
+    if (!keepScroll) { if (side.scrollTop) side.scrollTop = 0; } else if (side.scrollTop !== y) side.scrollTop = y;
     // A link to a part of a page (#/about/alerts) lands on it, the first time only: a tick keeps the rider's place.
     if (!keepScroll && view.anchor) { const a = side.querySelector('#' + view.anchor); if (a) a.scrollIntoView({ block: view.anchorBlock || 'start' }); }
     // A run's sheet over the page (a phone's stop): over the page and its map, its list kept where it was scrolled.
     let rs = document.getElementById('runsheet');
+    // Redrawn in place, and not at all when nothing changed: replaced whole, its list lost the finger scrolling it and
+    // its map (moved out and back) the finger panning it, every time the feed came in.
     if (view.sheet) {
-      const y = rs && rs.querySelector('.rs-list') ? rs.querySelector('.rs-list').scrollTop : 0;
       if (!rs) { rs = document.createElement('div'); rs.id = 'runsheet'; body.appendChild(rs); }
-      park(rs); rs.innerHTML = view.sheet;
-      if (rs.querySelector('.rs-list')) rs.querySelector('.rs-list').scrollTop = y;
+      if (rs.lastHtml !== view.sheet) { if (rs.lastHtml) morph(rs, view.sheet); else { park(rs); rs.innerHTML = view.sheet; } rs.lastHtml = view.sheet; }
     } else if (rs) { park(rs); rs.remove(); }
     if (!unchanged) view.mount && view.mount(side, app);
   } else { const rs = document.getElementById('runsheet'); if (rs) { park(rs); rs.remove(); } }
@@ -474,7 +476,7 @@ async function boot() {
   let lastMin = now().min;
   setInterval(() => {
     const m = now().min;
-    if (m === lastMin || document.visibilityState !== 'visible' || !app.route || app.route.name === 'map') return;
+    if (m === lastMin || document.visibilityState !== 'visible' || !app.route) return;   // the Map tab too: its cards count down
     if (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
     lastMin = m;
     render(true);
@@ -482,8 +484,8 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); else render(); });
   setInterval(() => { if (document.visibilityState === 'visible' && Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); }, 60e3);   // a notice posted while the app is open shows within minutes
   // Fresh bus positions redraw a live screen in place.
-  onLive(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
-  onRt(() => { if (app.route && app.route.name !== 'map' && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
+  onLive(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
+  onRt(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').then(reg => {
     // A new worker taking over while the app is open means what's running is the old app (a phone keeps it open for
     // days): a quiet bar offers a reload. Not on a fresh load, where the page is fresh already and the new worker
