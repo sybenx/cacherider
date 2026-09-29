@@ -1,6 +1,6 @@
 // Cache Rider's service worker: the app and the timetable kept on the phone,
 // the map's tiles kept as they are seen, or all at once from the About page.
-const VERSION = 'cr-v168';
+const VERSION = 'cr-v169';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js',
@@ -17,13 +17,17 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'no-cache' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'cr-map' && k !== 'cr-assets').map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'cr-map' && k !== 'cr-assets').map(k => caches.delete(k))))
+    // The index once kept among the tiles, where a map merely opened left it looking saved: the mark is its own now.
+    .then(() => caches.open('cr-map')).then(c => c.delete(scope + 'tiles/tiles.json'))
+    .then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || !url.href.startsWith(scope)) return;
   const path = url.href.slice(scope.length);
+  if (path === 'tiles/tiles.json') return e.respondWith(tileIndex(e.request));
   if (path.startsWith('tiles/')) return e.respondWith(cacheFirst(e.request, 'cr-map'));
   if (path.startsWith('vendor/basemaps-assets/')) return e.respondWith(cacheFirst(e.request, 'cr-assets'));
   if (path.startsWith('data/')) return e.respondWith(networkFirst(e.request));
@@ -50,4 +54,20 @@ async function networkFirst(req) {
     const hit = await c.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? await c.match('./index.html') : null);
     return hit || new Response('Offline', { status: 503 });
   }
+}
+
+/** The tiles' index, from the network when there is one: a new cut of the map (tools/tiles.py, a few times a year)
+ *  puts away the tiles kept from the last, saved for offline or seen, or they'd be served as they were for good. */
+async function tileIndex(req) {
+  const res = await networkFirst(req);
+  if (!res.ok) return res;
+  try {
+    const build = String((await res.clone().json()).build || ''), c = await caches.open('cr-map'), key = scope + 'tiles/.build';
+    const kept = await c.match(key), was = kept ? await kept.text() : null;
+    if (build && was !== build) {
+      if (was !== null) for (const k of await c.keys()) await c.delete(k);
+      await c.put(key, new Response(build));
+    }
+  } catch { /* the tiles kept as they are */ }
+  return res;
 }

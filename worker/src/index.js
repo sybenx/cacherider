@@ -16,7 +16,7 @@ const RTPI = 'https://mycvtdbus.org/api/rtpi?path=';
 const UA = { 'User-Agent': 'cacherider-live/1.0 (+https://cacherider.com)' };
 const ORIGINS = ['https://cacherider.com', 'https://sybenx.github.io', 'http://localhost:8794'];
 const PREVIEW = /^https:\/\/[a-z0-9-]+\.cacherider\.pages\.dev$/;   // Cloudflare's preview of each push
-const TTL = 10;   // seconds at the edge; the feeds themselves update every few seconds
+const TTL = 15;   // seconds at the edge, the agency's feed asked no oftener than this; they update every few seconds
 const ALERT_TTL = 300;   // a notice posted at the agency reaches riders within five minutes
 const ANNOUNCEMENTS = 'https://mycvtdbus.org/announcements.data';
 

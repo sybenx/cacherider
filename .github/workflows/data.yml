@@ -52,4 +52,5 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json
           git commit -m "Transit data: $(date -u +%Y-%m-%d)"
-          git push
+          # Onto whatever another run (alerts, the timetable, the map) pushed meanwhile, a few tries.
+          for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done; exit 1

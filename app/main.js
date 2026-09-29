@@ -70,6 +70,9 @@ function renderTabs() {
   }
 }
 
+/** A piece of the address as written: a link cut short mid-escape (%E0) is read as it stands, not thrown on. */
+const dec = s => { try { return decodeURIComponent(s); } catch { return s; } };
+
 function parse() {
   const h = (location.hash || '#/').slice(1);
   const [path, qs] = h.split('?');
@@ -190,12 +193,12 @@ async function render(tick = false) {
   const { seg, q } = parse();
   renderTabs();
   // A route on a wide screen is a page beside the map, as a stop is; on a phone, the Map tab with its stops as the card.
-  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: decodeURIComponent(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus } : null;
+  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: dec(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus } : null;
   // The Transit Center on a phone is the map too, at the Center, the board its card; on a wide screen a page beside it.
   const hubMap = seg[0] === 'hub' && !isDesktop();
   const clockNow = now();
   // Directions: on a wide screen the page beside the map, the way drawn there.
-  const goArgs = seg[0] === 'go' ? { to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: decodeURIComponent(seg[4] || '') } : null } : null;
+  const goArgs = seg[0] === 'go' ? { to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: dec(seg[4] || '') } : null } : null;
   // Directions are the map: on a phone, whenever there's a way to draw, the map with it drawn and the ways as its card.
   // Before a start is chosen, or with no way by bus, the page as it is.
   const goJ = goArgs && goArgs.to !== '-' && !isDesktop() ? go.journey(goArgs, q.plan, clockNow) : null;
@@ -264,7 +267,7 @@ async function render(tick = false) {
   // The map is drawn for the Map tab, beside a wide screen's pages, and docked into a phone's page or run sheet.
   if (mapOpen || isDesktop() || document.querySelector('#runsheet #runmap')) {
     const m = await ensureMap();
-    const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
+    const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: dec(seg[3] || '') } : null;
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert', mapB = name === 'map' && seg[1] === 'bus';
     const from = name === 'map' && seg[1] === 'from' ? seg[2] || null : null;   // the map asked where the rider will start from, for directions to this stop
     const to = name === 'map' && seg[1] === 'to' ? seg[2] || null : null;   // or where they're going, for directions from this spot
@@ -275,7 +278,7 @@ async function render(tick = false) {
       routeShort: routeArgs ? routeArgs.short : null, routeArgs,
       alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
-      busId: mapB && seg[2] ? decodeURIComponent(seg[2]) : null,   // a bus from the Transit Center's board: it, on its way in
+      busId: mapB && seg[2] ? dec(seg[2]) : null,   // a bus from the Transit Center's board: it, on its way in
       // Beside a wide screen's directions, the map picks the other end with a click: where from, for directions to a
       // stop or spot; where to, for directions from a spot.
       goPick: isDesktop() && name === 'go' && goArgs && goArgs.to ? goArgs.to !== '-' ? { for: goArgs.to } : goArgs.at ? { to: spotKey(goArgs.at.lat, goArgs.at.lon, goArgs.at.label) } : null : null,
@@ -481,7 +484,7 @@ function wireHeader() {
   input.addEventListener('input', () => {
     if (onMap()) return app.mapMod.mapSearch(input.value);
     if (!isDesktop()) return;
-    clearTimeout(t); t = setTimeout(() => panelSearch(input.value), 250);
+    clearTimeout(t); const was = location.hash; t = setTimeout(() => { if (location.hash === was) panelSearch(input.value); }, 250);   // a result tapped meanwhile is where the rider went
   });
   input.addEventListener('focus', () => { if (onMap() && input.value.trim()) app.mapMod.mapSearch(input.value); });
   form.onsubmit = e => { e.preventDefault(); if (onMap()) return; clearTimeout(t); panelSearch(input.value); };

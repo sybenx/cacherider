@@ -175,7 +175,7 @@ function mount(el, app) {
     const input = form.querySelector('input');
     form.onsubmit = e => { e.preventDefault(); go(input.value); };
     let t;
-    input.oninput = () => { clearTimeout(t); t = setTimeout(() => go(input.value, true), 250); };
+    input.oninput = () => { clearTimeout(t); const was = location.hash; t = setTimeout(() => { if (location.hash === was) go(input.value, true); }, 250); };   // not after a result's tapped
     if (input.value || focusNext) { focusNext = false; input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
   }
   for (const near of el.querySelectorAll('#near, #near-ask')) near.onclick = () => app.geo ? nearOff() : nearMe();

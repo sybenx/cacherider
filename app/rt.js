@@ -3,6 +3,7 @@
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
 import { D, setLive, distance, LIVE_URL, tripStops, tripEnd } from './data.js';
+import { now, dayDiff, clockText } from './time.js';
 
 export const RT_URL = LIVE_URL;
 const POLL = 15000, STALE = 90000;
@@ -30,7 +31,7 @@ export function setRtWanted(w) {
 }
 export const rtStale = () => rt.at === 0 || Date.now() - rt.at > STALE;
 export const rtHasData = () => rt.at > 0;
-export function rtSeen() { const d = new Date(rt.at); return (d.getHours() % 12 || 12) + ':' + String(d.getMinutes()).padStart(2, '0'); }
+export function rtSeen() { return clockText(now(new Date(rt.at)).min); }
 
 // ---- the static side of each trip, indexed once: trip id → index, and index → route/headsign/direction
 let tripIdx = null, tripInfo = null;
@@ -47,11 +48,11 @@ function schedMin(si, ti) {
 }
 /** Minutes since local midnight for an epoch second, a day later counted past 1440. */
 function toMin(sec) {
-  const d = new Date(sec * 1000), t = new Date();
-  let m = d.getHours() * 60 + d.getMinutes();
-  if (d.getDate() !== t.getDate()) m += d > t ? 1440 : -1440;
-  return m;
+  const a = now(new Date(sec * 1000));   // the agency's clock, as the timetable is, whatever zone the phone is set to
+  return a.min + 1440 * dayDiff(today(), a.ymd);
 }
+let todayAt = 0, todayYmd = '';
+function today() { const t = Date.now(); if (t - todayAt > 1000) { todayAt = t; todayYmd = now().ymd; } return todayYmd; }
 
 let lastTry = 0;
 async function tick(force) {

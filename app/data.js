@@ -160,6 +160,7 @@ export async function loadAlerts() {
     }
     const byStop = {}, byRoute = {};
     for (const a of j.alerts) {
+      if (!/^https?:\/\//i.test(a.url || '')) a.url = '';   // a link out, and only that: never a script's
       a.ri = (a.routes || []).map(s => D.routeByShort[s]).filter(x => x !== undefined);
       if (!(a.stops || []).length) a.stops = namedStops(a);
       a.names = namedDay(a.title || '', a.start);

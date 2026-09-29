@@ -4,7 +4,7 @@
 // Minutes are estimated from a bus's position along its loop.
 import { BASE, D, distance } from './data.js';
 import { esc, raw, html, icon } from './ui.js';
-import { metres, now, dayFrom, clockShort, DAY_NAMES } from './time.js';
+import { metres, now, dayFrom, clockShort, clockText, DAY_NAMES } from './time.js';
 
 export let U = null;
 const FEED = 'https://passiogo.com/mapGetData.php';
@@ -101,7 +101,7 @@ async function tick(force) {
 export const isStale = () => live.at > 0 && Date.now() - live.at > STALE;
 export const hasData = () => live.at > 0;
 export const noBuses = () => live.at > 0 && !live.buses.length;
-export function lastSeen() { const d = new Date(live.at); let h = d.getHours(), m = d.getMinutes(); return (h % 12 || 12) + ':' + String(m).padStart(2, '0'); }
+export function lastSeen() { return clockText(now(new Date(live.at)).min); }
 
 /** The nearest bus on a route to a stop, in the direction of travel: stops away and minutes. */
 export function estimate(si, ri) {

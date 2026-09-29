@@ -789,7 +789,7 @@ function lastRun(ri, d, seq, clockNow, dirWord) {
   // trip; else the last trip's end; else a partial run's end; else the stop that follows its last one on the route.
   let endSi = null, endAt = null;
   const fin = u && u.ti === lastTi && u.stops.find(x => x[1] === u.end);
-  if (fin && D.stopById[fin[0]] !== undefined) { endSi = D.stopById[fin[0]]; const dd = new Date(fin[2] * 1000); endAt = dd.getHours() * 60 + dd.getMinutes(); }
+  if (fin && D.stopById[fin[0]] !== undefined) { endSi = D.stopById[fin[0]]; endAt = now(new Date(fin[2] * 1000)).min; }
   else if (te) endSi = te.si;
   else if (partial) endSi = re.end;
   else { const k = seq.indexOf(stops[stops.length - 1][1]); if (k >= 0) endSi = k + 1 < seq.length ? seq[k + 1] : isLoop(ri) ? seq[0] : null; }
@@ -1119,6 +1119,7 @@ function applySelection() {
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
   for (const [id, m] of busMarkers) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); m.el.classList.toggle('on', id === selectedBus || id === ringed); }
   dressJourney();
+  if (MT.R && map.getLayer('run-hot')) dressForRun(map, MT.R);   // a run up keeps its own dress over all the above
 }
 
 /** The shuttle and POOL drawn only where they run, or when asked for: near campus (the shuttle's stops) or POOL's zone,
@@ -1710,7 +1711,7 @@ function setSpot(at) {
   if (ready) apply(); else map.once('load', apply);
 }
 function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
-  selected = null; uHilite = ''; hiLoops = [];
+  selected = null; uHilite = ''; hiLoops = []; selectedBus = null; selectedU = null;   // a bus picked before is put down: the spot's card is the card
   hiLines = road && road.length === 1 ? [road[0]] : [];   // a road with one route: that route lit, with its times
   applySelection();
   if (road && road.length === 1) routeTimes(road[0], clockNow);

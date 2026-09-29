@@ -62,7 +62,7 @@ function installBlock() {
   return html`${used ? '' : html`<p class="muted" style="font-size:0.875rem">One tap from your home screen, full screen, and it works offline.</p>`}<button class="btn btn-secondary${used ? '' : ' btn-lg blueprint'}" id="install-go" type="button">${used ? '' : corners()}${icon('install', 20)}Add to home screen</button>`;
 }
 
-const MARK = BASE + 'tiles/tiles.json';   // present in the map cache only once every tile is
+const MARK = BASE + 'tiles/.saved', INDEX = BASE + 'tiles/tiles.json';   // the mark: in the map cache only once every tile is
 
 async function mount(el) {
   const th = el.querySelector('#theme');
@@ -89,7 +89,7 @@ async function mount(el) {
     try {
       const c = await caches.open('cr-map');
       const all = await c.match(MARK);
-      const n = (await c.keys()).length;
+      const n = (await c.keys()).filter(r => r.url.endsWith('.pbf')).length;
       if (all) { label('close', 'Remove the offline map'); btn.dataset.saved = '1'; }
       else { label('down', 'Save the map for offline'); delete btn.dataset.saved; }
       if (n && !all) note.textContent = `${n} map tiles are already on this device from browsing. Saving fetches the rest.`;
@@ -103,7 +103,7 @@ async function mount(el) {
       if (btn.dataset.saved) {
         for (const k of await c.keys()) await c.delete(k);
       } else {
-        const index = await (await fetch(MARK, { cache: 'no-store' })).json();
+        const index = await (await fetch(INDEX, { cache: 'no-store' })).json();
         const urls = index.tiles.map(t => BASE + 'tiles/' + t + '.pbf');
         let done = 0;
         const have = new Set((await c.keys()).map(r => r.url));
