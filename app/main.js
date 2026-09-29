@@ -52,6 +52,7 @@ function renderTabs() {
     const hubAgain = e => {
       if (!e.target.closest('a[href="#/hub"]') || !(location.hash || '').startsWith('#/hub') || !app.mapMod) return;
       e.preventDefault();
+      if (location.hash !== '#/hub') location.hash = '#/hub';   // a route picked on the board: the whole board again
       app.mapMod.hubAgain(app);
     };
     for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', hubAgain);

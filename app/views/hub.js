@@ -1,8 +1,8 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, nextPulse, nextFromHub, distance, servicesOn } from '../data.js';
-import { relative, countdown, dayName, clock, now, dayFrom, clockText } from '../time.js';
+import { D, nextPulse, nextFromHub, distance, servicesOn, timesOn } from '../data.js';
+import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord } from '../ui.js';
 import { rt, rtStale, isLoop } from '../rt.js';
 
@@ -78,7 +78,7 @@ export function render({ bay }, clockNow) {
   parts.push(html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1></div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`);
   parts.push(together(st, clockNow));
   parts.push(loops(st, pick, clockNow));
-  if (pick) parts.push(picked(st[pick], clockNow));
+  if (pick) parts.push(picked(st[pick], clockNow), dayTimes(st[pick], clockNow));
   parts.push(nextHour(st, pick, clockNow));
   parts.push(footnote(st));
   return { html: parts.join(''), mount, title: H.name, keepScroll: true, key: 'hub' };
@@ -128,7 +128,10 @@ function together(st, clockNow) {
   const p = nextPulse(1, clockNow)[0];
   if (!p) return html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${D.agency.brand} doesn't run on ${dayName(clockNow.ymd)}s.</div></div></div>`;
   const ks = [...new Set((D.hub.pulseRoutes || []).map(keyOf))].filter(k => st[k]);
-  const leaving = ks.filter(k => st[k].dep && st[k].dep.day === p.day && schedOf(st[k].dep) === p.min);
+  // Which routes leave together is the timetable's: those with a departure from a bay at that minute that day. It was
+  // each route's next departure matched against it, and as a bus pulled out its next was the run after, so at the
+  // very minute the group thinned to the few still in.
+  const leaving = ks.filter(k => routesOf(k).some(ri => D.hub.bays.some(b => b.routes.includes(ri) && timesOn(b.stop, p.ymd).some(t => t.r === ri && t.min === p.min))));
   const diff = p.min - clockNow.min + p.day * 1440;
   const end = p.day === 0 && diff < 60
     ? html`<span class="t tc-count" data-countdown="${p.min}">${countdown(p.min, clockNow)}</span><span class="cap">min : sec</span>`
@@ -183,7 +186,7 @@ function loops(st, pick, clockNow) {
 export function hubSheet({ bay }, clockNow) {
   const { st, pick } = board(bay, clockNow);
   return pick
-    ? { pick, head: picked(st[pick], clockNow), body: html`${nextHour(st, pick, clockNow)}${footnote(st)}` }
+    ? { pick, head: picked(st[pick], clockNow), body: html`${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
     : { pick, head: together(st, clockNow), body: html`${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` };
 }
 
@@ -216,7 +219,8 @@ function picked(s, clockNow) {
   // The badge opens the route, landing on its bay; each time opens that bay's stop page, the rest of its day.
   const ri = s.ris[s.ris.length - 1], bay = D.hub.bays.find(b => b.routes.includes(ri));
   const baySi = bay ? bay.stop : undefined;
-  const stopHref = t => { const si = t.si !== undefined ? t.si : baySi; return si !== undefined ? '#/stop/' + D.stops[si].id : '#/hub'; };
+  // A time opens its run from here: the route from the Center at that time, drawn on the map, its stops listed.
+  const stopHref = t => { const si = t.si !== undefined ? t.si : baySi; return si === undefined ? '#/hub' : '#/stop/' + D.stops[si].id + (t.trip !== undefined ? `?run=${t.trip}&on=${t.ymd}` : ''); };
   const cells = s.deps.map((t, i) => {
     const m = i === 0 && t.day === 0 ? s.leave : t.min, c = clock(m);
     const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ' · late' : '') : dayName(t.ymd);
@@ -227,6 +231,25 @@ function picked(s, clockNow) {
     <div class="top">${baySi !== undefined ? html.raw(routeBadgeLink(ri, baySi, 44, s.deps[0] && s.deps[0].dir)) : badge(ri, 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
     <span class="words">${words}</span>
     ${cells.length ? html`<div class="cells">${cells}</div>` : ''}</div>`;
+}
+
+/** The picked route's whole day from here, an hour to a column, each time to come a way into its run; below its
+ *  next few, a swipe up on a phone's board. */
+function dayTimes(s, clockNow) {
+  const seen = new Set(), list = [];
+  for (const b of D.hub.bays) for (const ri of s.ris) if (b.routes.includes(ri)) for (const t of timesOn(b.stop, clockNow.ymd)) {
+    if (t.r !== ri || seen.has(t.min + ':' + t.trip)) continue;
+    seen.add(t.min + ':' + t.trip); list.push(t);
+  }
+  if (!list.length) return '';
+  list.sort((a, b) => a.min - b.min);
+  const hours = new Map();
+  for (const t of list) { const h = Math.floor(t.min / 60); if (!hours.has(h)) hours.set(h, []); hours.get(h).push(t); }
+  const nowH = Math.floor(clockNow.min / 60), name = s.loop ? D.routes[s.ris[0]].long : 'Route ' + s.k;
+  const cols = [...hours].map(([h, ts]) => `<div class="hr${h === nowH ? ' now' : ''}"><span class="hr-h">${clockShort(h * 60)}</span>${ts.map(t => t.min < clockNow.min
+    ? `<span class="hr-dep past">${clock(t.min).h}</span>`
+    : `<a class="hr-dep" href="#/stop/${D.stops[t.si].id}?run=${t.trip}&on=${clockNow.ymd}">${clock(t.min).h}</a>`).join('')}</div>`).join('');
+  return html`<section class="phone-day tc-day"><div class="ws-eye"><span>${name} today from here</span><span>${list.length} departures</span></div><div class="hours">${html.raw(cols)}</div><p class="day-hint">Tap a time for its run on the map.</p></section>`;
 }
 
 function footnote(st) {
