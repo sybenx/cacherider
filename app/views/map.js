@@ -1431,7 +1431,9 @@ function topCover() {
   return cover;
 }
 /** A fit's margins, the top's past the search bar and any notice, so what's framed isn't under them. */
-const fitPad = n => ({ top: n + topCover(), bottom: n, left: n, right: n });
+const fitPad = n => ({ top: n + topCover(), bottom: n + runCover(), left: n, right: n });
+/** A run's sheet over the lower part of a phone's map: what's fitted goes above it. */
+const runCover = () => { const rs = !wide() && document.querySelector('#runsheet .rs'); return rs ? rs.offsetHeight : 0; };
 let padUntil = 0;
 const settlePad = () => { if (map.getPadding().left !== (padLeft || 0)) map.setPadding(pad()); };
 function panelPad(app) {
@@ -1868,14 +1870,16 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     if (ri === undefined) return;
     const changed = lastFocused !== 'r:' + ri;
     lastFocused = 'r:' + ri;
-    if (changed) ringed = null;
+    // "The whole route" asked for: the whole of it in view, and nothing picked on it, the bus it was opened from too.
+    const whole = !!(routeArgs && routeArgs.full) && !/[?&]all=1/.test(cameFrom);
+    if (changed || whole) { ringed = null; wantRing = null; selectedBus = null; }
     // From a stop's badge, that stop ringed on the route.
     const at = routeArgs && routeArgs.at !== undefined && D.stopById[routeArgs.at] !== undefined ? routeArgs.at : null;
     selected = at; uHilite = ''; hiLines = [ri]; hiLoops = []; focusRoute = ri; applySelection();
     // On a phone's Map tab its stops are the card, the map framed above it; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide() && routeArgs) sheetCard(routeArgs, clockNow);
     else col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: routePad(), duration: 700, maxZoom: 15.5 });
+    if (focus && (changed || resized || whole) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: routePad(), duration: 700, maxZoom: 15.5 });
     stayRoute = false;
     wantBus = null;
     if (bus) ringBus(bus); else wantRing = null;

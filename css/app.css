@@ -942,6 +942,14 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .rs.map-only .rs-map { flex: 1; height: auto; }
 .rs.map-only .rs-list { display: none; }
 @media (prefers-reduced-motion: reduce) { .rs { transition: none; } }
+/* On a phone or a tablet the run's sheet covers the lower part of the map, the run drawn on the map above it, which
+   stays the finger's: no shade over it, and the stop's own sheet put by until the run's closes */
+@media (max-width: 839px) {
+  #runsheet { top: 42%; pointer-events: none; }
+  #runsheet .rs-scrim { display: none; }
+  #runsheet .rs { height: 100%; pointer-events: auto; border-top: 1px solid var(--cr-line); }
+  #body:has(> #runsheet) #mapcard { visibility: hidden; }
+}
 /* the wide About: the alerts and the data on the right */
 
 /* Medium (a portrait tablet): the phone's layout, its page a column of at most 600px in the middle, the tab bar and

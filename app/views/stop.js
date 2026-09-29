@@ -8,7 +8,6 @@ import { metres as m2 } from '../time.js';
 import { afterSave, app } from '../main.js';
 import { restOfDay, runSheet, wireSheet, sheetRun } from './stopwide.js';
 import { wirePointers, pointerDial } from '../pointer.js';
-import { isWide } from '../wide.js';
 import { atPath } from '../geo.js';
 
 export function render({ id, full, run, on }, clockNow) {
@@ -20,7 +19,6 @@ export function render({ id, full, run, on }, clockNow) {
   const sv = isSaved(s.id);
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
-  const desk = isWide();   // the map beside the page; on a phone or a portrait tablet the page is the map's sheet
   const sd = side(si);
   const eyebrow = `${s.town} · Stop ${s.code || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces
   const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
@@ -137,8 +135,8 @@ export function render({ id, full, run, on }, clockNow) {
   // its own (?run=trip&on=day), so Back closes it.
   const pick = run !== undefined && run !== '' ? { trip: +run } : { trip: null };
   parts.push(restOfDay(si, next, clockNow, pick));
-  // Beside the big map (a tablet, a narrower window) the run is drawn there; on a phone, on the one map docked in the sheet.
-  const sheet = pick.trip !== null ? runSheet(si, next, clockNow, pick.trip, on || clockNow.ymd, desk) : null;
+  // The run is drawn on the map itself: beside the panel on a wide screen, above the sheet on a phone or a tablet.
+  const sheet = pick.trip !== null ? runSheet(si, next, clockNow, pick.trip, on || clockNow.ymd, true) : null;
   return { html: html`<div class="phone-stop" data-stop="${s.id}">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true, sheet, run: sheet ? sheetRun() : null };
 }
 
