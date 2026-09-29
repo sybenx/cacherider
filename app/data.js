@@ -12,7 +12,51 @@ export async function load() {
   setZone(D.agency.tz);
   D.routeByShort = Object.fromEntries(D.routes.map((r, i) => [r.short, i]));
   D.stopById = Object.fromEntries(D.stops.map((s, i) => [s.id, i]));
+  apart(D.routes);
   return D;
+}
+
+/** Route colours a rider can tell apart. Every route meets at the Transit Center, and an agency's colours can sit
+ *  side by side all but the same (Connect's Route 8 and Green Loop, 9 and 11): any two nearer than NEED (ΔE, CIELAB)
+ *  are drawn apart in lightness, the lighter lighter and the darker darker, each hue kept, a step at a time till
+ *  they're far enough. Two halves of one route (16 AM and PM, never out together) are left be. The badge's text
+ *  turns black or white if the new shade needs it; the feed's own colour is kept as `gtfsColor`. */
+const NEED = 22;
+function apart(routes) {
+  const lin = c => (c /= 255) <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4, gam = c => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+  const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116, fi = t => t ** 3 > 0.008856 ? t ** 3 : (t - 16 / 116) / 7.787;
+  const toLab = hex => {
+    const [r, g, b] = [0, 2, 4].map(i => lin(parseInt(hex.slice(i, i + 2), 16)));
+    const x = f((r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047), y = f(r * 0.2126 + g * 0.7152 + b * 0.0722), z = f((r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883);
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+  };
+  const toHex = ([L, A, B]) => {
+    const y = (L + 16) / 116, x = fi(A / 500 + y) * 0.95047, z = fi(y - B / 200) * 1.08883, Y = fi(y);
+    const rgb = [3.2406 * x - 1.5372 * Y - 0.4986 * z, -0.9689 * x + 1.8758 * Y + 0.0415 * z, 0.0557 * x - 0.2040 * Y + 1.0570 * z];
+    return rgb.map(c => Math.round(Math.max(0, Math.min(255, gam(Math.max(0, c))))).toString(16).padStart(2, '0')).join('').toUpperCase();
+  };
+  const lum = hex => { const [r, g, b] = [0, 2, 4].map(i => lin(parseInt(hex.slice(i, i + 2), 16))); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const same = (a, b) => a.short.split(' ')[0] === b.short.split(' ')[0];
+  const L = routes.map(r => /^[0-9a-f]{6}$/i.test(r.color || '') ? toLab(r.color) : null);
+  for (let pass = 0; pass < 24; pass++) {
+    let moved = false;
+    for (let i = 0; i < routes.length; i++) for (let j = i + 1; j < routes.length; j++) {
+      if (!L[i] || !L[j] || same(routes[i], routes[j]) || Math.hypot(L[i][0] - L[j][0], L[i][1] - L[j][1], L[i][2] - L[j][2]) >= NEED) continue;
+      const [lo, hi] = L[i][0] <= L[j][0] ? [i, j] : [j, i];
+      L[lo][0] = Math.max(8, L[lo][0] - 1); L[hi][0] = Math.min(92, L[hi][0] + 1);
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  routes.forEach((r, i) => {
+    if (!L[i]) return;
+    const hex = toHex(L[i]);
+    if (hex === r.color.toUpperCase()) return;
+    r.gtfsColor = r.color; r.color = hex;
+    // The agency's text kept unless the new shade reads worse under it than the old did (and than is easy to read).
+    if (!/^[0-9a-f]{6}$/i.test(r.text || '') || (contrast(hex, r.text) < 4.5 && contrast(hex, r.text) < contrast(r.gtfsColor, r.text))) r.text = contrast(hex, '000000') >= contrast(hex, 'FFFFFF') ? '000000' : 'FFFFFF';
+  });
 }
 
 // ---- service alerts: detours, closed stops, late starts, from data/alerts.json (hourly)
