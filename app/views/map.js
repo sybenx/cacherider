@@ -1400,7 +1400,7 @@ export function liveUpdate(app) {
     m.el.style.setProperty('--bus-color', color);
     m.marker.setRotation(b.course);
     m.ri = b.ri;
-    m.el.classList.toggle('on', selectedBus === b.id);
+    m.el.classList.toggle('on', selectedBus === b.id || ringed === b.id);
     m.el.classList.toggle('dim', dimBus(m));
     m.el.classList.toggle('lit', litBus(m));
   };
@@ -1651,6 +1651,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
+  if (!routeShort) { ringed = null; wantRing = null; }   // a bus ringed from its route's list goes with the route
   if (!routeShort && !alertId && focusRoute !== undefined) { focusRoute = undefined; applySelection(); }   // off the route's page: stops back to their own colours
   // The address is acted on once. A redraw with the same one (the app coming back to the front, say)
   // leaves whatever the rider has since tapped on the map alone.
