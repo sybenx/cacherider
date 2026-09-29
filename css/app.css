@@ -886,6 +886,9 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .endservice { display: flex; align-items: center; gap: 12px; padding: 18px 16px 4px; font: 600 15px var(--font-heading); letter-spacing: .14em; text-transform: uppercase; color: var(--color-text); }
 .endservice::before, .endservice::after { content: ''; flex: 1; border-top: 2px solid var(--color-text); }
 .endservice + .dayhead { border-top: 0; }
+/* the morning's first run, starting partway along: where it starts, and where the stops before it are served from */
+.endservice.firstrun { font-size: 13px; letter-spacing: .1em; padding-top: 12px; color: var(--color-accent-700); }
+.endservice.firstrun::before, .endservice.firstrun::after { border-top-color: var(--color-accent); }
 .yourstop { margin-top: 4px; }
 .endstop .dist { color: var(--color-accent-700); }
 
