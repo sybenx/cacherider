@@ -2,7 +2,7 @@
 // to the first stop, the bus, where to change, where to get off, in order, with when.
 import { D, stop, stopIndex, distance, tripStops, POOL, inPool } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
-import { clockText, relative, metres, fmtDay, dayName } from '../time.js';
+import { clockText, relative, metres, fmtDay, dayName, now } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
@@ -243,6 +243,15 @@ function whereabouts(l) {
   if (a < 0 || b < 0 || a > b) return who + ' · on its way';
   const n = before + b - a, ns = stop(next);
   if (n === 0) return who + ' · at your stop';
+  // Headed away from the stop and coming back to it (Route 2 out to the end of its line and round): its way there
+  // much longer than the road across, and the words say so, not a stop count that reads as near.
+  if (before) {
+    const way = [...tripStops(D.trips.indexOf(bus.trip)).map(x => x[1]).slice(-before), ...seq.slice(0, b + 1)];
+    let d = distance(bus.lat, bus.lon, stop(way[0]).lat, stop(way[0]).lon);
+    for (let i = 1; i < way.length; i++) d += distance(stop(way[i - 1]).lat, stop(way[i - 1]).lon, stop(way[i]).lat, stop(way[i]).lon);
+    const across = distance(bus.lat, bus.lon, stop(l.from).lat, stop(l.from).lon), mins = Math.max(1, l.on - now().min);
+    if (d > 1.6 * across + 400) return `${who} · on its way out, back past here in ${mins} min`;
+  }
   return `${who} · ${n} ${n === 1 ? 'stop' : 'stops'} away, next ${ns.hub ? D.hub.name : ns.name}`;
 }
 

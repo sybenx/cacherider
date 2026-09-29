@@ -8,7 +8,7 @@ import { routeName, routeNames, html, icon, badge, badges, time, sched, corners,
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
+import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap } from './find.js';
 
@@ -1378,12 +1378,14 @@ function busScale() {
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 function dimBus(m) {
+  if (JR && JR.appBus) return m.id !== JR.appBus;   // a way drawn with its bus coming: that bus alone, the rest dim
   const on = hiLines.length ? hiLines : runRoutes;
   if (m.kind === 'c') return (on.length > 0 && !on.includes(m.ri)) || hiLoops.length > 0;
   return hiLoops.length > 0 && !hiLoops.includes(U.routes[m.ri].id);
 }
 /** A bus on a lit route or loop: drawn at full size and tappable however far out the map is zoomed. */
 function litBus(m) {
+  if (JR && JR.appBus) return m.id === JR.appBus;
   return m.kind === 'c' ? hiLines.includes(m.ri) || runRoutes.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
 }
 /** Every bus with a fix, shuttle and Connect alike, moved or placed; the ones gone from the feeds removed. */
@@ -1462,7 +1464,7 @@ export let mapSearch = () => {};
 export function liveUpdate(app) {
   if (rtShown !== null) routeTimes(rtShown, now());   // the feed's word moves a route's next buses
   if (!map) return;
-  if (selectedBus || ringed) drawRuns();   // the line follows the bus
+  if (selectedBus || ringed || JR) drawRuns();   // the line follows the bus (a way's bus, coming to it, too)
   const seen = new Set();
   const place = (b, kind, color, title) => {
     seen.add(b.id);
@@ -1471,7 +1473,7 @@ export function liveUpdate(app) {
       const el = document.createElement('div');
       el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
       el.onclick = ev => { if (still()) return; ev.stopPropagation(); selectBus(b.id, app); };
-      m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind };
+      m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind, id: b.id };
       busMarkers.set(b.id, m);
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
     } else glide(m, b.lon, b.lat);
@@ -2077,7 +2079,7 @@ function loopLeg(l) {
 /** Only the way's stops and lines: the rest put away, as a run's are, the other routes faint. */
 function dressJourney() {
   if (!JR || !map.getSource('jr')) return;
-  for (const id of [...RUN_HIDE, 'stop-selected']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+  for (const id of [...RUN_HIDE, 'stop-selected']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', APPROACH.includes(id) ? 'visible' : 'none');
   map.setPaintProperty('route-lines', 'line-opacity', 0.18);
   map.setFilter('stops', ['in', ['get', 'id'], ['literal', JR.stops]]);
   map.setLayerZoomRange('stops', 0, 24);
@@ -2111,7 +2113,7 @@ async function mainJourney(J, app) {
     const sh = U.shared[+x.slice(1)];
     if (sh) tint[D.stops[sh.j].id] ??= colOf(l); else ustops.add(U.stops[+x.slice(1)].id);
   }
-  JR = { routes: [...new Set(rides.filter(l => !l.u).map(l => l.r))], stops: Object.keys(tint), ustops: [...ustops], tint };
+  JR = { routes: [...new Set(rides.filter(l => !l.u).map(l => l.r))], stops: Object.keys(tint), ustops: [...ustops], tint, plan: p, appBus: JR ? JR.appBus : null };
   const was = hubOn;
   hubCheck();   // the Center's view put away: a way through it is drawn like any other
   if (was && hubTurned) { hubTurned = false; northDue = false; }
@@ -2333,6 +2335,51 @@ function pathFrom(ti0, k, ri, clockNow) {
   }
   return path;
 }
+/** A way's bus coming to it, with the direction arrows: the layers a way drawn leaves up (the rest of a run's go). */
+const APPROACH = ['runs', 'runs-approx', 'runs-arrows'];
+/** The bus a way's ride boards, from the feed: the one on the ride's trip, or the one the feed says will run it. */
+function rideBus(l) {
+  if (l.u || l.t.trip === undefined) return null;
+  const on = busOn(l.t.trip);
+  if (on) return on.bus;
+  const u = rt.trips[D.trips[l.t.trip]];
+  return u && u.v ? rt.buses.find(x => x.id === 'c:' + u.v) || null : null;
+}
+/** The drawn way's bus coming to it: the first ride's bus to the stop it's boarded at; once that's gone (the rider on
+ *  it), the change's bus to the change stop. Its way from where it is to that stop and no further (the way's own line
+ *  takes over there), round the turn of an out-and-back if that's how it comes. None for a bus not yet out. */
+function approach(clockNow) {
+  const p = JR && JR.plan;
+  if (!p || p.day) return null;
+  const rides = p.legs.filter(l => l.kind === 'ride');
+  const l = rides.length > 1 && clockNow.min > rides[0].on ? rides[1] : rides[0], b = l && rideBus(l);
+  const stops = b ? approachPath(b, l.t.trip, l.from, clockNow) : null;
+  return stops && stops.length > 1 ? { bus: b, stops } : null;
+}
+/** A bus's way on, trip to trip, up to a stop of a trip it's yet to run (or is running): null when it's past it or
+ *  doesn't come to it. Each stop [minute, stop, route where it's another's]. */
+function approachPath(b, target, si, clockNow) {
+  let ti = D.trips.indexOf(b.trip);
+  if (ti < 0) return null;
+  let seq = tripStops(ti);
+  const nextSi = nextStopOf(b), te0 = tripEnd(ti);
+  let k = nextSi !== undefined ? seq.findIndex(x => x[1] === nextSi) : -1;
+  if (k < 0 && te0 && nextSi === te0.si) k = seq.length;
+  if (k < 0) return null;
+  const path = k > 0 ? [seq[k - 1]] : [];
+  const add = (x, r) => { if (!path.length || path[path.length - 1][1] !== x[1]) path.push(r !== b.ri ? [x[0], x[1], r] : [x[0], x[1]]); };
+  for (let hops = 0; hops < 4; hops++) {
+    const tr = tripRoute(ti), r = tr ? tr.r : b.ri;
+    for (; k < seq.length; k++) { add(seq[k], r); if (ti === target && seq[k][1] === si) return path; }
+    if (ti === target) return null;
+    const te = tripEnd(ti);
+    if (te) add([te.min, te.si], r);
+    const n = nextTrip(ti, clockNow.ymd);
+    if (n === undefined) return null;
+    ti = n; seq = tripStops(n); k = 0;
+  }
+  return null;
+}
 /** A picked bus's way on: from where it is, by the feed's next stop, or failing that the clock. Empty for a trip the
  *  timetable lacks. */
 function busPath(b, clockNow) {
@@ -2446,7 +2493,11 @@ async function drawRuns() {
   const clockNow = now(), empty = { type: 'FeatureCollection', features: [] };
   const sb = selectedBus || ringed, c = sb ? findBus(sb) : null, si = !sb && selected ? D.stopById[selected] : undefined, ris = routesInPlay();
   let wants = [];
-  if (c) wants = [{ ri: c.ri, stops: busPath(c, clockNow), from: [c.lon, c.lat] }];
+  const ap = JR ? approach(clockNow) : null;
+  if (JR) { const was = JR.appBus; JR.appBus = ap ? ap.bus.id : null; if (was !== JR.appBus) for (const m of busMarkers.values()) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); } }
+  if (ap) wants = [{ ri: ap.bus.ri, stops: ap.stops, from: [ap.bus.lon, ap.bus.lat], open: true }];
+  else if (JR) wants = [];
+  else if (c) wants = [{ ri: c.ri, stops: busPath(c, clockNow), from: [c.lon, c.lat] }];
   else if (si !== undefined && ris.length) wants = stopPaths(si, ris, clockNow);
   wants = wants.filter(w => w.stops.length > 1);
   // The shuttle's: no timetable, so each loop's line itself, from the bus or the stop round to it again.
@@ -2455,7 +2506,7 @@ async function drawRuns() {
   const loops = loopsInPlay().map(ri => ({ ri, path: ub ? loopPath(ri, [ub.lon, ub.lat], ub.along) : loopPath(ri, [U.stops[usi].lon, U.stops[usi].lat], U.routes[ri].stopAlong[usi]) })).filter(w => w.path.length > 1);
   if (!wants.length && !loops.length) { if (runsKey !== null) { runsKey = null; map.getSource('runs').setData(empty); } return; }
   const pick = [sb, selected, selectedU, uHilite].join('|');
-  const key = (c ? c.id + '@' + c.lat.toFixed(4) + ',' + c.lon.toFixed(4) : ub ? ub.id + '@' + ub.lat.toFixed(4) + ',' + ub.lon.toFixed(4) : pick) + '|' + (dark() ? 'd' : 'l') + '|' + wants.map(w => w.ri + ':' + w.stops.map(x => x[1]).join('.')).join(';') + '|' + loops.map(w => w.ri).join('.');
+  const key = (ap ? ap.bus.id + '@' + ap.bus.lat.toFixed(4) + ',' + ap.bus.lon.toFixed(4) : c ? c.id + '@' + c.lat.toFixed(4) + ',' + c.lon.toFixed(4) : ub ? ub.id + '@' + ub.lat.toFixed(4) + ',' + ub.lon.toFixed(4) : pick) + '|' + (dark() ? 'd' : 'l') + '|' + wants.map(w => w.ri + ':' + w.stops.map(x => x[1]).join('.')).join(';') + '|' + loops.map(w => w.ri).join('.');
   if (key === runsKey) return;
   const fc = wants.length ? await shapes() : null;
   if (!map || !map.getSource('runs') || pick !== [selectedBus || ringed, selected, selectedU, uHilite].join('|')) return;   // moved on while the shapes came
@@ -2485,7 +2536,7 @@ async function drawRuns() {
         if (e < best) { best = e; bi = i; }
       }
       if (bi >= 0 && best < 150) {
-        const round = w.stops.length > 2 && w.stops[w.stops.length - 1][1] === w.stops[0][1];
+        const round = !w.open && w.stops.length > 2 && w.stops[w.stops.length - 1][1] === w.stops[0][1];
         path = [w.from, ...path.slice(bi + 1), ...(round ? [...path.slice(1, bi + 1), w.from] : [])];
       }
     }
