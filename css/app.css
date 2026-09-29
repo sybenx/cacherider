@@ -592,7 +592,10 @@ a.twinline { text-decoration: none; }
 .mapcard .jnav { display: flex; align-items: center; gap: 4px; margin: -4px -8px 6px; }
 .mapcard .jnav .eyebrow { flex: 1; text-align: center; }
 .mapcard .jnav .btn { min-height: 40px; padding-inline: 8px; }
-.mapcard .jsteps { display: flex; }
+.mapcard .jsteps { display: flex; gap: 8px; }
+/* thumb-sized, the pair apart; and the card holds its height from way to way (--jh), so they stay put */
+.mapcard .jnav .jstep { min-width: 48px; min-height: 48px; padding: 0; justify-content: center; }
+.mapcard:has(> .journeysheet):not(.peek) { height: var(--jh, auto); }
 .mapcard .jhead .plan-top { margin-bottom: 0; }
 .mapcard .journeysheet { padding: 4px 16px 16px; }
 .legs { display: flex; flex-direction: column; position: relative; }

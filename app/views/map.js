@@ -2136,11 +2136,12 @@ async function mainJourney(J, app) {
 /** A phone's card for the way: which of the ways it is, a step to the others, its times, then its legs. */
 function journeyCard(J, app) {
   const card = col.querySelector('#mapcard'), n = J.plans.length;
-  const step = (k, dir) => k < 0 || k >= n ? html`<button class="btn btn-ghost jstep" type="button" disabled aria-label="${dir}">${icon(dir === 'Earlier way' ? 'back' : 'fwd', 20)}</button>` : html`<button class="btn btn-ghost jstep" type="button" data-go="${J.hrefs[k]}" aria-label="${dir}">${icon(dir === 'Earlier way' ? 'back' : 'fwd', 20)}</button>`;
+  const step = (k, dir) => k < 0 || k >= n ? html`<button class="btn btn-ghost jstep" type="button" disabled aria-label="${dir}">${icon(dir === 'Earlier way' ? 'back' : 'fwd', 24)}</button>` : html`<button class="btn btn-ghost jstep" type="button" data-go="${J.hrefs[k]}" aria-label="${dir}">${icon(dir === 'Earlier way' ? 'back' : 'fwd', 24)}</button>`;
   const markup = html`<div class="grip"></div><div class="head jhead"><div class="jnav"><a class="btn btn-ghost" href="${J.base}" data-back>${icon('back', 20)}All ways</a><span class="eyebrow">${n > 1 ? `Way ${J.i + 1} of ${n}` : 'The one way'}</span>${n > 1 ? html`<span class="jsteps">${step(J.i - 1, 'Earlier way')}${step(J.i + 1, 'Next way')}</span>` : ''}</div>${J.top(J.i)}</div><div class="journeysheet legs">${J.legs(J.i)}</div>`.s;
   const again = !!card.querySelector(':scope > .journeysheet') && card.classList.contains('open') && card.dataset.way === J.base;
-  if (again) morph(card, markup);
-  else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
+  // Stepping from way to way, the card keeps its height, so its arrows stay under the thumb: a longer way scrolls in it.
+  if (again) { if (!card.classList.contains('peek')) card.style.setProperty('--jh', card.offsetHeight + 'px'); morph(card, markup); }
+  else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
   card.dataset.way = J.base;
   card.classList.remove('hidden');
   card.classList.add('open');
