@@ -1542,20 +1542,21 @@ function runAhead(b, clockNow) {
   }
   return { trips, end: null };
 }
-/** The way on from a point of a trip, as [[minute, stop, (route)] …]: from the stop just passed (`seq[k - 1]`, the
- *  picked stop itself for a stop), on round the run and through the next trip on the same route until it comes back
- *  to itself, that stop or the one across the road from it (a route that runs out and back comes back down the other
- *  side). A run that changes route at the Transit Center (a Saturday's 2 and 5, 9 and 1) gets a short tail on the
- *  other route, its stops marked with it. */
+/** The way on from a point of a trip, as [[minute, stop, (route)] …]. The route is a loop of string and the picked
+ *  point cuts it: from the stop just passed (`seq[k - 1]`, the picked stop itself for a stop), on round the run and
+ *  through the next trips on the same route until it comes back to that very stop. On a loop that's one lap; on a
+ *  route that runs out and back (12's to Hyrum) it's out, round the far end and back, three timetable trips at most.
+ *  A run that changes route at the Transit Center (a Saturday's 2 and 5, 9 and 1) gets a short tail on the other
+ *  route instead, its stops marked with it. */
 function pathFrom(ti0, k, ri, clockNow) {
   const seq0 = tripStops(ti0);
-  const passed = k > 0 ? seq0[k - 1][1] : null, self = si => passed !== null && (si === passed || (D.stops[si].twin && D.stops[si].twin[0] === passed));
+  const passed = k > 0 ? seq0[k - 1][1] : null, self = si => si === passed;
   const path = k > 0 ? [seq0[k - 1]] : [], add = x => { if (!path.length || path[path.length - 1][1] !== x[1]) path.push(x); };
   let ti = ti0, seq = seq0, ymd = clockNow.ymd;
-  for (let hops = 0; hops < 3; hops++) {   // three trips reach round: out, back, and round a one-way end (Hyrum's, 12's) to the start
-    for (; k < seq.length; k++) { add(seq[k]); if (hops > 0 && self(seq[k][1])) return path; }
+  for (let hops = 0; hops < 4; hops++) {
+    for (; k < seq.length; k++) { add(seq[k]); if (self(seq[k][1])) return path; }
     const te = tripEnd(ti);
-    if (te) { add([te.min, te.si]); if (hops > 0 && self(te.si)) return path; }
+    if (te) { add([te.min, te.si]); if (self(te.si)) return path; }
     const n = nextTrip(ti, ymd), ns = n !== undefined ? tripStops(n) : [], nr = n !== undefined ? tripRoute(n) : null;
     if (!ns.length || ns[0][0] - (te ? te.min : seq[seq.length - 1][0]) > 45) return path;
     if (nr && nr.r !== ri) { for (const x of ns.slice(0, 3)) add([x[0], x[1], nr.r]); return path; }
@@ -1597,15 +1598,16 @@ function routesInPlay() {
   return focusRoute !== undefined && stop(si).routes.includes(focusRoute) ? [focusRoute] : [...stop(si).routes];
 }
 const KX = Math.cos(41.74 * Math.PI / 180) * 111320, KY = 110540;   // degrees to metres, near enough for the valley
-/** A way in pieces of equal length, each coloured with the strength of its place along: full at the start, six
- *  tenths past the middle, a tenth at the end, where it melts into the road. */
+/** A way in pieces of equal length, each coloured with the strength of its place along: full at the start, falling
+ *  fast, so the way ahead reads first and the way back round, which can pass right by on the other side of the road,
+ *  reads as what comes later; faint at the end, where it melts into the road. */
 function fadePieces(path, hex, props) {
   const col = dark() ? lift('#' + hex) : '#' + hex, [r, g, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
   const L = [0];
   for (let i = 1; i < path.length; i++) L.push(L[i - 1] + Math.hypot((path[i][0] - path[i - 1][0]) * KX, (path[i][1] - path[i - 1][1]) * KY));
   const T = L[L.length - 1];
   if (!(T > 0)) return [];
-  const N = Math.max(6, Math.min(48, Math.round(T / 150))), strength = p => p < 0.55 ? 1 - 0.4 * p / 0.55 : 0.6 - 0.5 * (p - 0.55) / 0.45;
+  const N = Math.max(6, Math.min(48, Math.round(T / 150))), strength = p => p < 0.25 ? 1 - 0.45 * p / 0.25 : p < 0.5 ? 0.55 - 0.25 * (p - 0.25) / 0.25 : 0.3 - 0.22 * (p - 0.5) / 0.5;   // full, half at a quarter, a third at the middle, faint at the end
   const at = d => { let i = 1; while (i < L.length - 1 && L[i] < d) i++; const f = L[i] > L[i - 1] ? (d - L[i - 1]) / (L[i] - L[i - 1]) : 0; return [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * f, path[i - 1][1] + (path[i][1] - path[i - 1][1]) * f]; };
   const out = [];
   for (let n = 0; n < N; n++) {
@@ -1647,7 +1649,9 @@ async function drawRuns() {
       i = j + 1;
     }
     // From the bus itself: the way cut at the bus's nearest point along its first leg only (an out-and-back road
-    // comes past again on the way back), unless the bus is off the line altogether, a detour.
+    // comes past again on the way back), unless the bus is off the line altogether, a detour. The string closes at
+    // the bus too: where the way came back round to the stop the bus passed, the stretch from that stop up to the
+    // bus goes on the end, so the line ends where it began.
     if (w.from && path.length > 1) {
       let bi = -1, best = Infinity;
       for (let i = 0; i + 1 < Math.min(firstLeg, path.length); i++) {
@@ -1655,7 +1659,10 @@ async function drawRuns() {
         const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0, e = Math.hypot(px - t * vx, py - t * vy);
         if (e < best) { best = e; bi = i; }
       }
-      if (bi >= 0 && best < 150) path = [w.from, ...path.slice(bi + 1)];
+      if (bi >= 0 && best < 150) {
+        const round = w.stops.length > 2 && w.stops[w.stops.length - 1][1] === w.stops[0][1];
+        path = [w.from, ...path.slice(bi + 1), ...(round ? [...path.slice(1, bi + 1), w.from] : [])];
+      }
     }
     if (path.length > 1) feats.push(...fadePieces(path, D.routes[w.ri].color, { wf, lane: (idx - (wants.length - 1) / 2) * wf * 1.15 }));
   }
