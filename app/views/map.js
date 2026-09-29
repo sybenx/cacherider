@@ -2,14 +2,15 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, searchRoutes, searchPlaces, streetish, townish, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
-import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink } from '../ui.js';
 import { nearMe, morph } from '../main.js';
-import { parseAddress, geocode, townState, nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
+import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
+import { results as searchResults, forMap } from './find.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
@@ -818,7 +819,7 @@ function satControl() {
 }
 
 function chrome() {
-  return html`<div class="mapbar"><form class="search" id="mapsearch" role="search"><input class="input" type="search" placeholder="Streets, places, routes" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form></div><div class="mapresults hidden" id="mapresults"></div><div class="mapnotice" id="mapnotice"></div><div class="mapcard hidden" id="mapcard"></div>`;
+  return html`<div class="mapbar"><form class="search" id="mapsearch" role="search"><input class="input" type="search" placeholder="Street, place or route" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form></div><div class="mapresults hidden" id="mapresults"></div><div class="mapnotice" id="mapnotice"></div><div class="mapcard hidden" id="mapcard"></div>`;
 }
 
 function wireChrome(app) {
@@ -827,24 +828,16 @@ function wireChrome(app) {
   // On a wide screen the header's search box serves the map (its own bar is hidden): both boxes run this.
   const clear = () => { input.value = ''; const top = document.querySelector('#topsearch input'); if (top) top.value = ''; results.classList.add('hidden'); };
   let t;
+  // The one search, as the Stops tab's page has it: its results over the map, each shown here when tapped.
   mapSearch = v => { clearTimeout(t); t = setTimeout(() => {
     const q = v.trim();
     if (!q) { results.classList.add('hidden'); return; }
-    const hits = search(q, 12);
-    const addr = parseAddress(q);
-    const places = addr ? geocode(addr, 3) : [];
-    // Places by name (a shop, a school, a clinic), as the home search finds them: a tap frames the spot with its nearest stops.
-    const spotRows = searchPlaces(q, 5).list.map(p => { const n = nearest(p.lat, p.lon, 1)[0]; const what = [p.osm ? p.word : '', p.osm ? p.area : ''].filter(Boolean).join(' · '); return html`<a class="stoprow" href="#/map/at/${p.lat.toFixed(5)},${p.lon.toFixed(5)}/${encodeURIComponent(p.name)}"><div class="mid"><span class="name">${p.name}</span><span class="dist">${[what, n ? 'Nearest stop ' + metres(n.d) : ''].filter(Boolean).join(' · ')}</span></div><div class="end">${icon('pin', 18)}</div></a>`; }).join('');
-    const placeRows = places.map(pl => html`<a class="stoprow" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}"><div class="mid"><span class="name">${pl.label}, ${pl.town}${townState(pl.town)}${pl.near ? ' · near ' + pl.near : ''}</span><span class="dist">${pl.stops.length ? `Nearest stop ${metres(pl.stops[0].d)}` : 'No stops near'}</span></div><div class="end">${icon('pin', 18)}</div></a>`).join('');
-    const stopRows = hits.map(i => stop(i).hub
-      ? html`<a class="stoprow" href="#/hub"><div class="mid"><span class="name">${D.hub.name}</span><span class="dist">${D.hub.address} · every route</span></div><div class="end">${icon('hub', 18)}</div></a>`
-      : html`<a class="stoprow" href="#/map/${stop(i).id}" data-i="${i}"><div class="mid"><span class="name">${stopTitle(i)}</span>${badges(stop(i).routes, 20)}</div><div class="end">${icon('fwd', 18)}</div></a>`).join('');
-    // A route named: lit on the map with its times, first.
-    const routeRows = searchRoutes(q).map(ri => html`<a class="stoprow" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}"><div class="mid"><span class="name">${routeName(ri, false)}</span><span class="dist">${D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span></div><div class="end">${badge(ri, 24)}</div></a>`).join('');
-    results.innerHTML = routeRows + (streetish(q) || townish(q) ? placeRows + stopRows + spotRows : spotRows + placeRows + stopRows) || html`<div class="empty"><p>No stops, places or addresses match “${q}”.</p></div>`;
+    results.innerHTML = searchResults(q, now());
+    forMap(results);
     results.classList.remove('hidden');
-    results.querySelectorAll('a[data-i]').forEach(a => a.onclick = e => { e.preventDefault(); clear(); select(stop(+a.dataset.i).id, app, true, true); });
-    results.querySelectorAll('a:not([data-i])').forEach(a => a.onclick = clear);
+    results.scrollTop = 0;
+    results.querySelectorAll('[data-q]').forEach(a => a.onclick = e => { e.preventDefault(); input.value = a.dataset.q; mapSearch(a.dataset.q); });
+    results.querySelectorAll('a:not([data-q])').forEach(a => a.onclick = clear);
   }, 200); };
   input.oninput = () => mapSearch(input.value);
   input.onfocus = () => { if (input.value.trim()) mapSearch(input.value); };
@@ -1442,6 +1435,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   panelPad(app);
   // Beside the panel the stop is in the panel: no card over the map as well.
   if (wide() && app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');
+  if (app.route.name !== 'map') col.querySelector('#mapresults').classList.add('hidden');   // the search's list is the Map tab's, not the page's beside it
   notice(clockNow);
   pickFor = from || null;
   if (ready) refreshClosed(clockNow);
