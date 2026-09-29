@@ -447,8 +447,13 @@ async function init(app) {
       card.classList.remove('open', 'peek'); location.hash = '#/map'; return;
     }
     selectedBus = null; selectedU = null; select(null, app);
-    if (ris.length === 1) pickRoute(ris[0], app);
-    else if (ris.length > 1) routeChooser(ris, app);
+    // The route up, its own line tapped: the whole of it again, its sheet back.
+    if (ris.length && focusRoute !== undefined && ris.some(ri => familyKey(ri) === familyKey(focusRoute)) && /^#\/map\/route\//.test(location.hash)) pickRoute(focusRoute, app);
+    // A road tapped is a place, as a long press is: its card, with the stops along that road a short walk off, both
+    // sides, nearest first, each with its next bus and where it's going, and a badge a route for anyone who wants its
+    // line. A road with one route lights it too, as a tap on it always has. (It was a chooser of routes: a menu that
+    // only someone who already knew the system could pick from.)
+    else if (ris.length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), null, null, ris); }
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
     else if (app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) location.hash = '#/map';
   };
@@ -778,14 +783,6 @@ document.addEventListener('click', e => {
   e.preventDefault(); ringBus(a.dataset.ring);
 });
 const compassWord = deg => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(((deg || 0) % 360) / 45) % 8];
-function routeChooser(ris, app) {
-  const card = col.querySelector('#mapcard');
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">Routes on this road</span></div>
-    <div class="pickroutes">${ris.map(ri => html`<button type="button" class="pickroute" data-ri="${ri}">${badge(ri, 30)}<span class="pr-n"><b>${D.routes[ri].long}</b>${D.routes[ri].desc ? html`<small>${D.routes[ri].desc.replace(/,\s*/g, ' · ')}</small>` : ''}</span></button>`)}</div>`;
-  card.querySelectorAll('[data-ri]').forEach(b => { b.onclick = () => pickRoute(+b.dataset.ri, app); });
-  card.classList.remove('hidden');
-  requestAnimationFrame(() => card.classList.add('open'));
-}
 
 /** Swiping the card down closes it, and swiping it up opens the stop's page, from anywhere on the card: the
  *  gesture is claimed on the first move only when the card can't scroll that way any further (at its top for
@@ -1577,6 +1574,14 @@ function circle(lat, lon, m = 90, n = 40) {
   for (let i = 0; i <= n; i++) { const a = i / n * 2 * Math.PI; ring.push([lon + dlon * Math.cos(a), lat + dlat * Math.sin(a)]); }
   return { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } }] };
 }
+/** The stops along a road's routes a short walk from a point on it, both sides, nearest first; the nearest few on
+ *  those routes where none is that near (out in the country). */
+function roadStops(at, road) {
+  const all = [...new Set(road.flatMap(ri => Object.values(D.routes[ri].stops || {}).flat()))]
+    .map(i => ({ i, d: distance(at.lat, at.lon, D.stops[i].lat, D.stops[i].lon) })).sort((a, b) => a.d - b.d);
+  const close = all.filter(x => x.d <= 400).slice(0, 6);
+  return close.length ? close : all.slice(0, 3);
+}
 /** A searched place's pin and disc off the map, and the address back to the plain Map tab, so a reload doesn't
  *  bring them back: the rider has moved on to something else, or closed its card. */
 function clearSpot() {
@@ -1588,13 +1593,16 @@ function setSpot(at) {
   const apply = () => map.getSource('spot') && map.getSource('spot').setData(at ? circle(at.lat, at.lon) : { type: 'FeatureCollection', features: [] });
   if (ready) apply(); else map.once('load', apply);
 }
-function showAt(at, app, clockNow, forId = null, toFrom = null) {
-  selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
+function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
+  selected = null; uHilite = ''; hiLoops = [];
+  hiLines = road && road.length === 1 ? [road[0]] : [];   // a road with one route: that route lit, with its times
+  applySelection();
+  if (road && road.length === 1) routeTimes(road[0], clockNow);
   // A soft disc rather than a pin: an address is arithmetic on the town's grid, good to a block, not a survey.
   setSpot(at);
   if (!pinMarker) { const el = document.createElement('div'); el.className = 'spot-marker'; pinMarker = new maplibregl.Marker({ element: el }); }
   pinMarker.setLngLat([at.lon, at.lat]).addTo(map);
-  const near = nearestTo(at.lat, at.lon, 4);
+  const near = road ? roadStops(at, road) : nearestTo(at.lat, at.lon, 4);
   const card = col.querySelector('#mapcard');
   // A start picked for directions: the way there from this spot is the card's one button, the nearest stops under it.
   // Otherwise (a place found, a long press) the spot either end of a journey: to it from where the rider is, or from it
@@ -1602,8 +1610,12 @@ function showAt(at, app, clockNow, forId = null, toFrom = null) {
   const go = forId ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${forId}/${atPath(at)}">${corners()}Directions from here</a></div>`
     : toFrom ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}/${atPath(spotOf(toFrom))}">${corners()}Directions to here</a></div>`
     : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath(at)}">From here</a></div>`;
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span></div></div>${go}
-    ${near.length ? near.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`;
+  // On a road, its routes' next buses only, each with where it's going, and the routes as badges that light them.
+  const next = i => nextAt(i, 1, clockNow, 8, road ? t => road.includes(t.r) : undefined)[0];
+  const lines = road ? html`<div class="roadroutes">${road.map(ri => html`<button type="button" class="roadroute" data-ri="${ri}" aria-label="${routeName(ri, false)} on the map">${badge(ri, 30)}</button>`)}</div>` : '';
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span></div>${lines}</div>${go}
+    ${near.length ? near.map(({ i, d }) => stopRow(i, next(i), clockNow, { dist: metres(d) + ' away', dest: !!road })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`;
+  card.querySelectorAll('[data-ri]').forEach(b => { b.onclick = () => pickRoute(+b.dataset.ri, app); });
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
   const key = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);

@@ -295,15 +295,13 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .twin .when { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .twin .when .rel { font-size: 13px; }
 /* the map card's twin, at the right of the eyebrow line */
-.mapcard .pickroutes { display: grid; padding: 4px 8px 14px; }
-.mapcard .pickroute { all: unset; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 10px 8px; font: 500 15px var(--font-body); border-bottom: 1px solid var(--cr-line); }
-.mapcard .pickroute .pr-n { display: grid; min-width: 0; }
-.mapcard .pickroute .pr-n b { font-weight: 600; }
-.mapcard .pickroute .pr-n small { font-size: 13px; color: var(--cr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mapcard .pickroute:last-child { border-bottom: 0; }
 .mapcard .busline .dot { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 3px var(--color-text); flex: none; margin: 0 8px; }
 .mapcard .busline .livetag { margin-left: auto; }
-.mapcard .pickroute:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.mapcard .roadroutes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mapcard .roadroute { all: unset; cursor: pointer; border-radius: 6px; }
+.mapcard .roadroute:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+/* a road's stop: where its next bus goes, which tells the two sides of the road apart */
+.stoprow .go { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; line-height: 1.3; }
 .eyerow { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 22px; }
 .eyerow .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .twinline { flex: none; display: inline-flex; align-items: center; gap: 5px; margin: -6px 0; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent); border-radius: 999px; background: var(--color-accent-100); color: var(--color-accent-900); font: 600 12.5px var(--font-body); cursor: pointer; max-width: 62%; overflow: hidden; white-space: nowrap; }

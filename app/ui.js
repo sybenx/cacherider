@@ -178,7 +178,9 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';
   const way = opts.point ? pointerMark(s.lat, s.lon, opts.point) + (num ? ' · ' : '') : '';
   const dist = `<span class="dist">${way}${esc([opts.dist, s.by, num].filter(Boolean).join(' · '))}${alert ? (opts.dist || num || way ? ' · ' : '') + alert : ''}</span>`;
-  return raw(`<a class="stoprow${opts.here ? ' here' : ''}"${opts.here ? ' id="here"' : ''} href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${dist}${badges(s.routes, 24).s}</div>${end}</a>`);
+  // `dest`: where the next bus goes (a road's stops, both sides: which side is which way)
+  const go = opts.dest && next ? `<span class="go">${badge(next.r, 20).s}${esc(headsign(next))}</span>` : '';
+  return raw(`<a class="stoprow${opts.here ? ' here' : ''}"${opts.here ? ' id="here"' : ''} href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${go}${dist}${go ? '' : badges(s.routes, 24).s}</div>${end}</a>`);
 }
 
 export function stopTitle(si) {
