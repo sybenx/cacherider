@@ -126,7 +126,10 @@ async function mount(el) {
 }
 
 function alertsBlock(clockNow) {
-  const al = activeAlerts(clockNow.ymd);
+  // Newest first: the feed lists them oldest first, so a detour from March topped this week's closures. By when each
+  // starts, the feed's own number (it counts up) between two that start together.
+  const num = a => +String(a.id).replace(/\D/g, '') || 0;
+  const al = activeAlerts(clockNow.ymd).sort((a, b) => (b.start || 0) - (a.start || 0) || num(b) - num(a));
   const when = A.fetched ? new Date(A.fetched) : null;
   const upd = when ? `Checked ${when.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', hourCycle: is24() ? 'h23' : 'h12' })}` : '';
   if (!al.length) return html`<div class="pad muted" style="font-size:14px"><p>Nothing from ${D.agency.brand} right now. ${upd}</p></div>`;
