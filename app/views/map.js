@@ -324,7 +324,7 @@ async function init(app) {
   // A tap picks the nearest stop within a thumb's reach, so two stops that nearly touch are still separable.
   // On a touch screen the pick waits a beat: a second finger-down inside it is a double-tap or a
   // tap-and-drag zoom, not a stop, so the wait is dropped rather than a card opened.
-  let tapTimer = 0;
+  let tapTimer = 0, lastTap = 0, lastAt = null;
   const cancelTap = () => clearTimeout(tapTimer);
   map.on('touchstart', cancelTap); map.on('movestart', cancelTap); map.on('zoomstart', cancelTap);
   // A long press (a right click with a mouse) picks the spot under it: its nearest stops, and directions to or from
@@ -349,7 +349,12 @@ async function init(app) {
     const res = col.querySelector('#mapresults');
     if (!res.classList.contains('hidden')) { res.classList.add('hidden'); document.activeElement?.blur(); return; }
     if (!coarse()) return pick(e);
-    clearTimeout(tapTimer); tapTimer = setTimeout(() => pick(e), 300);
+    // The second tap of a double tap (MapLibre's own window: 500 ms, 30 px) is MapLibre's zoom about the finger: it
+    // picks nothing, or its pick would ease to a stop and cut the zoom short.
+    const t = Date.now(), again = t - lastTap < 500 && lastAt && Math.hypot(e.point.x - lastAt.x, e.point.y - lastAt.y) < 30;
+    lastTap = again ? 0 : t; lastAt = e.point;
+    clearTimeout(tapTimer);
+    if (!again) tapTimer = setTimeout(() => pick(e), 300);
   });
   const pick = e => {
     const r = coarse() ? 22 : 8;
