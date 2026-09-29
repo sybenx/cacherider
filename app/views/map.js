@@ -780,7 +780,12 @@ function wireGrip(app) {
   const card = col.querySelector('#mapcard');
   // A route's sheet swiped away puts the route away with it, as a tap on nothing does.
   // The Center's board swiped away is the board put away: the Center stays, the map as the rider has it.
-  const close = () => { if (card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash)) { card.classList.remove('open', 'peek'); return; }
+  const close = () => { if (card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash)) {
+      card.classList.remove('open', 'peek');
+      // A route picked on it goes with the board: its badge lit and the rest dimmed, with nothing to say why, read as
+      // stuck. The address in place, so Back doesn't pick it again.
+      if (hubBay !== null) { hubBay = null; hubKey = null; history.replaceState(null, '', '#/hub'); shownHash = '#/hub'; hubBadges(); }
+      return; }
     if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
     if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); backToWays(); return; } selectedBus = null; selectedU = null; select(null, app); };
   const pageHref = () => { const a = card.querySelector(':scope > .open a'); return a ? a.getAttribute('href') : null; };   // the card's own Open button: the card itself is .open too
