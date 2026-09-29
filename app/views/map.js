@@ -28,7 +28,8 @@ let docked = null;   // the slot the one map is docked in on a phone (a stop or 
 const busMarkers = new Map();   // bus id → { marker, el }
 let selectedBus = null, selectedU = null;
 let pickFor = null;   // the stop directions are wanted to, while the map is asked where from
-let pickTo = null;    // the spot directions are wanted from, while the map is asked where to
+let pickTo = null;
+let pickNow = false;  // beside a wide screen's directions page: a click is the other end, straight away, no card first    // the spot directions are wanted from, while the map is asked where to
 let hiLines = [], hiLoops = [];   // Connect route indices and shuttle route ids whose lines are drawn on top
 let runRoutes = [];   // the routes whose way on is drawn from a picked bus or stop: their buses stay bright, the rest dim
 let runLoops = [];    // the shuttle loops whose way on is drawn, likewise
@@ -399,6 +400,16 @@ async function init(app) {
     const r = coarse() ? 22 : 8;
     const all = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'usu-stops', 'pool-stops', 'place-labels'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
     const hits = all.filter(f => f.layer.id !== 'place-labels');
+    // Beside the directions page, a click is the other end: a stop that stop, a place's name that place, anywhere else
+    // that spot. It's the directions, so a way drawn is picked across too.
+    if (pickNow && (pickFor || pickTo)) {
+      const near = f => { const q = map.project(f.geometry.coordinates); return Math.hypot(q.x - e.point.x, q.y - e.point.y); };
+      const st = hits.filter(f => f.layer.id.startsWith('stops')).sort((a, b) => near(a) - near(b))[0];
+      const pl = !st && all.filter(f => f.layer.id !== 'stops' && f.layer.id !== 'stops-lit' && f.layer.id !== 'pool-stops').sort((a, b) => near(a) - near(b))[0];
+      const at = pl ? { lat: pl.geometry.coordinates[1], lon: pl.geometry.coordinates[0], label: pl.properties.name } : { lat: e.lngLat.lat, lon: e.lngLat.lng, label: whereabouts(e.lngLat.lat, e.lngLat.lng) };
+      location.hash = pickFor ? `#/go/${pickFor}/${st ? st.properties.id : atPath(at)}` : `#/go/${st ? st.properties.id : spotKey(at.lat, at.lon, at.label)}/${atPath(spotOf(pickTo))}`;
+      return;
+    }
     // A way drawn: one of its stops tapped is that stop, as anywhere (Back comes to the way again); nothing else.
     if (JR) {
       const st = hits.map(f => { const q = map.project(f.geometry.coordinates); return { f, d: Math.hypot(q.x - e.point.x, q.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0];
@@ -1693,7 +1704,7 @@ function pickBus(id, app) {
   const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
   map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: cardOffset(card), duration: 500 });
 }
-async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId }, app, clockNow) {
+async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick }, app, clockNow) {
   await init(app);
   // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
   // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
@@ -1718,7 +1729,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (wide() && app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');
   if (app.route.name !== 'map') col.querySelector('#mapresults').classList.add('hidden');   // the search's list is the Map tab's, not the page's beside it
   notice(clockNow);
-  pickFor = from || null; pickTo = to || null;
+  pickFor = from || goPick && goPick.for || null; pickTo = to || goPick && goPick.to || null; pickNow = !!goPick;
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
@@ -1737,7 +1748,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');   // a card tapped up beside one page isn't the next's
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
   if (stopId || ustopId || routeShort || alertId || hub || at || from || to) { selectedBus = null; selectedU = null; }
-  if (asking !== !!(from || to)) { asking = !asking; applySelection(); }
+  if (asking !== !!(from || to || goPick)) { asking = !asking; applySelection(); }
   if (busId) { lastFocused = 'b:' + busId; focusRoute = undefined; return busIn(busId, app); }
   if (at) return showAt(at, app, clockNow);
   if (from) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(from, app); }

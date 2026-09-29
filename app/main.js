@@ -3,7 +3,7 @@
 import { load, D, BASE, pref, stopIndex, loadAlerts, loadPlaces, loadPool, A } from './data.js';
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
 import { html, icon, esc } from './ui.js';
-import { loadGrid , loadElevation } from './geo.js';
+import { loadGrid , loadElevation, spotKey } from './geo.js';
 import * as home from './views/home.js';
 import * as stopView from './views/stop.js';
 import * as hub from './views/hub.js';
@@ -275,6 +275,9 @@ async function render(tick = false) {
       alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
       busId: mapB && seg[2] ? decodeURIComponent(seg[2]) : null,   // a bus from the Transit Center's board: it, on its way in
+      // Beside a wide screen's directions, the map picks the other end with a click: where from, for directions to a
+      // stop or spot; where to, for directions from a spot.
+      goPick: isDesktop() && name === 'go' && goArgs && goArgs.to ? goArgs.to !== '-' ? { for: goArgs.to } : goArgs.at ? { to: spotKey(goArgs.at.lat, goArgs.at.lon, goArgs.at.label) } : null : null,
       journey: goMap ? go.journey(goArgs, q.plan, clockNow) : view && view.journey || null,   // a way from the directions page, drawn
     }, app, clockNow);
   }
