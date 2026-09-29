@@ -1032,11 +1032,13 @@ function quiet() {
   if (!campusBox && U) campusBox = boxOf(U.stops.filter(s => s.routes.length).map(s => [s.lon, s.lat]));
   if (!poolBox && POOL) poolBox = boxOf(POOL.zone);
   const z = map.getZoom(), v = map.getBounds(), m = 0.003;   // a few hundred metres round the box
-  const near = b => !!b && z >= 13.5 && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
+  const near = (b, zmin = 13.5) => !!b && z >= zmin && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
   const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
-  const uOn = near(campusBox) || selectedU !== null || !!uHilite || hiLoops.length > 0 || runLoops.length > 0;
-  show(U_LAYERS, uOn);
-  map.getContainer().classList.toggle('u-small', !uOn);   // its buses to arrows with its lines put away
+  const asked = selectedU !== null || !!uHilite || hiLoops.length > 0 || runLoops.length > 0;
+  show(U_LAYERS, asked || near(campusBox));
+  // its buses to arrows with its lines put away, and a zoom further in than its lines: at the lines' first zoom its
+  // squared markers crowded the campus streets
+  map.getContainer().classList.toggle('u-small', !(asked || near(campusBox, 14.5)));
   show(POOL_LAYERS, near(poolBox));
   hubCheck();
 }
@@ -1344,6 +1346,8 @@ function busScale() {
   if (small !== busSmallAt) { busSmallAt = small; c.classList.toggle('bus-small', small); }
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
+// Far off, a shuttle bus is a pointed square, its squared marker come to a point, where Connect's is a dart.
+const U_ARROW = ARROW.replace('<svg', '<svg class="near"') + '<svg class="far" viewBox="0 0 24 24"><path d="M12 3 19 10v10H5V10z"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 function dimBus(m) {
   const on = hiLines.length ? hiLines : runRoutes;
@@ -1437,7 +1441,7 @@ export function liveUpdate(app) {
     let m = busMarkers.get(b.id);
     if (!m) {
       const el = document.createElement('div');
-      el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
+      el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? U_ARROW : ARROW) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
       el.onclick = ev => { if (still()) return; ev.stopPropagation(); selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind };
       busMarkers.set(b.id, m);

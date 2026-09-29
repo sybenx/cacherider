@@ -435,12 +435,16 @@ a.twinline { text-decoration: none; }
 #map.bus-small .bus-marker svg { overflow: visible; filter: drop-shadow(0 0 1px var(--color-bg)); }
 /* Far off, a bus is a hollow arrow in its route's colour with the paper showing through: it reads on its own
    line, which a solid arrow of the same colour didn't. The Aggie Shuttle's is told from Connect's at a glance
-   whatever its colour (its reds and oranges are Connect's too, on the same streets) by a dashed edge, as its lines
-   are dashed where Connect's are solid; close in, its marker is squared where Connect's is round. */
+   whatever its colour (its reds and oranges are Connect's too, on the same streets) by its shape, a pointed square
+   where Connect's is a dart, and a dashed edge, as its lines are dashed where Connect's are solid; close in, its
+   marker is squared where Connect's is round. */
 #map.bus-small .bus-marker path { fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3.5; stroke-linejoin: round; }
 #map.bus-small .bus.on .bus-marker path { stroke: var(--color-accent); }
 .bus.shuttle .bus-marker { border-radius: 6px; }
 #map.bus-small .bus.shuttle .bus-marker path { stroke-width: 3; stroke-dasharray: 3 2.2; stroke-linecap: round; }
+.bus.shuttle .bus-marker svg.far { display: none; }
+#map.bus-small .bus.shuttle:not(.lit):not(.on) svg.near, #map.u-small .bus.shuttle svg.near { display: none; }
+#map.bus-small .bus.shuttle:not(.lit):not(.on) svg.far, #map.u-small .bus.shuttle svg.far { display: block; }
 /* a bus on the lit route keeps its badge and its tap at any zoom, so tapping a stop finds its buses */
 #map.bus-small .bus.lit, #map.bus-small .bus.on { pointer-events: auto; }
 #map.bus-small .bus.lit .bus-marker, #map.bus-small .bus.on .bus-marker { transform: none; border-color: #fff; background: var(--bus-color); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); }
