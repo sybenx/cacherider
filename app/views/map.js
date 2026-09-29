@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName } from '../data.js';
+import { D, BASE, stop, route, nextAt, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -74,6 +74,7 @@ function style(sat = true) {
       runs: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },   // the way on from a picked bus or stop, in pieces that fade
       ustops: { type: 'geojson', data: usuStopsGeo() },
       pool: { type: 'geojson', data: poolGeo() },
+      places: { type: 'geojson', data: placesGeo() },
       ulines: { type: 'geojson', data: usuLinesGeo() },
     },
     layers: [
@@ -115,6 +116,12 @@ function style(sat = true) {
       { id: 'stop-labels', type: 'symbol', source: 'stops', minzoom: 15, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
     ],
   };
+  // The places search knows (the pamphlet's, OpenStreetMap's), their names only, quiet, from the streets in: what's
+  // here, without a menu. Placed just under the basemap's street names, so a street's name (the address grid) and a
+  // stop's win where they'd meet, and a place fills the gaps between.
+  const placeLabels = { id: 'place-labels', type: 'symbol', source: 'places', minzoom: 15, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 10.5, 'text-max-width': 8, 'text-padding': 4 }, paint: { 'text-color': flavor === 'dark' ? '#8d9095' : '#7a7c80', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } };
+  const under = st.layers.findIndex(l => /^roads_labels/.test(l.id));
+  st.layers.splice(under >= 0 ? under : st.layers.findIndex(l => l.id === 'spot-fill'), 0, placeLabels);
   const all = st.layers.find(l => l.id === 'stops'), { minzoom, ...lit } = all;
   st.layers.splice(st.layers.indexOf(all) + 1, 0, { ...lit, id: 'stops-lit', maxzoom: 14, filter: ['in', ['get', 'id'], ['literal', []]] });
   return st;
@@ -228,6 +235,12 @@ function slice(walk, d0, d1) {
   return [at(d0), ...walk.filter(([d]) => d > d0 && d < d1).map(w => w[1]), at(d1)];
 }
 
+/** The named places as points: the pamphlet's, and OpenStreetMap's but where the pamphlet has the same place. */
+function placesGeo() {
+  const seen = PLACES.map(p => [p.name.toLowerCase(), p.lat, p.lon]);
+  const dup = o => seen.some(([n, la, lo]) => n === o.name.toLowerCase() && distance(la, lo, o.lat, o.lon) < 200);
+  return { type: 'FeatureCollection', features: [...PLACES, ...OSM_PLACES.filter(o => !dup(o))].map(p => ({ type: 'Feature', properties: { name: p.name }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) };
+}
 /** POOL's zone and pickup points as one collection; empty without the file. */
 function poolGeo() {
   if (!POOL) return { type: 'FeatureCollection', features: [] };
@@ -358,7 +371,14 @@ async function init(app) {
   });
   const pick = e => {
     const r = coarse() ? 22 : 8;
-    const hits = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'usu-stops', 'pool-stops'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
+    const all = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'usu-stops', 'pool-stops', 'place-labels'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
+    const hits = all.filter(f => f.layer.id !== 'place-labels');
+    // A place's name tapped, and no stop there: its spot, with the stops nearest it, as a search result opens it.
+    if (!hits.length && all.length) {
+      const f = all.map(f => { const q = map.project(f.geometry.coordinates); return { f, d: Math.hypot(q.x - e.point.x, q.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0].f, [lon, lat] = f.geometry.coordinates;
+      showAt({ lat, lon, label: f.properties.name }, app, now(), pickFor);
+      return;
+    }
     // Asked where the rider will start from: a stop tapped is the start; anywhere else, that spot, with the stops
     // nearest it, and the directions a tap away.
     if (pickFor) {
@@ -898,7 +918,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (a
 // badge's IN says so). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5, HUB_IN = 110;   // metres from the hall: a bus this close is in
-const HUB_HIDE = ['route-lines', 'route-on', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels'];
+const HUB_HIDE = ['route-lines', 'route-on', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -1672,7 +1692,7 @@ function runBounds(R) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60, main: true };
-const RUN_HIDE = ['stops-lit', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'runs', 'runs-approx', 'pool-zone', 'pool-edge', 'pool-stops'];
+const RUN_HIDE = ['stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'runs', 'runs-approx', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
