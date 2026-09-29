@@ -1388,6 +1388,7 @@ export function resetView(app, once = false, to = null) {
   if (once) { resetDue = true; return; }
   if (!map) return;
   selectedBus = null; selectedU = null; lastFocused = null; hubTurned = false; northDue = false;
+  focusRoute = undefined; ringed = null; wantRing = null;   // a route up goes too: select() alone would keep it lit
   select(null, app);
   map.easeTo({ padding: pad(), center: to ? to.center : HOME, zoom: to ? to.zoom : 13, bearing: 0, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
 }
