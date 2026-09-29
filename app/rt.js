@@ -263,6 +263,17 @@ const held = (t, delay) => { const d = heldAt(t.si, delay, t.r); return { min: t
 export const isLoop = ri => (D.hub.loops || []).includes(ri);
 setLive(t => { const p = predict(t); if (!p) return t; return p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p }; });
 
+/** How late a bus is now: the feed's minute at the stop it calls at next against the timetable's. The number every
+ *  screen agrees on: the feed's word at its trip's last stop (`lastDelay`) is its guess at the rest of the run, and
+ *  can be six minutes more. Null without a word. */
+export function busDelay(b) {
+  const u = rt.trips[b.trip], ti = tripIdx && tripIdx.get(b.trip), si = nextStopOf(b);
+  if (!u || ti === undefined || ti === null || si === undefined) return null;
+  const hit = u.at.get(D.stops[si].id);
+  if (!hit || hit.skipped) return null;
+  const sm = schedMin(si, ti);
+  return sm === null ? null : toMin(hit.time) - sm;
+}
 /** 'On time', '3 min late', '2 min early'. */
 export function lateWords(delay) {
   if (delay >= 2) return delay + ' min late';

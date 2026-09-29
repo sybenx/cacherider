@@ -1,7 +1,7 @@
 // A route: its stops in order, each with the route's next call there.
-import { D, route, stop, nextAt, routeAlerts, closedRoutes, routeOrder, timesOn, tripStops, runEnd, tripEnd, tripRoute, nextTrip, prevTrip, lastTripOn, onRequest, dirName } from '../data.js';
+import { D, route, stop, nextAt, routeAlerts, closedRoutes, routeOrder, timesOn, tripStops, runEnd, tripEnd, tripRoute, nextTrip, prevTrip, lastTripOn, runOf, onRequest, dirName } from '../data.js';
 import { relative, clockText, dayName } from '../time.js';
-import { rt, rtStale, nextStopOf, lateWords, isLoop, predict } from '../rt.js';
+import { rt, rtStale, nextStopOf, lateWords, busDelay, isLoop, predict } from '../rt.js';
 import { html, icon, badge, badges, time, sched, stopRow, lively, routeBadgeLink, corners, when, liveMark, liveTag } from '../ui.js';
 import { miniSlot, mountMini } from './mini.js';
 
@@ -15,10 +15,11 @@ export function render({ short, dir, at, full, bus }, clockNow) {
   parts.push(html`<div class="head"><span class="eyebrow">Route</span><div style="display:flex;align-items:center;gap:12px">${badge(ri, 44)}<div><h1 style="font-size:30px">${r.long}</h1>${r.desc ? html`<div class="muted" style="font-size:14px">${r.desc.replace(/,\s*/g, ' · ')}</div>` : ''}</div></div></div>`);
   parts.push(miniSlot({ route: r.short }));
   for (const a of routeAlerts(ri, clockNow.ymd)) parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b>${a.title}</b><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></div></div>`);
+  // Each way by where it goes ('to Preston', 'to Transit Center') when that tells them apart; else the feed's words.
+  const names = dirs.map(k => { const n = dirName(ri, k); return n && !n.places ? 'to ' + n.text : ''; });
+  const apart = dirs.length > 1 && names.every(Boolean) && new Set(names).size === names.length;
+  const dirWord = apart ? ' ' + names[dirs.indexOf(d)] : '';   // ' to Preston', for the notes that speak of this way
   if (dirs.length > 1) {
-    // Each way by where it goes ('to Preston', 'to Transit Center') when that tells them apart; else the feed's words.
-    const names = dirs.map(k => { const n = dirName(ri, k); return n && !n.places ? 'to ' + n.text : ''; });
-    const apart = names.every(Boolean) && new Set(names).size === names.length;
     parts.push(html`<div class="chips">${dirs.map((k, i) => html`<a class="chip" href="#/route/${encodeURIComponent(short)}/${k}" ${k === d ? html.raw('style="border-color:var(--color-accent);color:var(--color-accent-700)"') : ''}>${apart ? names[i] : r.dirs[+k] || (k === '0' ? 'Outbound' : 'Return')}</a>`)}</div>`);
   }
   const seq = routeOrder(ri, d);
@@ -29,7 +30,7 @@ export function render({ short, dir, at, full, bus }, clockNow) {
   for (const b of buses) { const n = nextStopOf(b); if (n !== undefined && seq.includes(n)) busBefore.set(n, [...(busBefore.get(n) || []), b]); }
   // Come from a stop's badge: the answer for that stop first, so the list below is for those who want the route.
   if (here !== undefined && seq.includes(here)) parts.push(yourStop(ri, here, seq, buses, clockNow));
-  const last = lastRun(ri, seq, clockNow, buses);
+  const last = lastRun(ri, d, seq, clockNow, dirWord);
   if (last) parts.push(last.note);
   // Each stop with its next call. Late in the day most of a route is done, its next calls tomorrow's: the stops a bus
   // still has to reach today come first, and the whole route, the next day's times and all, is behind a button.
@@ -52,9 +53,12 @@ export function render({ short, dir, at, full, bus }, clockNow) {
   const rest = split ? each.filter(x => !x.today && !x.closed) : done ? each : [];
   const rowsOf = xs => xs.flatMap(x => [...x.bus, x.row]);
   // The last run's final stop, which the timetable leaves out (nobody boards there): where the bus ends its day.
-  const endRow = last && last.out && last.endSi !== null && (top.length || !whole) ? html`<div class="stoprow endstop"><div class="mid"><span class="name">${stop(last.endSi).hub ? D.hub.name : stop(last.endSi).name}</span><span class="dist">Ends here · drop-off only${stop(last.endSi).hub ? ' · ' + stop(last.endSi).name : ''}</span></div><div class="end">${last.endMin !== null ? html`<div class="when">${time(last.endMin, 22, true)}</div>` : ''}</div></div>` : '';
+  // An out-and-back's far end isn't an end: the bus turns round there and its way back is the other list.
+  const other = dirs.length > 1 ? dirs.find(k => k !== d) : null;
+  const endRow = last && last.out && last.turnSi !== null && other !== null && (top.length || !whole) ? html`<a class="stoprow endstop" href="#/route/${encodeURIComponent(short)}/${other}"><div class="mid"><span class="name">${stop(last.turnSi).name}</span><span class="dist">Turns round here · back${last.endSi !== null && stop(last.endSi).hub ? ' to the ' + D.hub.name : ''} about ${clockText(last.endMin)}</span></div><div class="end"><span class="muted">${icon('fwd', 20)}</span></div></a>`
+    : last && last.out && last.endSi !== null && (top.length || !whole) ? html`<div class="stoprow endstop"><div class="mid"><span class="name">${stop(last.endSi).hub ? D.hub.name : stop(last.endSi).name}</span><span class="dist">Ends here · drop-off only${stop(last.endSi).hub ? ' · ' + stop(last.endSi).name : ''}</span></div><div class="end">${last.endAt !== null ? html`<div class="when">${time(last.endAt, 22, true)}</div>` : ''}</div></div>` : '';
   const rows = [...rowsOf(top), endRow, ...(rest.length ? [html`<div class="endservice"><span>End of service today</span></div>`, ...rowsOf(rest)] : [])];
-  parts.push(html`<div class="section">${icon('stops', 16)}${!whole ? `${coming.length} of ${seq.length} stops still to come today` : split ? `${seq.length} stops · tonight's first` : `${seq.length} stops, in order`}</div><div class="list">${rows}</div>`);
+  parts.push(html`<div class="section">${icon('stops', 16)}${!whole ? `${coming.length} of ${seq.length} stops left` : split ? `${seq.length} stops · tonight's first` : `${seq.length} stops, in order`}</div><div class="list">${rows}</div>`);
   if (onward.later) parts.push(onward.later);
   if (!whole) parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/route/${encodeURIComponent(short)}/${d}?all=1">The whole route · all ${seq.length} stops</a></div>`);
   return { html: parts.join(''), title: isLoop(ri) ? r.long : 'Route ' + r.short, mount: mountMini, anchor: here !== undefined ? null : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : buses.length ? busAnchor(buses[0].id) : null, anchorBlock: 'center' };
@@ -149,35 +153,46 @@ const busAnchor = id => 'bus-' + String(id).replace(/[^\w-]/g, '');   // a bus's
 /** A bus on the route, as a row between the stop it last passed and the one it calls at next. */
 function busRow(b, ri) {
   // Waiting at the Transit Center a bus is never early: it leaves on time or late.
-  const u = rt.trips[b.trip], atHub = D.stops[nextStopOf(b)]?.hub;
-  const words = u && u.lastDelay !== null && !isLoop(ri) && !(atHub && u.lastDelay < 2) ? lateWords(u.lastDelay) : '';
+  const dl = busDelay(b), atHub = D.stops[nextStopOf(b)]?.hub;
+  const words = dl !== null && !isLoop(ri) && !(atHub && dl < 2) ? lateWords(dl) : '';
   // A tap: the map, this route framed, this bus ringed with its card. The row is where the bus is in the list.
   return html`<a class="busrow" id="${busAnchor(b.id)}" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}?bus=${encodeURIComponent(b.id)}"><i style="background:#${D.routes[ri].color}"></i><span>Bus ${b.label}${words ? ' · ' + words : ''}</span><span class="livetag"><i></i>Live</span>${icon('map', 16)}</a>`;
 }
 
-/** Today's last run, while it's still to come or on the road: when it leaves, where its bus is, where it ends. */
-function lastRun(ri, seq, clockNow, buses) {
-  const lt = lastTripOn(ri, clockNow.ymd);
+/** Today's last run this way, while it's still to come or on the road: when and where it leaves, where and about
+ *  when it ends. An out-and-back (15's to Preston and back) is one run of two timetable trips, so the note says the
+ *  bus comes back, not that it ends at the far end; and each way has its own last run, the other way's list its own. */
+function lastRun(ri, d, seq, clockNow, dirWord) {
+  const lt = lastTripOn(ri, clockNow.ymd, d);
   if (!lt) return null;
   const t = { min: lt.start[0], si: lt.start[1], r: ri, dir: lt.dir, h: lt.h, trip: lt.trip };
-  const stops = tripStops(t.trip);
-  // How late: the bus's own, once it's out; before that, the feed's word on its leaving.
-  const bus = buses.find(b => b.trip === D.trips[t.trip]), u = bus && rt.trips[bus.trip], p = predict({ ...t, day: 0 });
+  const run = runOf(t.trip, clockNow.ymd), lastTi = run[run.length - 1], onward = run.slice(run.indexOf(t.trip) + 1);
+  const stops = tripStops(lastTi);
+  // How late: the bus's own, once it's out (on any trip of the run); before that, the feed's word on its leaving.
+  const bus = rtStale() ? null : rt.buses.find(b => run.includes(D.trips.indexOf(b.trip)));
+  const u = bus && rt.trips[bus.trip], p = predict({ ...t, day: 0 });
   const delay = u && u.lastDelay !== null ? u.lastDelay : p && !p.gone ? p.delay || 0 : 0;
-  const te = tripEnd(t.trip);
+  const te = tripEnd(lastTi), turn = onward.length ? tripEnd(t.trip) : null;
   const endMin = (te ? te.min : stops[stops.length - 1][0]) + delay;
-  const re = runEnd(t.trip);
-  // Where it ends: the feed's final stop for the bus's trip, with its time; else a partial run's end; else the stop
-  // that follows its last one on the route (a loop's, round to the start).
+  const re = runEnd(t.trip), partial = !onward.length && re && re.partial && re.end !== null;
+  // Where the run ends: the feed's final stop for the bus's trip, with its time, once the bus is on the run's last
+  // trip; else the last trip's end; else a partial run's end; else the stop that follows its last one on the route.
   let endSi = null, endAt = null;
-  const u2 = bus && rt.trips[bus.trip], fin = u2 && u2.stops.find(x => x[1] === u2.end);
-  if (fin && D.stopById[fin[0]] !== undefined) { endSi = D.stopById[fin[0]]; const d = new Date(fin[2] * 1000); endAt = d.getHours() * 60 + d.getMinutes(); }
+  const fin = u && u.ti === lastTi && u.stops.find(x => x[1] === u.end);
+  if (fin && D.stopById[fin[0]] !== undefined) { endSi = D.stopById[fin[0]]; const dd = new Date(fin[2] * 1000); endAt = dd.getHours() * 60 + dd.getMinutes(); }
   else if (te) endSi = te.si;
-  else if (re && re.partial && re.end !== null) endSi = re.end;
+  else if (partial) endSi = re.end;
   else { const k = seq.indexOf(stops[stops.length - 1][1]); if (k >= 0) endSi = k + 1 < seq.length ? seq[k + 1] : isLoop(ri) ? seq[0] : null; }
   if ((endAt ?? endMin) < clockNow.min) return null;   // done for the day, its final stop reached: the times below are the next day's
-  const where = re && re.partial && re.end !== null ? html`only part of the route: it ends at <b>${stop(re.end).name}</b>` : html`the whole route, ending at ${endSi !== null && stop(endSi).hub ? 'the ' + D.hub.name : endSi !== null ? stop(endSi).name : 'its last stop'} about <b>${clockText(endAt ?? endMin)}</b>`;
-  const lead = t.min > clockNow.min ? html`Today's last run leaves at <b>${clockText(t.min)}</b> and runs ${where}.`
-    : html`Today's last run left at ${clockText(t.min)}${bus ? html` and is on the road now, bus ${bus.label}` : ''}. It runs ${where}.`;
-  return { note: html`<div class="notice lastrun-note">${icon('moon', 16)}<span>${lead}</span></div>`, out: t.min <= clockNow.min, endSi, endMin: endAt };
+  const place = si => stop(si).hub ? 'the ' + D.hub.name : stop(si).name;
+  // 'leaves Preston at', 'leaves the Transit Center at'; a loop's trip starts wherever the feed cuts it, so just 'leaves at'.
+  const town = si => (stop(si).town || '').replace(/,\s*[A-Z][a-z]+$/, ''), s0 = stop(t.si);
+  const from = isLoop(ri) ? '' : (s0.hub ? 'the ' + D.hub.name : town(t.si) && town(t.si) !== D.hub.town ? town(t.si) : s0.name) + ' ';
+  const ends = endSi !== null ? place(endSi) : 'its last stop', about = ' about ' + clockText(endAt ?? endMin);
+  const far = turn ? (town(turn.si) && town(turn.si) !== D.hub.town ? town(turn.si) : stop(turn.si).name) : '';
+  const where = partial ? html`only part of the route, ending at <b>${stop(re.end).name}</b>${about}`
+    : onward.length ? html`out to ${far} and back, ending at ${ends}${about}` : html`the whole route, ending at ${ends}${about}`;
+  const lead = t.min > clockNow.min ? html`Today's last run${dirWord} leaves ${from}at <b>${clockText(t.min)}</b> and runs ${where}.`
+    : html`Today's last run${dirWord} left ${from}at ${clockText(t.min)}${bus ? html` and is on the road now, bus ${bus.label}` : ''}. It runs ${where}.`;
+  return { note: html`<div class="notice lastrun-note">${icon('moon', 16)}<span>${lead}</span></div>`, out: t.min <= clockNow.min, endSi, endAt, endMin: endAt ?? endMin, turnSi: turn ? turn.si : null };
 }

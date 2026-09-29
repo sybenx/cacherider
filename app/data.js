@@ -306,19 +306,31 @@ export function nextTrip(ti, ymd) {
 export function prevTrip(ti, ymd) {
   for (const sv of servicesOn(ymd)) for (const [k, v] of Object.entries((D.next && D.next[sv]) || {})) if (v === ti) return +k;
 }
-/** A route's last run today: of its trips today, the one that ends last. Not simply the last to leave the Transit
+/** A route's last trip today, one way when `dir` is given: of its trips today, the one that ends last. Not simply the last to leave the Transit
  *  Center: the feed cuts a loop's trips elsewhere, so its last run may not pass the Transit Center at all. */
-export function lastTripOn(ri, ymd) {
+export function lastTripOn(ri, ymd, dir) {
   const seen = new Set(Object.values(D.routes[ri].stops || {}).flat());
   let best = null, end = -1;
   const done = new Set();
   for (const si of seen) for (const t of timesOn(si, ymd)) {
-    if (t.r !== ri || done.has(t.trip)) continue;
+    if (t.r !== ri || done.has(t.trip) || (dir !== undefined && String(t.dir) !== String(dir))) continue;
     done.add(t.trip);
     const st = tripStops(t.trip), te = tripEnd(t.trip), last = te ? [te.min, te.si] : st[st.length - 1], e = last ? last[0] : -1;
     if (e > end) { end = e; best = { trip: t.trip, dir: t.dir, h: t.h, start: st[0], end: last }; }
   }
   return best;
+}
+/** The run a trip is part of: its block's trips on the same route with no more than 45 minutes between, as trip
+ *  indices in order. An out-and-back (15's to Preston and back, 12's to Hyrum) is one run of two timetable trips: the
+ *  bus turns round at the far end and comes back, and nothing should read as if it ended there. */
+export function runOf(ti, ymd) {
+  const r = tripRoute(ti);
+  if (!r) return [ti];
+  const linked = (a, b) => { const rb = tripRoute(b), ea = tripEnd(a), sa = tripStops(a), sb = tripStops(b); return !!rb && rb.r === r.r && sb.length > 0 && sa.length > 0 && sb[0][0] - (ea ? ea.min : sa[sa.length - 1][0]) <= 45; };
+  const run = [ti];
+  for (let p = prevTrip(ti, ymd); p !== undefined && run.length < 12 && linked(p, run[0]); p = prevTrip(p, ymd)) run.unshift(p);
+  for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 12 && linked(run[run.length - 1], n); n = nextTrip(n, ymd)) run.push(n);
+  return run;
 }
 /** Where a trip ends and when, { si, min }: its last stop, which the departures leave out (nobody boards there).
  *  Null for a timetable built before it was kept. */
