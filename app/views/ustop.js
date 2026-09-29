@@ -6,6 +6,7 @@ import { html, icon, badges, depRow, stopRow, routeLinkItems } from '../ui.js';
 import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote, hoursWords } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { afterSave, app, isDesktop } from '../main.js';
+import { spotKey } from '../geo.js';
 
 export function render({ id }, clockNow) {
   if (!U) return { html: html`<div class="empty"><h2>Shuttle data isn't loaded</h2></div>`, title: 'Shuttle' };
@@ -20,8 +21,12 @@ export function render({ id }, clockNow) {
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${sid}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
   parts.push(miniSlot({ ustopId: s.id }));
   const eyebrow = cs ? `USU shuttle and Connect · ${metres(shared.d)} apart` : `${U.name} · ${s.routes.length} ${s.routes.length === 1 ? 'route' : 'routes'}`;
+  // A shuttle stop is a place like any other: the way here, or on from here, by whatever runs near it. The planner
+  // finds the Connect stops within a walk; a rider here wants to get somewhere, not to ride this loop.
+  const key = spotKey(s.lat, s.lon, s.name);
   parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${cs ? html`<span class="muted" style="font-size:14px">Connect stop: ${cs.name}</span>` : ''}
-    <div class="badges wide">${chips(s.routes, 30)}${cs ? html.raw(routeLinkItems(D.stopById[cs.id])) : ''}</div></div>`);
+    <div class="badges wide">${chips(s.routes, 30)}${cs ? html.raw(routeLinkItems(D.stopById[cs.id])) : ''}</div>
+    <div class="golinks"><a class="golink" href="#/go/${key}">${icon('route', 16)}How to get here</a><a class="golink" href="#/search?from=${encodeURIComponent(key)}">${icon('fwd', 16)}From here</a></div></div>`);
 
   const rows = board(si);
   if (hasData() && noBuses() && !isStale()) {

@@ -557,6 +557,7 @@ a.twinline { text-decoration: none; }
 /* ---- directions: the ways to a stop, each a card of legs ---- */
 .golink { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 500; color: var(--color-accent-700); text-decoration: none; }
 @media (hover: hover) { .golink:hover { text-decoration: underline; text-underline-offset: 3px; } }
+.golinks { display: flex; gap: 18px; flex-wrap: wrap; }
 .fromline { display: flex; align-items: center; gap: 8px; padding: 6px 16px 10px; font-size: 14.5px; color: var(--cr-muted); border-bottom: 1px solid var(--cr-line); }
 .fromline > svg { color: var(--color-accent-700); flex: none; }
 .fromline > span:not(.fromacts) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

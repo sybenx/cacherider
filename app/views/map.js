@@ -28,6 +28,7 @@ let selectedBus = null, selectedU = null;
 let pickFor = null;   // the stop directions are wanted to, while the map is asked where from
 let hiLines = [], hiLoops = [];   // Connect route indices and shuttle route ids whose lines are drawn on top
 let runRoutes = [];   // the routes whose way on is drawn from a picked bus or stop: their buses stay bright, the rest dim
+let runLoops = [];    // the shuttle loops whose way on is drawn, likewise
 // The street map is one small file a tile, cut from OpenStreetMap by tools/tiles.py; tiles/tiles.json says how far it reaches.
 let TILES = { minzoom: 10, maxzoom: 15, bounds: [-111.98, 41.58, -111.68, 42.16] };
 const col = document.getElementById('mapcol');
@@ -87,7 +88,9 @@ function style(sat = true) {
       // The way on from a picked bus or stop: bright there, fading as it goes, in pieces each with its own strength (a
       // gradient is one per layer, and a stop with three routes needs three). Butt ends, so the pieces meet without
       // beads. Several ways from one stop run as strands side by side (`lane`, in widths), each a little narrower (`wf`).
-      { id: 'runs', type: 'line', source: 'runs', layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]] } },
+      { id: 'runs', type: 'line', source: 'runs', filter: ['!', ['to-boolean', ['get', 'approx']]], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]] } },
+      // A shuttle loop drawn stop to stop (no shape to follow): its way on dashed, as its line is.
+      { id: 'runs-approx', type: 'line', source: 'runs', filter: ['to-boolean', ['get', 'approx']], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]], 'line-dasharray': [2, 1.2] } },
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
@@ -855,8 +858,9 @@ function applySelection() {
   if (!map || !ready) return;
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
-  runRoutes = routesInPlay();
-  litLines(map, hiLines, hiLoops, runRoutes.length > 0);
+  runRoutes = routesInPlay(); runLoops = loopsInPlay();
+  // A loop with its way on drawn isn't drawn solid on top as well: the way is the loop, bright where it starts.
+  litLines(map, hiLines, runLoops.length ? [] : hiLoops, runRoutes.length > 0 || runLoops.length > 0);
   // Out past the streets, only a lit route's stops: the rest wait for a closer look.
   const lit = new Set(focusRoute !== undefined ? [...hiLines, focusRoute] : hiLines);
   map.setFilter('stops-lit', ['in', ['get', 'id'], ['literal', lit.size ? D.stops.filter(s => s.routes.some(r => lit.has(r))).map(s => s.id) : []]]);
@@ -879,7 +883,7 @@ function quiet() {
   const z = map.getZoom(), v = map.getBounds(), m = 0.003;   // a few hundred metres round the box
   const near = b => !!b && z >= 13.5 && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
   const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
-  show(U_LAYERS, near(campusBox) || selectedU !== null || !!uHilite || hiLoops.length > 0);
+  show(U_LAYERS, near(campusBox) || selectedU !== null || !!uHilite || hiLoops.length > 0 || runLoops.length > 0);
   show(POOL_LAYERS, near(poolBox));
 }
 
@@ -1250,7 +1254,7 @@ function uCard(app) {
   const rows = board(si);
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${U.name}${U.shared[si] ? ' · also Connect' : ''}</span><div class="name"><span>${s.name}</span></div>${chips(s.routes, 24)}</div>
     ${hasData() ? html`<div class="list">${rows.slice(0, 3).map(r => liveRow(r, { href: '#/usu/' + s.id }))}</div>` : html`<div class="empty"><p>Finding the buses…</p></div>`}
-    <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/usu/${s.id}">${corners()}Open stop</a></div>`;
+    <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/usu/${s.id}">${corners()}Open stop</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${spotKey(s.lat, s.lon, s.name)}">Get here</a><a class="btn btn-secondary btn-lg blueprint" href="#/search?from=${encodeURIComponent(spotKey(s.lat, s.lon, s.name))}">From here</a></div>`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
 }
@@ -1527,7 +1531,7 @@ function runBounds(R) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60, main: true };
-const RUN_HIDE = ['stops-lit', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'runs', 'pool-zone', 'pool-edge', 'pool-stops'];
+const RUN_HIDE = ['stops-lit', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'runs', 'runs-approx', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
@@ -1827,6 +1831,35 @@ function routesInPlay() {
   if (si === undefined || stop(si).hub) return [];
   return focusRoute !== undefined && stop(si).routes.includes(focusRoute) ? [focusRoute] : [...stop(si).routes];
 }
+/** The shuttle loops whose way on is drawn: a picked shuttle bus's; a picked shuttle stop's, every loop that calls
+ *  there (the same pole as a Connect stop's included, beside that stop's routes). A loop with no line at all (under
+ *  three stops, no shape) has no way to draw. */
+function loopsInPlay() {
+  if (!U) return [];
+  const drawn = ri => U.routes[ri].shape.length || U.routes[ri].stops.length >= 3;
+  if (selectedBus) { if (findBus(selectedBus)) return []; const b = live.buses.find(x => x.id === selectedBus); return b && drawn(b.ri) ? [b.ri] : []; }
+  const usi = selectedU !== null ? selectedU : uHilite ? U.stopById[uHilite] : selected && D.stopById[selected] !== undefined && U.sharedByCvtd[D.stopById[selected]] ? U.sharedByCvtd[D.stopById[selected]].i : undefined;
+  return usi === undefined ? [] : U.stops[usi].routes.filter(drawn);
+}
+/** A shuttle loop's way on from a point: its line (the shape, or stop to stop where it has none) cut at the point's
+ *  place on it and closed back there, so it runs once round, the way the buses go, and ends where it began. `along`:
+ *  the point's distance along the shape where it's known (a stop's, a bus's), so a road the loop passes twice is cut
+ *  on the right pass; else the nearest stretch. */
+function loopPath(ri, from, along) {
+  const r = U.routes[ri], ring = r.shape.length ? r.shape.slice() : r.stops.map(si => [U.stops[si].lon, U.stops[si].lat]);
+  if (ring.length < 2) return [];
+  if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push(ring[0]);
+  let hint = -1;
+  if (along !== undefined && r.shape.length) { let d = Infinity; r.cum.forEach((c, i) => { if (Math.abs(c - along) < d) { d = Math.abs(c - along); hint = i; } }); }
+  let bi = 0, best = Infinity;
+  for (let i = 0; i + 1 < ring.length; i++) {
+    if (hint >= 0 && Math.abs(i - hint) > 1 && Math.abs(i - hint) < ring.length - 2) continue;   // beside the known place only
+    const [ax, ay] = ring[i], [bx, by] = ring[i + 1], vx = (bx - ax) * KX, vy = (by - ay) * KY, px = (from[0] - ax) * KX, py = (from[1] - ay) * KY, L2 = vx * vx + vy * vy;
+    const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0, e = Math.hypot(px - t * vx, py - t * vy);
+    if (e < best) { best = e; bi = i; }
+  }
+  return [from, ...ring.slice(bi + 1), ...ring.slice(1, bi + 1), from];
+}
 const KX = Math.cos(41.74 * Math.PI / 180) * 111320, KY = 110540;   // degrees to metres, near enough for the valley
 /** A way in pieces of equal length, each coloured with the strength of its place along, fading evenly from full at
  *  the start to faint at the end, where it melts into the road: where two stretches of the way share a road, the
@@ -1860,12 +1893,18 @@ async function drawRuns() {
   if (c) wants = [{ ri: c.ri, stops: busPath(c, clockNow), from: [c.lon, c.lat] }];
   else if (si !== undefined && ris.length) wants = stopPaths(si, ris, clockNow);
   wants = wants.filter(w => w.stops.length > 1);
-  if (!wants.length) { if (runsKey !== null) { runsKey = null; map.getSource('runs').setData(empty); } return; }
-  const key = (c ? c.id + '@' + c.lat.toFixed(4) + ',' + c.lon.toFixed(4) : selected) + '|' + (dark() ? 'd' : 'l') + '|' + wants.map(w => w.ri + ':' + w.stops.map(x => x[1]).join('.')).join(';');
+  // The shuttle's: no timetable, so each loop's line itself, from the bus or the stop round to it again.
+  const ub = selectedBus && !c ? live.buses.find(x => x.id === selectedBus) : null;
+  const usi = ub ? undefined : selectedU !== null ? selectedU : uHilite ? U.stopById[uHilite] : si !== undefined && U && U.sharedByCvtd[si] ? U.sharedByCvtd[si].i : undefined;
+  const loops = loopsInPlay().map(ri => ({ ri, path: ub ? loopPath(ri, [ub.lon, ub.lat], ub.along) : loopPath(ri, [U.stops[usi].lon, U.stops[usi].lat], U.routes[ri].stopAlong[usi]) })).filter(w => w.path.length > 1);
+  if (!wants.length && !loops.length) { if (runsKey !== null) { runsKey = null; map.getSource('runs').setData(empty); } return; }
+  const pick = [selectedBus, selected, selectedU, uHilite].join('|');
+  const key = (c ? c.id + '@' + c.lat.toFixed(4) + ',' + c.lon.toFixed(4) : ub ? ub.id + '@' + ub.lat.toFixed(4) + ',' + ub.lon.toFixed(4) : pick) + '|' + (dark() ? 'd' : 'l') + '|' + wants.map(w => w.ri + ':' + w.stops.map(x => x[1]).join('.')).join(';') + '|' + loops.map(w => w.ri).join('.');
   if (key === runsKey) return;
-  const fc = await shapes();
-  if (!map || !map.getSource('runs') || (c ? selectedBus !== c.id : selected !== D.stops[si].id)) return;   // moved on while the shapes came
-  const feats = [], wf = wants.length === 1 ? 1 : wants.length === 2 ? 0.75 : 0.6;   // strands side by side, each narrower
+  const fc = wants.length ? await shapes() : null;
+  if (!map || !map.getSource('runs') || pick !== [selectedBus, selected, selectedU, uHilite].join('|')) return;   // moved on while the shapes came
+  const n = wants.length + loops.length, feats = [], wf = n === 1 ? 1 : n === 2 ? 0.75 : 0.6;   // strands side by side, each narrower
+  const lane = idx => (idx - (n - 1) / 2) * wf * 1.15;
   for (const [idx, w] of wants.entries()) {
     // The shape of each route in turn: the tail onto another route is that route's shape.
     const routeAt = i => w.stops[i][2] !== undefined ? w.stops[i][2] : w.ri;
@@ -1894,8 +1933,9 @@ async function drawRuns() {
         path = [w.from, ...path.slice(bi + 1), ...(round ? [...path.slice(1, bi + 1), w.from] : [])];
       }
     }
-    if (path.length > 1) feats.push(...fadePieces(path, D.routes[w.ri].color, { wf, lane: (idx - (wants.length - 1) / 2) * wf * 1.15 }));
+    if (path.length > 1) feats.push(...fadePieces(path, D.routes[w.ri].color, { wf, lane: lane(idx) }));
   }
+  for (const [k, w] of loops.entries()) feats.push(...fadePieces(w.path, U.routes[w.ri].color.slice(1), { wf, lane: lane(wants.length + k), approx: !U.routes[w.ri].shape.length }));
   feats.sort((x, y) => x.properties.a - y.properties.a);   // the brightest pieces drawn last, on top, where ways share a road
   runsKey = key;
   map.getSource('runs').setData({ type: 'FeatureCollection', features: feats });
