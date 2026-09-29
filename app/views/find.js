@@ -22,7 +22,7 @@ export function endHref(pick, id, sp) {
 }
 export const endWord = pick => pick.to ? 'Start from here' : 'Go here';
 export function results(q, clockNow, pick = null) {
-  const hits = search(q);
+  let hits = search(q);
   const addr = parseAddress(q);
   const places = addr ? geocode(addr, 4) : [];
   // Choosing where to start from, the whole heading of a place or an address is the start: a small link beside
@@ -42,10 +42,17 @@ export function results(q, clockNow, pick = null) {
   // A route named ('12', 'blue'): its page first, above any stop with the number in its address. Not while an end of a
   // journey is being picked: a route is neither.
   const ris = pick ? [] : searchRoutes(q);
-  const routeHtml = ris.length ? html`<div class="list">${ris.map(ri => html`<a class="row" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span><span class="sub">${D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`)}</div>`.s : '';
+  let routeHtml = ris.length ? html`<div class="list">${ris.map(ri => html`<a class="row" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span><span class="sub">${D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`)}</div>`.s : '';
   if (!hits.length && !places.length && !campusHtml && !spots.length && !routeHtml) {
     return html`<div class="empty"><h2>No stops match “${q}”</h2><p>Stop names are street addresses. Try a street or a town, or any address in the valley, like “1400 N 500 E, Logan”, for the stops nearest it.</p></div>
       <div class="chips">${['Main St', '400 North', 'Hyrum', 'USU', 'Smithfield'].map(s => html`<a class="chip" href="#/search?q=${encodeURIComponent(s)}" data-q="${s}">${s}</a>`)}</div>`;
+  }
+  // The Transit Center asked for by name ('transit', 'transit center'): its row first, before any place that shares a
+  // word with it, and not again among the stops.
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean), hubName = (D.hub.name + ' ' + (D.hub.short || '')).toLowerCase();
+  if (words.length && words.every(w => hubName.split(/\s+/).some(x => x.startsWith(w))) && hits.some(i => stop(i).hub)) {
+    routeHtml = html`<div class="list">${hubRow()}</div>`.s + routeHtml;
+    hits = hits.filter(i => !stop(i).hub);
   }
   const towns = [...new Set(hits.map(i => stop(i).town))];
   const where = towns.length === 1 ? ' in ' + towns[0] : '';

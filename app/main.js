@@ -36,11 +36,13 @@ function renderTabs() {
   // tab tapped twice. (Set once: the tabs are redrawn on every page.)
   if (!renderTabs.wired) {
     renderTabs.wired = true;
+    // So does the Map tab from the Transit Center, which is the map too: the Center's close-up and its turn put away.
     const again = e => {
-      const a = e.target.closest('a[href="#/map"]');
-      if (!a || !(location.hash || '').startsWith('#/map') || !app.mapMod) return;
+      const a = e.target.closest('a[href="#/map"]'), h = location.hash || '';
+      if (!a || !(h.startsWith('#/map') || h.startsWith('#/hub')) || !app.mapMod) return;
       e.preventDefault();
-      if (location.hash !== '#/map') history.replaceState(null, '', '#/map');
+      if (h.startsWith('#/hub')) { app.mapMod.resetView(app, true); location.hash = '#/map'; return; }   // once the Map tab is drawn
+      if (h !== '#/map') history.replaceState(null, '', '#/map');
       app.mapMod.resetView(app);
     };
     for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', again);

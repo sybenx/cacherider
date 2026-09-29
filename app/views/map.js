@@ -1251,9 +1251,11 @@ function panelPad(app) {
 
 /** The Map tab tapped again: the whole of Logan, north up, nothing picked. */
 const HOME = [-111.8300, 41.7330];
-export function resetView(app) {
+let resetDue = false;   // asked for as the Map tab opens: done once it's drawn (the panel's room going would stop it)
+export function resetView(app, once = false) {
+  if (once) { resetDue = true; return; }
   if (!map) return;
-  selectedBus = null; selectedU = null; lastFocused = null;
+  selectedBus = null; selectedU = null; lastFocused = null; hubTurned = false; northDue = false;
   select(null, app);
   map.easeTo({ padding: pad(), center: HOME, zoom: 13, bearing: 0, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
 }
@@ -1471,6 +1473,7 @@ export async function show(o, app, clockNow) {
   if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
   if (!o.hub && hubTurned && !o.tick) { northDue = true; if (!map.isMoving()) northAgain(); }   // another tab: north up again
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
+  if (resetDue && app.route.name === 'map' && !o.hub) { resetDue = false; resetView(app); }
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   routeTimes(still() ? null : focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
