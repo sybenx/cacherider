@@ -313,6 +313,8 @@ async function init(app) {
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimes(focusRoute, now()); });
   map.on('zoom', busScale);
   map.on('move', quiet);
+  map.on('moveend', northAgain);
+  map.on('rotatestart', e => { if (e.originalEvent) { hubTurned = false; northDue = false; } });   // turned by the rider: theirs to keep
   for (const ev of ['dragstart', 'wheel', 'touchstart']) map.on(ev, () => { MT.moved = true; });   // a run's map moved by the rider stays where they put it
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
@@ -384,7 +386,7 @@ async function init(app) {
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; paperKept = null; if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -474,14 +476,17 @@ function routeSheet({ short, dir, at, full, bus }, clockNow) {
   return { head, body, anchor, title: isLoop(ri) ? r.long : 'Route ' + r.short, ri };
 }
 
-/** One stop on a route's list: the route's next call there (the estimate alone: the stop's page has the timetable's
- *  beside it), the stop with the other routes that call (a change) under it, and how long. A tap opens the stop. */
+/** One stop on a route's list: the route's next call there, the stop with the other routes that call (a change)
+ *  under it, and how long, with whose minute it is. A tap opens the stop. */
 function routeRow(si, ri, next0, clockNow, opts = {}) {
   const s = stop(si), t = next0 ? lively(next0) : null;
   const town = s.town && s.town !== 'Logan' ? html`<span class="town">, ${s.town}</span>` : '';
   const others = s.routes.filter(x => x !== ri);
   const rel = !t ? html`<span class="${opts.warn ? 'warnmark' : ''}">${opts.none}</span>` : loopArrival(t) ? '' : relative(t, clockNow);
-  return html`<a class="croute${opts.here ? ' here' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}"><span class="c-t">${!t ? '—' : loopArrival(t) ? when(t, 17) : time(t.min, 17, !!t.live)}</span><span class="c-n">${s.hub ? D.hub.name : s.name}${town}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r">${rel}${t && t.live ? html.raw('<i class="ld" title="Live"></i>') : ''}</span></a>`;
+  // Whose minute it is, as the stop page says it: a live estimate with the timetable's struck above it and Live (or
+  // Estimated, from the bus's place); a timetable time, Scheduled.
+  const mark = !t ? '' : t.live ? liveMark(t.live.est ? 'Estimated' : 'Live') : sched(t);
+  return html`<a class="croute${opts.here ? ' here' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}"><span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${s.hub ? D.hub.name : s.name}${town}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
 }
 
 // ---- staying on the bus. A bus swaps routes at the Transit Center all day (9 and 1 on a Saturday): its next
@@ -890,15 +895,45 @@ function quiet() {
 const HUB_Z = 17.5, HUB_IN = 110;   // metres from the hall: a bus this close is in
 const HUB_HIDE = ['route-lines', 'route-on', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
+let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
   const on = !!D.hub && !MT.R && map.getZoom() >= HUB_Z && map.getBounds().contains([D.hub.lon, D.hub.lat]);
   if (on || hubOn) for (const id of HUB_HIDE) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') === on) map.setLayoutProperty(id, 'visibility', on ? 'none' : 'visible');
   if (on !== hubOn) {
     hubOn = on;
-    if (on) hubBadges(); else { for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); }
+    paper(on);
+    if (on) hubBadges(); else { for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); if (hubTurned) northDue = true; }
     hubBuses();
   }
   if (on) easeBays();
+}
+/** Back to north-up, once the move that left the Center is over (a turn in the middle of a pinch would fight the
+ *  fingers): the south-up was the Center's framing, as the lines' absence was its view. */
+function northAgain() {
+  if (!northDue) return;
+  northDue = false; hubTurned = false;
+  if (map.getBearing() !== 0) map.jumpTo({ bearing: 0 });
+}
+/** The basemap stepped back at the Center, so the bays read like a plan: the hall's footprint, the drives and paths,
+ *  and 500 North (its band and its name) as they are; every other street, the parks, water, labels and all washed
+ *  toward the paper. Each layer's own paint kept aside and put back on leaving. */
+const PAPER_KEEP = /^(background|earth|buildings|roads_minor_service(_casing)?|roads_other)$/;
+const is500 = ['==', ['coalesce', ['get', 'name:en'], ['get', 'name'], ''], '500 North'];
+let paperKept = null;
+function paper(on) {
+  if (on && !paperKept) {
+    paperKept = [];
+    for (const l of map.getStyle().layers) {
+      if (l.source !== 'protomaps' || PAPER_KEEP.test(l.id)) continue;
+      const road = /^roads_/.test(l.id);
+      const props = l.type === 'fill' ? [['fill-opacity', 0.2]] : l.type === 'line' ? [['line-opacity', road ? ['case', is500, 1, 0.2] : 0.2]]
+        : l.type === 'symbol' ? [['text-opacity', road ? ['case', is500, 1, 0.12] : 0.12], ['icon-opacity', 0.12]] : [];
+      for (const [prop, v] of props) { paperKept.push([l.id, prop, map.getPaintProperty(l.id, prop)]); map.setPaintProperty(l.id, prop, v); }
+    }
+  } else if (!on && paperKept) {
+    for (const [id, prop, v] of paperKept) if (map.getLayer(id)) map.setPaintProperty(id, prop, v === undefined ? null : v);
+    paperKept = null;
+  }
 }
 /** The badges drawn, or brought up to date (the feed, the minute, a route picked). */
 function hubBadges() {
@@ -957,15 +992,16 @@ function hubCard(clockNow) {
   if (!again) { fitPeek(card); card.classList.add('peek'); }
   hubMount(card);
 }
-/** The Center framed: every bay in view, above a phone's card or beside a wide screen's panel. */
+/** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
 function fitHub() {
   const bb = new maplibregl.LngLatBounds();
   for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
   const card = col.querySelector('#mapcard'), p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
   if (!wide() && card.classList.contains('open')) p.bottom += card.offsetHeight;
   settlePad();
-  const cam = map.cameraForBounds(bb, { padding: p, maxZoom: 18.4 });
-  if (cam) map.easeTo({ ...cam, zoom: Math.max(HUB_Z + 0.2, cam.zoom), bearing: map.getBearing(), duration: 700 });
+  // South up, as a rider stands at the Center facing the hall from 500 North: part of the framing, not a turn of its own.
+  const cam = map.cameraForBounds(bb, { padding: p, maxZoom: 18.4, bearing: 180 });
+  if (cam) { map.easeTo({ ...cam, zoom: Math.max(HUB_Z + 0.2, cam.zoom), bearing: 180, duration: 700 }); hubTurned = true; northDue = false; }
 }
 
 /** A route in view paints every stop it calls at in its own colour; otherwise a stop wears its first route's. */
@@ -1400,6 +1436,7 @@ export async function show(o, app, clockNow) {
   if (o.tick && o.hub && app.route.name === 'map' && !wide() && col.querySelector('#mapcard > .hubsheet')) hubCard(clockNow);
   if (o.tick) hubBadges();
   if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
+  if (!o.hub && hubTurned && !o.tick) { northDue = true; if (!map.isMoving()) northAgain(); }   // another tab: north up again
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   routeTimes(still() ? null : focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
@@ -1462,7 +1499,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     hubBay = hubPick || null;
     // On a phone the board is the map's card; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide()) hubCard(clockNow); else col.querySelector('#mapcard').classList.remove('open');
-    if (lastFocused !== 'hub') fitHub();
+    if (lastFocused !== 'hub' || !hubOn) fitHub();   // framed when opened, unless the rider's already there (their zoom and turn kept)
     lastFocused = 'hub';
     hubBadges();
     return;
