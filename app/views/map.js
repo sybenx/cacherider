@@ -350,7 +350,12 @@ async function init(app) {
   await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : HOME;
-  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z) });
+  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false });
+  // Its box watched here, not by MapLibre: hidden (the Stops tab on a phone), the box is nothing, and MapLibre
+  // shrank the canvas to nothing and grew it back on every tab tapped, reallocating its whole drawing buffer each
+  // way, the costliest thing a tab did on a phone. A box of nothing is left be; a real change (turned, the update bar)
+  // is fitted.
+  new ResizeObserver(() => sized()).observe(map.getContainer());
   placeControls();
   WIDE.addEventListener('change', placeControls);
   squaresOnDemand(map);
@@ -364,7 +369,7 @@ async function init(app) {
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   map.on('mouseenter', 'pool-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'pool-stops', () => map.getCanvas().style.cursor = '');
-  setTimeout(() => map.resize(), 300);
+  setTimeout(() => sized(), 300);
   // A tap picks the nearest stop within a thumb's reach, so two stops that nearly touch are still separable.
   // On a touch screen the pick waits a beat: a second finger-down inside it is a double-tap or a
   // tap-and-drag zoom, not a stop, so the wait is dropped rather than a card opened.
@@ -1836,7 +1841,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   // Measured again when it may have changed; not on every minute and feed redraw, when a resize's move events would
   // cut short a tap waiting out its double-tap beat.
   const measured = box.clientWidth + 'x' + box.clientHeight;
-  if (!tick || measured !== lastMeasured) requestAnimationFrame(() => map.resize());
+  if (!tick || measured !== lastMeasured) requestAnimationFrame(() => sized());
   lastMeasured = measured;
   panelPad(app);
   // Beside the panel the stop is in the panel: no card over the map as well.
@@ -1861,7 +1866,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   // is fitted again, at its new size, not left where the small one had it.
   const size = box.clientWidth + 'x' + box.clientHeight, resized = size !== fitSize;
   fitSize = size;
-  map.resize();   // its own idea of its size can lag a map just shown again (hidden, it shrank to nothing)
+  sized();   // its own idea of its size can lag a map just shown again (hidden, it shrank to nothing)
   if (app.route.name !== 'map' && !page) col.querySelector('#mapcard').classList.remove('open');   // a card tapped up beside one page isn't the next's
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
   if (stopId || ustopId || routeShort || alertId || hub || at || from || to) { selectedBus = null; selectedU = null; }
@@ -1978,6 +1983,15 @@ function routeBounds(ri) {
 
 // ---- the one map, docked: on a phone, into a run sheet's slot, where it's the rider's to move; otherwise in its own
 // column. The sheet's markup is replaced around it, so it's parked in its column meanwhile (main.js).
+/** The map's canvas fitted to its box, only when they differ: a resize reallocates the canvas's whole drawing buffer
+ *  (at a phone's pixel density, megabytes), and it was done on every tab tapped, the size unchanged, the costliest
+ *  thing a tab did. */
+function sized(m = map) {
+  const box = m.getContainer(), cv = m.getCanvas();
+  if (!box.clientWidth || !box.clientHeight) return;   // hidden: fitted when it's shown
+  if (cv.clientWidth === box.clientWidth && cv.clientHeight === box.clientHeight) return;
+  m.resize();
+}
 function dock(slot) {
   const box = map.getContainer(), to = slot || col;
   docked = slot;
@@ -1986,7 +2000,7 @@ function dock(slot) {
   to.prepend(box);
   lastFocused = null;   // moved, it frames the page's stop or route afresh
   col.querySelector('#mapcard').classList.remove('open');
-  map.resize();
+  sized();
 }
 
 /** The road a run drives between its stops, from the route's drawn lines: for each pair of stops in turn, the
@@ -2093,7 +2107,7 @@ async function drawRun(T) {
   m.getSource('run').setData({ type: 'FeatureCollection', features: legs.map((l, i) => ({ type: 'Feature', properties: { color: col(l.ri), later: i > 0 }, geometry: { type: 'LineString', coordinates: l.path } })) });
   // Moved into a new box as the day redrew, it measured nothing while out of the page: measured again first, or the
   // run is fitted to no room at all and comes out zoomed far away.
-  m.resize();
+  sized(m);
   // Clear of the search bar and notice, and on a phone of the run's sheet: the whole run in the map above it, with a
   // little room round it, never further out than zoom 11.25: a loop about town fits (the Green Loop at 11.4 on a
   // phone); a long route out of town (12 to Hyrum) is centred and runs off the edges rather than shrink to a thread.
@@ -2141,7 +2155,7 @@ export function runHot(si) { const T = liveRun(); if (T.R) { T.R.hot = si; if (T
 export function runResize() {
   if (!map || !MT.R) return;
   // fitted again to its new room, unless the rider has moved it: then it stays where they put it
-  requestAnimationFrame(() => { map.resize(); if (!MT.moved) map.fitBounds(runBounds(MT.R), { padding: 36, duration: 250, maxZoom: 16 }); });
+  requestAnimationFrame(() => { sized(); if (!MT.moved) map.fitBounds(runBounds(MT.R), { padding: 36, duration: 250, maxZoom: 16 }); });
 }
 /** A stop picked in the run's list: lit, and brought to the middle of the map, in to the streets. */
 export function runFocus(si) {
@@ -2257,7 +2271,7 @@ async function mainJourney(J, app) {
   jrFramed = J.hrefs[J.i];
   const b = new maplibregl.LngLatBounds();
   for (const f of [...lines, ...marks]) for (const c of f.geometry.type === 'Point' ? [f.geometry.coordinates] : f.geometry.coordinates) b.extend(c);
-  map.resize(); settlePad();
+  sized(); settlePad();
   map.fitBounds(b, { padding: routePad(), duration: 600, maxZoom: 16.5, bearing: 0 });
 }
 /** A phone's card for the directions: the page's own sheet (where to and from, the ways as rows, the drawn way told
