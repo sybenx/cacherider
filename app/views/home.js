@@ -2,12 +2,12 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, pref, systemAlerts, activeAlerts, quietWords } from '../data.js';
+import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
 import { routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
-import { U, stopRowU, chip, liveTag, live, board } from '../usu.js';
+import { U, stopRowU, chip, live } from '../usu.js';
 import { results, pickOf, forPick } from './find.js';
 import { byWalk, spotOf, spotKey } from '../geo.js';
 import { isWide } from '../wide.js';
@@ -71,7 +71,6 @@ function landing(clockNow, app) {
   }
   if (sv.length) parts.push(installCard());   // the offer waits until a rider has saved a stop: proof it's their app
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
-  if (app) app.hasCampusSaved = sv.some(id => id.startsWith('u:'));
   return { html: html`<div class="land">${html.raw(parts.join(''))}</div>`.s, mount, title: '' };
 }
 
@@ -203,25 +202,6 @@ function go(q, live = false) {
   if (live) history.replaceState(null, '', target); else location.hash = target;
   window.dispatchEvent(new HashChangeEvent('hashchange'));
   if (live) { const i = document.querySelector('#search input'); if (i) { i.focus({ preventScroll: true }); i.setSelectionRange(i.value.length, i.value.length); } }
-}
-
-function pulseCard(clockNow) {
-  const p = nextPulse(1, clockNow)[0];
-  if (!p) return '';
-  const loops = D.hub.loops || [];
-  const loopRows = loops.map(ri => {
-    const n = nextFromHub(ri, 1, clockNow)[0];
-    if (!n) return '';
-    const r = D.routes[ri];
-    return html`<div class="loop">${badge(ri, 28)}<div class="col"><span class="whent">${time(n.min, 20)}</span><span class="rel">${r.long.replace(/ Loop$/, '')} · ${relative(n, clockNow)}</span></div></div>`;
-  }).join('');
-  const day = p.day === 0 ? '' : p.day === 1 ? ' tomorrow' : ' ' + relative(p, clockNow);
-  return html`<a class="pulse blueprint" href="#/hub">${corners()}
-    <div class="top"><span class="eyebrow">${D.hub.pulseName || 'Next pulse'}</span><span class="muted">${icon('fwd', 20)}</span></div>
-    <div class="big">${time(p.min, 42)}<span class="rel">${relative(p, clockNow)}</span></div>
-    <div class="sub">${D.hub.pulseLabel}${day}</div>
-    ${loopRows ? html`<div class="loops">${html.raw(loopRows)}</div>` : ''}
-    <div class="foot">${sched()}</div></a>`;
 }
 
 function nearestSection(geo, clockNow) {

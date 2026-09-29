@@ -2,7 +2,7 @@
 // the timetable, the feed's estimates where it has them, and nothing else: the valley is small (every route meets
 // at the Transit Center), so a ride and one change cover nearly every journey, and the whole search is a few
 // thousand lookups. The Aggie Shuttle joins in while it runs: no timetable, its buses' own estimates instead.
-import { D, stop, timesOn, tripStops, tripEnd, nextTrip, distance, nearest, servicesOn } from './data.js';
+import { stop, timesOn, tripStops, tripEnd, nextTrip, distance, nearest, servicesOn } from './data.js';
 import { lively, isLoop } from './ui.js';
 import { dayFrom } from './time.js';
 import { walkMins } from './geo.js';

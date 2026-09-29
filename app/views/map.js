@@ -2,9 +2,9 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, timed, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
+import { D, BASE, stop, route, nextAt, timed, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
-import { routeName, routeNames, html, icon, timedMark, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard, heardName } from '../ui.js';
+import { routeName, routeNames, html, icon, timedMark, badge, badges, time, sched, corners, depRow, stopRow, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -25,7 +25,6 @@ const asPage = hash => location.replace(location.href.split('#')[0] + hash);
 
 let focusRoute;   // the route whose page is open, its stops in its colour
 let fitSize = '', map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
-let docked = null;   // the slot the one map is docked in on a phone (a stop or route page's small map, a run sheet's); null in its own column
 const busMarkers = new Map();   // bus id → { marker, el }
 let selectedBus = null, selectedU = null;
 let pickFor = null;   // the stop directions are wanted to, while the map is asked where from
@@ -403,7 +402,6 @@ async function init(app) {
   map.on('move', quiet);
   map.on('moveend', northAgain);
   map.on('rotatestart', e => { if (e.originalEvent) { hubTurned = false; northDue = false; } });   // turned by the rider: theirs to keep
-  for (const ev of ['dragstart', 'wheel', 'touchstart']) map.on(ev, () => { MT.moved = true; });   // a run's map moved by the rider stays where they put it
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   map.on('mouseenter', 'pool-stops', () => map.getCanvas().style.cursor = 'pointer');
@@ -845,7 +843,6 @@ document.addEventListener('click', e => {
   if (!a || !map) return;
   e.preventDefault(); ringBus(a.dataset.ring);
 });
-const compassWord = deg => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(((deg || 0) % 360) / 45) % 8];
 
 /** Swiping the card down closes it, and swiping it up opens the stop's page, from anywhere on the card: the
  *  gesture is claimed on the first move only when the card can't scroll that way any further (at its top for
@@ -1563,7 +1560,6 @@ export function liveUpdate(app) {
   if (U) for (const b of live.buses) place(b, 'u', U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
   if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
-  if (wantBus && busMarkers.has(wantBus)) pickBus(wantBus, app);
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
   if (hubOn) { hubBadges(); hubBuses(); }
@@ -1847,7 +1843,7 @@ export async function show(o, app, clockNow) {
   routeTimes(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
-let wantBus = null, wantIn = null;
+let wantIn = null;
 /** A bus on its way to the Transit Center, from the board: its card and its way on, framed with the Center, so where
  *  it is and how it comes in read at once. North up: off the Center, its turn is put away. */
 function busIn(id, app) {
@@ -1861,21 +1857,8 @@ function busIn(id, app) {
   settlePad();
   requestAnimationFrame(() => map.fitBounds(b, { padding: routePad(), duration: 700, maxZoom: 16, bearing: 0 }));
 }
-/** A route's bus, from its row on the route page: its ring and card, and the map panned (never zoomed) to keep it
- *  above the card. */
-function pickBus(id, app) {
-  const m = busMarkers.get(id);
-  if (!m) { wantBus = id; return; }
-  wantBus = null;
-  selectBus(id, app);
-  const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
-  map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: cardOffset(card), duration: 500 });
-}
 async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
-  // One map for the whole app. On a phone it docks into a run sheet's slot, and comes back to its column after. Three maps were three WebGL contexts, one too many for a
-  // cheap tablet, which dropped one and went gray.
-  dock(!wide() && app.route.name !== 'map' ? document.querySelector('#runsheet #runmap') : null);
   // A map still hidden (the Map tab not on screen yet, the page behind it just gone) has no size to fit anything to:
   // a route fitted to nothing is the whole valley and further. Waited for, a few frames at most; if the address
   // moves on meanwhile, the newer call does the work.
@@ -1974,7 +1957,6 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     else col.querySelector('#mapcard').classList.remove('open');
     if (focus && (changed || resized || whole) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: routePad(), duration: 700, maxZoom: 15.5 });
     stayRoute = false;
-    wantBus = null;
     if (bus) ringBus(bus); else wantRing = null;
     return;
   }
@@ -2028,8 +2010,6 @@ function routeBounds(ri) {
   return b;
 }
 
-// ---- the one map, docked: on a phone, into a run sheet's slot, where it's the rider's to move; otherwise in its own
-// column. The sheet's markup is replaced around it, so it's parked in its column meanwhile (main.js).
 /** The map's canvas fitted to its box, only when they differ: a resize reallocates the canvas's whole drawing buffer
  *  (at a phone's pixel density, megabytes), and it was done on every tab tapped, the size unchanged, the costliest
  *  thing a tab did. */
@@ -2038,16 +2018,6 @@ function sized(m = map) {
   if (!box.clientWidth || !box.clientHeight) return;   // hidden: fitted when it's shown
   if (cv.clientWidth === box.clientWidth && cv.clientHeight === box.clientHeight) return;
   m.resize();
-}
-function dock(slot) {
-  const box = map.getContainer(), to = slot || col;
-  docked = slot;
-  box.classList.toggle('docked', !!slot);
-  if (box.parentNode === to) return;
-  to.prepend(box);
-  lastFocused = null;   // moved, it frames the page's stop or route afresh
-  col.querySelector('#mapcard').classList.remove('open');
-  sized();
 }
 
 /** The road a run drives between its stops, from the route's drawn lines: for each pair of stops in turn, the
@@ -2100,7 +2070,7 @@ function runBounds(R) {
   return b;
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
-const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60, main: true };
+const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60 };
 const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', 'runs', 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
@@ -2128,7 +2098,6 @@ async function drawRun(T) {
   dressForRun(m, R);
   if (R.key === T.key) return;
   const key = T.key = R.key;
-  T.moved = false;
   const col = ri => dark() ? lift('#' + D.routes[ri].color) : '#' + D.routes[ri].color;
   const fc = await shapes();
   if (T.key !== key) return;
@@ -2158,13 +2127,10 @@ async function drawRun(T) {
   // Clear of the search bar and notice, and on a phone of the run's sheet: the whole run in the map above it, with a
   // little room round it, never further out than zoom 11.25: a loop about town fits (the Green Loop at 11.4 on a
   // phone); a long route out of town (12 to Hyrum) is centred and runs off the edges rather than shrink to a thread.
-  if (T.main) {
-    settlePad();
-    const b = runBounds(R), p = fitPad(wide() ? T.pad : 24), cam = m.cameraForBounds(b, { padding: p, maxZoom: 16 });
-    // the run's middle in the middle of the room left, whatever the zoom came to
-    if (cam) m.easeTo({ center: b.getCenter(), zoom: Math.max(cam.zoom, 11.25), offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2], bearing: 0, duration: 600 });
-  }
-  else m.fitBounds(runBounds(R), { padding: T.pad, duration: 0, maxZoom: 16 });
+  settlePad();
+  const b = runBounds(R), p = fitPad(wide() ? T.pad : 24), cam = m.cameraForBounds(b, { padding: p, maxZoom: 16 });
+  // the run's middle in the middle of the room left, whatever the zoom came to
+  if (cam) m.easeTo({ center: b.getCenter(), zoom: Math.max(cam.zoom, 11.25), offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2], bearing: 0, duration: 600 });
 }
 /** The run's times, each to the right of its bus's way, as the map is turned now: the screen's right, left, above or
  *  below, whichever is nearest the road's right-hand side. Placed again when the map turns. */
@@ -2200,20 +2166,13 @@ function mainRun(R) {
   applySelection();
   quiet();   // back at the Center, its view again
 }
-const liveRun = () => MT;
 /** A row in the list pointed at: its stop lit on the run's map. */
-export function runHot(si) { const T = liveRun(); if (T.R) { T.R.hot = si; if (T.m && T.ready() && T.m.getLayer('run-hot')) T.m.setFilter('run-hot', ['==', ['get', 'si'], si ?? -1]); } }
-/** The run's map after its box changed size (the sheet's 'Whole map'): measured again and the run fitted. */
-export function runResize() {
-  if (!map || !MT.R) return;
-  // fitted again to its new room, unless the rider has moved it: then it stays where they put it
-  requestAnimationFrame(() => { sized(); if (!MT.moved) map.fitBounds(runBounds(MT.R), { padding: 36, duration: 250, maxZoom: 16 }); });
-}
+export function runHot(si) { const T = MT; if (T.R) { T.R.hot = si; if (T.m && T.ready() && T.m.getLayer('run-hot')) T.m.setFilter('run-hot', ['==', ['get', 'si'], si ?? -1]); } }
 /** A stop picked in the run's list: lit, and brought to the middle of the map, in to the streets. */
 export function runFocus(si) {
   runHot(si);
-  const T = liveRun();
-  if (T.m && D.stops[si]) T.m.easeTo({ ...(T.main ? { padding: pad() } : {}), center: [D.stops[si].lon, D.stops[si].lat], zoom: Math.max(T.m.getZoom(), 15), duration: 500 });
+  const T = MT;
+  if (T.m && D.stops[si]) T.m.easeTo({ padding: pad(), center: [D.stops[si].lon, D.stops[si].lat], zoom: Math.max(T.m.getZoom(), 15), duration: 500 });
 }
 
 // ---- a way from the directions page, drawn: each ride along its route's line in the route's colour (a shuttle's

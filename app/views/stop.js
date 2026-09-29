@@ -1,8 +1,8 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL } from '../data.js';
-import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
-import { routeNames, html, icon, badge, badges, time, sched, corners, depRow, routeLinks, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
+import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL } from '../data.js';
+import { relative, fmtDay, dayName, clockText, dayFrom } from '../time.js';
+import { routeNames, html, icon, badge, time, sched, corners, depRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
 import { metres as m2 } from '../time.js';
 import { afterSave, app } from '../main.js';
@@ -66,8 +66,7 @@ export function render({ id, full, run, on }, clockNow) {
     parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${D.agency.brand} doesn't run on ${dayName(clockNow.ymd)}s. ${resume ? `Service resumes ${fmtDay(resume, true)}${nt && nt <= resume ? ', on the new timetable' : ''}.` : ''}</div></div></div>`);
   } else if (!td.all.length) {
     const only = s.routes.map(ri => D.routes[ri]);
-    const weekdayOnly = only.filter(r => !servicesOnDays(r)).length;
-    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>No ${dayName(clockNow.ymd)} service at this stop</b><div class="sub">${only.length === 1 ? `Route ${only[0].short} ${describeDays(only[0])}.` : 'The routes here ' + (weekdayOnly ? 'run weekdays only' : 'skip today') + '.'} Other routes are running today.</div></div></div>`);
+    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>No ${dayName(clockNow.ymd)} service at this stop</b><div class="sub">${only.length === 1 ? `Route ${only[0].short} ${describeDays(only[0])}.` : 'The routes here skip today.'} Other routes are running today.</div></div></div>`);
   } else if (!td.left.length && td.last && !(next[0] && next[0].day === 0)) {   // a late last bus is still coming
     parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>Last bus today left at ${clockText(td.last.min)}</b><div class="sub">The next one is ${next[0] ? (next[0].day === 1 ? 'tomorrow' : dayName(next[0].ymd)) + ' at ' + clockText(next[0].min) : 'not in the timetable'}.</div></div></div>`);
   } else if (nt) {
@@ -136,7 +135,7 @@ export function render({ id, full, run, on }, clockNow) {
   const pick = run !== undefined && run !== '' ? { trip: +run } : { trip: null };
   parts.push(restOfDay(si, next, clockNow, pick));
   // The run is drawn on the map itself: beside the panel on a wide screen, above the sheet on a phone or a tablet.
-  const sheet = pick.trip !== null ? runSheet(si, next, clockNow, pick.trip, on || clockNow.ymd, true) : null;
+  const sheet = pick.trip !== null ? runSheet(si, next, clockNow, pick.trip, on || clockNow.ymd) : null;
   return { html: html`<div class="phone-stop" data-stop="${s.id}">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true, sheet, run: sheet ? sheetRun() : null };
 }
 
@@ -146,7 +145,6 @@ function tpLine(si) {
   if (!ris.length) return '';
   return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Route/, 'route')}: an early bus waits here for its time.</span></span>`;
 }
-function servicesOnDays(r) { return true; }
 function describeDays(r) {
   // Which days a route runs at all: from the services its departures carry.
   const days = new Set();

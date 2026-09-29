@@ -1,8 +1,8 @@
 // Boot, the hash router, and the pieces every screen shares: the tab bar, the
 // desktop header, the location sheet, the minute tick.
-import { load, D, BASE, pref, stopIndex, loadAlerts, loadPlaces, loadPool, A } from './data.js';
+import { load, BASE, pref, loadAlerts, loadPlaces, loadPool, A } from './data.js';
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
-import { html, icon, esc } from './ui.js';
+import { html, icon } from './ui.js';
 import { loadGrid , loadElevation, spotKey } from './geo.js';
 import { WIDE_MQ, isWide } from './wide.js';
 import * as home from './views/home.js';
@@ -179,13 +179,10 @@ function sync(a, b) {
     if (x.nodeType !== 1) { if (x.data !== y.data) x.data = y.data; continue; }
     for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
     for (const at of y.attributes) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
-    if (x.id === 'runmap' || x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') continue;   // a map's slot: the map in it is left be
+    if (x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') continue;   // a box being typed in is left be
     sync(x, y);
   }
 }
-
-/** The one map, if it's docked inside `el`, back to its column before `el` is replaced or removed. */
-function park(el) { const m = el && el.querySelector('#map'); if (m) document.getElementById('mapcol').prepend(m); }
 
 async function render(tick = false) {
   // The route page is the map's now: an old address lands there, in place of itself in the history.
@@ -247,11 +244,6 @@ async function render(tick = false) {
       // compass, the scroll and everything else on screen stay exactly as they were, and nothing blinks.
       morph(side, markup); side.lastHtml = markup;
     } else if (!unchanged) {
-      // A new page. The small map (one instance, kept by the map module) is moved into its slot before anything
-      // paints, so a stop after a stop keeps its map rather than showing a placeholder and a fresh map a moment later.
-      // The one map, docked in this page's slot, is parked in its column while the page is replaced; the map
-      // module docks it into the new page's slot before anything paints, so a stop after a stop keeps its map.
-      park(side);
       side.innerHTML = markup; side.lastHtml = markup;
     }
     side.dataset.view = key;
@@ -264,8 +256,8 @@ async function render(tick = false) {
     runSheetOf(view);
     if (!unchanged) view.mount && view.mount(side, app);
   } else runSheetOf(view);   // a stop as the map's sheet: its run sheet here too, before the sheet's mount wires it
-  // The map is drawn for the Map tab, beside a wide screen's pages, and docked into a phone's page or run sheet.
-  if (mapOpen || isDesktop() || document.querySelector('#runsheet #runmap')) {
+  // The map is drawn for the Map tab (a phone's stop and its run are the map with a sheet) and beside a wide screen's pages.
+  if (mapOpen || isDesktop()) {
     const m = await ensureMap();
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: dec(seg[3] || '') } : null;
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert', mapB = name === 'map' && seg[1] === 'bus';
@@ -297,15 +289,14 @@ function searchMarksOf(el) {
   const spots = [...el.querySelectorAll('a[href^="#/map/at/"]')].slice(0, 3).map(a => { const [lat, lon] = a.getAttribute('href').split('/')[3].split(','); return { lat: +lat, lon: +lon }; });
   return { stops, spots };
 }
-/** A run's sheet over the page (a phone's stop): over the page and its map, its list kept where it was scrolled.
- *  Redrawn in place, and not at all when nothing changed: replaced whole, its list lost the finger scrolling it and its
- *  map (moved out and back) the finger panning it, every time the feed came in. */
+/** A run's sheet over the page (a phone's stop): over the map, its list kept where it was scrolled. Redrawn in place,
+ *  and not at all when nothing changed: replaced whole, its list lost the finger scrolling it every time the feed came in. */
 function runSheetOf(view) {
   let rs = document.getElementById('runsheet');
   if (view && view.sheet) {
     if (!rs) { rs = document.createElement('div'); rs.id = 'runsheet'; body.appendChild(rs); }
-    if (rs.lastHtml !== view.sheet) { if (rs.lastHtml) morph(rs, view.sheet); else { park(rs); rs.innerHTML = view.sheet; } rs.lastHtml = view.sheet; }
-  } else if (rs) { park(rs); rs.remove(); }
+    if (rs.lastHtml !== view.sheet) { if (rs.lastHtml) morph(rs, view.sheet); else rs.innerHTML = view.sheet; rs.lastHtml = view.sheet; }
+  } else if (rs) rs.remove();
 }
 
 // ---- location: asked for in words first, then of the browser

@@ -511,9 +511,6 @@ a.twinline { text-decoration: none; }
 
 /* ── map ───────────────────────────────────────────────────────────────── */
 #map { position: absolute; inset: 0; }
-/* docked in a run sheet */
-.docked .maplibregl-ctrl-group { display: none; }   /* docked in a page, the map's own buttons stay on the Map tab */
-.docked .maplibregl-ctrl-bottom-right { z-index: 1; }
 #map canvas { outline: none; }
 .mapbar { position: absolute; top: 10px; left: 12px; right: 12px; display: flex; gap: 8px; z-index: 450; }
 .mapbar .search { flex: 1; }
@@ -550,7 +547,6 @@ a.twinline { text-decoration: none; }
 .maplibregl-ctrl-attrib a { color: inherit !important; }
 .maplibregl-ctrl-group { background: var(--color-bg) !important; box-shadow: var(--shadow-md) !important; border-radius: var(--radius-md) !important; }
 .maplibregl-ctrl-group button + button { border-top-color: var(--cr-line) !important; }
-.maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: var(--ctrl-filter, none); }
 :root[data-theme="dark"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1); } }
 .stop-marker { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--color-bg); box-shadow: 0 0 0 1px rgba(0,0,0,.25); cursor: pointer; }
@@ -832,7 +828,6 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 .run-top .col { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .run-top b { font: 600 1.25rem var(--font-heading); }
 .run-top .muted { font-size: 0.8438rem; color: var(--cr-muted); }
-.run-map { position: relative; height: 100%; border: 1px solid var(--cr-line); background: var(--color-surface); }
 .run-stop.hot { background: var(--cr-hover); }
 .run-stop.skipped .run-n { color: var(--cr-muted); }
 /* where the bus waits between runs, or becomes another route: stay on */
@@ -948,15 +943,10 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .rs-grip { flex: none; width: 40px; height: 4px; margin: 8px auto 4px; border-radius: 2px; background: var(--cr-line); }
 .rs .run-top { flex: none; padding: 2px 8px 8px 16px; }
 .rs-strip { flex: none; padding: 2px 16px 10px; }
-.rs-map { position: relative; flex: none; height: 300px; }
-.rs-map .run-map { border-left: 0; border-right: 0; }
-.rs-whole { position: absolute; left: 10px; top: 10px; z-index: 2; min-height: 34px; padding: 0 12px; gap: 6px; font-size: 0.8125rem; background: var(--color-bg); box-shadow: var(--shadow-md); }
 .rs-list { flex: 1; min-height: 0; padding: 0 16px 18px; }
 /* the run sheet's list scrolls on its own; the route sheet's (the same class) is the map card's, which scrolls it: a
    scroll box of its own there, with nothing to scroll and its overscroll contained, swallowed the finger */
 .rs .rs-list { overflow-y: auto; overscroll-behavior: contain; }
-.rs.map-only .rs-map { flex: 1; height: auto; }
-.rs.map-only .rs-list { display: none; }
 @media (prefers-reduced-motion: reduce) { .rs { transition: none; } }
 /* On a phone or a tablet the run's sheet covers the lower part of the map, the run drawn on the map above it, which
    stays the finger's: no shade over it, and the stop's own sheet put by until the run's closes */
@@ -971,12 +961,11 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 /* the wide About: the alerts and the data on the right */
 
 /* Medium (a portrait tablet): the phone's layout, its page a column of at most 600px in the middle, the tab bar and
-   the map the whole width, the map's sheet the column's width, and the maps docked in pages taller */
+   the map the whole width, and the map's sheet the column's width */
 @media (min-width: 600px) and (max-width: 839px) {
   #side { padding-inline: max(0px, calc(50vw - 300px)); }
   .land-top { margin-inline: calc(-1 * max(0px, calc(50vw - 300px))); }   /* the header the whole width */
   .mapcard { max-width: 600px; margin-inline: auto; border-inline: 1px solid var(--cr-line); }
   .mapbar, .mapresults { max-width: 600px; margin-inline: auto; }
-  .rs:not(.map-only) .rs-map { height: 40vh; }
   #runsheet { left: max(0px, calc(50% - 300px)); right: max(0px, calc(50% - 300px)); }
 }

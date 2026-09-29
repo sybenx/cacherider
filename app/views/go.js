@@ -3,7 +3,7 @@
 import { D, stop, stopIndex, distance, tripStops, POOL, inPool } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, relative, metres, fmtDay, dayName, now } from '../time.js';
-import { html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle, heardName } from '../ui.js';
+import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
 import { spotOf, spotKey, atPath } from '../geo.js';

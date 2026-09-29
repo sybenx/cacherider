@@ -3,7 +3,7 @@
 // from the Passio GO feed, polled by the phone while a live screen is open.
 // Minutes are estimated from a bus's position along its loop.
 import { BASE, D, distance } from './data.js';
-import { esc, raw, html, icon } from './ui.js';
+import { esc, raw, icon } from './ui.js';
 import { metres, now, dayFrom, clockShort, clockText, DAY_NAMES } from './time.js';
 
 export let U = null;

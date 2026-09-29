@@ -2,7 +2,7 @@
 import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { pointerMark } from './pointer.js';
-import { clock, clockText, relative, dayName, now, metres } from './time.js';
+import { clock, clockText, relative, now, metres } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
@@ -28,7 +28,6 @@ const I = {
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
   list: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
-  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/>',
   sunmoon: '<circle cx="12" cy="12" r="5"/><path d="M12 7a5 5 0 0 1 0 10Z" fill="currentColor"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M4.9 19.1l1.4-1.4M2 12h2"/>',
   stops: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
   map: '<path d="M14.1 6 9 3 3 6v15l6-3 5.1 3L21 18V3z"/><path d="M9 3v15M14.1 6v15"/>',
@@ -216,7 +215,6 @@ export function side(si) {
   return best ? best[0] : '';
 }
 
-export const dayWord = (t, clockNow) => t.day === 0 ? '' : t.day === 1 ? 'tomorrow' : dayName(t.ymd);
 
 /** The stop across the road, the stop for the other way and the commonest wrong one to stand at: one pill wherever
  *  it's offered, with that side's next bus. `dest` adds where that bus is going ('to Transit Center'), which anyone

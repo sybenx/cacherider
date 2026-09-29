@@ -1,7 +1,7 @@
 // A campus shuttle stop: what's on the road, sorted by estimate. Shares a
 // page with the Connect stop at the same kerb.
 import { D, nextAt, nearest, isSaved, toggleSaved } from '../data.js';
-import { dayName, now, metres } from '../time.js';
+import { dayName, metres } from '../time.js';
 import { html, icon, badges, depRow, stopRow, routeLinkItems } from '../ui.js';
 import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote, hoursWords } from '../usu.js';
 import { afterSave, app, isDesktop } from '../main.js';

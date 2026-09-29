@@ -75,7 +75,7 @@ function runParts(t, si, ymd) {
   return {
     top: close => `<div class="run-top">${badge(t.r, 26).s}<div class="col"><b>The ${esc(clockText(t.min))} from here</b><span class="muted">${esc(headsign(t))}${delay ? ` · running ${delay} min late` : ''}</span></div><button type="button" class="btn btn-ghost btn-icon" ${close} aria-label="Close">${icon('close', 20).s}</button></div>`,
     list: stopsRows.length ? `<div class="run-stops">${html1}</div>` : '<p class="muted">This stop is the end of its run.</p>',
-    foot, has: stopsRows.length > 0,
+    foot,
   };
 }
 
@@ -115,10 +115,9 @@ export function restOfDay(si, next, clockNow, pick) {
 }
 
 // ---- the run: a sheet over the stop page, with its own address (…?run=trip&on=day), so Back closes it
-let mapOnly = false;
-/** The sheet's markup for `trip` on day `on`: the run's title, the day's times in a row to switch runs, the map, and
- *  the run's stops under it; 'Whole map' gives the map the sheet. Null when there's no such run here. */
-export function runSheet(si, next, clockNow, trip, on, bigMap = false) {
+/** The sheet's markup for `trip` on day `on`: the run's title, the day's times in a row to switch runs, and the run's
+ *  stops, over the map, which draws the run. Null when there's no such run here. */
+export function runSheet(si, next, clockNow, trip, on) {
   const d = dayOf(si, next, clockNow);
   const t = (d && d.ymd === on && d.rows.find(x => x.trip === trip)) || next.find(x => x.trip === trip && x.ymd === on);
   if (!t) return null;
@@ -126,30 +125,22 @@ export function runSheet(si, next, clockNow, trip, on, bigMap = false) {
   const row = d && d.ymd === on ? d.rows : next.filter(x => x.ymd === on);
   const strip = row.map(x => depBtn(x, { today: on === clockNow.ymd, ymd: on }, clockNow, x.trip === trip)).join('');
   return `<div class="rs-scrim" data-rs-close></div>
-    <div class="rs${mapOnly ? ' map-only' : ''}" role="dialog" aria-label="The ${esc(clockText(t.min))} from here">
+    <div class="rs" role="dialog" aria-label="The ${esc(clockText(t.min))} from here">
       <div class="rs-grip"></div>${p.top('data-rs-close')}
       <div class="day-strip rs-strip">${strip}</div>
-      ${p.has && !bigMap ? `<div class="rs-map"><div class="run-map" id="runmap"></div><button type="button" class="btn btn-secondary rs-whole" data-rs-whole>${icon(mapOnly ? 'list' : 'map', 16).s}${mapOnly ? 'Stops' : 'Whole map'}</button></div>` : ''}
       <div class="rs-list">${p.list}${p.foot}</div>
     </div>`;
 }
 /** Wire the sheet: its times switch the run in place (Back still closes it in one go), its stops light theirs on the
- *  map and, tapped again, open, 'Whole map' swaps map and list, and × , the shade or a drag down on its top close it. */
-export function wireSheet(sheet, { open, swap, close }) {
+ *  map and, tapped again, open, and × or the shade close it. */
+export function wireSheet(sheet, { swap, close }) {
   if (!sheet) return;
   centreStrip(sheet);
   const map = () => import('./map.js');
   sheet.onclick = e => {
-    const b = e.target.closest('[data-rs-close], [data-rs-whole], .rs-strip [data-trip], .run-stop');
+    const b = e.target.closest('[data-rs-close], .rs-strip [data-trip], .run-stop');
     if (!b) return;
     if (b.matches('[data-rs-close]')) return close();
-    if (b.matches('[data-rs-whole]')) {
-      mapOnly = !mapOnly;
-      sheet.querySelector('.rs').classList.toggle('map-only', mapOnly);
-      b.innerHTML = icon(mapOnly ? 'list' : 'map', 16).s + (mapOnly ? 'Stops' : 'Whole map');
-      map().then(m => m.runResize());
-      return;
-    }
     if (b.dataset.trip) return swap(+b.dataset.trip, b.dataset.on);
     // a stop in the list: lit and centred on the map first; tapped again, its page
     if (!b.classList.contains('hot')) { e.preventDefault(); sheet.querySelectorAll('.run-stop.hot').forEach(a => a.classList.remove('hot')); b.classList.add('hot'); map().then(m => m.runFocus(+b.dataset.si)); }
