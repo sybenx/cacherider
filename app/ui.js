@@ -183,6 +183,20 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   return raw(`<a class="stoprow${opts.here ? ' here' : ''}"${opts.here ? ' id="here"' : ''} href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${go}${dist}${go ? '' : badges(s.routes, 24).s}</div>${end}</a>`);
 }
 
+/** A stop by the name a rider hears: the landmark the bus announces ('Blue Square', 'Across from Eccles Ice Center',
+ *  the feed's stop_desc), with its street address under it; the address alone where it has none, the Transit Center
+ *  by its own name. For where a rider is matching what they hear or see: a route's stops, a bus's next ones, a
+ *  run's, a journey's. Where the address is what's looked up (search, a stop's page, near me, a spot's nearest
+ *  stops), stopTitle and the address stay first. `heardName` gives the two as words; `heard` as markup, the address
+ *  in `.addr` (muted, its own line), `town` (', Hyrum') after the address, or the name when there's no landmark. */
+export function heardName(si) {
+  const s = stop(si);
+  return s.hub ? { name: D.hub.name, addr: '' } : s.by ? { name: s.by, addr: s.name } : { name: s.name, addr: '' };
+}
+export function heard(si, town = '') {
+  const h = heardName(si);
+  return raw(h.addr ? `${esc(h.name)}<span class="addr">${esc(h.addr + town)}</span>` : esc(h.name + town));
+}
 export function stopTitle(si) {
   const s = stop(si);
   return s.town && s.town !== 'Logan' ? s.name + ', ' + s.town : s.name;

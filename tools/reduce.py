@@ -80,6 +80,8 @@ def landmark(desc, name, town=''):
     d = re.sub(r'\s*\((?:Timepoint|Detour)\)\s*', ' ', desc or '', flags=re.I)
     d = re.sub(r'\s*added \d+/\d+/\d+.*$', '', d, flags=re.I).strip(' -–·,')
     if d.count('(') > d.count(')'): d += ')'   # 'Tabernacle (Back)' with its stamp cut off after it
+    while d.count(')') > d.count('(') and ')' in d:   # a stray close, 'Mountain America & Costco)': dropped, the last first
+        i = d.rindex(')'); d = (d[:i] + d[i + 1:]).strip()
     if not d or re.fullmatch(r'(temp stop|timepoint|intermodal transit center)', d, re.I): return ''
     plain = lambda x: re.sub(r'\W', '', x).lower()
     if plain(d) in (plain(name), plain(town)): return ''   # the address or the town again says nothing

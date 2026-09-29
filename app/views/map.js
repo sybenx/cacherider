@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, stop, route, nextAt, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
-import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard, heardName } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -136,7 +136,7 @@ function style(sat = true) {
 
 function stopsGeo() {
   const ymd = now().ymd;
-  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, routes: s.routes, color: '#' + route(s.routes[0]).color, dcolor: lift('#' + route(s.routes[0]).color), closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: '#' + route(s.routes[0]).color, dcolor: lift('#' + route(s.routes[0]).color), closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 
 /** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes:
@@ -460,7 +460,7 @@ async function init(app) {
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; paperKept = null; if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; paperKept = null; labelsHeard = false; if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -574,7 +574,7 @@ function routeRow(si, ri, next0, clockNow, opts = {}) {
   // Whose minute it is, as the stop page says it: a live estimate with the timetable's struck above it and Live (or
   // Estimated, from the bus's place); a timetable time, Scheduled.
   const mark = !t ? '' : t.live ? liveMark(t.live.est ? 'Estimated' : 'Live') : sched(t);
-  return html`<a class="croute${opts.here ? ' here' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}"><span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${s.hub ? D.hub.name : s.name}${town}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
+  return html`<a class="croute${opts.here ? ' here' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}"><span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${heard(si, s.town && s.town !== 'Logan' ? ', ' + s.town : '')}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
 }
 
 // ---- staying on the bus. A bus swaps routes at the Transit Center all day (9 and 1 on a Saturday): its next
@@ -657,7 +657,7 @@ function yourStop(ri, si, seq, buses, clockNow) {
     }
   }
   return html`<a class="twin blueprint yourstop" href="#/stop/${s.id}">${corners()}<span style="color:var(--color-accent-700)">${icon('pin', 22)}</span>
-    <div class="mid"><span class="eyebrow">Your stop</span><span class="name">${s.name}</span><div class="when">${line}</div>${sub ? html`<span class="rel">${sub}</span>` : ''}</div>
+    <div class="mid"><span class="eyebrow">Your stop</span><span class="name">${heard(si)}</span><div class="when">${line}</div>${sub ? html`<span class="rel">${sub}</span>` : ''}</div>
     <span class="muted">${icon('fwd', 20)}</span></a>`;
 }
 
@@ -996,6 +996,7 @@ function placeMe(geo) {
   meMarker.setLngLat([geo.lon, geo.lat]).addTo(map);
 }
 
+let labelsHeard = false;
 function applySelection() {
   if (!map || !ready) return;
   map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
@@ -1007,6 +1008,13 @@ function applySelection() {
   const lit = new Set(focusRoute !== undefined ? [...hiLines, focusRoute] : hiLines);
   map.setFilter('stops-lit', ['in', ['get', 'id'], ['literal', lit.size ? D.stops.filter(s => s.routes.some(r => lit.has(r))).map(s => s.id) : []]]);
   tintStops(map, focusRoute);
+  // A route lit: its stops by the names its bus announces (the landmark, the address under it, smaller and muted),
+  // as the rider on it hears them; the map at large by address, what's looked up on it.
+  const heardOn = hiLines.length > 0 || focusRoute !== undefined;
+  if (heardOn !== labelsHeard) {
+    labelsHeard = heardOn;
+    map.setLayoutProperty('stop-labels', 'text-field', heardOn ? ['case', ['!=', ['get', 'by'], ''], ['format', ['get', 'by'], {}, '\n', {}, ['get', 'name'], { 'font-scale': 0.85, 'text-color': dark() ? '#9a9ca0' : '#6b6c70' }], ['get', 'name']] : ['get', 'name']);
+  }
   quiet();
   drawRuns();
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
@@ -1503,7 +1511,7 @@ function connectCard(b, app) {
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : r.long}</span></div></div>
-    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${D.stops[n.si].name}</span><span class="when">${n.min - clockNow.min <= 0 ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
+    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${n.min - clockNow.min <= 0 ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));

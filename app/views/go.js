@@ -3,7 +3,7 @@
 import { D, stop, stopIndex, distance, tripStops, POOL, inPool } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, relative, metres, fmtDay, dayName } from '../time.js';
-import { routeName, html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle } from '../ui.js';
+import { routeName, html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
 import { spotOf, spotKey, atPath } from '../geo.js';
@@ -147,11 +147,15 @@ function noBus(d, name, apart) {
     ${pool}<p class="nobus-maps"><a href="${maps}" target="_blank" rel="noopener">Too far to walk. Open in your maps app</a></p>`;
 }
 
+/** A Connect stop in a leg by the name the bus announces (its landmark), with its address to go under it; a shuttle
+ *  stop or a Transit Center bay (nameOf) has only the one name. */
+const said = x => isU(x) || stop(x).hub ? null : heardName(x);
+const addrLine = x => { const h = said(x); return h && h.addr ? html`<span class="sub addr">${h.addr}</span>` : ''; };
 /** A stop's name in a leg: a Transit Center bay by its route, since every bay has the one street address. */
 function nameOf(si, ri) {
   if (isU(si)) return where(si).name;
   const s = stop(si);
-  if (!s.hub) return s.name;
+  if (!s.hub) return said(si).name;
   const r = ri !== undefined && D.hub.bays.some(b => b.stop === si && b.routes.includes(ri)) ? ri : (D.hub.bays.find(b => b.stop === si) || {}).routes?.[0];
   return r !== undefined ? `${D.hub.name} · ${routeName(r, false)} bay` : D.hub.name;
 }
@@ -177,18 +181,18 @@ function planLegs(p) {
       // Between two buses: the change, with the walk to the other stop (a bay across the Transit Center) in it.
       if (prev && prev.kind === 'ride' && next && next.kind === 'ride') {
         const at = where(prev.to), wait = next.on - prev.off;
-        legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">Change at ${at.hub ? D.hub.name : at.name}</span><span class="sub">Walk ${metres(l.d)} to ${at.hub && !next.u ? `${rideName(next)}'s bay` : nameOf(next.from)} · ${wait <= l.mins ? 'the next bus leaves as you get there' : `${wait} min until it leaves`}</span></div></div>`);
+        legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">Change at ${at.hub ? D.hub.name : nameOf(prev.to)}</span><span class="sub">Walk ${metres(l.d)} to ${at.hub && !next.u ? `${rideName(next)}'s bay` : nameOf(next.from)} · ${wait <= l.mins ? 'the next bus leaves as you get there' : `${wait} min until it leaves`}</span></div></div>`);
         return;
       }
       const target = l.to !== undefined ? where(l.to) : null;
       const nextRide = next && next.kind === 'ride' ? next.r : undefined;
-      legs.push(html`<div class="leg walk">${icon('walk', 22)}<div class="mid"><span class="name">Walk ${metres(l.d)}${target ? ` to ${nameOf(l.to, nextRide)}` : l.label ? ` to ${l.label}` : ''}</span><span class="sub">About ${l.mins} min</span></div></div>`);
+      legs.push(html`<div class="leg walk">${icon('walk', 22)}<div class="mid"><span class="name">Walk ${metres(l.d)}${target ? ` to ${nameOf(l.to, nextRide)}` : l.label ? ` to ${l.label}` : ''}</span>${target ? addrLine(l.to) : ''}<span class="sub">About ${l.mins} min</span></div></div>`);
       return;
     }
     const prev = p.legs[k - 1];
     if (prev && prev.kind === 'ride') {
       const wait = l.on - prev.off, at = where(l.from);
-      legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">Change at ${at.hub ? D.hub.name : at.name}</span><span class="sub">Same stop · ${wait <= 0 ? 'the next bus is waiting' : `${wait} min until it leaves`}</span></div></div>`);
+      legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">Change at ${at.hub ? D.hub.name : nameOf(l.from)}</span><span class="sub">Same stop · ${wait <= 0 ? 'the next bus is waiting' : `${wait} min until it leaves`}</span></div></div>`);
     }
     const to = where(l.to);
     // The first bus, where it is: the proof the plan is real, in the bus card's own words. Later buses mostly
@@ -196,8 +200,8 @@ function planLegs(p) {
     // are its buses' estimates, no timetable behind them, and say so.
     const on = !l.u && l === rides[0] && l.t.live ? whereabouts(l) : '';
     legs.push(html`<div class="leg ride">${l.u ? chip(l.r, 36) : badge(l.r, 36)}<div class="mid"><span class="name">${l.u ? U.routes[l.r].name : headsign(l.t)}</span>
-      <span class="sub"><a href="${stopHref(l.from)}">${nameOf(l.from, l.r)}</a> · leaves <b>${clockText(l.on)}</b>${l.u ? liveMark('Estimated') : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${on ? html`<span class="sub">${on}</span>` : ''}
-      <span class="sub">${l.n} ${l.n === 1 ? 'stop' : 'stops'} · off at <a href="${stopHref(l.to)}">${to.hub ? D.hub.name : to.name}</a> · <b>${clockText(l.off)}</b></span></div></div>`);
+      <span class="sub"><a href="${stopHref(l.from)}">${nameOf(l.from, l.r)}</a>${said(l.from) && said(l.from).addr ? html` <span class="addr-in">${said(l.from).addr}</span>` : ''} · leaves <b>${clockText(l.on)}</b>${l.u ? liveMark('Estimated') : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${on ? html`<span class="sub">${on}</span>` : ''}
+      <span class="sub">${l.n} ${l.n === 1 ? 'stop' : 'stops'} · off at <a href="${stopHref(l.to)}">${to.hub ? D.hub.name : nameOf(l.to)}</a>${said(l.to) && said(l.to).addr ? html` <span class="addr-in">${said(l.to).addr}</span>` : ''} · <b>${clockText(l.off)}</b></span></div></div>`);
   });
   return legs;
 }
