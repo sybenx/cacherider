@@ -2069,21 +2069,6 @@ async function routeWays(ri) {
   return way;
 }
 let rtShown = null, rtWired = false, rtBase = null, rtAt = '';
-/** A route's first run of a day: its trip and the stop it starts at, found once per route and day. */
-const firstRuns = new Map();
-function firstRun(ri, ymd) {
-  const k = ri + ':' + ymd;
-  if (!firstRuns.has(k)) {
-    let best = null;
-    for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const t of timesOn(si, ymd)) {
-      if (t.r !== ri) continue;
-      const st = tripStops(t.trip);
-      if (st.length && (!best || st[0][0] < best.min)) best = { trip: t.trip, si: st[0][1], min: st[0][0] };
-    }
-    firstRuns.set(k, best);
-  }
-  return firstRuns.get(k);
-}
 const bear = (p, q) => Math.atan2((q.lon - p.lon) * Math.cos(p.lat * Math.PI / 180), q.lat - p.lat) * 180 / Math.PI;
 async function routeTimes(ri, clockNow) {
   if (still()) ri = null;   // a page's picture is a picture: no times on it
@@ -2097,7 +2082,7 @@ async function routeTimes(ri, clockNow) {
     const paint = { 'text-color': ['case', ['get', 'live'], dk ? '#94bce3' : '#416180', ['get', 'later'], dk ? '#9a9ca0' : '#6b6c70', dk ? '#eef0f2' : '#1d1f20'], 'text-halo-color': dk ? '#101214' : '#f2f2f3', 'text-halo-width': 1.6 };
     // A stop facing another of the route's: its time on the bus's side, so the two read apart. Any other: beside its
     // own dot, off the road (either side) where there's room, along it only when neither side has.
-    map.addLayer({ id: 'route-times', type: 'symbol', source: 'rtimes', layout: { ...text, 'text-variable-anchor-offset': ['get', 'v'] }, paint });
+    map.addLayer({ id: 'route-times', type: 'symbol', source: 'rtimes', layout: { ...text, 'text-variable-anchor-offset': ['get', 'v'], 'symbol-sort-key': ['get', 'sk'] }, paint });   // a first run's 'starts here' placed before the rest
   }
   if (!rtWired) { rtWired = true; map.on('moveend', () => { const k = map.getZoom().toFixed(2) + '/' + map.getBearing().toFixed(1); if (k !== rtAt) placeTimes(); }); }
   rtShown = ri;
@@ -2133,7 +2118,8 @@ async function routeTimes(ri, clockNow) {
     if (run && t.live && (late === null || t.min > late.min)) late = { min: t.min, delay: t.live.delay };
     // The day's first run, where it starts partway along the route: said, so the stops before it (their first bus the
     // run after) don't look out of order. Not at the Transit Center, where every run starts.
-    const f = firstRun(ri, t.ymd), starts = f && f.trip === t.trip && f.si === si && !D.stops[si].hub;
+    // Each way's first, as the route's sheet marks it (the day's single earliest missed the other way's).
+    const starts = !D.stops[si].hub && Object.keys(D.routes[ri].stops || {}).some(d => { const f = runsOn(ri, t.ymd, d)[0]; return f && f.trip === t.trip && f.si === si; });
     let label = short(t) + which(t) + (starts ? ' · starts here' : '');
     let lines = [[label, colour(t)]];
     // Where one way calls only on request (16 north at Pepperidge Farms): the next bus each way, a line apiece, the
@@ -2143,14 +2129,14 @@ async function routeTimes(ri, clockNow) {
       lines = ways.map(x => [short(x) + ' ' + (h => /^to /.test(h) ? h : h.replace(/bound$/i, '').toLowerCase())(headsign(x)) + which(x) + (x.req ? ' · on request' : ''), colour(x)]);
       label = lines.map(l => l[0]).join('\n');
     }
-    items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), props: { t: label, live: !!t.live, later: t.day > 0, t1: lines[0][0], c1: lines[0][1], t2: lines[1] ? '\n' + lines[1][0] : '', c2: lines[1] ? lines[1][1] : lines[0][1] } });
+    items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), starts, props: { sk: starts ? 0 : 1, t: label, live: !!t.live, later: t.day > 0, t1: lines[0][0], c1: lines[0][1], t2: lines[1] ? '\n' + lines[1][0] : '', c2: lines[1] ? lines[1][1] : lines[0][1] } });
   }
   // The run's end where the departures don't reach it: the arrival at the Transit Center that closes a numbered
   // route's trip (nobody boards there, so the timetable's departures leave it out), as late as the run is.
   if (run && run.end && !items.some(i => i.si === run.end.si)) {
     const si = run.end.si, t = { min: run.end.min + (late ? late.delay : 0), day: 0, ymd: clockNow.ymd, live: !!late };
     const label = short(t) + ' · arrives', c = colour(t);
-    items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), props: { t: label, live: !!late, later: false, t1: label, c1: c, t2: '', c2: c } });
+    items.push({ si, w: way.has(si) ? way.get(si) : null, lock: way.has(si) && facing(si), props: { sk: 1, t: label, live: !!late, later: false, t1: label, c1: c, t2: '', c2: c } });
   }
   rtBase = { items, lines: fc ? fc.features.filter(f => f.properties.route === ri).map(f => f.geometry.coordinates) : [] };
   placeTimes();
@@ -2389,7 +2375,7 @@ function placeTimes() {
   }
   const off = { left: [0.9, 0], right: [-0.9, 0], top: [0, 0.8], bottom: [0, -0.8], 'top-left': [0.6, 0.5], 'top-right': [-0.6, 0.5], 'bottom-left': [0.6, -0.5], 'bottom-right': [-0.6, -0.5] };
   const opp = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }, corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
-  const features = rtBase.items.map(({ si, w, lock, props }) => {
+  const features = rtBase.items.map(({ si, w, lock, starts, props }) => {
     const s = D.stops[si], p = map.project([s.lon, s.lat]), rows = props.t.split('\n'), lw = Math.max(...rows.map(r => r.length)) * 7 + 4, h = 10 * rows.length;
     const box = { left: [p.x + 10, p.x + 12 + lw, p.y - h, p.y + h], right: [p.x - 12 - lw, p.x - 10, p.y - h, p.y + h],
       top: [p.x - lw / 2, p.x + lw / 2, p.y + 9, p.y + 11 + 2 * h], bottom: [p.x - lw / 2, p.x + lw / 2, p.y - 11 - 2 * h, p.y - 9],
@@ -2417,7 +2403,8 @@ function placeTimes() {
     // of the route, it waits for a closer zoom rather than sit on the road.
     if (!lock) {
       const n = Object.fromEntries([...order, ...corners].map(k => [k, score(k)]));
-      order = [...order, ...corners].filter(k => n[k] < 500).sort((x, y) => n[x] - n[y]).slice(0, 2);
+      // A first run's 'starts here' never waits: its clearest spot, clear or not.
+      order = [...order, ...corners].filter(k => n[k] < 500 || starts).sort((x, y) => n[x] - n[y]).slice(0, 2);
     }
     if (!order.length) return null;
     return { type: 'Feature', properties: { ...props, v: order.flatMap(k => [k, off[k]]) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } };
