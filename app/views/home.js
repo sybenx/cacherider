@@ -10,6 +10,7 @@ import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, liveTag, live, board } from '../usu.js';
 import { results, pickOf, forPick } from './find.js';
 import { byWalk, spotOf, spotKey } from '../geo.js';
+import { isWide } from '../wide.js';
 
 export function render({ q, page, pick, from }, clockNow) {
   const app = window.__app;
@@ -35,7 +36,7 @@ function landing(clockNow, app) {
   const [dow, date, mon] = fmtDay(clockNow.ymd).split(' ');
   const parts = [html`<div class="land-top m-only"><span class="wordmark">Cache Rider</span><span class="land-right"><span class="land-date">${dow} <span class="muted">${mon} ${date}</span></span>
     <button class="btn btn-ghost btn-icon" id="near" type="button" aria-label="${geo ? 'Location on · turn off' : 'Sort stops by distance'}" aria-pressed="${geo ? 'true' : 'false'}" title="${geo ? 'Location on' : 'Near me'}">${icon('near', 22)}</button>
-    <a class="btn btn-ghost btn-icon" href="#/search" aria-label="Search">${icon('search', 22)}</a></span></div>`];
+    ${stopHero || geo ? html`<a class="btn btn-ghost btn-icon" href="#/search" aria-label="Search">${icon('search', 22)}</a>` : ''}</span></div>`];   // the wide box below is the way in when it's there: one search, not two
   for (const a of systemAlerts(clockNow.ymd)) parts.push(html`<div class="callout alert land-alert">${icon('info', 20)}<div><b>${a.title}</b><div class="sub">${a.text}</div></div></div>`);
 
   parts.push(stopHero ? stopHeroBlock(heroSi, heroWhy, clockNow) : pulseHeroBlock(clockNow));
@@ -156,6 +157,7 @@ function searchPage(q, clockNow, app, pick = null) {
   return { html: parts.join(''), mount, title: 'Search' };
 }
 
+let focusNext = false;   // arriving from the home page's box: the search's own box focused
 function mount(el, app) {
   window.__app = app;
   wirePointers(el, app);
@@ -163,12 +165,18 @@ function mount(el, app) {
   // Choosing one end of a journey: the stops listed lead to the journey from (or to) each.
   const pick = form && pickOf(form.dataset.for, form.dataset.from);
   if (pick) forPick(el, pick);
-  if (form) {
+  // The home page's wide box, on a phone or a tablet, is a door, not a field: a tap into it is search, its box at the
+  // top, focused, carrying anything typed, so the keyboard never covers it. The tap's own focus raises the keyboard
+  // and the search's box takes the focus over in the same redraw, so the keyboard stays up. Beside the map (expanded)
+  // it's a field as ever.
+  const door = form && form.closest('.ask') && !isWide() ? form.querySelector('input') : null;
+  if (door) { door.onfocus = () => { focusNext = true; const q = door.value.trim(); location.hash = '#/search' + (q ? '?q=' + encodeURIComponent(q) : ''); }; }
+  else if (form) {
     const input = form.querySelector('input');
     form.onsubmit = e => { e.preventDefault(); go(input.value); };
     let t;
     input.oninput = () => { clearTimeout(t); t = setTimeout(() => go(input.value, true), 250); };
-    if (input.value) input.focus({ preventScroll: true });
+    if (input.value || focusNext) { focusNext = false; input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
   }
   for (const near of el.querySelectorAll('#near, #near-ask')) near.onclick = () => app.geo ? nearOff() : nearMe();
   wireInstall(el);
