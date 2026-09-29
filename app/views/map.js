@@ -1038,6 +1038,10 @@ function applySelection() {
   const lit = new Set(focusRoute !== undefined ? [...hiLines, focusRoute] : hiLines);
   map.setFilter('stops-lit', ['in', ['get', 'id'], ['literal', lit.size ? D.stops.filter(s => s.routes.some(r => lit.has(r))).map(s => s.id) : []]]);
   tintStops(map, focusRoute);
+  // A route or bus lit (or a way drawn): only its own detours' dotted stretches, not every route's at full strength
+  // across the faded map and over the way it's going.
+  const ownClosed = JR ? JR.routes : [...new Set([...lit, ...routesInPlay()])];   // a bus's or a stop's too
+  for (const id of ['route-closed', 'route-closed-halo']) map.setFilter(id, ownClosed.length ? ['in', ['get', 'route'], ['literal', ownClosed]] : null);
   // A route or bus lit: the stops it passes without calling at faded back, so a stop on its line that isn't its (8 up
   // Main past the Green Loop's) doesn't read as one it stops at.
   const fade = lit.size > 0 && !JR, theirs = fade ? ['any', ...[...lit].map(r => ['in', r, ['get', 'routes']])] : true;
