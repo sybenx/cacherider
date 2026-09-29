@@ -6,7 +6,7 @@ import { D, BASE, stop, route, nextAt, search, searchPlaces, streetish, townish,
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, stopTitle, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill } from '../ui.js';
 import { nearMe } from '../main.js';
-import { parseAddress, geocode, townState, nearestTo, whereabouts } from '../geo.js';
+import { parseAddress, geocode, townState, nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen } from '../rt.js';
 
@@ -48,13 +48,17 @@ function lift(hex) {
 }
 const dark = () => matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
 
+const QUIET = /^(roads_tunnels_|roads_bridges_\w+_casing$|roads_runway$|roads_taxiway$|roads_pier$|landuse_(runway|aerodrome|pier|beach|zoo|pedestrian)$|boundaries|places_(country|region)$|water_label_ocean$|earth_label_islands$|address_label$|roads_oneway$|pois$)/;
 function style(sat = true) {
   const flavor = dark() ? 'dark' : 'light';
   flavorName = flavor;
   const col = flavor === 'dark' ? 'dcolor' : 'color';   // Connect's lines and stops: lifted on the dark map
   const f = namedFlavor(flavor);
-  const base = layers('protomaps', f, { lang: 'en' });
-  return {
+  // The basemap, less what draws nothing in the valley (no tunnels, piers, beaches, zoo, airfield worth a layer; no
+  // borders, country or ocean names) and what only clutters it (one-way arrows, house numbers, shops and churches):
+  // the map is the buses', and a street's name is all a rider reads off it. Buildings come in half a zoom later.
+  const base = layers('protomaps', f, { lang: 'en' }).filter(l => !QUIET.test(l.id)).map(l => l.id === 'buildings' ? { ...l, minzoom: 12.5 } : l);
+  const st = {
     version: 8,
     glyphs: BASE + 'vendor/basemaps-assets/fonts/{fontstack}/{range}.pbf',
     sprite: BASE + 'vendor/basemaps-assets/sprites/' + flavor,
@@ -95,7 +99,8 @@ function style(sat = true) {
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
-      { id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
+      // Stops from the streets in (z14); further out only the lit route's, in the layer after, so a stop is there because it was asked for.
+      { id: 'stops', type: 'circle', source: 'stops', minzoom: 14, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
         // a closed stop is a hollow ring in its route's colour
         'circle-color': ['case', ['get', 'closed'], flavor === 'dark' ? '#101214' : '#f2f2f3', ['get', col]],
         'circle-stroke-color': ['case', ['get', 'closed'], ['get', col], flavor === 'dark' ? '#101214' : '#ffffff'],
@@ -105,6 +110,9 @@ function style(sat = true) {
       { id: 'stop-labels', type: 'symbol', source: 'stops', minzoom: 15, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
     ],
   };
+  const all = st.layers.find(l => l.id === 'stops'), { minzoom, ...lit } = all;
+  st.layers.splice(st.layers.indexOf(all) + 1, 0, { ...lit, id: 'stops-lit', maxzoom: 14, filter: ['in', ['get', 'id'], ['literal', []]] });
+  return st;
 }
 
 function stopsGeo() {
@@ -299,6 +307,7 @@ async function init(app) {
   squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimes(focusRoute, now()); });
   map.on('zoom', busScale);
+  map.on('move', quiet);
   for (const ev of ['dragstart', 'wheel', 'touchstart']) map.on(ev, () => { MT.moved = true; });   // a run's map moved by the rider stays where they put it
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
@@ -311,8 +320,23 @@ async function init(app) {
   let tapTimer = 0;
   const cancelTap = () => clearTimeout(tapTimer);
   map.on('touchstart', cancelTap); map.on('movestart', cancelTap); map.on('zoomstart', cancelTap);
+  // A long press (a right click with a mouse) picks the spot under it: its nearest stops, and directions to or from
+  // it. A finger that moves, or a second one, is a pan or a pinch, and picks nothing; the tap it ends in is swallowed.
+  let pressTimer = 0, pressFrom = null, pressedAt = 0;
+  const spotAt = e => {
+    if (still() || Date.now() - pressedAt < 800) return;   // Android sends a long press as a context menu too: once
+    pressedAt = Date.now(); clearTimeout(tapTimer);
+    const { lat, lng } = e.lngLat;
+    showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), pickFor);
+  };
+  const unpress = () => { clearTimeout(pressTimer); pressFrom = null; };
+  map.on('touchstart', e => { unpress(); if (e.originalEvent.touches.length !== 1) return; pressFrom = e.point; pressTimer = setTimeout(() => { pressFrom = null; spotAt(e); }, 550); });
+  map.on('touchmove', e => { if (pressFrom && Math.hypot(e.point.x - pressFrom.x, e.point.y - pressFrom.y) > 10) unpress(); });
+  map.on('touchend', unpress); map.on('touchcancel', unpress);
+  map.on('contextmenu', e => { e.originalEvent.preventDefault(); unpress(); spotAt(e); });
   map.on('click', e => {
     if (still()) return;   // docked as a page's picture, a tap is the slot's: it opens the Map tab
+    if (Date.now() - pressedAt < 800) return;   // the lift of a long press
     // A tap on the map with search results open puts them away, the keyboard too, and picks nothing.
     // The words stay in the box: a tap back into it brings the results back.
     const res = col.querySelector('#mapresults');
@@ -322,11 +346,11 @@ async function init(app) {
   });
   const pick = e => {
     const r = coarse() ? 22 : 8;
-    const hits = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'usu-stops', 'pool-stops'] });
+    const hits = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'usu-stops', 'pool-stops'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
     // Asked where the rider will start from: a stop tapped is the start; anywhere else, that spot, with the stops
     // nearest it, and the directions a tap away.
     if (pickFor) {
-      const st = hits.find(f => f.layer.id === 'stops');
+      const st = hits.find(f => f.layer.id.startsWith('stops'));
       if (st) { location.hash = `#/go/${pickFor}/${st.properties.id}`; return; }
       const { lat, lng } = e.lngLat;
       showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), pickFor);
@@ -337,7 +361,7 @@ async function init(app) {
       const rank = f => f.layer.id === 'pool-stops' ? 1 : 0;
       const best = hits.map(f => { const p = map.project(f.geometry.coordinates); return { f, d: Math.hypot(p.x - e.point.x, p.y - e.point.y) + rank(f) * 6 }; }).sort((a, b) => a.d - b.d)[0].f;
       // The stop already picked, tapped again: closer in.
-      if (best.layer.id === 'stops') select(best.properties.id, app, true, best.properties.id === selected ? 'closer' : false);
+      if (best.layer.id.startsWith('stops')) select(best.properties.id, app, true, best.properties.id === selected ? 'closer' : false);
       else if (best.layer.id === 'pool-stops') { if (best.properties.stop >= 0) select(stop(best.properties.stop).id, app, true); else selectPool(best.properties.id, app); }
       else selectU(best.properties.id, app, best.properties.id === uHilite || U.stopById[best.properties.id] === selectedU);
       return;
@@ -352,8 +376,7 @@ async function init(app) {
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
     else if (app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) location.hash = '#/map';
   };
-  map.on('mouseenter', 'stops', () => map.getCanvas().style.cursor = 'pointer');
-  map.on('mouseleave', 'stops', () => map.getCanvas().style.cursor = '');
+  for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
   window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } }); } });
@@ -598,10 +621,30 @@ function applySelection() {
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
   runRoutes = routesInPlay();
   litLines(map, hiLines, hiLoops, runRoutes.length > 0);
+  // Out past the streets, only a lit route's stops: the rest wait for a closer look.
+  const lit = new Set(focusRoute !== undefined ? [...hiLines, focusRoute] : hiLines);
+  map.setFilter('stops-lit', ['in', ['get', 'id'], ['literal', lit.size ? D.stops.filter(s => s.routes.some(r => lit.has(r))).map(s => s.id) : []]]);
   tintStops(map, focusRoute);
+  quiet();
   drawRuns();
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
   for (const [id, m] of busMarkers) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); m.el.classList.toggle('on', id === selectedBus); }
+}
+
+/** The shuttle and POOL drawn only where they run, or when asked for: near campus (the shuttle's stops) or POOL's zone,
+ *  from the streets in, and a shuttle loop, stop or bus picked. Out over the valley they'd be noise over Connect's. */
+const U_LAYERS = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels'], POOL_LAYERS = ['pool-zone', 'pool-edge', 'pool-stops'];
+let campusBox = null, poolBox = null;
+const boxOf = pts => pts.length ? pts.reduce((b, [lon, lat]) => [Math.min(b[0], lon), Math.min(b[1], lat), Math.max(b[2], lon), Math.max(b[3], lat)], [180, 90, -180, -90]) : null;
+function quiet() {
+  if (!map || !ready || MT.R) return;   // a run dresses the map its own way
+  if (!campusBox && U) campusBox = boxOf(U.stops.filter(s => s.routes.length).map(s => [s.lon, s.lat]));
+  if (!poolBox && POOL) poolBox = boxOf(POOL.zone);
+  const z = map.getZoom(), v = map.getBounds(), m = 0.003;   // a few hundred metres round the box
+  const near = b => !!b && z >= 13.5 && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
+  const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
+  show(U_LAYERS, near(campusBox) || selectedU !== null || !!uHilite || hiLoops.length > 0);
+  show(POOL_LAYERS, near(poolBox));
 }
 
 /** A route in view paints every stop it calls at in its own colour; otherwise a stop wears its first route's. */
@@ -609,8 +652,10 @@ function tintStops(m, ri) {
   const dk = dark(), base = ['get', dk ? 'dcolor' : 'color'];
   const c = ri === undefined ? null : dk ? lift('#' + D.routes[ri].color) : '#' + D.routes[ri].color;
   const fill = c ? ['case', ['in', ri, ['get', 'routes']], c, base] : base;
-  m.setPaintProperty('stops', 'circle-color', ['case', ['get', 'closed'], dk ? '#101214' : '#f2f2f3', fill]);
-  m.setPaintProperty('stops', 'circle-stroke-color', ['case', ['get', 'closed'], fill, dk ? '#101214' : '#ffffff']);
+  for (const id of ['stops', 'stops-lit']) {
+    m.setPaintProperty(id, 'circle-color', ['case', ['get', 'closed'], dk ? '#101214' : '#f2f2f3', fill]);
+    m.setPaintProperty(id, 'circle-stroke-color', ['case', ['get', 'closed'], fill, dk ? '#101214' : '#ffffff']);
+  }
   m.setPaintProperty('stop-selected', 'circle-color', fill);
 }
 
@@ -859,13 +904,15 @@ export function liveUpdate(app) {
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimes(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
 }
+// A cheap tablet (four cores or fewer, or 4 GB or less) spends its frames on the map: its buses jump to each fix.
+const WEAK = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
 // Move a bus marker to its new fix over 600 ms in geographic coordinates, so the
 // glide survives a pan (a CSS transform transition would drag behind the map).
 function glide(m, lon, lat) {
   if (m.anim) cancelAnimationFrame(m.anim);
   const from = m.marker.getLngLat();
   if (from.lng === lon && from.lat === lat) return;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { m.marker.setLngLat([lon, lat]); return; }
+  if (WEAK || matchMedia('(prefers-reduced-motion: reduce)').matches) { m.marker.setLngLat([lon, lat]); return; }
   const t0 = performance.now(), dur = 600;
   const step = now => {
     const k = Math.min(1, (now - t0) / dur);
@@ -998,7 +1045,10 @@ function showAt(at, app, clockNow, forId = null) {
   const near = nearestTo(at.lat, at.lon, 4);
   const card = col.querySelector('#mapcard');
   // A start picked for directions: the way there from this spot is the card's one button, the nearest stops under it.
-  const go = forId ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${forId}/at/${at.lat.toFixed(5)},${at.lon.toFixed(5)}/${encodeURIComponent(at.label || '')}">${corners()}Directions from here</a></div>` : '';
+  // Otherwise (a place found, a long press) the spot either end of a journey: to it from where the rider is, or from it
+  // to a stop, place or address asked for next.
+  const go = forId ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${forId}/${atPath(at)}">${corners()}Directions from here</a></div>`
+    : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/search?from=${encodeURIComponent(spotKey(at.lat, at.lon, at.label))}">From here</a></div>`;
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span></div></div>${go}
     ${near.length ? near.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`;
   card.classList.remove('hidden');
@@ -1009,7 +1059,7 @@ function showAt(at, app, clockNow, forId = null) {
 }
 /** The map asked where the rider will start from, for directions to a stop: the ask on the card, the map left as it is. */
 function askSpot(toId, app) {
-  const si = D.stopById[toId], name = si === undefined ? '' : stop(si).hub ? D.hub.name : stop(si).name;
+  const sp = spotOf(toId), si = D.stopById[toId], name = sp ? sp.label || 'the spot you picked' : si === undefined ? '' : stop(si).hub ? D.hub.name : stop(si).name;
   selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
   const card = col.querySelector('#mapcard');
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">Directions to ${name}</span><div class="name"><span>Tap where you'll start from</span></div>
@@ -1229,7 +1279,7 @@ function runBounds(R) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60, main: true };
-const RUN_HIDE = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'runs', 'pool-zone', 'pool-edge', 'pool-stops'];
+const RUN_HIDE = ['stops-lit', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'runs', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
@@ -1244,6 +1294,7 @@ function dressForRun(m, R) {
   for (const id of RUN_HIDE) if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'none');
   m.setPaintProperty('route-lines', 'line-opacity', 0.18);
   m.setFilter('stops', ['in', ['get', 'id'], ['literal', R.points.map(p => D.stops[p.si].id)]]);
+  m.setLayerZoomRange('stops', 0, 24);   // the run's stops at any zoom: the sheet's map fits the whole run
   m.setFilter('stop-selected', ['==', ['get', 'id'], D.stops[R.points[0].si].id]);
   tintStops(m, R.legs[0].ri);
   m.setFilter('run-hot', ['==', ['get', 'si'], R.hot ?? -1]);
@@ -1311,6 +1362,7 @@ function mainRun(R) {
   for (const id of ['run', 'runt']) if (map.getSource(id)) map.getSource(id).setData({ type: 'FeatureCollection', features: [] });
   for (const id of RUN_HIDE) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
   map.setFilter('stops', null);
+  map.setLayerZoomRange('stops', 14, 24);
   applySelection();
 }
 const liveRun = () => MT;

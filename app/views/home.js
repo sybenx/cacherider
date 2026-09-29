@@ -7,12 +7,12 @@ import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js'
 import { routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
-import { parseAddress, geocode, townState } from '../geo.js';
+import { parseAddress, geocode, townState, spotKey, spotOf, atPath } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, liveTag, live, hasData, board } from '../usu.js';
 
-export function render({ q, page, pick }, clockNow) {
+export function render({ q, page, pick, from }, clockNow) {
   const app = window.__app;
-  if (page === 'search' || q) return searchPage(q, clockNow, app, pick || '');
+  if (page === 'search' || q) return searchPage(q, clockNow, app, pickOf(pick, from));
   return landing(clockNow, app);
 }
 
@@ -144,13 +144,26 @@ function hubLine(clockNow) {
 
 
 // ---- search, on its own page
-function searchPage(q, clockNow, app, pick = '') {
+/** One end of a journey being asked for: `to`, a stop or spot being gone to (a result is the start), or `from`, a spot
+ *  being set off from (a result is where to); each with its name. Null for a plain search. */
+function pickOf(to, from) {
+  const name = k => { const sp = spotOf(k); if (sp) return sp.label || 'the spot you picked'; const si = D.stopById[k]; return si === undefined ? null : stop(si).hub ? D.hub.name : stop(si).name; };
+  if (to && name(to) !== null) return { to, name: name(to) };
+  if (from && spotOf(from)) return { from, name: name(from) };
+  return null;
+}
+/** Where a result leads while an end is being picked: a stop by its id, or a spot { lat, lon, label }. */
+function endHref(pick, id, sp) {
+  if (pick.to) return `#/go/${pick.to}/${sp ? atPath(sp) : id}`;
+  return `#/go/${sp ? spotKey(sp.lat, sp.lon, sp.label) : id}/${atPath(spotOf(pick.from))}`;
+}
+const endWord = pick => pick.to ? 'Start from here' : 'Go here';
+function searchPage(q, clockNow, app, pick = null) {
   const parts = [];
-  // Picking a starting stop for directions: every stop in the results leads to the journey from it, not its page.
-  const dest = pick && D.stopById[pick] !== undefined ? stop(D.stopById[pick]) : null;
+  // Picking one end for directions: every stop in the results leads to the journey from it (or to it), not its page.
   parts.push(html`<div class="titlebar m-only"><span class="wordmark">Cache Rider</span><button class="btn btn-secondary" id="near">${icon('near', 20)}Near me${app && app.geo ? html.raw(' <span class="muted">· on</span>') : ''}</button></div>`);
-  if (dest) parts.push(html`<div class="notice pickfrom">${icon('route', 16)}<span>Where will you start from? A stop, a place or an address. Going to <b>${dest.hub ? D.hub.name : dest.name}</b></span></div>`);
-  parts.push(html`<div class="pad"><form class="search" id="search" role="search" data-for="${dest ? dest.id : ''}"><input class="input" type="search" placeholder="${dest ? 'Stop, place or address' : 'Street or address, e.g. 500 North'}" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
+  if (pick) parts.push(html`<div class="notice pickfrom">${icon('route', 16)}<span>${pick.to ? 'Where will you start from?' : 'Where to?'} A stop, a place or an address. ${pick.to ? 'Going to' : 'Setting off from'} <b>${pick.name}</b></span></div>`);
+  parts.push(html`<div class="pad"><form class="search" id="search" role="search" data-for="${pick && pick.to || ''}" data-from="${pick && pick.from || ''}"><input class="input" type="search" placeholder="${pick ? 'Stop, place or address' : 'Street or address, e.g. 500 North'}" value="${q}" autocomplete="off" aria-label="Search stops"><span class="lead">${icon('search', 22)}</span></form></div>`);
   if (q) { parts.push(results(q, clockNow, pick)); return { html: parts.join(''), mount, title: 'Search' }; }
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
@@ -164,13 +177,13 @@ function mount(el, app) {
   window.__app = app;
   wirePointers(el, app);
   const form = el.querySelector('#search');
-  // Choosing where to start from: the stops listed lead to the journey from each.
-  const pick = form && form.dataset.for;
+  // Choosing one end of a journey: the stops listed lead to the journey from (or to) each.
+  const pick = form && pickOf(form.dataset.for, form.dataset.from);
   if (pick) {
-    el.querySelectorAll('a.stoprow[href^="#/stop/"]').forEach(a => { a.setAttribute('href', `#/go/${pick}/${a.getAttribute('href').slice(7)}`); });
-    el.querySelectorAll('a.stoprow[data-bay]').forEach(a => { if (a.dataset.bay) a.setAttribute('href', `#/go/${pick}/${a.dataset.bay}`); });
-    // A place or an address found: its own spot is the start (the walk from it to the nearest stops is worked out).
-    el.querySelectorAll('a.note[href^="#/map/at/"]').forEach(a => { a.setAttribute('href', `#/go/${pick}/at/${a.getAttribute('href').slice(9)}`); a.textContent = 'Start from here'; });
+    el.querySelectorAll('a.stoprow[href^="#/stop/"]').forEach(a => { a.setAttribute('href', endHref(pick, a.getAttribute('href').slice(7))); });
+    el.querySelectorAll('a.stoprow[data-bay]').forEach(a => { if (a.dataset.bay) a.setAttribute('href', endHref(pick, a.dataset.bay)); });
+    // A place or an address found: its own spot is that end (the walk between it and the nearest stops is worked out).
+    el.querySelectorAll('a.note[href^="#/map/at/"]').forEach(a => { const [ll, label] = a.getAttribute('href').slice(9).split('/'), [lat, lon] = ll.split(',').map(Number); a.setAttribute('href', endHref(pick, null, { lat, lon, label: decodeURIComponent(label || '') })); a.textContent = endWord(pick); });
   }
   if (form) {
     const input = form.querySelector('input');
@@ -198,7 +211,7 @@ function mount(el, app) {
 }
 function go(q, live = false) {
   q = q.trim();
-  const form = document.getElementById('search'), pick = form && form.dataset.for ? '&for=' + form.dataset.for : '';
+  const form = document.getElementById('search'), pick = !form ? '' : form.dataset.for ? '&for=' + encodeURIComponent(form.dataset.for) : form.dataset.from ? '&from=' + encodeURIComponent(form.dataset.from) : '';
   const target = q ? '#/search?q=' + encodeURIComponent(q) + pick : pick ? '#/search?' + pick.slice(1) : '#/';
   if (location.hash === target) return;
   if (live) history.replaceState(null, '', target); else location.hash = target;
@@ -206,14 +219,14 @@ function go(q, live = false) {
   if (live) { const i = document.querySelector('#search input'); if (i) { i.focus({ preventScroll: true }); i.setSelectionRange(i.value.length, i.value.length); } }
 }
 
-function results(q, clockNow, pick = '') {
+function results(q, clockNow, pick = null) {
   const hits = search(q);
   const addr = parseAddress(q);
   const places = addr ? geocode(addr, 4) : [];
   // Choosing where to start from, the whole heading of a place or an address is the start: a small link beside
   // it was missed on a phone, the tap landing on the words.
   const addrHtml = places.map(pl => html`
-    ${pick ? html`<a class="section between pick" href="#/go/${pick}/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}"><span>${pl.label} · ${pl.town}${townState(pl.town)}</span><span class="note">Start from here ${icon('fwd', 16)}</span></a>`
+    ${pick ? html`<a class="section between pick" href="${endHref(pick, null, { lat: pl.lat, lon: pl.lon, label: pl.label + ', ' + pl.town })}"><span>${pl.label} · ${pl.town}${townState(pl.town)}</span><span class="note">${endWord(pick)} ${icon('fwd', 16)}</span></a>`
     : html`<div class="section between"><span>${pl.label} · ${pl.town}${townState(pl.town)}${pl.near ? html.raw(`<span class="note"> · near ${esc(pl.near)}</span>`) : ''}</span><a class="note" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}">Show on map</a></div>`}
     <div class="list">${pl.stops.length ? pl.stops.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops near there.</p></div>`}</div>`).join('');
   const found = searchPlaces(q), spots = found.list;
@@ -251,7 +264,7 @@ const CATS = { schools: 'School', medical: 'Medical', grocery: 'Grocery', entert
 const POOL = 'https://rideconnectutah.gov/pool/';
 /** A place from the pamphlet: its nearest stops with their next buses; the Transit Center when it's a short walk from it;
  *  and Pool, where Connect's on-demand ride serves it. */
-function placeBlock(p, clockNow, pick = '') {
+function placeBlock(p, clockNow, pick = null) {
   const near = nearest(p.lat, p.lon, 8).filter(x => !stop(x.i).hub);
   const close = near.filter(x => x.d <= 600).slice(0, 3);
   const shown = close.length ? close : near.slice(0, 2);   // nothing close: the nearest two anyway, their distance says it
@@ -259,7 +272,7 @@ function placeBlock(p, clockNow, pick = '') {
   const pool = p.pickup ? html`<div class="notice">${icon('info', 16)}<span>A <b>POOL</b> pickup point: Connect's on-demand ride, zero fare, booked in their app or by phone. <a href="${POOL}" target="_blank" rel="noopener">How POOL works</a></span></div>`
     : p.pool ? html`<div class="notice">${icon('info', 16)}<span>${close.length ? 'Also served by' : 'Served by'} POOL, Connect's on-demand ride: zero fare, booked in their app. <a href="${POOL}" target="_blank" rel="noopener">How POOL works</a></span></div>` : '';
   const what = [p.osm ? p.word : CATS[p.cat], p.osm ? p.area : ''].filter(Boolean).join(' · ');
-  const head = pick ? html`<a class="section between pick" href="#/go/${pick}/at/${p.lat.toFixed(5)},${p.lon.toFixed(5)}/${encodeURIComponent(p.name)}"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><span class="note">Start from here ${icon('fwd', 16)}</span></a>`
+  const head = pick ? html`<a class="section between pick" href="${endHref(pick, null, { lat: p.lat, lon: p.lon, label: p.name })}"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><span class="note">${endWord(pick)} ${icon('fwd', 16)}</span></a>`
     : html`<div class="section between"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><a class="note" href="#/map/at/${p.lat.toFixed(5)},${p.lon.toFixed(5)}/${encodeURIComponent(p.name)}">Show on map</a></div>`;
   return html`${head}
     ${pool}<div class="list">${hub}${shown.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' }))}</div>`.s;

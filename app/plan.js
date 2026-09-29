@@ -85,47 +85,57 @@ function boardAt(t, seq) {
 }
 
 /** The ride from a departure to the first of the stops wanted that its trip reaches, or null. Minutes carry the
- *  feed's delay for the whole ride: a bus late leaving is late all the way. */
-function rideTo(t, seq, i, wanted) {
+ *  feed's delay for the whole ride: a bus late leaving is late all the way. To a spot (`best`), whose stops spread a
+ *  walk wide, the stop it gets there soonest from, walk and all, however many stops on. */
+function rideTo(t, seq, i, wanted, best = false) {
   const delay = t.live && !isLoop(t.r) ? t.live.delay : 0;
+  let got = null;
   for (let k = i + 1; k < seq.length; k++) {
     const [m, s] = seq[k];
-    if (wanted.has(s)) return { kind: 'ride', t, from: t.si, to: s, on: t.min, off: m + delay, n: k - i, ti: t.trip, r: t.r };
+    if (!wanted.has(s)) continue;
+    const ride = { kind: 'ride', t, from: t.si, to: s, on: t.min, off: m + delay, n: k - i, ti: t.trip, r: t.r };
+    if (!best) return ride;
+    if (!got || ride.off + wanted.get(s) < got.off + wanted.get(got.to)) got = ride;
   }
-  return null;
+  return got;
 }
 
 /**
- * Journeys to a stop: `origin` is { si } for a stop or { lat, lon } for where the rider is; `dest` a stop index.
+ * Journeys to a stop or a spot: `origin` is { si } for a stop or { lat, lon } for where the rider is; `dest` a stop
+ * index, or { lat, lon, label } for a spot (its stops the ones within a walk of it, as a start's are).
  * Each journey is { day, ymd, leave, arrive, legs }, legs of kind walk / ride, in order; `leave` is when to set
  * off (before any first walk), `arrive` when the rider is at the stop asked for. The best few, sorted by arrival:
  * none is kept that leaves earlier and arrives later than another. Nothing today: the first day with a way.
  */
 export function journeys(origin, dest, clockNow, days = 8) {
-  const d = stop(dest);
+  const spot = typeof dest === 'object', d = spot ? dest : stop(dest);
   // The stops that count as arriving: the one asked for, and any a short walk from it (across the road, the
-  // Transit Center's other bays), with the walk they cost.
-  const wanted = new Map([[dest, 0]]);
-  for (const { i, d: dd } of nearest(d.lat, d.lon, 12)) if (i !== dest && dd <= WALK_FROM) wanted.set(i, walkMins(dd));
+  // Transit Center's other bays), with the walk they cost. To a spot: the stops within a walk of it.
+  const wanted = new Map(spot ? [] : [[dest, 0]]);
+  if (spot) for (const { i, d: dd } of nearest(d.lat, d.lon, 24).filter(x => x.d <= WALK_TO).slice(0, 8)) wanted.set(i, walkMins(dd));
+  else for (const { i, d: dd } of nearest(d.lat, d.lon, 12)) if (i !== dest && dd <= WALK_FROM) wanted.set(i, walkMins(dd));
   // Where to start: the stop named, or the stops within a walk of the rider, nearest first, each with its walk.
   // From a stop, the stop across the road and the other bays count too, with the walk: the way there may start
   // from the other side.
   const starts = origin.si !== undefined ? nearOf(origin.si).map(x => ({ si: x.si, walk: x.walk, d: x.walk ? Math.round(distance(stop(origin.si).lat, stop(origin.si).lon, stop(x.si).lat, stop(x.si).lon)) : 0 }))
     : nearest(origin.lat, origin.lon, 24).filter(x => x.d <= WALK_TO).slice(0, 8).map(x => ({ si: x.i, walk: walkMins(x.d), d: x.d }));
   // Standing at the stop wanted, or within its walk: no bus to catch.
-  const there = origin.si !== undefined ? wanted.has(origin.si) : distance(origin.lat, origin.lon, d.lat, d.lon) <= WALK_FROM;
-  if (there) return { walk: Math.round(distance(origin.si !== undefined ? stop(origin.si).lat : origin.lat, origin.si !== undefined ? stop(origin.si).lon : origin.lon, d.lat, d.lon)), plans: [] };
+  const o = origin.si !== undefined ? stop(origin.si) : origin, apart = Math.round(distance(o.lat, o.lon, d.lat, d.lon));
+  const there = origin.si !== undefined && !spot ? wanted.has(origin.si) : apart <= WALK_FROM;
+  if (there) return { walk: apart, plans: [] };
   for (let day = 0; day < days; day++) {
     const ymd = dayFrom(clockNow.ymd, day).ymd;
     if (!servicesOn(ymd).size) continue;
-    const plans = search(starts, wanted, dest, ymd, day === 0 ? clockNow.min : 0, day === 0, day);
+    const plans = search(starts, wanted, spot ? d : dest, ymd, day === 0 ? clockNow.min : 0, day === 0, day);
     if (plans.length) return { plans };
   }
+  // A spot within a walk with no bus to it worth taking: the walk.
+  if (spot && apart <= WALK_TO) return { walk: apart, plans: [] };
   return { plans: [] };
 }
 
 function search(starts, wanted, dest, ymd, min0, live, day) {
-  const cache = new Map();
+  const cache = new Map(), spot = typeof dest === 'object', end = spot ? dest : stop(dest);
   const found = [];
   const done = (legs, walk0, walkEnd) => {
     const first = legs[0], last = legs[legs.length - 1], rides = legs.filter(l => l.kind === 'ride').length;
@@ -133,7 +143,7 @@ function search(starts, wanted, dest, ymd, min0, live, day) {
     const all = [];
     if (walk0.d) all.push({ kind: 'walk', d: walk0.d, mins: walk0.walk, to: first.from });
     all.push(...legs);
-    if (last.to !== dest) all.push({ kind: 'walk', d: Math.round(distance(stop(last.to).lat, stop(last.to).lon, stop(dest).lat, stop(dest).lon)), mins: wanted.get(last.to), from: last.to, to: dest });
+    if (spot || last.to !== dest) all.push({ kind: 'walk', d: Math.round(distance(stop(last.to).lat, stop(last.to).lon, end.lat, end.lon)), mins: wanted.get(last.to), from: last.to, to: spot ? undefined : dest, label: spot ? end.label : undefined });
     found.push({ day, ymd, leave, arrive, legs: all, changes: rides - 1 });
   };
   for (const st of starts) {
@@ -142,7 +152,7 @@ function search(starts, wanted, dest, ymd, min0, live, day) {
       if (t.trip === undefined) continue;
       const seq = runOf(t.trip, ymd), i = boardAt(t, seq);
       if (i < 0) continue;
-      const direct = rideTo(t, seq, i, wanted);
+      const direct = rideTo(t, seq, i, wanted, spot);
       if (direct) { done([direct], st); continue; }   // a bus straight there: no change from it is worth a look
       // One change: off at any later stop, on to another route's next buses from there.
       const delay = t.live && !isLoop(t.r) ? t.live.delay : 0;
@@ -159,7 +169,7 @@ function search(starts, wanted, dest, ymd, min0, live, day) {
             if (t2.trip === undefined || t2.r === t.r) continue;   // the same route again is the same ride
             const seq2 = runOf(t2.trip, ymd), j = boardAt(t2, seq2);
             if (j < 0) continue;
-            const ride2 = rideTo(t2, seq2, j, wanted);
+            const ride2 = rideTo(t2, seq2, j, wanted, spot);
             if (!ride2) continue;
             const legs = [{ kind: 'ride', t, from: t.si, to: x, on: t.min, off, n: k - i, ti: t.trip, r: t.r }];
             if (y.walk) legs.push({ kind: 'walk', d: Math.round(distance(stop(x).lat, stop(x).lon, stop(y.si).lat, stop(y.si).lon)), mins: y.walk, from: x, to: y.si });

@@ -181,7 +181,7 @@ async function render(tick = false) {
   let view;
   try {
     if (name === 'home') view = home.render({ q: q.q || '', page: 'home' }, clockNow);
-    else if (name === 'search') view = home.render({ q: q.q || '', page: 'search', pick: q.for || '' }, clockNow);
+    else if (name === 'search') view = home.render({ q: q.q || '', page: 'search', pick: q.for || '', from: q.from || '' }, clockNow);
     else if (name === 'go') view = go.render({ to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: decodeURIComponent(seg[4] || '') } : null }, clockNow);
     else if (name === 'stop') view = stopView.render({ id: seg[1], full: seg[2] === 'all', run: q.run, on: q.on }, clockNow);
     else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);

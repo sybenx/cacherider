@@ -88,3 +88,15 @@ export function nearestTo(lat, lon, n = 4) {
 }
 
 export const townState = t => /preston|franklin|whitney|dayton|weston|clifton/i.test(t) ? ', Idaho' : '';
+
+/** A spot as the far end of a journey, in an address: '@41.73500,-111.83400:Old%20Main'. A stop is its id. */
+export const spotKey = (lat, lon, label = '') => '@' + (+lat).toFixed(5) + ',' + (+lon).toFixed(5) + (label ? ':' + encodeURIComponent(label) : '');
+export function spotOf(key) {
+  const m = /^@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?::(.*))?$/.exec(key || '');
+  if (!m) return null;
+  let label = m[3] || '';
+  try { label = decodeURIComponent(label); } catch { /* as it came */ }
+  return { lat: +m[1], lon: +m[2], label };
+}
+/** The `at/lat,lon/label` tail of a journey's address that starts from a spot. */
+export const atPath = s => `at/${(+s.lat).toFixed(5)},${(+s.lon).toFixed(5)}/${encodeURIComponent(s.label || '')}`;
