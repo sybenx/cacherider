@@ -7,7 +7,7 @@ import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../tim
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard, heardName } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
-import { U, live, busNext, board, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
+import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap } from './find.js';
@@ -824,7 +824,9 @@ function wireGrip(app) {
       return; }
     if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
     if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); backToWays(); return; } selectedBus = null; selectedU = null; select(null, app); };
-  const pageHref = () => { const a = card.querySelector(':scope > .open a'); return a ? a.getAttribute('href') : null; };   // the card's own Open button: the card itself is .open too
+  // The card's own Open button (the card itself is .open too): a place's page. A spot's card has none: its first
+  // button is directions, and a swipe up is no ask for those.
+  const pageHref = () => { const a = card.querySelector(':scope > .open a'), h = a && a.getAttribute('href'); return h && !/^#\/go\//.test(h) ? h : null; };
   // Swiped down, the card shrinks to its head (the stop's name and routes) and the map shows through; swiped down
   // again it goes. Up, or a tap on the head, opens it out. The size chosen stays for the next stop tapped.
   const peeked = () => card.classList.contains('peek');
@@ -1027,6 +1029,12 @@ function applySelection() {
   const lit = new Set(focusRoute !== undefined ? [...hiLines, focusRoute] : hiLines);
   map.setFilter('stops-lit', ['in', ['get', 'id'], ['literal', lit.size ? D.stops.filter(s => s.routes.some(r => lit.has(r))).map(s => s.id) : []]]);
   tintStops(map, focusRoute);
+  // A route or bus lit: the stops it passes without calling at faded back, so a stop on its line that isn't its (8 up
+  // Main past the Green Loop's) doesn't read as one it stops at.
+  const fade = lit.size > 0 && !JR, theirs = fade ? ['any', ...[...lit].map(r => ['in', r, ['get', 'routes']])] : true;
+  map.setPaintProperty('stops', 'circle-opacity', fade ? ['case', theirs, 1, 0.28] : ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1]);
+  map.setPaintProperty('stops', 'circle-stroke-opacity', fade ? ['case', theirs, 1, 0.28] : 1);
+  map.setPaintProperty('stop-labels', 'text-opacity', fade ? ['case', theirs, 1, 0.4] : 1);
   // A route lit: its stops by the names its bus announces (the landmark, the address under it, smaller and muted),
   // as the rider on it hears them; the map at large by address, what's looked up on it.
   const heardOn = hiLines.length > 0 || focusRoute !== undefined;
@@ -1635,6 +1643,11 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   if (!pinMarker) { const el = document.createElement('div'); el.className = 'spot-marker'; pinMarker = new maplibregl.Marker({ element: el }); }
   pinMarker.setLngLat([at.lon, at.lat]).addTo(map);
   const near = road ? roadStops(at, road) : nearestTo(at.lat, at.lon, 4);
+  // The Aggie Shuttle's stops a short walk off too, in among Connect's by distance: on campus they're the nearer
+  // buses. One at the same pole as a Connect stop listed is that stop, already there.
+  const listed = new Set(near.map(x => x.i));
+  const ushare = road ? [] : nearestUSU(at.lat, at.lon, 6).filter(x => x.d <= 400 && U.stops[x.i].routes.length && !(U.shared[x.i] && listed.has(U.shared[x.i].j))).slice(0, 3).map(x => ({ ...x, u: true }));
+  const rows = [...near, ...ushare].sort((a, b) => a.d - b.d);
   const card = col.querySelector('#mapcard');
   // A start picked for directions: the way there from this spot is the card's one button, the nearest stops under it.
   // Otherwise (a place found, a long press) the spot either end of a journey: to it from where the rider is, or from it
@@ -1646,7 +1659,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   const next = i => nextAt(i, 1, clockNow, 8, road ? t => road.includes(t.r) : undefined)[0];
   const lines = road ? html`<div class="roadroutes">${road.map(ri => html`<button type="button" class="roadroute" data-ri="${ri}" aria-label="${routeName(ri, false)} on the map">${badge(ri, 30)}</button>`)}</div>` : '';
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span></div>${lines}</div>${go}
-    ${near.length ? near.map(({ i, d }) => stopRow(i, next(i), clockNow, { dist: metres(d) + ' away', dest: !!road })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`;
+    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away' }) : stopRow(x.i, next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`;
   card.querySelectorAll('[data-ri]').forEach(b => { b.onclick = () => pickRoute(+b.dataset.ri, app); });
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
@@ -2327,6 +2340,10 @@ function busPath(b, clockNow) {
   if (ti0 < 0) return [];
   const seq0 = tripStops(ti0), nextSi = nextStopOf(b);
   let k = nextSi !== undefined ? seq0.findIndex(x => x[1] === nextSi) : -1;
+  // Its next stop the trip's end (the Transit Center, kept apart from the trip's stops): past them all. Unfound, the
+  // way was worked out by the clock instead, from a stop behind the bus, and cut at none of it.
+  const te = tripEnd(ti0);
+  if (k < 0 && te && nextSi === te.si) k = seq0.length;
   if (k < 0) k = seq0.findIndex(x => x[0] >= clockNow.min - 15);
   if (k < 0) k = seq0.length;
   return pathFrom(ti0, k, b.ri, clockNow);
