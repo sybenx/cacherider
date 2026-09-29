@@ -147,7 +147,7 @@ function rideTo(t, seq, i, wanted, best = false) {
   for (let k = i + 1; k < seq.length; k++) {
     const [m, s] = seq[k];
     if (!wanted.has(s)) continue;
-    const ride = { kind: 'ride', t, from: t.si, to: s, on: t.min, off: Math.max(t.min, m + delay), n: k - i, ti: t.trip, r: t.r, u: !!t.u };
+    const ride = { kind: 'ride', t, from: t.si, to: s, on: t.min, off: Math.max(t.min, m + delay), n: k - i, ti: t.trip, r: t.r, u: !!t.u, stops: seq.slice(i, k + 1).map(x => x[1]) };
     if (!best) return ride;
     if (!got || ride.off + wanted.get(s) < got.off + wanted.get(got.to)) got = ride;
   }
@@ -159,7 +159,8 @@ function rideTo(t, seq, i, wanted, best = false) {
  * index, or { lat, lon, label } for a spot. Either end is a place: the stops within a walk of it count, a stop's own
  * at no walk. `sh`: the
  * shuttle while it runs (usu.js's planNet()), its stops then starts, changes and ends like Connect's, today only.
- * Each journey is { day, ymd, leave, arrive, legs }, legs of kind walk / ride, in order; `leave` is when to set
+ * Each journey is { day, ymd, leave, arrive, legs }, legs of kind walk / ride, in order (a ride's `stops`, every one it
+ * calls at from boarding to getting off, for the map); `leave` is when to set
  * off (before any first walk), `arrive` when the rider is at the stop asked for. The best few, sorted by arrival:
  * none is kept that leaves earlier and arrives later than another. Nothing today: the first day with a way.
  */
@@ -245,7 +246,7 @@ function search(starts, wanted, at, dest, ymd, min0, live, day) {
           }
         }
         if (best) {
-          const legs = [{ kind: 'ride', t, from: t.si, to: x, on: t.min, off, n: k - i, ti: t.trip, r: t.r, u: !!t.u }];
+          const legs = [{ kind: 'ride', t, from: t.si, to: x, on: t.min, off, n: k - i, ti: t.trip, r: t.r, u: !!t.u, stops: seq.slice(i, k + 1).map(y => y[1]) }];
           if (best.y.walk) legs.push({ kind: 'walk', d: apartOf(x, best.y.si), mins: best.y.walk, from: x, to: best.y.si });
           legs.push(best.ride2);
           done(legs, st);

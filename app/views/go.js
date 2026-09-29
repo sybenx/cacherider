@@ -10,22 +10,29 @@ import { spotOf } from '../geo.js';
 import { U, planNet, chip } from '../usu.js';
 import { nearMe, app } from '../main.js';
 
-export function render({ to, from, at }, clockNow) {
+/** Where to and where from, from the address: the stop or spot, its name, and the origin (null till one's chosen). */
+function ends({ to, from, at }) {
   // Where to: a stop by its id, or a spot (picked on the map, or a place found) by its key.
   const spot = spotOf(to), dest = spot || stopIndex(to);
-  if (dest === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such stop</h2></div>`, title: 'Directions' };
+  if (dest === undefined) return { dest };
   const d = spot || stop(dest), name = spot ? spot.label || 'the spot you picked' : d.hub ? D.hub.name : d.name;
+  const fromSi = from ? stopIndex(from) : undefined, geo = app.geo;
+  // Where from: a spot picked on the map or found as a place or address, the stop named, else where the phone is.
+  const origin = at ? { lat: at.lat, lon: at.lon } : fromSi !== undefined ? { si: fromSi } : geo ? { lat: geo.lat, lon: geo.lon } : null;
+  return { spot, dest, d, name, fromSi, origin };
+}
+
+export function render({ to, from, at, plan }, clockNow) {
+  const e = ends({ to, from, at }), { spot, dest, d, name, fromSi, origin } = e;
+  if (dest === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such stop</h2></div>`, title: 'Directions' };
   const key = encodeURIComponent(to);   // the destination in the search's address
-  const fromSi = from ? stopIndex(from) : undefined;
   const geo = app.geo;
   const back = spot ? `#/map/at/${d.lat.toFixed(5)},${d.lon.toFixed(5)}/${encodeURIComponent(d.label)}` : `#/stop/${d.id}`;
   const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a></div>`];
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
 
-  // Where from: a spot picked on the map or found as a place or address, the stop named, else where the phone
-  // is. None yet: the choice.
+  // None chosen yet, and no location: the choice.
   const chosen = !!at || fromSi !== undefined;
-  const origin = at ? { lat: at.lat, lon: at.lon } : fromSi !== undefined ? { si: fromSi } : geo ? { lat: geo.lat, lon: geo.lon } : null;
   const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'where you are';
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
   parts.push(html`<div class="fromline">${icon(at ? 'pin' : 'near', 16)}<span>From <b>${fromName}</b></span>
@@ -53,9 +60,54 @@ export function render({ to, from, at }, clockNow) {
   }
   const p0 = found.plans[0];
   if (p0.day > 0) parts.push(html`<div class="dayhead">${p0.day === 1 ? 'Tomorrow, ' + fmtDay(p0.ymd) : fmtDay(p0.ymd, true)} · nothing more today</div>`);
-  parts.push(html`<div class="plans">${found.plans.map(p => planCard(p, dest, clockNow))}</div>`);
-  parts.push(html`<div class="fine">Worked out on this phone from the timetable and the live feed: leave when it says, and the next bus is the answer if one is missed. Walks are as the crow flies.</div>`);
-  return { html: parts.join(''), mount, title: 'Directions' };
+  // Each way is a link to itself on the map. On a wide screen the page stays and the way picked is drawn beside it.
+  const J = plan !== undefined ? pickPlan(found.plans, plan, e, clockNow) : null, base = location.hash.split('?')[0];
+  parts.push(html`<div class="plans">${found.plans.map(p => planCard(p, dest, clockNow, { href: base + '?plan=' + encodeURIComponent(planKey(p)), picked: !!J && J.plans[J.i] === p }))}</div>`);
+  parts.push(html`<div class="fine">Worked out on this phone from the timetable and the live feed: leave when it says, and the next bus is the answer if one is missed. Walks are as the crow flies. Tap a way to see it on the map.</div>`);
+  return { html: parts.join(''), mount, title: 'Directions', keepScroll: true, journey: J };
+}
+
+/** A way's name in the address: its rides, a Connect bus by its trip and where it's boarded, a shuttle's (no trips)
+ *  by its loop, stop and minute. Stable while the feed moves the minutes. */
+export const planKey = p => p.legs.filter(l => l.kind === 'ride').map(l => l.u ? `${l.from}-${l.r}-${l.on}` : `${l.ti}-${l.from}`).join('_');
+/** The way an address names among those worked out now: the same rides, a shuttle's bus within a few minutes of its
+ *  own. -1 when it's gone. */
+function findPlan(plans, key) {
+  const want = String(key).split('_');
+  let best = -1, off = Infinity;
+  plans.forEach((p, i) => {
+    const got = planKey(p).split('_');
+    if (got.length !== want.length) return;
+    let o = 0;
+    for (let k = 0; k < got.length && o < Infinity; k++) {
+      if (got[k] === want[k]) continue;
+      const [a, b] = [got[k].split('-'), want[k].split('-')];
+      o += a[0] === b[0] && a[1] === b[1] && a.length === 3 && b.length === 3 && Math.abs(a[2] - b[2]) <= 5 ? Math.abs(a[2] - b[2]) : Infinity;
+    }
+    if (o < off) { off = o; best = i; }
+  });
+  return best;
+}
+/** The way picked, with the others beside it for the map's card: { plans, i, from, to, dest, hrefs, top(k), legs(k),
+ *  back }. A way whose first bus has since gone (the rider is on it) is kept as it was, first. */
+let kept = null;
+function pickPlan(plans, key, e, clockNow) {
+  const base = location.hash.split('?')[0];
+  let list = plans, i = findPlan(plans, key);
+  if (i < 0 && kept && kept.base === base && kept.key === key) { list = [kept.plan, ...plans]; i = 0; }
+  if (i < 0) { if (!plans.length) return null; i = 0; }
+  kept = { base, key, plan: list[i] };
+  const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
+  return { plans: list, i, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon }, name: e.name, base,
+    hrefs: list.map(p => base + '?plan=' + encodeURIComponent(planKey(p))),
+    top: k => planTop(list[k], clockNow), legs: k => planLegs(list[k]) };
+}
+/** For the Map tab on a phone: the way the address names, worked out afresh, or null when there's none to draw. */
+export function journey({ to, from, at }, key, clockNow) {
+  const e = ends({ to, from, at });
+  if (e.dest === undefined || !e.origin) return null;
+  const found = journeys(e.origin, e.dest, clockNow, 8, planNet(clockNow));
+  return pickPlan(found.plans || [], key, e, clockNow);
 }
 
 // A shuttle stop in a plan is 'u<index>' beside Connect's stop indices.
@@ -86,13 +138,21 @@ function nameOf(si, ri) {
   const r = ri !== undefined && D.hub.bays.some(b => b.stop === si && b.routes.includes(ri)) ? ri : (D.hub.bays.find(b => b.stop === si) || {}).routes?.[0];
   return r !== undefined ? `${D.hub.name} · ${routeName(r, false)} bay` : D.hub.name;
 }
-/** One way there: when you'll arrive, when to set off, then each leg in order. */
-function planCard(p, dest, clockNow) {
-  const rides = p.legs.filter(l => l.kind === 'ride');
-  const live = rides.some(l => l.t.live || l.u);
+/** One way there: when you'll arrive, when to set off, then each leg in order. A link to itself on the map. */
+function planCard(p, dest, clockNow, { href, picked } = {}) {
+  return html`<div class="plan${picked ? ' picked' : ''}" role="link" tabindex="0" data-href="${href}"${picked ? ' aria-current="true"' : ''}>${planTop(p, clockNow)}<div class="legs">${planLegs(p)}</div></div>`;
+}
+/** Two times, one weight: when to set off and when you're there. One big arrival read as the first bus's time. */
+function planTop(p, clockNow) {
+  const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || l.u));
   const total = p.arrive - p.leave;
   const rel = p.day === 0 ? relative({ min: p.leave, day: 0 }, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
   const words = [`${total} min`, p.changes ? (p.changes === 1 ? '1 change' : p.changes + ' changes') : 'no change'].join(' · ');
+  return html`<div class="plan-top"><div class="col"><span class="eyebrow">Leave</span>${time(p.leave, 34, live)}<span class="rel">${rel}</span></div><div class="col mid"><span class="sub">${words}</span></div><div class="col end"><span class="eyebrow">Arrive</span>${time(p.arrive, 34, live)}<span class="sub">${p.legs[p.legs.length - 1].kind === 'walk' ? 'after the walk' : 'off the bus'}</span></div></div>`;
+}
+/** Each leg in order: the walks, the buses, where to change. */
+function planLegs(p) {
+  const rides = p.legs.filter(l => l.kind === 'ride');
   const legs = [];
   p.legs.forEach((l, k) => {
     if (l.kind === 'walk') {
@@ -122,8 +182,7 @@ function planCard(p, dest, clockNow) {
       <span class="sub"><a href="${stopHref(l.from)}">${nameOf(l.from, l.r)}</a> · leaves <b>${clockText(l.on)}</b>${l.u ? liveMark('Estimated') : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${on ? html`<span class="sub">${on}</span>` : ''}
       <span class="sub">${l.n} ${l.n === 1 ? 'stop' : 'stops'} · off at <a href="${stopHref(l.to)}">${to.hub ? D.hub.name : to.name}</a> · <b>${clockText(l.off)}</b></span></div></div>`);
   });
-  // Two times, one weight: when to set off and when you're there. One big arrival read as the first bus's time.
-  return html`<div class="plan"><div class="plan-top"><div class="col"><span class="eyebrow">Leave</span>${time(p.leave, 34, live)}<span class="rel">${rel}</span></div><div class="col mid"><span class="sub">${words}</span></div><div class="col end"><span class="eyebrow">Arrive</span>${time(p.arrive, 34, live)}<span class="sub">${p.legs[p.legs.length - 1].kind === 'walk' ? 'after the walk' : 'off the bus'}</span></div></div><div class="legs">${legs}</div></div>`;
+  return legs;
 }
 
 /** 'Bus 4005 · 4 stops away, next 704 North 200 East' for a ride's bus, from the feed; '' when it has no bus. A bus
@@ -155,4 +214,10 @@ function whereabouts(l) {
 function mount(el) {
   const b = el.querySelector('#go-near');
   if (b) b.onclick = () => nearMe(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
+  // A way tapped (not one of its stops' links): that way on the map.
+  const open = c => { if (c && location.hash !== c.dataset.href) location.hash = c.dataset.href; };
+  for (const c of el.querySelectorAll('.plan[data-href]')) {
+    c.onclick = e => { if (!e.target.closest('a, button')) open(c); };
+    c.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === c) { e.preventDefault(); open(c); } };
+  }
 }

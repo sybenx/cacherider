@@ -347,6 +347,7 @@ async function init(app) {
     if (still() || Date.now() - pressedAt < 800) return;   // Android sends a long press as a context menu too: once
     pressedAt = Date.now(); clearTimeout(tapTimer);
     const { lat, lng } = e.lngLat;
+    if (JR) { location.hash = '#/map/' + atPath({ lat, lon: lng, label: whereabouts(lat, lng) }); return; }   // off the way, to the spot: Back comes back
     showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), pickFor);
   };
   const unpress = () => { clearTimeout(pressTimer); pressFrom = null; };
@@ -373,6 +374,12 @@ async function init(app) {
     const r = coarse() ? 22 : 8;
     const all = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'usu-stops', 'pool-stops', 'place-labels'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
     const hits = all.filter(f => f.layer.id !== 'place-labels');
+    // A way drawn: one of its stops tapped is that stop, as anywhere (Back comes to the way again); nothing else.
+    if (JR) {
+      const st = hits.map(f => { const q = map.project(f.geometry.coordinates); return { f, d: Math.hypot(q.x - e.point.x, q.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0];
+      if (st) location.hash = st.f.layer.id === 'usu-stops' ? (wide() ? '#/usu/' : '#/map/usu/') + st.f.properties.id : (wide() ? '#/stop/' : '#/map/') + st.f.properties.id;
+      return;
+    }
     // A place's name tapped, and no stop there: its spot, with the stops nearest it, as a search result opens it.
     if (!hits.length && all.length) {
       const f = all.map(f => { const q = map.project(f.geometry.coordinates); return { f, d: Math.hypot(q.x - e.point.x, q.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0].f, [lon, lat] = f.geometry.coordinates;
@@ -411,7 +418,7 @@ async function init(app) {
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; paperKept = null; if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; paperKept = null; if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -706,7 +713,8 @@ function wireGrip(app) {
   const card = col.querySelector('#mapcard');
   // A route's sheet swiped away puts the route away with it, as a tap on nothing does.
   const close = () => { if (card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
-    if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; } selectedBus = null; selectedU = null; select(null, app); };
+    if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
+    if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); backToWays(); return; } selectedBus = null; selectedU = null; select(null, app); };
   const pageHref = () => { const a = card.querySelector(':scope > .open a'); return a ? a.getAttribute('href') : null; };   // the card's own Open button: the card itself is .open too
   // Swiped down, the card shrinks to its head (the stop's name and routes) and the map shows through; swiped down
   // again it goes. Up, or a tap on the head, opens it out. The size chosen stays for the next stop tapped.
@@ -767,6 +775,20 @@ function wireGrip(app) {
     if (claimed) settle(dy, e.timeStamp - t0);
   };
   card.addEventListener('touchend', touchEnd); card.addEventListener('touchcancel', touchEnd);
+  // A way's card: a swipe across is the next way or the one before, its arrows too; All ways goes back to the list.
+  let sx = null, sy = 0;
+  card.addEventListener('touchstart', e => { sx = e.touches.length === 1 && card.querySelector(':scope > .journeysheet') ? e.touches[0].clientX : null; sy = e.touches[0] ? e.touches[0].clientY : 0; }, { passive: true });
+  card.addEventListener('touchend', e => {
+    if (sx === null || !e.changedTouches[0]) return;
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    sx = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) stepWay(dx < 0 ? 1 : -1);
+  });
+  card.addEventListener('click', e => {
+    const g = e.target.closest('[data-go]'), bk = e.target.closest('[data-back]');
+    if (g) asPage(g.dataset.go);
+    else if (bk) { e.preventDefault(); backToWays(); }
+  });
   // a mouse drags the grip
   let my0 = null;
   card.addEventListener('pointerdown', e => {
@@ -894,6 +916,7 @@ function applySelection() {
   drawRuns();
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
   for (const [id, m] of busMarkers) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); m.el.classList.toggle('on', id === selectedBus || id === ringed); }
+  dressJourney();
 }
 
 /** The shuttle and POOL drawn only where they run, or when asked for: near campus (the shuttle's stops) or POOL's zone,
@@ -902,7 +925,7 @@ const U_LAYERS = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-
 let campusBox = null, poolBox = null;
 const boxOf = pts => pts.length ? pts.reduce((b, [lon, lat]) => [Math.min(b[0], lon), Math.min(b[1], lat), Math.max(b[2], lon), Math.max(b[3], lat)], [180, 90, -180, -90]) : null;
 function quiet() {
-  if (!map || !ready || MT.R) return;   // a run dresses the map its own way
+  if (!map || !ready || MT.R || JR) return;   // a run or a way dresses the map its own way
   if (!campusBox && U) campusBox = boxOf(U.stops.filter(s => s.routes.length).map(s => [s.lon, s.lat]));
   if (!poolBox && POOL) poolBox = boxOf(POOL.zone);
   const z = map.getZoom(), v = map.getBounds(), m = 0.003;   // a few hundred metres round the box
@@ -922,7 +945,7 @@ const HUB_HIDE = ['route-lines', 'route-on', 'route-closed', 'route-closed-halo'
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
-  const on = !!D.hub && !MT.R && map.getZoom() >= HUB_Z && map.getBounds().contains([D.hub.lon, D.hub.lat]);
+  const on = !!D.hub && !MT.R && !JR && map.getZoom() >= HUB_Z && map.getBounds().contains([D.hub.lon, D.hub.lat]);
   if (on || hubOn) for (const id of HUB_HIDE) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') === on) map.setLayoutProperty(id, 'visibility', on ? 'none' : 'visible');
   if (on !== hubOn) {
     hubOn = on;
@@ -1473,6 +1496,7 @@ export async function show(o, app, clockNow) {
   if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
   if (!o.hub && hubTurned && !o.tick) { northDue = true; if (!map.isMoving()) northAgain(); }   // another tab: north up again
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
+  mainJourney(o.journey || null, app);   // a way from the directions page
   if (resetDue && app.route.name === 'map' && !o.hub) { resetDue = false; resetView(app); }
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   routeTimes(still() ? null : focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
@@ -1489,7 +1513,7 @@ function pickBus(id, app) {
   const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
   map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: cardOffset(card), duration: 500 });
 }
-async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, focus, hub, hubPick, tick, bus }, app, clockNow) {
+async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, focus, hub, hubPick, tick, bus, journey }, app, clockNow) {
   await init(app);
   // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
   // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
@@ -1605,6 +1629,9 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     selected = pole ? D.stops[pole.j].id : null; uHilite = pole ? '' : ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
     if (app.route.name === 'map') { if (pole) select(D.stops[pole.j].id, app, changed); else if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
     else if (focus && changed && (still() || !map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: still() ? 16 : Math.max(map.getZoom(), 15.5), duration: still() ? 0 : 700 });
+  } else if (journey) {
+    // A way from the directions page: nothing picked, the way drawn (mainJourney) and its card.
+    lastFocused = null; selected = null; uHilite = ''; hiLines = []; hiLoops = []; focusRoute = undefined;
   } else if (app.route && app.route.name === 'map') {
     lastFocused = null;
     select(null, app);
@@ -1795,6 +1822,134 @@ export function runFocus(si) {
   runHot(si);
   const T = liveRun();
   if (T.m && D.stops[si]) T.m.easeTo({ ...(T.main ? { padding: pad() } : {}), center: [D.stops[si].lon, D.stops[si].lat], zoom: Math.max(T.m.getZoom(), 15), duration: 500 });
+}
+
+// ---- a way from the directions page, drawn: each ride along its route's line in the route's colour (a shuttle's
+// along its loop), the walks dashed in the paper's ink as the crow flies, the change ringed, the start and the end
+// marked, and only the stops it calls at, each tappable as anywhere. On a phone its card is the way's own, the others
+// a swipe away; beside a wide screen's panel the directions page stays, the way picked marked there.
+let JR = null, jrKey = null, jrFramed = null;
+const ink = () => dark() ? '#eef0f2' : '#1d1f20', paperInk = () => dark() ? '#101214' : '#f2f2f3';
+const jpt = x => typeof x === 'string' ? U.stops[+x.slice(1)] : D.stops[x];
+/** The layers a way adds, once (and again after a restyle, which drops them): its walks, its ring and its ends. */
+function addJourneyLayers(m) {
+  addRunLayers(m);
+  if (m.getSource('jr')) return;
+  m.addSource('jr', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  m.addLayer({ id: 'jr-walk', type: 'line', source: 'jr', filter: ['==', ['get', 'k'], 'walk'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ink(), 'line-width': 3, 'line-dasharray': [0.1, 2] } }, 'stops');
+  m.addLayer({ id: 'jr-ring', type: 'circle', source: 'jr', filter: ['==', ['get', 'k'], 'change'], paint: { 'circle-radius': 13, 'circle-opacity': 0, 'circle-stroke-width': 3, 'circle-stroke-color': ink() } });
+  m.addLayer({ id: 'jr-ends', type: 'circle', source: 'jr', filter: ['in', ['get', 'k'], ['literal', ['start', 'end']]], paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'k'], 'end'], ink(), paperInk()], 'circle-stroke-width': 3, 'circle-stroke-color': ['case', ['==', ['get', 'k'], 'end'], paperInk(), ink()] } });
+}
+/** A shuttle ride's line: its loop from where it's boarded, round to where it's left. */
+function loopLeg(l) {
+  const r = U.routes[l.r], a = +l.from.slice(1), b = +l.to.slice(1), A = U.stops[a], B = U.stops[b];
+  const path = loopPath(l.r, [A.lon, A.lat], r.stopAlong ? r.stopAlong[a] : undefined);
+  if (path.length < 2) return [[A.lon, A.lat], [B.lon, B.lat]];
+  const L = [0];
+  for (let i = 1; i < path.length; i++) L.push(L[i - 1] + Math.hypot((path[i][0] - path[i - 1][0]) * KX, (path[i][1] - path[i - 1][1]) * KY));
+  // Where along the way round the stop left is: the shape's own measure where it has one, else its nearest point.
+  const T = r.cum && r.cum.length ? r.cum[r.cum.length - 1] : 0;
+  let want = r.stopAlong && T && r.stopAlong[a] !== undefined && r.stopAlong[b] !== undefined ? ((r.stopAlong[b] - r.stopAlong[a]) % T + T) % T : null, k = path.length - 1;
+  if (want !== null) { k = L.findIndex(d => d >= want); if (k < 1) k = path.length - 1; }
+  else { let best = Infinity; for (let i = 1; i < path.length; i++) { const d = distance(B.lat, B.lon, path[i][1], path[i][0]); if (d < best) { best = d; k = i; } } }
+  return [...path.slice(0, k), [B.lon, B.lat]];
+}
+/** Only the way's stops and lines: the rest put away, as a run's are, the other routes faint. */
+function dressJourney() {
+  if (!JR || !map.getSource('jr')) return;
+  for (const id of [...RUN_HIDE, 'stop-selected']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+  map.setPaintProperty('route-lines', 'line-opacity', 0.18);
+  map.setFilter('stops', ['in', ['get', 'id'], ['literal', JR.stops]]);
+  map.setLayerZoomRange('stops', 0, 24);
+  if (JR.ustops.length) { map.setLayoutProperty('usu-stops', 'visibility', 'visible'); map.setFilter('usu-stops', ['in', ['get', 'id'], ['literal', JR.ustops]]); }
+  // Each stop in the colour of the bus it's on the way for, not its own first route's.
+  const pairs = Object.entries(JR.tint).flat();
+  map.setPaintProperty('stops', 'circle-color', pairs.length ? ['match', ['get', 'id'], ...pairs, ink()] : ink());
+  map.setPaintProperty('stops', 'circle-stroke-color', paperInk());
+}
+/** The way drawn, or put away (null). Drawn afresh only when the way itself changes; framed when it's a new one. */
+async function mainJourney(J, app) {
+  if (!map) return;
+  if (!ready) { if (J) map.once('load', () => mainJourney(J, app)); return; }
+  if (!J) {
+    if (!JR) return;
+    JR = null; jrKey = null; jrFramed = null;
+    for (const id of ['run', 'jr']) if (map.getSource(id)) map.getSource(id).setData({ type: 'FeatureCollection', features: [] });
+    for (const id of [...RUN_HIDE, 'stop-selected']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
+    map.setFilter('stops', null); map.setFilter('usu-stops', null);
+    map.setLayerZoomRange('stops', 14, 24);
+    const card = col.querySelector('#mapcard');
+    if (card.querySelector(':scope > .journeysheet')) card.classList.remove('open', 'peek');
+    applySelection();
+    return;
+  }
+  const p = J.plans[J.i], rides = p.legs.filter(l => l.kind === 'ride');
+  const colOf = l => l.u ? U.routes[l.r].color : dark() ? lift('#' + D.routes[l.r].color) : '#' + D.routes[l.r].color;
+  const tint = {}, ustops = new Set();
+  for (const l of rides) for (const x of l.stops) {
+    if (typeof x !== 'string') { tint[D.stops[x].id] ??= colOf(l); continue; }
+    const sh = U.shared[+x.slice(1)];
+    if (sh) tint[D.stops[sh.j].id] ??= colOf(l); else ustops.add(U.stops[+x.slice(1)].id);
+  }
+  JR = { routes: [...new Set(rides.filter(l => !l.u).map(l => l.r))], stops: Object.keys(tint), ustops: [...ustops], tint };
+  const was = hubOn;
+  hubCheck();   // the Center's view put away: a way through it is drawn like any other
+  if (was && hubTurned) { hubTurned = false; northDue = false; }
+  addJourneyLayers(map);
+  applySelection();
+  if (app.route.name === 'map' && !wide()) journeyCard(J, app);
+  const key = J.hrefs[J.i] + '|' + rides.map(l => l.from + '>' + l.to).join(';') + '|' + (dark() ? 'd' : 'l');
+  if (key === jrKey) return;
+  jrKey = key;
+  const fc = await shapes();
+  if (jrKey !== key || !JR) return;
+  const lines = rides.map(l => ({ type: 'Feature', properties: { color: colOf(l), later: false }, geometry: { type: 'LineString', coordinates: l.u ? loopLeg(l) : fc ? runPath(fc, l.r, l.stops.map(si => [0, si])) : l.stops.map(si => [D.stops[si].lon, D.stops[si].lat]) } }));
+  const ll = x => [jpt(x).lon, jpt(x).lat];
+  const marks = [];
+  p.legs.forEach((l, k) => {
+    if (l.kind === 'walk') {
+      const a = k === 0 ? [J.from.lon, J.from.lat] : ll(l.from), b = k === p.legs.length - 1 ? [J.to.lon, J.to.lat] : ll(l.to);
+      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: [a, b] } });
+    } else if (k > 0 && p.legs[k - 1].kind === 'ride') marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(l.from) } });
+    else if (k > 1 && p.legs[k - 1].kind === 'walk' && p.legs[k - 2].kind === 'ride') {
+      marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(p.legs[k - 2].to) } });
+      marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(l.from) } });
+    }
+  });
+  marks.push({ type: 'Feature', properties: { k: 'start' }, geometry: { type: 'Point', coordinates: [J.from.lon, J.from.lat] } });
+  marks.push({ type: 'Feature', properties: { k: 'end' }, geometry: { type: 'Point', coordinates: [J.to.lon, J.to.lat] } });
+  map.getSource('run').setData({ type: 'FeatureCollection', features: lines });
+  map.getSource('runt').setData({ type: 'FeatureCollection', features: [] });
+  map.getSource('jr').setData({ type: 'FeatureCollection', features: marks });
+  // Framed when it's a new way (not when the feed only moved its minutes): the whole of it, above a phone's card.
+  if (jrFramed === J.hrefs[J.i]) return;
+  jrFramed = J.hrefs[J.i];
+  const b = new maplibregl.LngLatBounds();
+  for (const f of [...lines, ...marks]) for (const c of f.geometry.type === 'Point' ? [f.geometry.coordinates] : f.geometry.coordinates) b.extend(c);
+  map.resize(); settlePad();
+  map.fitBounds(b, { padding: routePad(), duration: 600, maxZoom: 16.5, bearing: 0 });
+}
+/** A phone's card for the way: which of the ways it is, a step to the others, its times, then its legs. */
+function journeyCard(J, app) {
+  const card = col.querySelector('#mapcard'), n = J.plans.length;
+  const step = (k, dir) => k < 0 || k >= n ? html`<button class="btn btn-ghost jstep" type="button" disabled aria-label="${dir}">${icon(dir === 'Earlier way' ? 'back' : 'fwd', 20)}</button>` : html`<button class="btn btn-ghost jstep" type="button" data-go="${J.hrefs[k]}" aria-label="${dir}">${icon(dir === 'Earlier way' ? 'back' : 'fwd', 20)}</button>`;
+  const markup = html`<div class="grip"></div><div class="head jhead"><div class="jnav"><a class="btn btn-ghost" href="${J.base}" data-back>${icon('back', 20)}All ways</a><span class="eyebrow">${n > 1 ? `Way ${J.i + 1} of ${n}` : 'The one way'}</span>${n > 1 ? html`<span class="jsteps">${step(J.i - 1, 'Earlier way')}${step(J.i + 1, 'Next way')}</span>` : ''}</div>${J.top(J.i)}</div><div class="journeysheet legs">${J.legs(J.i)}</div>`.s;
+  const again = !!card.querySelector(':scope > .journeysheet') && card.classList.contains('open') && card.dataset.way === J.base;
+  if (again) morph(card, markup);
+  else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
+  card.dataset.way = J.base;
+  card.classList.remove('hidden');
+  card.classList.add('open');
+}
+/** Back to the directions page the way was picked on. */
+function backToWays() {
+  const base = col.querySelector('#mapcard').dataset.way;
+  if (history.length > 1) history.back(); else if (base) location.hash = base;
+}
+/** To another of the ways, in place: Back still goes to the directions page. */
+function stepWay(dir) {
+  const b = col.querySelector('#mapcard > .jhead .jstep[data-go]' + (dir < 0 ? ':first-child' : ':last-child'));
+  if (b) asPage(b.dataset.go);
 }
 
 // ---- a route in view: each of its stops with that route's next bus there today, on the side of the road it stops on.
@@ -1990,6 +2145,7 @@ function stopPaths(si, ris, clockNow) {
 /** The routes whose way on is drawn: a picked Connect bus's, or a picked stop's (a route in view, when the stop is
  *  its; the hub's none, its bays say). */
 function routesInPlay() {
+  if (JR) return JR.routes;   // a way drawn: its buses bright, the rest dim
   if (selectedBus) { const c = findBus(selectedBus); return c ? [c.ri] : []; }
   const si = selected ? D.stopById[selected] : undefined;
   if (si === undefined || stop(si).hub) return [];
@@ -1999,7 +2155,7 @@ function routesInPlay() {
  *  there (the same pole as a Connect stop's included, beside that stop's routes). A loop with no line at all (under
  *  three stops, no shape) has no way to draw. */
 function loopsInPlay() {
-  if (!U) return [];
+  if (!U || JR) return [];
   const drawn = ri => U.routes[ri].shape.length || U.routes[ri].stops.length >= 3;
   if (selectedBus) { if (findBus(selectedBus)) return []; const b = live.buses.find(x => x.id === selectedBus); return b && drawn(b.ri) ? [b.ri] : []; }
   const usi = selectedU !== null ? selectedU : uHilite ? U.stopById[uHilite] : selected && D.stopById[selected] !== undefined && U.sharedByCvtd[D.stopById[selected]] ? U.sharedByCvtd[D.stopById[selected]].i : undefined;
