@@ -1346,8 +1346,6 @@ function busScale() {
   if (small !== busSmallAt) { busSmallAt = small; c.classList.toggle('bus-small', small); }
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
-// Far off, a shuttle bus is a pointed square, its squared marker come to a point, where Connect's is a dart.
-const U_ARROW = ARROW.replace('<svg', '<svg class="near"') + '<svg class="far" viewBox="0 0 24 24"><path d="M12 3 19 10v10H5V10z"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 function dimBus(m) {
   const on = hiLines.length ? hiLines : runRoutes;
@@ -1441,7 +1439,7 @@ export function liveUpdate(app) {
     let m = busMarkers.get(b.id);
     if (!m) {
       const el = document.createElement('div');
-      el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? U_ARROW : ARROW) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
+      el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
       el.onclick = ev => { if (still()) return; ev.stopPropagation(); selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind };
       busMarkers.set(b.id, m);
