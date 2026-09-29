@@ -152,7 +152,7 @@ function closedSegments(fc) {
   const ymd = now().ymd;
   const byRoute = {};   // route index → set of closed stop ids
   for (const a of activeAlerts(ymd)) for (const ri of a.ri || []) for (const id of a.stops || []) (byRoute[ri] ||= new Set()).add(id);
-  const out = [], gaps = {};
+  const cuts = [];
   for (const [ri, ids] of Object.entries(byRoute)) {
     const r = D.routes[+ri];
     const shapes = fc.features.filter(f => f.properties.route === +ri);
@@ -167,14 +167,50 @@ function closedSegments(fc) {
         i = j;
         if (done.has(key)) continue;
         done.add(key);
-        for (const cut of cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]))) {
-          out.push({ type: 'Feature', properties: { color: '#' + r.color, dcolor: lift('#' + r.color), route: +ri }, geometry: { type: 'LineString', coordinates: cut.coords } });
-          (gaps[cut.shape] ||= []).push([cut.s0, cut.s1]);
-        }
+        for (const cut of cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]))) cuts.push({ ...cut, ri: +ri, r });
       }
     }
   }
+  // A road another route runs on as usual isn't closed to buses: where a closed stretch shares a road with another
+  // route's solid line for a block or so, that stretch is vouched for, its dots dropped and its own line drawn solid
+  // again. Two routes both closed on a road vouch for neither. A road merely crossed isn't shared.
+  const gaps1 = {};
+  for (const c of cuts) (gaps1[c.shape] ||= []).push([c.s0, c.s1]);
+  const open = openLines(fc, gaps1).features.map(f => ({ r: f.properties.route, c: f.geometry.coordinates, bb: boxOf(f.geometry.coordinates) }));
+  const out = [], gaps = {};
+  for (const c of cuts) {
+    for (const [d0, d1] of unvouched(c, open.filter(o => o.r !== c.ri))) {
+      out.push({ type: 'Feature', properties: { color: '#' + c.r.color, dcolor: lift('#' + c.r.color), route: c.ri }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
+      (gaps[c.shape] ||= []).push([(c.base + d0) % c.total, (c.base + d1) % c.total]);
+    }
+  }
   return { closed: { type: 'FeatureCollection', features: out }, gaps };
+}
+/** The parts of a closed stretch no other route's solid line runs along: [from, to] along its walk. Sampled every
+ *  10 m; a sample within 15 m of another line is on a shared road, and a shared run of 50 m or more is vouched for
+ *  (a crossing street is shorter); what's left under 40 m between two vouched runs goes too. */
+function unvouched(c, others) {
+  const STEP = 10, NEAR = 15, SHARE = 50, SCRAP = 40;
+  const kx = Math.cos(41.74 * Math.PI / 180) * 111320, ky = 110540;
+  const pad = 0.0005, [x0, y0, x1, y1] = boxOf(c.coords);
+  const near = others.filter(o => o.bb && o.bb[0] <= x1 + pad && o.bb[2] >= x0 - pad && o.bb[1] <= y1 + pad && o.bb[3] >= y0 - pad);
+  if (!near.length) return [[c.start, c.end]];
+  const at = d => slice(c.walk, d, d)[0];
+  const shared = p => near.some(o => { for (let k = 1; k < o.c.length; k++) {
+    const [ax, ay] = o.c[k - 1], [bx, by] = o.c[k], vx = (bx - ax) * kx, vy = (by - ay) * ky, px = (p[0] - ax) * kx, py = (p[1] - ay) * ky, L2 = vx * vx + vy * vy;
+    const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0;
+    if (Math.hypot(px - t * vx, py - t * vy) <= NEAR) return true;
+  } return false; });
+  // runs of the same verdict along the walk
+  const runs = [];
+  for (let d = c.start; d <= c.end; d += STEP) {
+    const v = shared(at(d)), last = runs[runs.length - 1];
+    if (last && last.v === v) last.d1 = Math.min(d + STEP, c.end); else runs.push({ v, d0: d, d1: Math.min(d + STEP, c.end) });
+  }
+  for (const r of runs) if (r.v && r.d1 - r.d0 < SHARE) r.v = false;   // a crossing, not a shared road
+  const keep = [];
+  for (const r of runs) { const last = keep[keep.length - 1]; if (!r.v) { if (last && last[1] >= r.d0 - 0.01) last[1] = r.d1; else keep.push([r.d0, r.d1]); } }
+  return keep.filter(([a, b], i) => b - a >= SCRAP || keep.length === 1 && runs.every(r => !r.v));
 }
 /** The solid lines with each shape's closed stretches left out. */
 function openLines(fc, gaps) {
@@ -240,7 +276,7 @@ function trimWalk(f, best, from, to, closed) {
   const xs = (XINGS[f.properties.shape] || []).map(x => (x - f._cum[a] + total) % total).filter(w => w > fromAt + 10 && w < toAt - 10).sort((p, q) => p - q);
   let start = xs.find(w => w < firstClosed - 5); start = start === undefined ? fromAt : start;
   let end = [...xs].reverse().find(w => w > lastClosed + 5); end = end === undefined ? toAt : end;
-  return { coords: slice(walk, start, end), shape: f.properties.shape, s0: (f._cum[a] + start) % total, s1: (f._cum[a] + end) % total };
+  return { coords: slice(walk, start, end), shape: f.properties.shape, s0: (f._cum[a] + start) % total, s1: (f._cum[a] + end) % total, walk, start, end, base: f._cum[a], total };
 }
 /** The part of a walk between two distances along it, ends interpolated. */
 function slice(walk, d0, d1) {
