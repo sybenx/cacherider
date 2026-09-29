@@ -139,6 +139,49 @@ export function board(si) {
   return rows;
 }
 
+/** Each bus on a loop's way to a stop, soonest first, as { min, secs }: by the same reckoning as `estimate` (the way
+ *  round the loop at SPEED, DWELL at each stop between; as the crow flies, a little more, where the loop has no shape). */
+export function waits(si, ri) {
+  const r = U.routes[ri], out = [];
+  for (const b of live.buses) {
+    if (b.ri !== ri) continue;
+    let secs;
+    if (!r.shape.length) secs = distance(b.lat, b.lon, U.stops[si].lat, U.stops[si].lon) * 1.4 / SPEED;
+    else {
+      const d = ((r.stopAlong[si] - b.along) % r.length + r.length) % r.length;
+      let between = 0;
+      for (const o of r.stops) { if (o === si) continue; const da = ((r.stopAlong[o] - b.along) % r.length + r.length) % r.length; if (da > 0 && da < d) between++; }
+      secs = d / SPEED + between * DWELL;
+    }
+    out.push({ min: Math.max(1, Math.round(secs / 60)), secs });
+  }
+  return out.sort((x, y) => x.secs - y.secs);
+}
+/** Seconds on board from stop `a` to stop `b` on a loop, its wait at `a` included: the way round from one to the
+ *  other at SPEED, DWELL at each stop. Added to a bus's `waits` at `a`, it is that bus's own time to `b`, whichever
+ *  stop the rider boards at. Stop to stop as the crow flies, a little more, where the loop has no shape. */
+export function rideSecs(ri, a, b) {
+  const r = U.routes[ri], n = r.stops.length;
+  if (!r.shape.length) {
+    let d = 0, steps = 0, k = r.stops.indexOf(a);
+    do { const x = r.stops[k]; k = (k + 1) % n; const y = r.stops[k]; d += distance(U.stops[x].lat, U.stops[x].lon, U.stops[y].lat, U.stops[y].lon) * 1.4; steps++; } while (r.stops[k] !== b && steps < n);
+    return d / SPEED + steps * DWELL;
+  }
+  const d = ((r.stopAlong[b] - r.stopAlong[a]) % r.length + r.length) % r.length;
+  let between = 0;
+  for (const o of r.stops) { if (o === a || o === b) continue; const da = ((r.stopAlong[o] - r.stopAlong[a]) % r.length + r.length) % r.length; if (da > 0 && da < d) between++; }
+  return d / SPEED + (between + 1) * DWELL;
+}
+/** The shuttle as the trip planner sees it, while it runs: its stops, the loops with a bus on them inside their
+ *  hours, each bus's wait at a stop and the seconds on from there. Null when none is running or the feed has gone
+ *  quiet, and the planner is Connect's alone. */
+export function planNet(clockNow = now()) {
+  if (!U || !hasData() || isStale()) return null;
+  const loops = U.routes.map((r, ri) => ri).filter(ri => U.routes[ri].stops.length >= 2 && live.buses.some(b => b.ri === ri) && !offHours([ri], clockNow));
+  if (!loops.length) return null;
+  return { stops: U.stops.map(s => ({ lat: s.lat, lon: s.lon })), loops: loops.map(ri => ({ ri, stops: U.routes[ri].stops })), waits, ride: rideSecs };
+}
+
 /** A bus's next stops along its loop, with minutes. */
 export function busNext(b, n = 5) {
   const r = U.routes[b.ri];

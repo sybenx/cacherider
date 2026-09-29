@@ -203,7 +203,7 @@ async function render(tick = false) {
   const fromMap = !!app.route && app.route.name === 'map' && isPage && !isDesktop();
   app.route = { name, seg, q };
   const mapOpen = name === 'map';
-  setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U));
+  setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U) || (name === 'go' && !!U));   // directions: the shuttle is in the planner
   setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route', 'go'].includes(name));
   body.classList.toggle('map-open', mapOpen);
   if (view) {

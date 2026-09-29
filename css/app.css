@@ -577,6 +577,8 @@ a.twinline { text-decoration: none; }
 .leg { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; padding: 8px 0; }
 .leg > svg, .leg > .badge { position: relative; justify-self: center; background: var(--color-bg); }
 .leg > svg { color: var(--color-accent-700); padding: 4px 0; box-sizing: content-box; }
+/* a shuttle loop's chip carries its name ('Evening', '8th East'): squeezed into the badge's square, on the line */
+.leg > .uchip { position: relative; justify-self: center; width: 36px; min-width: 0 !important; padding: 0 2px; box-sizing: border-box; font-size: 9.5px !important; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; text-align: center; line-height: 1.05; overflow: hidden; }
 .leg .mid { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-top: 4px; }
 .leg .mid .name { font-size: 15.5px; font-weight: 500; line-height: 1.25; }
 .leg .mid .sub { font-size: 13.5px; color: var(--cr-muted); line-height: 1.35; }
