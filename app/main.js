@@ -526,6 +526,9 @@ async function boot() {
   matchMedia(WIDE_MQ).addEventListener('change', () => render());
   render();
   autoLocate();
+  // The map built out of sight once the first page is up (on a phone most pages are the map), so its first tap
+  // doesn't wait on it; after the page's own work, whenever the phone has a moment.
+  (window.requestIdleCallback || (f => setTimeout(f, 300)))(() => ensureMap().then(m => m.warm(app)), { timeout: 1500 });
   // The day and time at the right of the desktop header: to the minute, as the buses run.
   const tc = document.getElementById('topclock');
   const tick = () => {

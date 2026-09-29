@@ -383,11 +383,20 @@ function squaresOnDemand(m) {
   });
 }
 
-async function init(app) {
+/** The map made ready before it's asked for: the app's first page up, it's built out of sight (its style, sprites,
+ *  glyphs, worker and the route lines), so the first tap on the Map or the Transit Center finds it drawn, not a beat
+ *  and a half of loading. */
+export function warm(app) { shapes(); init(app).catch(() => { /* made when it's asked for, then */ }); }
+
+// Made once: a first page and the feed's first redraw both asked for it at once, and each made a map.
+let initP = null, bornAtHome = false, shownYet = false;   // made before the rider's fix came: at it when first shown
+function init(app) { return initP ??= made(app).catch(e => { initP = null; throw e; }); }
+async function made(app) {
   if (map) return;
   await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : HOME;
+  bornAtHome = !app.geo;
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false });
   // Its box watched here, not by MapLibre: hidden (the Stops tab on a phone), the box is nothing, and MapLibre
   // shrank the canvas to nothing and grew it back on every tab tapped, reallocating its whole drawing buffer each
@@ -1574,7 +1583,8 @@ function glide(m, lon, lat) {
   if (m.anim) cancelAnimationFrame(m.anim);
   const from = m.marker.getLngLat();
   if (from.lng === lon && from.lat === lat) return;
-  if (WEAK || matchMedia('(prefers-reduced-motion: reduce)').matches) { m.marker.setLngLat([lon, lat]); return; }
+  // A weak tablet, a rider who'd rather not, or a map out of sight (built early, or another tab up): straight there.
+  if (WEAK || !map.getContainer().clientWidth || matchMedia('(prefers-reduced-motion: reduce)').matches) { m.marker.setLngLat([lon, lat]); return; }
   const t0 = performance.now(), dur = 600;
   const step = now => {
     const k = Math.min(1, (now - t0) / dur);
@@ -1859,6 +1869,9 @@ function busIn(id, app) {
 }
 async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
+  // Built out of sight before the rider's fix came: first shown, it opens where they are, as a map made then would
+  // (a stop, a route or the Center then frames itself over this).
+  if (!shownYet) { shownYet = true; if (bornAtHome && app.geo) map.jumpTo({ center: [app.geo.lon, app.geo.lat], zoom: 15 }); }
   // A map still hidden (the Map tab not on screen yet, the page behind it just gone) has no size to fit anything to:
   // a route fitted to nothing is the whole valley and further. Waited for, a few frames at most; if the address
   // moves on meanwhile, the newer call does the work.
