@@ -1396,6 +1396,13 @@ export function resetView(app, once = false, to = null) {
  *  once the Map tab is drawn, as the reset is. */
 let beforeHub = null, backDue = false;
 export function leaveHub() { backDue = true; }
+/** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
+ *  out or panned off), and on a phone its board back up if it was put away. */
+export function hubAgain(app) {
+  if (!map) return;
+  fitHub();
+  if (!wide() && app.route.name === 'map' && !col.querySelector('#mapcard.open > .hubsheet')) hubCard(now());
+}
 
 /** Search the map from outside it: the header's box on a wide screen. Set once the map is up. */
 export let mapSearch = () => {};

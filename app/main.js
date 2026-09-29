@@ -47,6 +47,13 @@ function renderTabs() {
       app.mapMod.resetView(app);
     };
     for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', again);
+    // The Transit Center tab tapped at the Center: the Center framed again, however far the map has been moved.
+    const hubAgain = e => {
+      if (!e.target.closest('a[href="#/hub"]') || !(location.hash || '').startsWith('#/hub') || !app.mapMod) return;
+      e.preventDefault();
+      app.mapMod.hubAgain(app);
+    };
+    for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', hubAgain);
     // The same for the home page beside the map: the wordmark (or the Stops link) tapped while already home.
     const home = e => {
       if (!['', '#', '#/'].includes(location.hash) || !app.mapMod || !isDesktop()) return;
