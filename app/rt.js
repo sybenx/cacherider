@@ -227,10 +227,19 @@ export function predict(t) {
   // there. A route leaves no earlier than its minute; a loop ahead waits, up to ten minutes (spacing, it waits for
   // nothing). The feed's time for a stop on the far side then, not the timetable's, is the one that's off: said
   // as an estimate.
+  // Early by a whole minute at least, to the second: a trip not yet out is the feed's timetable to the second (6:31:40
+  // for 6:32), and that's on time, not early. Held back to its own minute, it's on time: the timetable's, in black.
   const h = u.hub;
   if (p && !p.gone && h && !(isLoop(t.r) && loopSpacing(t.r)) && h.seq.findIndex(([m, si]) => si === t.si && m === t.min) > h.k) {
     const leaves = isLoop(t.r) ? Math.max(h.at, Math.min(h.sched, h.at + 10)) : Math.max(h.at, h.sched), floor = leaves + t.min - h.sched;
-    if (floor > p.min) return { ...p, min: floor, delay: floor - t.min, est: true };
+    const hit = u.at.get(D.stops[t.si].id), feedAt = hit && !hit.skipped ? toMin(hit.time) + (hit.time % 60) / 60 : p.min;
+    if (floor - feedAt >= 1) return floor === t.min ? null : { ...p, min: floor, delay: floor - t.min, est: true };
+  }
+  // A run its bus hasn't started yet (still on the one before, or not out), the feed's time for it the timetable's to
+  // within the minute: nothing live to say, so the timetable's, in black, not 'Live · On time' a minute early.
+  if (p && !p.gone && !p.est && D.stops[t.si]) {
+    const hit = u.at.get(D.stops[t.si].id), bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v);
+    if (hit && !hit.skipped && !(bus && bus.trip === D.trips[t.trip]) && Math.abs(toMin(hit.time) + (hit.time % 60) / 60 - t.min) < 1) return null;
   }
   return p;
 }
