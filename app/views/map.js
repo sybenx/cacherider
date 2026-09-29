@@ -1782,7 +1782,9 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
   // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
   // cheap tablet, which dropped one and went gray.
-  dock(!wide() && app.route.name !== 'map' ? document.querySelector('#runsheet #runmap') || document.querySelector('#minimap') : null);
+  // Only a page on screen: with the map up (a stop's sheet) the page column is hidden, and may still hold the last
+  // page's slot (a shuttle route's), which would take the map in out of sight, and still.
+  dock(!wide() && app.route.name !== 'map' ? document.querySelector('#runsheet #runmap') || document.querySelector('#body:not(.map-open) #minimap') : null);
   // A map still hidden (the Map tab not on screen yet, the page behind it just gone) has no size to fit anything to:
   // a route fitted to nothing is the whole valley and further. Waited for, a few frames at most; if the address
   // moves on meanwhile, the newer call does the work.
@@ -1939,11 +1941,13 @@ const still = () => !!docked && docked.id === 'minimap';
 function dock(slot) {
   const box = map.getContainer(), to = slot || col;
   docked = slot;
+  // The finger's gestures follow where it's docked, every time: a page going moves the map back to its column
+  // itself (main.js's park), so by the time it's asked to come home it's there already, and was left still.
+  box.classList.toggle('docked', !!slot);
+  for (const h of [map.dragPan, map.scrollZoom, map.touchZoomRotate, map.doubleClickZoom, map.keyboard]) if (h.isEnabled() === still()) still() ? h.disable() : h.enable();
   if (box.parentNode === to) return;
   to.prepend(box);
   lastFocused = null;   // moved, it frames the page's stop or route afresh
-  box.classList.toggle('docked', !!slot);
-  for (const h of [map.dragPan, map.scrollZoom, map.touchZoomRotate, map.doubleClickZoom, map.keyboard]) still() ? h.disable() : h.enable();
   col.querySelector('#mapcard').classList.remove('open');
   map.resize();
 }
