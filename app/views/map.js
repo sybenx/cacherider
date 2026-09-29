@@ -984,7 +984,8 @@ let hubKey = null;
 function hubCard(clockNow) {
   const s = hubSheet({ bay: hubBay }, clockNow), card = col.querySelector('#mapcard');
   const markup = html`<div class="grip"></div><div class="head hubhead">${s.head}</div><div class="hubsheet">${s.body}</div>`.s;
-  const again = hubKey === (s.pick || '') && !!card.querySelector(':scope > .hubsheet');
+  // The same board redrawn in place only while it's up: closed (the Map tab, a swipe), it opens afresh, at the countdown.
+  const again = hubKey === (s.pick || '') && !!card.querySelector(':scope > .hubsheet') && card.classList.contains('open');
   if (again) morph(card, markup);
   else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); hubKey = s.pick || ''; }
   card.classList.remove('hidden');
@@ -996,12 +997,17 @@ function hubCard(clockNow) {
 function fitHub() {
   const bb = new maplibregl.LngLatBounds();
   for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
-  const card = col.querySelector('#mapcard'), p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
+  const card = col.querySelector('#mapcard'), h = map.getContainer().clientHeight, p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
   if (!wide() && card.classList.contains('open')) p.bottom += card.offsetHeight;
+  p.bottom = Math.min(p.bottom, Math.max(60, h - p.top - 160));   // the bays always get some room
   settlePad();
   // South up, as a rider stands at the Center facing the hall from 500 North: part of the framing, not a turn of its own.
   const cam = map.cameraForBounds(bb, { padding: p, maxZoom: 18.4, bearing: 180 });
-  if (cam) { map.easeTo({ ...cam, zoom: Math.max(HUB_Z + 0.2, cam.zoom), bearing: 180, duration: 700 }); hubTurned = true; northDue = false; }
+  if (!cam) return;
+  // The bays' own middle, set in the middle of the room left for them: right at whatever zoom the floor gives (the
+  // fit's centre is only right at the fit's zoom).
+  map.easeTo({ center: bb.getCenter(), zoom: Math.max(HUB_Z + 0.2, cam.zoom), bearing: 180, offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2], duration: 700 });
+  hubTurned = true; northDue = false;
 }
 
 /** A route in view paints every stop it calls at in its own colour; otherwise a stop wears its first route's. */
@@ -1433,7 +1439,9 @@ export async function show(o, app, clockNow) {
   await showPage(o, app, clockNow);
   // The minute or the feed: a phone's route sheet redrawn in place, its scroll kept.
   if (o.tick && o.routeArgs && app.route.name === 'map' && !wide() && col.querySelector('#mapcard > .routesheet')) sheetCard(o.routeArgs, clockNow);
-  if (o.tick && o.hub && app.route.name === 'map' && !wide() && col.querySelector('#mapcard > .hubsheet')) hubCard(clockNow);
+  // The board is a phone's card whenever the Transit Center is up: redrawn for the minute, and put back when the
+  // layout turned phone under it (a tablet turned upright) with the address unchanged.
+  if (o.hub && app.route.name === 'map' && !wide() && (o.tick ? !!col.querySelector('#mapcard > .hubsheet') : !col.querySelector('#mapcard.open > .hubsheet'))) hubCard(clockNow);
   if (o.tick) hubBadges();
   if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
   if (!o.hub && hubTurned && !o.tick) { northDue = true; if (!map.isMoving()) northAgain(); }   // another tab: north up again
@@ -1481,7 +1489,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (!routeShort && !alertId && focusRoute !== undefined) { focusRoute = undefined; applySelection(); }   // off the route's page: stops back to their own colours
   // The address is acted on once. A redraw with the same one (the app coming back to the front, say)
   // leaves whatever the rider has since tapped on the map alone.
-  const fresh = location.hash !== shownHash;
+  const fresh = location.hash !== shownHash, cameFrom = shownHash || '';
   shownHash = location.hash;
   if (!fresh) return;
   // The map grown or shrunk since (the route page's small map opened out into the Map tab, say): what it was fitted to
@@ -1499,7 +1507,8 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     hubBay = hubPick || null;
     // On a phone the board is the map's card; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide()) hubCard(clockNow); else col.querySelector('#mapcard').classList.remove('open');
-    if (lastFocused !== 'hub' || !hubOn) fitHub();   // framed when opened, unless the rider's already there (their zoom and turn kept)
+    // Framed whenever the tab opens; from one of its routes to another, the rider's zoom and turn are kept.
+    if (!cameFrom.startsWith('#/hub') || !hubOn) fitHub();
     lastFocused = 'hub';
     hubBadges();
     return;
