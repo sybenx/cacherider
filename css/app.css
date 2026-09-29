@@ -905,7 +905,10 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .rs-map { position: relative; flex: none; height: 300px; }
 .rs-map .run-map { border-left: 0; border-right: 0; }
 .rs-whole { position: absolute; left: 10px; top: 10px; z-index: 2; min-height: 34px; padding: 0 12px; gap: 6px; font-size: 13px; background: var(--color-bg); box-shadow: var(--shadow-md); }
-.rs-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px 18px; }
+.rs-list { flex: 1; min-height: 0; padding: 0 16px 18px; }
+/* the run sheet's list scrolls on its own; the route sheet's (the same class) is the map card's, which scrolls it: a
+   scroll box of its own there, with nothing to scroll and its overscroll contained, swallowed the finger */
+.rs .rs-list { overflow-y: auto; overscroll-behavior: contain; }
 .rs.map-only .rs-map { flex: 1; height: auto; }
 .rs.map-only .rs-list { display: none; }
 @media (prefers-reduced-motion: reduce) { .rs { transition: none; } }
