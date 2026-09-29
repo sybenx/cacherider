@@ -130,7 +130,7 @@ function wireSwipeBack() {
   side.addEventListener('touchstart', e => {
     x0 = null;
     if (!isDesktop() || !app.route || ['home', 'hub', 'map'].includes(app.route.name) || e.touches.length !== 1) return;
-    if (e.target.closest('#minimap, .maplibregl-map, input, .hours')) return;
+    if (e.target.closest('.maplibregl-map, input, .hours')) return;
     for (let el = e.target; el && el !== side; el = el.parentElement) if (el.scrollWidth > el.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(el).overflowX)) return;
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = e.timeStamp; claimed = false;
   }, { passive: true });
@@ -175,7 +175,7 @@ function sync(a, b) {
     if (x.nodeType !== 1) { if (x.data !== y.data) x.data = y.data; continue; }
     for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
     for (const at of y.attributes) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
-    if (x.id === 'minimap' || x.id === 'runmap' || x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') continue;   // a map's slot: the map in it is left be
+    if (x.id === 'runmap' || x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') continue;   // a map's slot: the map in it is left be
     sync(x, y);
   }
 }
@@ -218,7 +218,7 @@ async function render(tick = false) {
     view = { html: html`<div class="empty"><h2>Something went wrong</h2><p>${e.message}</p></div>` };
   }
   // A stop page reached from the Map tab on a phone is a sheet over the map: a swipe down at its top sends it back. The mark survives the minute's redraws of the same page.
-  const isPage = name === 'stop' || (name === 'usu' && seg[1] !== 'route');
+  const isPage = name === 'stop' || name === 'usu';   // a stop, a shuttle stop, a shuttle route
   // A stop on a phone or a portrait tablet is the map with the page as its sheet, as a route and the Transit Center
   // are: the address stays the stop's (#/stop/…, #/usu/…), so links, bookmarks and the offline shell are as ever.
   const stopMap = isPage && !isDesktop() && !!view && !!view.mount;
@@ -260,7 +260,7 @@ async function render(tick = false) {
     if (!unchanged) view.mount && view.mount(side, app);
   } else runSheetOf(view);   // a stop as the map's sheet: its run sheet here too, before the sheet's mount wires it
   // The map is drawn for the Map tab, beside a wide screen's pages, and docked into a phone's page or run sheet.
-  if (mapOpen || isDesktop() || side.querySelector('#minimap') || document.querySelector('#runsheet #runmap')) {
+  if (mapOpen || isDesktop() || document.querySelector('#runsheet #runmap')) {
     const m = await ensureMap();
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: decodeURIComponent(seg[3] || '') } : null;
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert', mapB = name === 'map' && seg[1] === 'bus';

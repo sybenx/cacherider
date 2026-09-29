@@ -509,16 +509,9 @@ a.twinline { text-decoration: none; }
 
 /* ── map ───────────────────────────────────────────────────────────────── */
 #map { position: absolute; inset: 0; }
-/* the small map on a stop page: a strip across the top of the phone, a tap opens the Map tab there */
-.minimap-slot { position: relative; height: 30vh; min-height: 150px; max-height: 260px; background: var(--color-surface); border-bottom: 1px solid var(--cr-line); cursor: pointer; overflow: hidden; }
-.minimap-slot .minimap-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--cr-muted); }
-.minimap-slot .docked ~ .minimap-ph { display: none; }
-.minimap-slot .docked .maplibregl-canvas { cursor: pointer; }
+/* docked in a run sheet */
 .docked .maplibregl-ctrl-group { display: none; }   /* docked in a page, the map's own buttons stay on the Map tab */
 .docked .maplibregl-ctrl-bottom-right { z-index: 1; }
-.minimap-open { position: absolute; left: 12px; bottom: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; background: var(--color-bg); border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); font-size: 0.8125rem; font-weight: 500; pointer-events: none; }
-.minimap-slot:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-@media (min-width: 840px) { .minimap-slot { display: none; } }
 #map canvas { outline: none; }
 .mapbar { position: absolute; top: 10px; left: 12px; right: 12px; display: flex; gap: 8px; z-index: 450; }
 .mapbar .search { flex: 1; }
@@ -958,7 +951,6 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
   .land-top { margin-inline: calc(-1 * max(0px, calc(50vw - 300px))); }   /* the header the whole width */
   .mapcard { max-width: 600px; margin-inline: auto; border-inline: 1px solid var(--cr-line); }
   .mapbar, .mapresults { max-width: 600px; margin-inline: auto; }
-  .minimap-slot { height: 40vh; max-height: none; }
   .rs:not(.map-only) .rs-map { height: 40vh; }
   #runsheet { left: max(0px, calc(50% - 300px)); right: max(0px, calc(50% - 300px)); }
 }

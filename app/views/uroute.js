@@ -1,6 +1,5 @@
 // A shuttle route: its stops in loop order, each with the nearest bus.
 import { html, icon } from '../ui.js';
-import { miniSlot, mountMini } from './mini.js';
 import { U, estimate, chip, liveTag, isStale, hasData, lastSeen, live, notice, offNote, hours, untilWords } from '../usu.js';
 
 export function render({ id }) {
@@ -10,7 +9,6 @@ export function render({ id }) {
   const buses = live.buses.filter(b => b.ri === ri);
   const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a></div>`];
   parts.push(html`<div class="head"><span class="eyebrow">${U.name}</span><div style="display:flex;align-items:center;gap:12px">${chip(ri, 44)}<div><h1 style="font-size:1.875rem">${r.name}</h1><div class="muted" style="font-size:0.875rem">${r.stops.length} stops · ${hasData() ? (buses.length ? buses.length + (buses.length === 1 ? ' bus' : ' buses') + ' on the road' + (untilWords(ri) ? ' · ' + untilWords(ri) : '') : 'no bus on the road right now') : 'finding buses…'}</div>${hours(ri) ? html`<div class="muted" style="font-size:0.8438rem">Usually ${hours(ri)}</div>` : ''}</div></div></div>`);
-  parts.splice(1, 0, miniSlot({ uroute: r.id }));   // the phone's small map, its line drawn on top
   parts.push(notice());
   const rows = r.stops.map(si => {
     const s = U.stops[si], e = hasData() ? estimate(si, ri) : null;
@@ -19,5 +17,8 @@ export function render({ id }) {
   });
   parts.push(html`<div class="list">${rows}</div>`, offNote([ri]));
   if (r.traced) parts.push(html`<div class="fine">USU publishes no drawn line for this route; the one on the map is traced along the streets between its stops, in order.</div>`);
-  return { html: parts.join(''), title: r.name, live: true, keepScroll: true, mount: mountMini };
+  return { html: parts.join(''), title: r.name, live: true, keepScroll: true, mount };
 }
+
+/** Nothing to wire: its rows are links. (A page with a mount is one a phone shows as the map's sheet.) */
+function mount() {}

@@ -375,7 +375,7 @@ async function init(app) {
   // it. A finger that moves, or a second one, is a pan or a pinch, and picks nothing; the tap it ends in is swallowed.
   let pressTimer = 0, pressFrom = null, pressedAt = 0;
   const spotAt = e => {
-    if (still() || Date.now() - pressedAt < 800) return;   // Android sends a long press as a context menu too: once
+    if (Date.now() - pressedAt < 800) return;   // Android sends a long press as a context menu too: once
     pressedAt = Date.now(); clearTimeout(tapTimer);
     const { lat, lng } = e.lngLat;
     if (JR) { location.hash = '#/map/' + atPath({ lat, lon: lng, label: whereabouts(lat, lng) }); return; }   // off the way, to the spot: Back comes back
@@ -387,7 +387,6 @@ async function init(app) {
   map.on('touchend', unpress); map.on('touchcancel', unpress);
   map.on('contextmenu', e => { e.originalEvent.preventDefault(); unpress(); spotAt(e); });
   map.on('click', e => {
-    if (still()) return;   // docked as a page's picture, a tap is the slot's: it opens the Map tab
     if (Date.now() - pressedAt < 800) return;   // the lift of a long press
     // A tap on the map with search results open puts them away, the keyboard too, and picks nothing.
     // The words stay in the box: a tap back into it brings the results back.
@@ -1481,7 +1480,7 @@ export function liveUpdate(app) {
     if (!m) {
       const el = document.createElement('div');
       el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
-      el.onclick = ev => { if (still()) return; ev.stopPropagation(); selectBus(b.id, app); };
+      el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind, id: b.id };
       busMarkers.set(b.id, m);
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
@@ -1750,7 +1749,7 @@ export async function show(o, app, clockNow) {
   mainJourney(o.journey || null, app);   // a way from the directions page
   if ((resetDue || backDue) && app.route.name === 'map' && !o.hub) { const to = backDue ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to); }
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
-  routeTimes(still() ? null : focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
+  routeTimes(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
 let wantBus = null, wantIn = null;
@@ -1779,12 +1778,9 @@ function pickBus(id, app) {
 }
 async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
-  // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
-  // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
+  // One map for the whole app. On a phone it docks into a run sheet's slot, and comes back to its column after. Three maps were three WebGL contexts, one too many for a
   // cheap tablet, which dropped one and went gray.
-  // Only a page on screen: with the map up (a stop's sheet) the page column is hidden, and may still hold the last
-  // page's slot (a shuttle route's), which would take the map in out of sight, and still.
-  dock(!wide() && app.route.name !== 'map' ? document.querySelector('#runsheet #runmap') || document.querySelector('#body:not(.map-open) #minimap') : null);
+  dock(!wide() && app.route.name !== 'map' ? document.querySelector('#runsheet #runmap') : null);
   // A map still hidden (the Map tab not on screen yet, the page behind it just gone) has no size to fit anything to:
   // a route fitted to nothing is the whole valley and further. Waited for, a few frames at most; if the address
   // moves on meanwhile, the newer call does the work.
@@ -1847,8 +1843,9 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     const changed = lastFocused !== 'ur:' + uRoute;
     lastFocused = 'ur:' + uRoute;
     selected = null; uHilite = ''; hiLines = []; hiLoops = [uRoute]; focusRoute = undefined; applySelection();
-    col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized)) settlePad(), map.fitBounds(uRouteBounds(uRoute), { padding: still() ? 24 : fitPad(40), duration: still() ? 0 : 700, maxZoom: 16 });
+    // On a phone or a portrait tablet its page is the map's sheet, the loop framed above it, as a Connect route's is.
+    if (page) pageSheet(page, app, true); else col.querySelector('#mapcard').classList.remove('open');
+    if (focus && (changed || resized)) settlePad(), map.fitBounds(uRouteBounds(uRoute), { padding: page ? routePad() : fitPad(40), duration: 700, maxZoom: 16 });
     return;
   }
   // An alert from the About page: its route drawn on top, the stops it closes framed (marked already, as every
@@ -1878,7 +1875,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     // On a phone's Map tab its stops are the card, the map framed above it; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide() && routeArgs) sheetCard(routeArgs, clockNow);
     else col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: still() ? 24 : routePad(), duration: still() ? 0 : 700, maxZoom: 15.5 });
+    if (focus && (changed || resized) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: routePad(), duration: 700, maxZoom: 15.5 });
     stayRoute = false;
     wantBus = null;
     if (bus) ringBus(bus); else wantRing = null;
@@ -1895,7 +1892,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
       // stop list there is no card, and a fresh arrival eases to the stop itself.
       if (page) { select(stopId, app, false); pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
       else if (app.route.name === 'map') select(stopId, app, changed, changed && map.getZoom() < 15);
-      else if (focus && changed && (still() || !map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: still() ? 16 : Math.max(map.getZoom(), 15), duration: still() ? 0 : 700 });
+      else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
     }
   } else if (ustopId && U) {
     const si = U.stopById[ustopId];
@@ -1907,7 +1904,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     selected = pole ? D.stops[pole.j].id : null; uHilite = pole ? '' : ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
     if (page) { if (pole) select(D.stops[pole.j].id, app, false); else { selectedU = null; applySelection(); } pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
     else if (app.route.name === 'map') { if (pole) select(D.stops[pole.j].id, app, changed); else if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
-    else if (focus && changed && (still() || !map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: still() ? 16 : Math.max(map.getZoom(), 15.5), duration: still() ? 0 : 700 });
+    else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
   } else if (journey) {
     // A way from the directions page: nothing picked, the way drawn (mainJourney) and its card.
     lastFocused = null; selected = null; uHilite = ''; hiLines = []; hiLoops = []; focusRoute = undefined;
@@ -1934,17 +1931,12 @@ function routeBounds(ri) {
   return b;
 }
 
-// ---- the one map, docked: on a phone, into a stop or route page's small slot as a picture of where the stop or
-// route is (a tap opens the Map tab there), or into a run sheet's slot, where it's the rider's to move; on the Map
-// tab, in its own column. The page's markup is replaced around it, so it's parked in its column meanwhile (main.js).
-const still = () => !!docked && docked.id === 'minimap';
+// ---- the one map, docked: on a phone, into a run sheet's slot, where it's the rider's to move; otherwise in its own
+// column. The sheet's markup is replaced around it, so it's parked in its column meanwhile (main.js).
 function dock(slot) {
   const box = map.getContainer(), to = slot || col;
   docked = slot;
-  // The finger's gestures follow where it's docked, every time: a page going moves the map back to its column
-  // itself (main.js's park), so by the time it's asked to come home it's there already, and was left still.
   box.classList.toggle('docked', !!slot);
-  for (const h of [map.dragPan, map.scrollZoom, map.touchZoomRotate, map.doubleClickZoom, map.keyboard]) if (h.isEnabled() === still()) still() ? h.disable() : h.enable();
   if (box.parentNode === to) return;
   to.prepend(box);
   lastFocused = null;   // moved, it frames the page's stop or route afresh
@@ -2268,7 +2260,6 @@ async function routeWays(ri) {
 let rtShown = null, rtWired = false, rtBase = null, rtAt = '';
 const bear = (p, q) => Math.atan2((q.lon - p.lon) * Math.cos(p.lat * Math.PI / 180), q.lat - p.lat) * 180 / Math.PI;
 async function routeTimes(ri, clockNow) {
-  if (still()) ri = null;   // a page's picture is a picture: no times on it
   if (!map || !ready) return;
   if (!map.getSource('rtimes')) {
     map.addSource('rtimes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
