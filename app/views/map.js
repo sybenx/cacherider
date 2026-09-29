@@ -470,6 +470,8 @@ async function init(app) {
     // line. A road with one route lights it too, as a tap on it always has. (It was a chooser of routes: a menu that
     // only someone who already knew the system could pick from.)
     else if (ris.length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), null, null, ris); }
+    // Only the shuttle's line there: that spot, with its stops a walk off, as a road of Connect's gets.
+    else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now()); }
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
     else if (app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) location.hash = '#/map';
   };
@@ -1645,10 +1647,10 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   if (!pinMarker) { const el = document.createElement('div'); el.className = 'spot-marker'; pinMarker = new maplibregl.Marker({ element: el }); }
   pinMarker.setLngLat([at.lon, at.lat]).addTo(map);
   const near = road ? roadStops(at, road) : nearestTo(at.lat, at.lon, 4);
-  // The Aggie Shuttle's stops a short walk off too, in among Connect's by distance: on campus they're the nearer
-  // buses. One at the same pole as a Connect stop listed is that stop, already there.
-  const listed = new Set(near.map(x => x.i));
-  const ushare = road ? [] : nearestUSU(at.lat, at.lon, 6).filter(x => x.d <= 400 && U.stops[x.i].routes.length && !(U.shared[x.i] && listed.has(U.shared[x.i].j))).slice(0, 3).map(x => ({ ...x, u: true }));
+  // The Aggie Shuttle's stops a short walk off too, on a road's card as anywhere, in among Connect's by distance: on
+  // campus they're the nearer buses. One at the same pole as a Connect stop is listed as well, its loops and their
+  // buses being what its row says (the Connect stop's row says only Connect's).
+  const ushare = !U ? [] : nearestUSU(at.lat, at.lon, 6).filter(x => x.d <= 400 && U.stops[x.i].routes.length).slice(0, 3).map(x => ({ ...x, u: true }));
   const rows = [...near, ...ushare].sort((a, b) => a.d - b.d);
   const card = col.querySelector('#mapcard');
   // A start picked for directions: the way there from this spot is the card's one button, the nearest stops under it.
