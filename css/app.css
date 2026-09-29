@@ -449,6 +449,12 @@ a.twinline { text-decoration: none; }
 #map.bus-small .bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
 #map.bus-small .bus.lit .bus-marker svg, #map.bus-small .bus.on .bus-marker svg { width: 14px; height: 14px; }
 #map.bus-small .bus.lit .bus-marker path, #map.bus-small .bus.on .bus-marker path { fill: #fff; stroke: none; }
+/* the Aggie Shuttle's buses go to their arrows with its lines, wherever those are put away (off campus, or out past
+   the streets), not only at Connect's zoom: a full marker with no line under it read as a bus off its route */
+#map.u-small .bus.shuttle { pointer-events: none; }
+#map.u-small .bus.shuttle .bus-marker { border-color: transparent; background: transparent; box-shadow: none; }
+#map.u-small .bus.shuttle .bus-marker svg { width: 26px; height: 26px; overflow: visible; filter: drop-shadow(0 0 1px var(--color-bg)); }
+#map.u-small .bus.shuttle .bus-marker path { fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3; stroke-dasharray: 3 2.2; stroke-linecap: round; stroke-linejoin: round; }
 /* thumbs: bigger buses, zoom buttons and satellite toggle on touch screens; the mouse keeps the small ones */
 @media (pointer: coarse) {
   .bus-marker { width: 30px; height: 30px; }

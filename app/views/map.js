@@ -1022,7 +1022,9 @@ function quiet() {
   const z = map.getZoom(), v = map.getBounds(), m = 0.003;   // a few hundred metres round the box
   const near = b => !!b && z >= 13.5 && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
   const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
-  show(U_LAYERS, near(campusBox) || selectedU !== null || !!uHilite || hiLoops.length > 0 || runLoops.length > 0);
+  const uOn = near(campusBox) || selectedU !== null || !!uHilite || hiLoops.length > 0 || runLoops.length > 0;
+  show(U_LAYERS, uOn);
+  map.getContainer().classList.toggle('u-small', !uOn);   // its buses to arrows with its lines put away
   show(POOL_LAYERS, near(poolBox));
   hubCheck();
 }
