@@ -354,7 +354,7 @@ async function init(app) {
   placeControls();
   WIDE.addEventListener('change', placeControls);
   squaresOnDemand(map);
-  map.on('load', () => { ready = true; addUsuImages(); loadShapes(); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimes(focusRoute, now()); });
+  map.on('load', () => { ready = true; addUsuImages(); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimes(focusRoute, now()); });
   map.on('zoom', busScale);
   map.on('move', quiet);
   map.on('moveend', northAgain);
@@ -478,7 +478,7 @@ async function init(app) {
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; paperKept = null; labelsHeard = false; if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; paperKept = null; labelsHeard = false; searchKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -1028,7 +1028,8 @@ function placeMe(geo) {
 let labelsHeard = false, asking = false;
 function applySelection() {
   if (!map || !ready) return;
-  map.setFilter('stop-selected', ['==', ['get', 'id'], selected || '']);
+  // A search's stops beside the panel, several at once, with the ring a picked stop wears; a stop picked, that one.
+  map.setFilter('stop-selected', !selected && searchIds.length ? ['in', ['get', 'id'], ['literal', searchIds]] : ['==', ['get', 'id'], selected || '']);
   map.setFilter('usu-selected', ['==', ['get', 'id'], uHilite]);
   runRoutes = routesInPlay(); runLoops = loopsInPlay();
   // A loop with its way on drawn isn't drawn solid on top as well: the way is the loop, bright where it starts.
@@ -1734,10 +1735,37 @@ function askSpot(toId, app, dest = false) {
   requestAnimationFrame(() => card.classList.add('open'));
 }
 
+/** A search in the panel beside the map: the stops its results start with ringed, as a picked stop is, several at
+ *  once, and its places' spots marked; fitted in view when any is off it. Put away with the search. */
+let searchKey = null, searchIds = [], searchPins = [], wantMarks = null;
+function searchMarks(m) {
+  const key = m ? m.stops.join(',') + '|' + m.spots.map(p => p.lat + ',' + p.lon).join(';') : null;
+  if (key === searchKey) return;
+  searchKey = key;
+  for (const p of searchPins) p.remove();
+  searchPins = [];
+  searchIds = m ? m.stops.filter(id => D.stopById[id] !== undefined) : [];
+  applySelection();
+  if (!m) return;
+  for (const p of m.spots) { const el = document.createElement('div'); el.className = 'spot-marker'; searchPins.push(new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map)); }
+  const pts = [...searchIds.map(id => stop(D.stopById[id])).map(s => [s.lon, s.lat]), ...m.spots.map(p => [p.lon, p.lat])];
+  if (!pts.length) return;
+  // In view is in the part not under the panel or the header's shade.
+  const box = map.getContainer(), W = box.clientWidth, H = box.clientHeight, x0 = (padLeft || 0) + 16, y0 = topCover() + 16;
+  if (pts.every(p => { const q = map.project(p); return q.x >= x0 && q.x <= W - 16 && q.y >= y0 && q.y <= H - 16; })) return;
+  const b = new maplibregl.LngLatBounds();
+  for (const p of pts) b.extend(p);
+  settlePad();
+  map.fitBounds(b, { padding: fitPad(60), duration: 600, maxZoom: 16 });
+}
+
 /** Called by the router whenever the map is on screen. */
 let shownHash = null, lastMeasured = '';
 export async function show(o, app, clockNow) {
   await showPage(o, app, clockNow);
+  // Marked once the map's ready: a reload straight onto a search gets there before its style does.
+  wantMarks = wide() && o.searchMarks || null;
+  if (map && ready) searchMarks(wantMarks);
   // The minute or the feed: a phone's route sheet redrawn in place, its scroll kept.
   if (o.tick && o.routeArgs && app.route.name === 'map' && !wide() && col.querySelector('#mapcard.open > .routesheet')) sheetCard(o.routeArgs, clockNow);
   if (o.tick && app.route.name === 'map') freshStopCard(app, clockNow);   // a stop's next buses, counting down

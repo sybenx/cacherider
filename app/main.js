@@ -224,6 +224,7 @@ async function render(tick = false) {
   const stopMap = isPage && !isDesktop() && !!view && !!view.mount;
   const fromMap = !!app.route && app.route.name === 'map' && isPage && !isDesktop();
   app.route = { name, seg, q };
+  syncHeader(name, q);
   const mapOpen = name === 'map' || stopMap;
   setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U) || (name === 'go' && !!U));   // directions: the shuttle is in the planner
   setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route', 'go'].includes(name));
@@ -278,12 +279,20 @@ async function render(tick = false) {
       // stop or spot; where to, for directions from a spot.
       goPick: isDesktop() && name === 'go' && goArgs && goArgs.to ? goArgs.to !== '-' ? { for: goArgs.to } : goArgs.at ? { to: spotKey(goArgs.at.lat, goArgs.at.lon, goArgs.at.label) } : null : null,
       journey: goMap ? goJ : view && view.journey || null,   // a way from the directions page, drawn
+      // A search in the panel beside the map: its first few stops ringed on the map, and its places' spots.
+      searchMarks: isDesktop() && name === 'search' && q.q ? searchMarksOf(side) : null,
       page: stopMap ? { key: name + '/' + seg[1] + (seg[2] ? '/' + seg[2] : ''), html: String(view.html), mount: view.mount } : null,   // a stop's page, the map's sheet
     }, app, clockNow);
   }
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';
 }
 
+/** The stops and places a search's results start with, as the panel lists them. */
+function searchMarksOf(el) {
+  const stops = [...new Set([...el.querySelectorAll('a[href^="#/stop/"]')].map(a => a.getAttribute('href').slice(7).split(/[/?]/)[0]))].slice(0, 6);
+  const spots = [...el.querySelectorAll('a[href^="#/map/at/"]')].slice(0, 3).map(a => { const [lat, lon] = a.getAttribute('href').split('/')[3].split(','); return { lat: +lat, lon: +lon }; });
+  return { stops, spots };
+}
 /** A run's sheet over the page (a phone's stop): over the page and its map, its list kept where it was scrolled.
  *  Redrawn in place, and not at all when nothing changed: replaced whole, its list lost the finger scrolling it and its
  *  map (moved out and back) the finger panning it, every time the feed came in. */
@@ -464,11 +473,45 @@ function wireHeader() {
   const input = form.querySelector('input');
   // On the Map tab the header's box searches the map, results over it, as the phone's map bar does.
   const onMap = () => app.route && app.route.name === 'map' && app.mapMod;
-  input.addEventListener('input', () => { if (onMap()) app.mapMod.mapSearch(input.value); });
+  // Off it, the one search on a wide screen: its results live in the panel as it's typed in (the panel's own boxes are
+  // hidden), no Enter needed. The first keystroke off the search page is a step in the history, so Back and a
+  // cleared box go back to where it was; the rest replace it.
+  let t;
+  input.addEventListener('input', () => {
+    if (onMap()) return app.mapMod.mapSearch(input.value);
+    if (!isDesktop()) return;
+    clearTimeout(t); t = setTimeout(() => panelSearch(input.value), 250);
+  });
   input.addEventListener('focus', () => { if (onMap() && input.value.trim()) app.mapMod.mapSearch(input.value); });
-  form.onsubmit = e => { e.preventDefault(); if (onMap()) return; const q = input.value.trim(); location.hash = q ? '#/search?q=' + encodeURIComponent(q) : '#/'; };
+  form.onsubmit = e => { e.preventDefault(); if (onMap()) return; clearTimeout(t); panelSearch(input.value); };
   // Following the phone, a change of its look reaches the maps too.
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (themeMode() === 'auto') window.dispatchEvent(new Event('themechange')); });
+}
+let searchFrom = null;   // where the header's search was started from, off the search page
+function panelSearch(v) {
+  const q = v.trim(), { seg, q: params } = parse(), onSearch = seg[0] === 'search';
+  // Picking one end of a journey on the search page: the pick goes on with whatever's typed.
+  const keep = onSearch ? ['for', 'from'].filter(k => params[k]).map(k => k + '=' + encodeURIComponent(params[k])).join('&') : '';
+  const target = q ? '#/search?q=' + encodeURIComponent(q) + (keep ? '&' + keep : '') : keep ? '#/search?' + keep : null;
+  if (!target) {   // cleared: back to where it was started from
+    if (onSearch && searchFrom !== null) { searchFrom = null; history.back(); } else if (onSearch) location.hash = '#/';
+    return;
+  }
+  if (!onSearch) { searchFrom = location.hash || '#/'; location.hash = target; return; }
+  if (location.hash !== target) { history.replaceState(null, '', target); window.dispatchEvent(new HashChangeEvent('hashchange')); }
+}
+/** The header's box on a wide screen follows the page: the search's words on the search page (arriving there, the box
+ *  is where to type), empty on any other but the Map tab's, which keeps its own. Not while it's being typed in. */
+let syncedName = null;
+function syncHeader(name, q) {
+  const input = document.querySelector('#topsearch input');
+  if (!input || !isDesktop()) return;
+  if (name !== 'search') searchFrom = name === 'map' ? searchFrom : null;
+  const moved = name !== syncedName;
+  syncedName = name;
+  if (document.activeElement === input && (name === 'search' || !moved)) return;   // being typed in
+  if (name === 'search') { input.value = q.q || ''; if (!q.q) input.focus({ preventScroll: true }); }
+  else if (name !== 'map') input.value = '';
 }
 
 async function boot() {
