@@ -1319,13 +1319,17 @@ function notice(clockNow) {
 // ---- the shuttle, live
 /** Buses follow their loops' curve: full size and tappable from zoom 14 up, shrinking below that, and
  *  bare arrows nobody can tap below 13, so a valley-wide view isn't a pile of overlapping badges. */
+// Written only when it changes, in steps of a tenth: set every frame of a zoom, the size restyled every bus marker
+// (and redrew its shadow) at every frame, which a cheap tablet's zoom felt as a low frame rate. A few steps across a
+// zoom look the same.
+let busScaleAt = null, busSmallAt = null;
 function busScale() {
   if (!map) return;
   const z = map.getZoom();
-  const scale = z >= 14 ? 1 : z >= 12 ? 0.45 + (z - 12) * 0.275 : Math.max(0.2, 0.45 - (12 - z) * 0.125);
+  const scale = (Math.round((z >= 14 ? 1 : z >= 12 ? 0.45 + (z - 12) * 0.275 : Math.max(0.2, 0.45 - (12 - z) * 0.125)) * 10) / 10).toFixed(1), small = z < 13;
   const c = map.getContainer();
-  c.style.setProperty('--bus-scale', scale.toFixed(3));
-  c.classList.toggle('bus-small', z < 13);
+  if (scale !== busScaleAt) { busScaleAt = scale; c.style.setProperty('--bus-scale', scale); }
+  if (small !== busSmallAt) { busSmallAt = small; c.classList.toggle('bus-small', small); }
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
