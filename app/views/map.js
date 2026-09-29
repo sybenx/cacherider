@@ -2,9 +2,9 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
+import { D, BASE, stop, route, nextAt, timed, search, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, nearest, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
-import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard, heardName } from '../ui.js';
+import { routeName, routeNames, html, icon, timedMark, badge, badges, time, sched, corners, depRow, stopRow, side, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard, heardName } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -137,6 +137,9 @@ function style(sat = true) {
   st.layers.splice(under >= 0 ? under : st.layers.findIndex(l => l.id === 'spot-fill'), 0, placeLabels);
   const all = st.layers.find(l => l.id === 'stops'), { minzoom, ...lit } = all;
   st.layers.splice(st.layers.indexOf(all) + 1, 0, { ...lit, id: 'stops-lit', maxzoom: 14, filter: ['in', ['get', 'id'], ['literal', []]] });
+  // A lit route's timed stops (its timepoints, where an early bus waits): a ring round the dot in the map's ink.
+  st.layers.splice(st.layers.indexOf(all) + 2, 0, { id: 'stops-tp', type: 'circle', source: 'stops', filter: ['in', ['get', 'id'], ['literal', []]],
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 5, 14, 9, 17, 12.5, 19, 16], 'circle-opacity': 0, 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.2, 15, 2], 'circle-stroke-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20' } });
   return st;
 }
 
@@ -633,7 +636,8 @@ function routeRow(si, ri, next0, clockNow, opts = {}) {
   // Whose minute it is, as the stop page says it: a live estimate with the timetable's struck above it and Live (or
   // Estimated, from the bus's place); a timetable time, Scheduled.
   const mark = !t ? '' : t.live ? liveMark(t.live.est ? 'Estimated' : 'Live') : sched(t);
-  return html`<a class="croute${opts.here ? ' here' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}"><span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${heard(si, s.town && s.town !== 'Logan' ? ', ' + s.town : '')}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
+  const tp = timed(si, ri);
+  return html`<a class="croute${opts.here ? ' here' : ''}${tp ? ' tp' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}"><span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${heard(si, s.town && s.town !== 'Logan' ? ', ' + s.town : '')}${tp ? timedMark() : ''}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
 }
 
 // ---- staying on the bus. A bus swaps routes at the Transit Center all day (9 and 1 on a Saturday): its next
@@ -1090,6 +1094,8 @@ function applySelection() {
   tintStops(map, focusRoute);
   // A route or bus lit (or a way drawn): only its own detours' dotted stretches, not every route's at full strength
   // across the faded map and over the way it's going.
+  // A lit route's timed stops ringed; none with nothing lit, the whole valley's would be clutter.
+  map.setFilter('stops-tp', ['in', ['get', 'id'], ['literal', JR ? [] : D.stops.filter((s, i) => [...lit].some(ri => timed(i, ri))).map(s => s.id)]]);
   const ownClosed = JR ? JR.routes : [...new Set([...lit, ...routesInPlay()])];   // a bus's or a stop's too
   for (const id of ['route-closed', 'route-closed-halo']) map.setFilter(id, ownClosed.length ? ['in', ['get', 'route'], ['literal', ownClosed]] : null);
   // A route or bus lit: the stops it passes without calling at faded back, so a stop on its line that isn't its (8 up
@@ -1141,7 +1147,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (a
 // badge's IN says so). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5, HUB_IN = 110;   // metres from the hall: a bus this close is in
-const HUB_HIDE = ['route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -2093,7 +2099,7 @@ function runBounds(R) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60, main: true };
-const RUN_HIDE = ['stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', 'runs', 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-edge', 'pool-stops'];
+const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', 'runs', 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;

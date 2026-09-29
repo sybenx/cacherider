@@ -1,6 +1,6 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, today, newTimetable, timesChange, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL } from '../data.js';
+import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, distance, servicesOn, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL } from '../data.js';
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
 import { routeNames, html, icon, badge, badges, time, sched, corners, depRow, routeLinks, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -24,7 +24,7 @@ export function render({ id, full, run, on }, clockNow) {
   const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
   // Across the road, the stop for the other way and the commonest wrong one to stand at: a pill of its own under the
   // routes, room enough to say where that side's next bus is going.
-  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${routeLinks(si)}<div class="golinks"><a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>${s.twin ? acrossRow(si, clockNow) : ''}</div>`);
+  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${routeLinks(si)}<div class="golinks"><a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>${tpLine(si)}${s.twin ? acrossRow(si, clockNow) : ''}</div>`);
   if (g) parts.push(html.raw(pointerDial(s.lat, s.lon, g, s.name)));   // the compass: which way and how far, turning with the phone
 
   const aside = [];   // the shuttle stop on the same pole
@@ -140,6 +140,12 @@ export function render({ id, full, run, on }, clockNow) {
   return { html: html`<div class="phone-stop" data-stop="${s.id}">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true, sheet, run: sheet ? sheetRun() : null };
 }
 
+/** A timed stop for some of its routes (a timepoint): which, and what it means for a rider waiting. */
+function tpLine(si) {
+  const ris = stop(si).routes.filter(ri => timed(si, ri));
+  if (!ris.length) return '';
+  return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Route/, 'route')}: an early bus waits here for its time.</span></span>`;
+}
 function servicesOnDays(r) { return true; }
 function describeDays(r) {
   // Which days a route runs at all: from the services its departures carry.

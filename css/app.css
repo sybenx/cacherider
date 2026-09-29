@@ -568,6 +568,12 @@ a.twinline { text-decoration: none; }
 .golink { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; font-size: 0.875rem; font-weight: 500; color: var(--color-accent-700); text-decoration: none; }
 @media (hover: hover) { .golink:hover { text-decoration: underline; text-underline-offset: 3px; } }
 .golinks { display: flex; gap: 18px; flex-wrap: wrap; }
+/* a timed stop (a timepoint): the timetable is kept to here, an early bus waiting for its time */
+.tpmark { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; font-size: 0.75rem; font-weight: 500; color: var(--cr-muted); white-space: nowrap; vertical-align: 1px; }
+.run-n .tpmark { margin-left: 0; display: flex; }
+.croute.tp .c-t { font-weight: 700; }
+.tpline { display: flex; align-items: flex-start; gap: 6px; font-size: 0.8125rem; color: var(--cr-muted); line-height: 1.35; }
+.tpline svg { margin-top: 2px; }
 /* no bus there: POOL where it goes, and the phone's maps for the rest */
 .nobus-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .nobus-maps { padding: 4px 16px 16px; font-size: 0.9375rem; }

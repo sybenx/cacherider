@@ -1,8 +1,8 @@
 // A stop's day hour by hour, and a run from it: its stops from here on, in a sheet over the page, drawn on the big
 // map beside the page where there is one, else on a small map of the sheet's own.
-import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest } from '../data.js';
+import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest, timed } from '../data.js';
 import { clock, clockText, clockShort, fmtDay } from '../time.js';
-import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard } from '../ui.js';
+import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, timedMark } from '../ui.js';
 import { isWide } from '../wide.js';
 
 // The run last laid out, for its map.
@@ -60,7 +60,7 @@ function runParts(t, si, ymd) {
     }
     const end = x === lastStop && ended;
     const name = heard(x.s).s;   // the landmark the bus announces, the address under it
-    return `<a class="run-stop${x.skip ? ' skipped' : ''}${x.leg ? ' later' : ''}" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t${x.est ? ' est' : ''}">${x.skip ? '–' : `${esc(clock(x.m).h)}<small>${esc(clock(x.m).ap)}</small>`}</span><span class="run-n">${name}${x.skip ? '<em class="warnmark">Skipped · detour</em>' : end ? '<em>ends here · drop-off only</em>' : x.req ? '<em>on request</em>' : ''}</span></a>`;
+    return `<a class="run-stop${x.skip ? ' skipped' : ''}${x.leg ? ' later' : ''}" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t${x.est ? ' est' : ''}">${x.skip ? '–' : `${esc(clock(x.m).h)}<small>${esc(clock(x.m).ap)}</small>`}</span><span class="run-n">${name}${x.skip ? '<em class="warnmark">Skipped · detour</em>' : end ? '<em>ends here · drop-off only</em>' : x.req ? '<em>on request</em>' : timed(x.s, x.r) ? timedMark().s : ''}</span></a>`;
   }).join('');
   // The map's labels: a time by each stop, a stop's once (the Transit Center between runs says in and out).
   const seen = new Set([si]);

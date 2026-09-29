@@ -13,8 +13,12 @@ export async function load() {
   D.routeByShort = Object.fromEntries(D.routes.map((r, i) => [r.short, i]));
   D.stopById = Object.fromEntries(D.stops.map((s, i) => [s.id, i]));
   apart(D.routes);
+  for (const r of D.routes) r.tpSet = new Set(r.tp || []);
   return D;
 }
+/** A timepoint of a route's: a stop its timetable is kept to, where an early bus waits for its time (the feed's
+ *  own mark, stop_times' timepoint, the same stops on every trip of a route). */
+export const timed = (si, ri) => !!(D.routes[ri] && D.routes[ri].tpSet && D.routes[ri].tpSet.has(si));
 
 /** Route colours a rider can tell apart. Every route meets at the Transit Center, and an agency's colours can sit
  *  side by side all but the same (Connect's Route 8 and Green Loop, 9 and 11): any two nearer than NEED (ΔE, CIELAB)

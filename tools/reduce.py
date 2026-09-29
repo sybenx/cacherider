@@ -119,6 +119,7 @@ def head(t):
         head_idx[h] = len(headsigns); headsigns.append(h)
     return head_idx[h]
 
+timepoints = {}   # route index → its timepoint stops (feed indices)
 by_trip = {}
 for st in table('stop_times.txt'):
     by_trip.setdefault(st['trip_id'], []).append(st)
@@ -132,6 +133,10 @@ for tid, rows in by_trip.items():
     rows.sort(key=lambda r: int(r['stop_sequence']))
     ri = route_idx[t['route_id']]; hi = head(t); di = int(t.get('direction_id') or 0)
     if rows[-1]['stop_id'] in stop_idx: ends[trip_index(tid)] = [stop_idx[rows[-1]['stop_id']], mins(rows[-1]['arrival_time'] or rows[-1]['departure_time'])]
+    # Timepoints: the stops a route's timetable is kept to, where an early bus waits for its time. The same stops on
+    # every trip of a route, so one list a route.
+    for r in rows:
+        if r.get('timepoint') == '1' and r['stop_id'] in stop_idx: timepoints.setdefault(ri, set()).add(stop_idx[r['stop_id']])
     for r in rows[:-1]:  # nobody boards at a trip's last stop
         if r.get('pickup_type') == '1' or r['stop_id'] not in stop_idx: continue
         si = stop_idx[r['stop_id']]
@@ -176,6 +181,8 @@ for r in routes:
         for si in seq:
             if si in remap and (not out_seq or out_seq[-1] != remap[si]): out_seq.append(remap[si])
         r['stops'][di] = out_seq
+for ri, tps in timepoints.items():
+    routes[ri]['tp'] = sorted(remap[si] for si in tps if si in remap)
 
 # ---- twins: the stop across the road, sharing a route, so the app can show a pair as one place
 # The Green and Blue Loops run the same streets in opposite directions, so a pair across the road can have
