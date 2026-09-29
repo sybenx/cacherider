@@ -405,8 +405,9 @@ async function init(app) {
     const all = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'usu-stops', 'pool-stops', 'place-labels'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
     const hits = all.filter(f => f.layer.id !== 'place-labels');
     // Beside the directions page, a click is the other end: a stop that stop, a place's name that place, anywhere else
-    // that spot. It's the directions, so a way drawn is picked across too.
-    if (pickNow && (pickFor || pickTo)) {
+    // that spot, a way drawn or not. A stop of the way drawn is still that stop, though: its page, as on a phone.
+    const ofWay = JR && hits.some(f => f.layer.id.startsWith('stops') ? JR.stops.includes(f.properties.id) : f.layer.id === 'usu-stops' && JR.ustops.includes(f.properties.id));
+    if (pickNow && (pickFor || pickTo) && !ofWay) {
       const near = f => { const q = map.project(f.geometry.coordinates); return Math.hypot(q.x - e.point.x, q.y - e.point.y); };
       const st = hits.filter(f => f.layer.id.startsWith('stops')).sort((a, b) => near(a) - near(b))[0];
       const pl = !st && all.filter(f => f.layer.id !== 'stops' && f.layer.id !== 'stops-lit' && f.layer.id !== 'pool-stops').sort((a, b) => near(a) - near(b))[0];
@@ -805,6 +806,9 @@ const compassWord = deg => ['north', 'north-east', 'east', 'south-east', 'south'
  *  also drags with a mouse. The browser's pull-to-refresh never sees any of it. */
 /** The peek's height: the grip and the head, whatever the stop's name and routes take. */
 function fitPeek(card) {
+  // The directions: down to the way drawn, the rows above it with it, so the map keeps half the screen at least.
+  const pk = card.querySelector('.gohead .jrow.picked');
+  if (pk) { card.style.setProperty('--peek', Math.min(pk.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.5 * map.getContainer().clientHeight) + 'px'); return; }
   const g = card.querySelector('.grip'), h = card.querySelector('.head');
   if (g && h) card.style.setProperty('--peek', (g.offsetHeight + h.offsetHeight + 2) + 'px');
 }
@@ -2137,29 +2141,31 @@ async function mainJourney(J, app) {
   map.resize(); settlePad();
   map.fitBounds(b, { padding: routePad(), duration: 600, maxZoom: 16.5, bearing: 0 });
 }
-/** A phone's card for the way: which of the ways it is, a step to the others, its times, then its legs. */
+/** A phone's card for the directions: the page's own sheet (where to and from, the ways as rows, the drawn way told
+ *  leg by leg), under the map with the way drawn. A row tapped draws that way; a swipe across, the next. */
 function journeyCard(J, app) {
-  const card = col.querySelector('#mapcard'), n = J.plans.length;
-  const step = (k, dir) => k < 0 || k >= n ? html`<button class="btn btn-ghost jstep" type="button" disabled aria-label="${dir}">${icon(dir === 'Earlier way' ? 'back' : 'fwd', 24)}</button>` : html`<button class="btn btn-ghost jstep" type="button" data-go="${J.hrefs[k]}" aria-label="${dir}">${icon(dir === 'Earlier way' ? 'back' : 'fwd', 24)}</button>`;
-  const markup = html`<div class="grip"></div><div class="head jhead"><div class="jnav"><a class="btn btn-ghost" href="${J.base}" data-back>${icon('back', 20)}All ways</a><span class="eyebrow">${n > 1 ? `Way ${J.i + 1} of ${n}` : 'The one way'}</span>${n > 1 ? html`<span class="jsteps">${step(J.i - 1, 'Earlier way')}${step(J.i + 1, 'Next way')}</span>` : ''}</div>${J.top(J.i)}</div><div class="journeysheet legs">${J.legs(J.i)}</div>`.s;
+  const card = col.querySelector('#mapcard');
+  const markup = `<div class="grip"></div>` + J.sheet();
   const again = !!card.querySelector(':scope > .journeysheet') && card.classList.contains('open') && card.dataset.way === J.base;
-  // Stepping from way to way, the card keeps its height, so its arrows stay under the thumb: a longer way scrolls in it.
+  // From way to way, the card keeps its height, so the rows stay under the thumb: a longer way scrolls in it.
   if (again) { if (!card.classList.contains('peek')) card.style.setProperty('--jh', card.offsetHeight + 'px'); morph(card, markup); }
   else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
+  J.mount(card);
   card.dataset.way = J.base;
   card.classList.remove('hidden');
   card.classList.add('open');
-  // A long way's card would leave the map a sliver: it opens at its head (which way, the times), the legs a swipe up.
-  if (!again && card.offsetHeight > 0.45 * map.getContainer().clientHeight) { fitPeek(card); card.classList.add('peek'); }
+  // A long card would leave the map a sliver: it opens at its head (where to, from, the ways), the legs a swipe up.
+  if (!again && card.offsetHeight > 0.5 * map.getContainer().clientHeight) { fitPeek(card); card.classList.add('peek'); }
 }
-/** Back to the directions page the way was picked on. */
+/** Out of the directions: back where they were opened from. */
 function backToWays() {
   const base = col.querySelector('#mapcard').dataset.way;
   if (history.length > 1) history.back(); else if (base) location.hash = base;
 }
-/** To another of the ways, in place: Back still goes to the directions page. */
+/** To the next way or the one before, in place: Back still leaves the directions. */
 function stepWay(dir) {
-  const b = col.querySelector('#mapcard > .jhead .jstep[data-go]' + (dir < 0 ? ':first-child' : ':last-child'));
+  const rows = [...col.querySelectorAll('#mapcard .jrow[data-go]')], i = rows.findIndex(r => r.classList.contains('picked'));
+  const b = rows[i + dir];
   if (b) asPage(b.dataset.go);
 }
 

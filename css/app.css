@@ -574,30 +574,32 @@ a.twinline { text-decoration: none; }
 .fromline b { color: var(--color-text); font-weight: 600; }
 .fromline .fromacts { margin-left: auto; display: flex; gap: 2px; flex: none; }
 .fromline .btn-ghost { font-size: 14px; min-height: 36px; }
-.plan { padding: 14px 16px 16px; border-bottom: 1px solid var(--cr-line); }
-.plan-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.plan-top .col { display: flex; flex-direction: column; gap: 2px; }
-.plan-top .col.end { align-items: flex-end; text-align: right; }
-.plan-top .col.mid { flex: 1; align-items: center; text-align: center; align-self: center; }
-.plan-top .col .rel { font-size: 13px; color: var(--cr-muted); }
-.plan-top .rel { font-size: 16px; font-weight: 500; }
-.plan-top .sub { font-size: 13px; color: var(--cr-muted); }
-.plan[data-href] { cursor: pointer; }
-.plan[data-href]:hover { background: var(--cr-hover); }
-.plan[data-href]:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-/* the way drawn on the map beside the page */
-.plan.picked { background: var(--color-accent-100); box-shadow: inset 4px 0 0 var(--color-accent); }
-/* a way's own card on a phone's map: which way it is and a step to the others, its times, its legs */
-.mapcard .jhead { padding-bottom: 4px; }
-.mapcard .jnav { display: flex; align-items: center; gap: 4px; margin: -4px -8px 6px; }
-.mapcard .jnav .eyebrow { flex: 1; text-align: center; }
-.mapcard .jnav .btn { min-height: 40px; padding-inline: 8px; }
-.mapcard .jsteps { display: flex; gap: 8px; }
-/* thumb-sized, the pair apart; and the card holds its height from way to way (--jh), so they stay put */
-.mapcard .jnav .jstep { min-width: 48px; min-height: 48px; padding: 0; justify-content: center; }
+/* the directions' ways as rows: leave → arrive, when, and the legs a badge and a word each; the one drawn marked */
+.jrows { border-top: 1px solid var(--cr-line); }
+.jrow { display: flex; flex-direction: column; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--cr-line); cursor: pointer; }
+.jrow:hover { background: var(--cr-hover); }
+.jrow:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.jrow.picked { background: var(--color-accent-100); box-shadow: inset 4px 0 0 var(--color-accent); }
+.jrow .jt { display: flex; align-items: baseline; gap: 6px; }
+.jrow .jt .to { color: var(--cr-muted); }
+.jrow .jt .rel { margin-left: auto; font-size: 13.5px; color: var(--cr-muted); }
+.jrow .jlegs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13.5px; color: var(--cr-muted); }
+.jrow .jleg { display: inline-flex; align-items: center; gap: 4px; }
+.jrow .jleg svg { color: var(--color-accent-700); }
+.jrow .sep { color: var(--cr-line-strong, var(--cr-muted)); }
+.leg .mid .name .badge { vertical-align: -3px; margin-left: 2px; }
+/* on a phone the sheet is the map's card, and holds its height from way to way (--jh), so the rows stay put */
 .mapcard:has(> .journeysheet):not(.peek) { height: var(--jh, auto); }
-.mapcard .jhead .plan-top { margin-bottom: 0; }
-.mapcard .journeysheet { padding: 4px 16px 16px; }
+/* in the card, the head in one line: Back as its arrow beside where to; the page's eyebrow and town left out */
+.mapcard .gohead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.mapcard .gohead > :not(.backbar):not(.head) { grid-column: 1 / -1; }
+.mapcard .gohead .backbar { padding: 0 0 0 4px; }
+.mapcard .gohead .backbar .btn { font-size: 0; gap: 0; min-width: 40px; padding-inline: 8px; }
+.mapcard .gohead .head.tight { padding: 2px 16px 8px 0; }
+.mapcard .gohead .head .eyebrow, .mapcard .gohead .head .muted { display: none; }
+.mapcard .gohead .head.tight h1 { font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mapcard .gohead .fromline { padding-top: 2px; }
+.journeysheet { padding: 8px 16px 8px; }
 .legs { display: flex; flex-direction: column; position: relative; }
 .legs::before { content: ''; position: absolute; left: 17px; top: 20px; bottom: 20px; width: 2px; background: var(--cr-line); }
 .leg { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; padding: 8px 0; }

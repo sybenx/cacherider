@@ -191,12 +191,14 @@ async function render(tick = false) {
   const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: decodeURIComponent(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus } : null;
   // The Transit Center on a phone is the map too, at the Center, the board its card; on a wide screen a page beside it.
   const hubMap = seg[0] === 'hub' && !isDesktop();
-  // A way picked on the directions page: on a phone the Map tab with the way drawn, its card the way's; on a wide
-  // screen the page beside the map, the way drawn there.
-  const goArgs = seg[0] === 'go' ? { to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: decodeURIComponent(seg[4] || '') } : null } : null;
-  const goMap = !!goArgs && q.plan !== undefined && !isDesktop();
-  const name = routeArgs && isDesktop() ? 'route' : hubMap || goMap ? 'map' : seg[0] || 'home';
   const clockNow = now();
+  // Directions: on a wide screen the page beside the map, the way drawn there.
+  const goArgs = seg[0] === 'go' ? { to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: decodeURIComponent(seg[4] || '') } : null } : null;
+  // Directions are the map: on a phone, whenever there's a way to draw, the map with it drawn and the ways as its card.
+  // Before a start is chosen, or with no way by bus, the page as it is.
+  const goJ = goArgs && goArgs.to !== '-' && !isDesktop() ? go.journey(goArgs, q.plan, clockNow) : null;
+  const goMap = !!goJ;
+  const name = routeArgs && isDesktop() ? 'route' : hubMap || goMap ? 'map' : seg[0] || 'home';
   let view;
   try {
     if (name === 'home') view = home.render({ q: q.q || '', page: 'home' }, clockNow);
@@ -278,7 +280,7 @@ async function render(tick = false) {
       // Beside a wide screen's directions, the map picks the other end with a click: where from, for directions to a
       // stop or spot; where to, for directions from a spot.
       goPick: isDesktop() && name === 'go' && goArgs && goArgs.to ? goArgs.to !== '-' ? { for: goArgs.to } : goArgs.at ? { to: spotKey(goArgs.at.lat, goArgs.at.lon, goArgs.at.label) } : null : null,
-      journey: goMap ? go.journey(goArgs, q.plan, clockNow) : view && view.journey || null,   // a way from the directions page, drawn
+      journey: goMap ? goJ : view && view.journey || null,   // a way from the directions page, drawn
     }, app, clockNow);
   }
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';
