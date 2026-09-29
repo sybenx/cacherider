@@ -4,12 +4,12 @@ import { D, stopIndex, stop, nextAt, today, newTimetable, timesChange, nextServi
 import { relative, fmtDay, dayName, clockText, metres, dayFrom } from '../time.js';
 import { routeNames, html, icon, badge, badges, time, sched, corners, depRow, routeLinks, headsign, side, stopTitle, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
 import { U, chips, liveTag } from '../usu.js';
-import { miniSlot, mountMini } from './mini.js';
 import { metres as m2 } from '../time.js';
 import { afterSave, app } from '../main.js';
 import { restOfDay, runSheet, wireSheet, sheetRun } from './stopwide.js';
 import { wirePointers, pointerDial } from '../pointer.js';
 import { isWide } from '../wide.js';
+import { atPath } from '../geo.js';
 
 export function render({ id, full, run, on }, clockNow) {
   const si = stopIndex(id);
@@ -20,14 +20,13 @@ export function render({ id, full, run, on }, clockNow) {
   const sv = isSaved(s.id);
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
-  const desk = isWide();   // the map beside the page
-  if (!desk) parts.push(miniSlot({ stopId: s.id }));   // beside the big map, no small one
+  const desk = isWide();   // the map beside the page; on a phone or a portrait tablet the page is the map's sheet
   const sd = side(si);
   const eyebrow = `${s.town} · Stop ${s.code || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces
   const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
   // Across the road, the stop for the other way and the commonest wrong one to stand at: a pill of its own under the
   // routes, room enough to say where that side's next bus is going.
-  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${routeLinks(si)}<a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a>${s.twin ? acrossRow(si, clockNow) : ''}</div>`);
+  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${routeLinks(si)}<div class="golinks"><a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>${s.twin ? acrossRow(si, clockNow) : ''}</div>`);
   if (g) parts.push(html.raw(pointerDial(s.lat, s.lon, g, s.name)));   // the compass: which way and how far, turning with the phone
 
   const aside = [];   // the shuttle stop on the same pole
@@ -160,7 +159,6 @@ function describeDays(r) {
 let pushedRun = false;
 function mount(el) {
   wirePointers(el, app);
-  mountMini(el);
   const page = el.querySelector('.phone-stop');
   if (page) {
     const at = (trip, on) => `#/stop/${page.dataset.stop}?run=${trip}&on=${on}`;

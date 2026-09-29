@@ -812,8 +812,9 @@ function fitPeek(card) {
   // The directions: down to the way drawn, the rows above it with it, so the map keeps half the screen at least.
   const pk = card.querySelector('.gohead .jrow.picked');
   if (pk) { card.style.setProperty('--peek', Math.min(pk.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.5 * map.getContainer().clientHeight) + 'px'); return; }
-  const g = card.querySelector('.grip'), h = card.querySelector('.head');
-  if (g && h) card.style.setProperty('--peek', (g.offsetHeight + h.offsetHeight + 2) + 'px');
+  // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it).
+  const h = card.querySelector('.head');
+  if (h) card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2) + 'px');
 }
 function wireGrip(app) {
   const card = col.querySelector('#mapcard');
@@ -826,7 +827,9 @@ function wireGrip(app) {
       if (hubBay !== null) { hubBay = null; hubKey = null; history.replaceState(null, '', '#/hub'); shownHash = '#/hub'; hubBadges(); }
       return; }
     if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
-    if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); backToWays(); return; } selectedBus = null; selectedU = null; select(null, app); };
+    if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); backToWays(); return; }
+    if (card.querySelector(':scope > .pagesheet') && /^#\/(stop|usu)\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }   // a stop's sheet put away: the Map tab
+    selectedBus = null; selectedU = null; select(null, app); };
   // The card's own Open button (the card itself is .open too): a place's page. A spot's card has none: its first
   // button is directions, and a swipe up is no ask for those.
   const pageHref = () => { const a = card.querySelector(':scope > .open a'), h = a && a.getAttribute('href'); return h && !/^#\/go\//.test(h) ? h : null; };
@@ -857,13 +860,16 @@ function wireGrip(app) {
     const far = Math.abs(dy) > 70 || (Math.abs(dy) > 24 && Math.abs(dy) / Math.max(dt, 1) > 0.5);   // far enough, or a flick
     const at = claimed === 'down' ? Math.max(0, dy) : Math.max(-24, Math.min(0, dy / 4));   // where the finger left it
     if (!far) { slide(at, 0); return; }
-    if (claimed === 'down') { if (peeked()) away(); else toPeek(at); }
-    else if (peeked()) toFull(at);
+    // A stop's sheet opens part way (down to its next two buses): a swipe down from there is down to its head, the map
+    // to the finger; the next one puts it away.
+    const tall = !!card.dataset.tall && !!card.querySelector(':scope > .pagesheet');
+    if (claimed === 'down') { if (peeked() && !tall) away(); else { delete card.dataset.tall; toPeek(at); } }
+    else if (peeked()) { delete card.dataset.tall; toFull(at); }
     else { slide(at, 0); const href = pageHref(); if (href) location.hash = href; }   // the page slides up over the map
   };
   card.addEventListener('click', e => {
     if (e.target.closest('a, button')) return;
-    if (peeked()) toFull();
+    if (peeked()) { delete card.dataset.tall; toFull(); }
     else if (e.target.closest('.grip')) toPeek();
   });
   card.addEventListener('touchstart', e => {
@@ -1672,6 +1678,47 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   if (lastFocused !== key) map.easeTo({ padding: pad(), center: [at.lon, at.lat], zoom: forId || toFrom ? map.getZoom() : Math.max(map.getZoom(), 14.5), offset: cardOffset(card), duration: 700 });
   lastFocused = key;
 }
+/** A stop's page as the map's sheet (a phone's, a portrait tablet's), as a route's stops and the Transit Center's
+ *  board are. Opened down to its next two departures, the head and the way here and from here above them; a swipe up
+ *  is the rest of the page, scrolling in the sheet; down, its head alone and the map to the finger. Redrawn in place
+ *  for the minute and the feed, its scroll kept. */
+let pageShown = null;   // the stop page last put in the sheet
+function pageSheet(page, app, fresh) {
+  const card = col.querySelector('#mapcard');
+  const markup = `<div class="grip"></div><div class="pagesheet">${page.html}</div>`;
+  const again = card.dataset.page === page.key && !!card.querySelector(':scope > .pagesheet');
+  if (!again && !fresh) return;   // a tick with something else in the card (a stop tapped on the map): left be
+  if (again) { if (card.lastHtml !== markup) morph(card, markup); }
+  else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
+  card.lastHtml = markup; card.dataset.page = page.key; pageShown = page.key;
+  if (page.mount) page.mount(card, app);
+  card.classList.remove('hidden');
+  // Its opening height is measured again as the page fills in (the live feed, the shuttle's line at the same pole),
+  // until the rider first lays a finger on it.
+  if (!again) {
+    card.dataset.opening = page.key;
+    const hands = () => { delete card.dataset.opening; };
+    card.addEventListener('touchstart', hands, { once: true, passive: true }); card.addEventListener('pointerdown', hands, { once: true });
+  }
+  if (card.dataset.opening === page.key) { openingPeek(card); card.classList.add('peek'); card.dataset.tall = '1'; if (!again) setTimeout(() => { if (card.dataset.opening === page.key) openingPeek(card); }, 400); }
+  card.classList.add('open');
+}
+/** The sheet's opening height: down to its second departure (the next bus, and the one after), or the head alone
+ *  where there's none; never more than most of the map. */
+function openingPeek(card) {
+  const pg = card.querySelector('.pagesheet'), nx = pg.querySelector('.next');
+  const rows = [...pg.querySelectorAll('.list > *')].filter(r => !r.matches('.dayhead, .endservice'));
+  const end = nx ? rows[0] || nx : rows[1] || rows[0] || pg.querySelector('.head');
+  if (!end) return fitPeek(card);
+  const h = end.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1;
+  card.style.setProperty('--peek', Math.round(Math.min(h, 0.85 * map.getContainer().clientHeight)) + 'px');
+}
+/** A stop framed above its sheet: at the streets, in the middle of the map left over. */
+function frameStop(ll) {
+  const card = col.querySelector('#mapcard');
+  requestAnimationFrame(() => map.easeTo({ padding: pad(), center: ll, zoom: Math.max(map.getZoom(), 16), offset: cardOffset(card), duration: 650, essential: true }));
+}
+
 /** The map asked where the rider will start from, for directions to a stop: the ask on the card, the map left as it is. */
 function askSpot(toId, app, dest = false) {
   const sp = spotOf(toId), si = D.stopById[toId], name = sp ? sp.label || 'the spot you picked' : si === undefined ? '' : stop(si).hub ? D.hub.name : stop(si).name;
@@ -1730,7 +1777,7 @@ function pickBus(id, app) {
   const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
   map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: cardOffset(card), duration: 500 });
 }
-async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick }, app, clockNow) {
+async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
   // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
   // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
@@ -1758,12 +1805,15 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   pickFor = from || goPick && goPick.for || null; pickTo = to || goPick && goPick.to || null; pickNow = !!goPick;
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
+  if (page && tick) { pageSheet(page, app, false); return; }   // a stop's sheet: its times, counting down
   if (tick) return;   // the minute turning is no reason to move the map
   if (!routeShort && ringed !== null) { ringed = null; wantRing = null; applySelection(); }   // a bus ringed from its route's list goes with the route
   if (!routeShort && !alertId && focusRoute !== undefined) { focusRoute = undefined; applySelection(); }   // off the route's page: stops back to their own colours
   // The address is acted on once. A redraw with the same one (the app coming back to the front, say)
   // leaves whatever the rider has since tapped on the map alone.
-  const fresh = location.hash !== shownHash, cameFrom = shownHash || '';
+  // A stop's page not yet in the sheet is fresh too: a shuttle stop's address arrives before the shuttle's data, and
+  // its page with it.
+  const fresh = location.hash !== shownHash || !!page && pageShown !== page.key, cameFrom = shownHash || '';
   shownHash = location.hash;
   if (!fresh) return;
   // The map grown or shrunk since (the route page's small map opened out into the Map tab, say): what it was fitted to
@@ -1771,7 +1821,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   const size = box.clientWidth + 'x' + box.clientHeight, resized = size !== fitSize;
   fitSize = size;
   map.resize();   // its own idea of its size can lag a map just shown again (hidden, it shrank to nothing)
-  if (app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');   // a card tapped up beside one page isn't the next's
+  if (app.route.name !== 'map' && !page) col.querySelector('#mapcard').classList.remove('open');   // a card tapped up beside one page isn't the next's
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
   if (stopId || ustopId || routeShort || alertId || hub || at || from || to) { selectedBus = null; selectedU = null; }
   if (asking !== !!(from || to || goPick)) { asking = !asking; applySelection(); }
@@ -1841,7 +1891,8 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
       selected = stopId; uHilite = ''; hiLines = s.hub ? [...s.routes] : []; hiLoops = []; applySelection();
       // On the Map tab the card decides the framing, so the stop sits above it; beside the
       // stop list there is no card, and a fresh arrival eases to the stop itself.
-      if (app.route.name === 'map') select(stopId, app, changed, changed && map.getZoom() < 15);
+      if (page) { select(stopId, app, false); pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
+      else if (app.route.name === 'map') select(stopId, app, changed, changed && map.getZoom() < 15);
       else if (focus && changed && (still() || !map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: still() ? 16 : Math.max(map.getZoom(), 15), duration: still() ? 0 : 700 });
     }
   } else if (ustopId && U) {
@@ -1852,7 +1903,8 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     lastFocused = 'u:' + ustopId;
     const pole = U.shared[si];   // at a Connect stop's pole: that dot is this stop on the map
     selected = pole ? D.stops[pole.j].id : null; uHilite = pole ? '' : ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
-    if (app.route.name === 'map') { if (pole) select(D.stops[pole.j].id, app, changed); else if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
+    if (page) { if (pole) select(D.stops[pole.j].id, app, false); else { selectedU = null; applySelection(); } pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
+    else if (app.route.name === 'map') { if (pole) select(D.stops[pole.j].id, app, changed); else if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
     else if (focus && changed && (still() || !map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: still() ? 16 : Math.max(map.getZoom(), 15.5), duration: still() ? 0 : 700 });
   } else if (journey) {
     // A way from the directions page: nothing picked, the way drawn (mainJourney) and its card.

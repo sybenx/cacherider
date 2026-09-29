@@ -4,7 +4,6 @@ import { D, nextAt, nearest, isSaved, toggleSaved } from '../data.js';
 import { dayName, now, metres } from '../time.js';
 import { html, icon, badges, depRow, stopRow, routeLinkItems } from '../ui.js';
 import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote, hoursWords } from '../usu.js';
-import { miniSlot, mountMini } from './mini.js';
 import { afterSave, app, isDesktop } from '../main.js';
 import { spotKey, atPath } from '../geo.js';
 
@@ -19,7 +18,6 @@ export function render({ id }, clockNow) {
   const parts = [];
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${sid}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
-  parts.push(miniSlot({ ustopId: s.id }));
   const eyebrow = cs ? `USU shuttle and Connect · ${metres(shared.d)} apart` : `${U.name} · ${s.routes.length} ${s.routes.length === 1 ? 'route' : 'routes'}`;
   // A shuttle stop is a place like any other: the way here, or on from here, by whatever runs near it. The planner
   // finds the Connect stops within a walk; a rider here wants to get somewhere, not to ride this loop.
@@ -52,7 +50,6 @@ export function render({ id }, clockNow) {
 }
 
 function mount(el) {
-  mountMini(el);
   // On a wide screen the map is beside this page: the nearest Connect stop is shown there, with its card, rather
   // than a page of its own that would cover the map. Where it is from here is the question.
   const nc = el.querySelector('#nearconnect a');

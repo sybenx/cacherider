@@ -219,13 +219,16 @@ async function render(tick = false) {
   }
   // A stop page reached from the Map tab on a phone is a sheet over the map: a swipe down at its top sends it back. The mark survives the minute's redraws of the same page.
   const isPage = name === 'stop' || (name === 'usu' && seg[1] !== 'route');
+  // A stop on a phone or a portrait tablet is the map with the page as its sheet, as a route and the Transit Center
+  // are: the address stays the stop's (#/stop/…, #/usu/…), so links, bookmarks and the offline shell are as ever.
+  const stopMap = isPage && !isDesktop() && !!view && !!view.mount;
   const fromMap = !!app.route && app.route.name === 'map' && isPage && !isDesktop();
   app.route = { name, seg, q };
-  const mapOpen = name === 'map';
+  const mapOpen = name === 'map' || stopMap;
   setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U) || (name === 'go' && !!U));   // directions: the shuttle is in the planner
   setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route', 'go'].includes(name));
   body.classList.toggle('map-open', mapOpen);
-  if (view) {
+  if (view && !stopMap) {
     // A page is the same page across its own picks (the Transit Center's routes): `view.key` says so, and the
     // rider's place is kept.
     const key = view.key || name + (seg[1] || '');
@@ -253,16 +256,9 @@ async function render(tick = false) {
     if (!keepScroll) { if (side.scrollTop) side.scrollTop = 0; } else if (side.scrollTop !== y) side.scrollTop = y;
     // A link to a part of a page (#/about/alerts) lands on it, the first time only: a tick keeps the rider's place.
     if (!keepScroll && view.anchor) { const a = side.querySelector('#' + view.anchor); if (a) a.scrollIntoView({ block: view.anchorBlock || 'start' }); }
-    // A run's sheet over the page (a phone's stop): over the page and its map, its list kept where it was scrolled.
-    let rs = document.getElementById('runsheet');
-    // Redrawn in place, and not at all when nothing changed: replaced whole, its list lost the finger scrolling it and
-    // its map (moved out and back) the finger panning it, every time the feed came in.
-    if (view.sheet) {
-      if (!rs) { rs = document.createElement('div'); rs.id = 'runsheet'; body.appendChild(rs); }
-      if (rs.lastHtml !== view.sheet) { if (rs.lastHtml) morph(rs, view.sheet); else { park(rs); rs.innerHTML = view.sheet; } rs.lastHtml = view.sheet; }
-    } else if (rs) { park(rs); rs.remove(); }
+    runSheetOf(view);
     if (!unchanged) view.mount && view.mount(side, app);
-  } else { const rs = document.getElementById('runsheet'); if (rs) { park(rs); rs.remove(); } }
+  } else runSheetOf(view);   // a stop as the map's sheet: its run sheet here too, before the sheet's mount wires it
   // The map is drawn for the Map tab, beside a wide screen's pages, and docked into a phone's page or run sheet.
   if (mapOpen || isDesktop() || side.querySelector('#minimap') || document.querySelector('#runsheet #runmap')) {
     const m = await ensureMap();
@@ -282,9 +278,21 @@ async function render(tick = false) {
       // stop or spot; where to, for directions from a spot.
       goPick: isDesktop() && name === 'go' && goArgs && goArgs.to ? goArgs.to !== '-' ? { for: goArgs.to } : goArgs.at ? { to: spotKey(goArgs.at.lat, goArgs.at.lon, goArgs.at.label) } : null : null,
       journey: goMap ? goJ : view && view.journey || null,   // a way from the directions page, drawn
+      page: stopMap ? { key: name + '/' + seg[1] + (seg[2] ? '/' + seg[2] : ''), html: String(view.html), mount: view.mount } : null,   // a stop's page, the map's sheet
     }, app, clockNow);
   }
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';
+}
+
+/** A run's sheet over the page (a phone's stop): over the page and its map, its list kept where it was scrolled.
+ *  Redrawn in place, and not at all when nothing changed: replaced whole, its list lost the finger scrolling it and its
+ *  map (moved out and back) the finger panning it, every time the feed came in. */
+function runSheetOf(view) {
+  let rs = document.getElementById('runsheet');
+  if (view && view.sheet) {
+    if (!rs) { rs = document.createElement('div'); rs.id = 'runsheet'; body.appendChild(rs); }
+    if (rs.lastHtml !== view.sheet) { if (rs.lastHtml) morph(rs, view.sheet); else { park(rs); rs.innerHTML = view.sheet; } rs.lastHtml = view.sheet; }
+  } else if (rs) { park(rs); rs.remove(); }
 }
 
 // ---- location: asked for in words first, then of the browser
