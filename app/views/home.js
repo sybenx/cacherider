@@ -9,6 +9,7 @@ import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, liveTag, live, board } from '../usu.js';
 import { results, pickOf, forPick } from './find.js';
+import { byWalk } from '../geo.js';
 
 export function render({ q, page, pick, from }, clockNow) {
   const app = window.__app;
@@ -24,7 +25,7 @@ function landing(clockNow, app) {
   // The big one: the stop you're standing near, when location is on and it's close enough to walk to; else your
   // first saved stop; else the Transit Center. Saved stops are the list beneath, every one but the hero.
   // Past the Transit Center's bays, a dozen stops at one address: standing there, the nearest is still a street's stop.
-  const near = app && app.geo ? nearest(app.geo.lat, app.geo.lon, 24).filter(x => !stop(x.i).hub)[0] : null;
+  const near = app && app.geo ? byWalk(nearest(app.geo.lat, app.geo.lon, 24).filter(x => !stop(x.i).hub), app.geo.lat, app.geo.lon)[0] : null;   // the quickest walk, the climb counted
   let heroSi, heroWhy = '';
   if (near && near.d <= 800) { heroSi = near.i; heroWhy = 'Nearest'; }
   else if (firstSaved !== undefined) { heroSi = D.stopById[firstSaved]; heroWhy = 'Saved'; }
@@ -51,7 +52,7 @@ function landing(clockNow, app) {
     else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
   }
   if (geo) {   // the stops near you, under whatever is saved: a saved stop across town mustn't hide the one you're standing at
-    const rows = nearest(geo.lat, geo.lon, 24).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)).slice(0, 3);
+    const rows = byWalk(nearest(geo.lat, geo.lon, 24).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)), geo.lat, geo.lon).slice(0, 3);
     if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy === 'Nearest' ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
   }
   if (!stopHero && !geo) {
@@ -211,7 +212,7 @@ function pulseCard(clockNow) {
 }
 
 function nearestSection(geo, clockNow) {
-  const near = nearest(geo.lat, geo.lon, 12);
+  const near = byWalk(nearest(geo.lat, geo.lon, 16), geo.lat, geo.lon).slice(0, 12);
   const parts = [html`<div class="section">${icon('near', 16)}Nearest to you</div>`];
   const shown = new Set();
   let hubDone = false, count = 0;

@@ -1,6 +1,6 @@
 // Cache Rider's service worker: the app and the timetable kept on the phone,
 // the map's tiles kept as they are seen, or all at once from the About page.
-const VERSION = 'cr-v98';
+const VERSION = 'cr-v99';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/data.js', './app/time.js', './app/ui.js',
@@ -8,7 +8,7 @@ const SHELL = [
   './vendor/maplibre-gl.mjs', './vendor/maplibre-gl-shared.mjs', './vendor/maplibre-gl-worker.mjs', './vendor/maplibre-gl.css', './vendor/basemaps.mjs',
   './fonts/barlow-400.woff2', './fonts/barlow-500.woff2', './fonts/barlow-700.woff2', './fonts/barlow-condensed-400.woff2', './fonts/barlow-condensed-600.woff2',
   './icons/icon.svg', './icons/icon-96.png', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './favicon.ico',
-  './data/cvtd.json', './data/cvtd-shapes.json', './data/crossings.json', './data/grid.json', './data/usu.json', './data/alerts.json', './data/places.json', './data/osm-places.json', './data/pool.json',
+  './data/cvtd.json', './data/cvtd-shapes.json', './data/crossings.json', './data/grid.json', './data/usu.json', './data/alerts.json', './data/places.json', './data/osm-places.json', './data/pool.json', './data/elevation.json',
 ];
 const scope = new URL('./', self.location).href;
 

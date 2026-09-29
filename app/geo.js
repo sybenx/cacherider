@@ -80,11 +80,11 @@ export function whereabouts(lat, lon) {
   return `about ${ns} ${ew}, ${g.towns.length === 1 || !near || near.d >= 6000 || near.p.name === g.name ? g.name : 'near ' + near.p.name}`;
 }
 
-/** The stops within 4 km, or failing that the nearest one however far. */
+/** The stops within 4 km, or failing that the nearest one however far: the quickest walks first. */
 export function nearestTo(lat, lon, n = 4) {
-  const all = nearest(lat, lon, n);
+  const all = nearest(lat, lon, n + 4);   // a few more than asked: a stop up the hill can give way to one past it
   const close = all.filter(s => s.d <= 4000);
-  return close.length ? close : all.slice(0, 1);
+  return close.length ? byWalk(close, lat, lon).slice(0, n) : all.slice(0, 1);
 }
 
 export const townState = t => /preston|franklin|whitney|dayton|weston|clifton/i.test(t) ? ', Idaho' : '';
@@ -100,3 +100,54 @@ export function spotOf(key) {
 }
 /** The `at/lat,lon/label` tail of a journey's address that starts from a spot. */
 export const atPath = s => `at/${(+s.lat).toFixed(5)},${(+s.lon).toFixed(5)}/${encodeURIComponent(s.label || '')}`;
+
+// ---- the lie of the land, for walks. data/elevation.json (tools/elevation.py) is a coarse grid of the USGS DEM,
+// about 100 m a cell round the stops: enough to tell the bench from the valley floor, not a kerb from the road.
+let E = null;
+export async function loadElevation() {
+  if (E) return E;
+  try {
+    const j = await (await fetch(BASE + 'data/elevation.json')).json();
+    j.z = j.d.map(r => { const a = new Int16Array(r.length); let s = 0; r.forEach((v, i) => { s += v; a[i] = s; }); return a; });   // each row its first height, then the change cell to cell
+    E = j;
+  } catch { E = null; }   // no grid: every walk on the flat, as before
+  return E;
+}
+/** The ground's height at a point, between the four nearest cell centres; null off the grid. */
+function height(lat, lon) {
+  const y = (E.lat0 - lat) / E.dlat - 0.5, x = (lon - E.lon0) / E.dlon - 0.5;
+  if (y < -0.5 || x < -0.5 || y > E.rows - 0.5 || x > E.cols - 0.5) return null;
+  const y0 = Math.floor(y), x0 = Math.floor(x), fy = y - y0, fx = x - x0;
+  const v = (r, c) => E.z[Math.max(0, Math.min(E.rows - 1, r))][Math.max(0, Math.min(E.cols - 1, c))];
+  return v(y0, x0) * (1 - fx) * (1 - fy) + v(y0, x0 + 1) * fx * (1 - fy) + v(y0 + 1, x0) * (1 - fx) * fy + v(y0 + 1, x0 + 1) * fx * fy;
+}
+/** Metres climbed walking straight from one point to another: the ground sampled a cell apart along the way, only
+ *  the rises counted, and only where the way is steep enough to feel (FEEL, a 2% grade): the valley floor's gentle
+ *  tilt is in the walking pace already, and a metre or two of it across town is no hill. Nothing off the grid. */
+const FEEL = 0.02;
+export function climb(lat1, lon1, lat2, lon2) {
+  if (!E) return 0;
+  const d = distance(lat1, lon1, lat2, lon2), n = Math.max(1, Math.ceil(d / E.cell)), step = d / n;
+  let prev = height(lat1, lon1), up = 0;
+  if (prev === null) return 0;
+  for (let k = 1; k <= n; k++) {
+    const h = height(lat1 + (lat2 - lat1) * k / n, lon1 + (lon2 - lon1) * k / n);
+    if (h === null) continue;
+    if (h - prev > FEEL * step) up += h - prev;
+    prev = h;
+  }
+  return up;
+}
+/** Walking pace: metres a minute on the flat, crossings and all; and the climb that costs a minute more, by
+ *  Naismith's rule (an hour for every 600 m of ascent, so 10 m a minute). Going down costs nothing extra. */
+export const PACE = 75, RISE = 10;
+/** Minutes to walk from one point to another, the climb counted: the one reckoning for every walk the app
+ *  times (the planner's legs, the stops nearest a rider). `d`, when the distance is already known. */
+export function walkMins(lat1, lon1, lat2, lon2, d = distance(lat1, lon1, lat2, lon2)) {
+  return Math.max(1, Math.ceil(d / PACE + climb(lat1, lon1, lat2, lon2) / RISE));
+}
+/** Stops nearest a point, as nearest() gives them ({ i, d }), in the order a walk to them takes: the climb counted,
+ *  so the stop down the hill comes before the one as far up it. Each with its minutes. */
+export function byWalk(list, lat, lon) {
+  return list.map(x => ({ ...x, mins: walkMins(lat, lon, D.stops[x.i].lat, D.stops[x.i].lon, x.d) })).sort((a, b) => a.mins - b.mins || a.d - b.d);
+}

@@ -3,7 +3,7 @@
 import { load, D, BASE, pref, stopIndex, loadAlerts, loadPlaces, loadPool, A } from './data.js';
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
 import { html, icon, esc } from './ui.js';
-import { loadGrid } from './geo.js';
+import { loadGrid , loadElevation } from './geo.js';
 import * as home from './views/home.js';
 import * as stopView from './views/stop.js';
 import * as hub from './views/hub.js';
@@ -441,7 +441,7 @@ function wireHeader() {
 async function boot() {
   try {
     await Promise.all([load(), loadGrid()]);
-    await Promise.all([loadUSU(), loadAlerts(), loadPlaces(), loadPool()]);   // after the timetable: shared kerbs and alerts need its stops and routes
+    await Promise.all([loadUSU(), loadAlerts(), loadPlaces(), loadPool(), loadElevation()]);   // the lie of the land, for timing walks   // after the timetable: shared kerbs and alerts need its stops and routes
   } catch (e) {
     side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;
     return;
