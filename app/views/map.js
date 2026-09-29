@@ -871,6 +871,15 @@ function wireGrip(app) {
     if (peeked()) { delete card.dataset.tall; toFull(); }
     else if (e.target.closest('.grip')) toPeek();
   });
+  // A mouse's wheel or a trackpad (a desktop window narrow enough for a phone's layout): scrolled on a card down to
+  // its head, the card opens out, as a swipe up does; it had nothing to scroll, so did nothing. Opened, it scrolls.
+  let wheelAt = 0;
+  card.addEventListener('wheel', e => {
+    if (!peeked() || e.deltaY <= 0 || e.ctrlKey) return;
+    e.preventDefault();
+    if (e.timeStamp - wheelAt < 400) return;   // one opening for one flick
+    wheelAt = e.timeStamp; delete card.dataset.tall; toFull();
+  }, { passive: false });
   card.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) { y0 = null; return; }
     y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = e.timeStamp; claimed = false;
@@ -2085,7 +2094,15 @@ async function drawRun(T) {
   // Moved into a new box as the day redrew, it measured nothing while out of the page: measured again first, or the
   // run is fitted to no room at all and comes out zoomed far away.
   m.resize();
-  if (T.main) { settlePad(); m.fitBounds(runBounds(R), { padding: fitPad(T.pad), duration: 600, maxZoom: 16 }); }   // clear of the search bar and notice
+  // Clear of the search bar and notice, and on a phone of the run's sheet: the whole run in the map above it, with a
+  // little room round it, never further out than zoom 11.25: a loop about town fits (the Green Loop at 11.4 on a
+  // phone); a long route out of town (12 to Hyrum) is centred and runs off the edges rather than shrink to a thread.
+  if (T.main) {
+    settlePad();
+    const b = runBounds(R), p = fitPad(wide() ? T.pad : 24), cam = m.cameraForBounds(b, { padding: p, maxZoom: 16 });
+    // the run's middle in the middle of the room left, whatever the zoom came to
+    if (cam) m.easeTo({ center: b.getCenter(), zoom: Math.max(cam.zoom, 11.25), offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2], bearing: 0, duration: 600 });
+  }
   else m.fitBounds(runBounds(R), { padding: T.pad, duration: 0, maxZoom: 16 });
 }
 /** The run's times, each to the right of its bus's way, as the map is turned now: the screen's right, left, above or

@@ -950,7 +950,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 /* On a phone or a tablet the run's sheet covers the lower part of the map, the run drawn on the map above it, which
    stays the finger's: no shade over it, and the stop's own sheet put by until the run's closes */
 @media (max-width: 839px) {
-  #runsheet { top: 42%; pointer-events: none; }
+  #runsheet { top: 50%; pointer-events: none; }
   #runsheet .rs-scrim { display: none; }
   #runsheet .rs { height: 100%; pointer-events: auto; border-top: 1px solid var(--cr-line); box-shadow: 0 -6px 18px rgba(0,0,0,.18); }   /* its shade up over the map, not down over the tabs */
   #body:has(> #runsheet) #mapcard { visibility: hidden; }
