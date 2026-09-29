@@ -13,6 +13,7 @@ const CHANGE = 1;         // minutes from one bus to the next at the same stop (
 const AHEAD = 150;        // minutes of departures looked at from each first stop
 const MAX_ON = 8;         // buses tried from a first stop, and from a change stop
 const CHANGE_WALK = 250;  // a change can be to a stop this near: the Transit Center's other bays, the stop across the road
+const WALK_LESS = 3;      // minutes on foot a way must spare to be kept for walking less: a minute or two is no reason to ride round a loop
 // Every walk is timed by geo.js's walkMins: distance at a walking pace, and the climb (a minute for each 10 m up,
 // Naismith's rule), from where the rider is to where they're going, so up the bench costs what down it doesn't.
 const walkTo = (a, b, d) => walkMins(a.lat, a.lon, b.lat, b.lon, d);
@@ -161,8 +162,9 @@ function rideTo(t, seq, i, wanted, best = false) {
  * shuttle while it runs (usu.js's planNet()), its stops then starts, changes and ends like Connect's, today only.
  * Each journey is { day, ymd, leave, arrive, legs }, legs of kind walk / ride, in order (a ride's `stops`, every one it
  * calls at from boarding to getting off, for the map); `leave` is when to set
- * off (before any first walk), `arrive` when the rider is at the stop asked for. The best few, sorted by arrival:
- * none is kept that leaves earlier and arrives later than another. Nothing today: the first day with a way.
+ * off (before any first walk), `arrive` when the rider is at the stop asked for, `walk` the minutes on foot. The best
+ * few, sorted by arrival: none is kept that another beats on leaving, arriving and walking all at once. Nothing
+ * today: the first day with a way.
  */
 export function journeys(origin, dest, clockNow, days = 8, sh = null) {
   SH = sh; SERVED = new Set(sh ? sh.loops.flatMap(l => l.stops) : []);
@@ -254,13 +256,16 @@ function search(starts, wanted, at, dest, ymd, min0, live, day) {
       }
     }
   }
-  // Only journeys no other beats on both counts: leaving later and arriving sooner, or as soon with fewer changes.
-  found.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.changes - b.changes);
+  // Only journeys no other beats on every count: leaving later, arriving sooner, walking less (the minutes on foot,
+  // the climb in them, and WALK_LESS of them at least), with fewer changes the tiebreak where two arrive as soon. So
+  // a way that spares the walk is kept though it's no faster (Route 2 and across the road to the Green Loop, not up
+  // the hill on foot); one that spares a minute by riding on round a loop is not.
+  for (const p of found) p.walk = p.legs.reduce((n, l) => n + (l.kind === 'walk' ? l.mins : 0), 0);
+  found.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
   const kept = [];
-  let best = Infinity, bestChanges = Infinity;
   for (const p of found) {
-    if (p.arrive < best || (p.arrive === best && p.changes < bestChanges)) { kept.push(p); best = p.arrive; bestChanges = Math.min(bestChanges, p.changes); }
+    if (!kept.some(q => q.leave >= p.leave && q.arrive <= p.arrive && q.walk < p.walk + WALK_LESS && (q.arrive < p.arrive || q.changes <= p.changes))) kept.push(p);
   }
-  kept.sort((a, b) => a.arrive - b.arrive || a.changes - b.changes);
+  kept.sort((a, b) => a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
   return kept.slice(0, 4);
 }
