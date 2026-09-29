@@ -28,6 +28,7 @@ let docked = null;   // the slot the one map is docked in on a phone (a stop or 
 const busMarkers = new Map();   // bus id → { marker, el }
 let selectedBus = null, selectedU = null;
 let pickFor = null;   // the stop directions are wanted to, while the map is asked where from
+let pickTo = null;    // the spot directions are wanted from, while the map is asked where to
 let hiLines = [], hiLoops = [];   // Connect route indices and shuttle route ids whose lines are drawn on top
 let runRoutes = [];   // the routes whose way on is drawn from a picked bus or stop: their buses stay bright, the rest dim
 let runLoops = [];    // the shuttle loops whose way on is drawn, likewise
@@ -372,7 +373,7 @@ async function init(app) {
     pressedAt = Date.now(); clearTimeout(tapTimer);
     const { lat, lng } = e.lngLat;
     if (JR) { location.hash = '#/map/' + atPath({ lat, lon: lng, label: whereabouts(lat, lng) }); return; }   // off the way, to the spot: Back comes back
-    showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), pickFor);
+    showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), pickFor, pickTo);
   };
   const unpress = () => { clearTimeout(pressTimer); pressFrom = null; };
   map.on('touchstart', e => { unpress(); if (e.originalEvent.touches.length !== 1) return; pressFrom = e.point; pressTimer = setTimeout(() => { pressFrom = null; spotAt(e); }, 550); });
@@ -407,16 +408,16 @@ async function init(app) {
     // A place's name tapped, and no stop there: its spot, with the stops nearest it, as a search result opens it.
     if (!hits.length && all.length) {
       const f = all.map(f => { const q = map.project(f.geometry.coordinates); return { f, d: Math.hypot(q.x - e.point.x, q.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0].f, [lon, lat] = f.geometry.coordinates;
-      showAt({ lat, lon, label: f.properties.name }, app, now(), pickFor);
+      showAt({ lat, lon, label: f.properties.name }, app, now(), pickFor, pickTo);
       return;
     }
     // Asked where the rider will start from: a stop tapped is the start; anywhere else, that spot, with the stops
     // nearest it, and the directions a tap away.
-    if (pickFor) {
+    if (pickFor || pickTo) {
       const st = hits.find(f => f.layer.id.startsWith('stops'));
-      if (st) { location.hash = `#/go/${pickFor}/${st.properties.id}`; return; }
+      if (st) { location.hash = pickFor ? `#/go/${pickFor}/${st.properties.id}` : `#/go/${st.properties.id}/${atPath(spotOf(pickTo))}`; return; }
       const { lat, lng } = e.lngLat;
-      showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), pickFor);
+      showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), pickFor, pickTo);
       return;
     }
     if (hits.length) {
@@ -1551,7 +1552,7 @@ function uCard(app) {
   const rows = board(si);
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${U.name}${U.shared[si] ? ' · also Connect' : ''}</span><div class="name"><span>${s.name}</span></div>${chips(s.routes, 24)}</div>
     ${hasData() ? html`<div class="list">${rows.slice(0, 3).map(r => liveRow(r, { href: '#/usu/' + s.id }))}</div>` : html`<div class="empty"><p>Finding the buses…</p></div>`}
-    <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/usu/${s.id}">${corners()}Open stop</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${spotKey(s.lat, s.lon, s.name)}">Get here</a><a class="btn btn-secondary btn-lg blueprint" href="#/search?from=${encodeURIComponent(spotKey(s.lat, s.lon, s.name))}">From here</a></div>`;
+    <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/usu/${s.id}">${corners()}Open stop</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${spotKey(s.lat, s.lon, s.name)}">Get here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">From here</a></div>`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
 }
@@ -1574,7 +1575,7 @@ function setSpot(at) {
   const apply = () => map.getSource('spot') && map.getSource('spot').setData(at ? circle(at.lat, at.lon) : { type: 'FeatureCollection', features: [] });
   if (ready) apply(); else map.once('load', apply);
 }
-function showAt(at, app, clockNow, forId = null) {
+function showAt(at, app, clockNow, forId = null, toFrom = null) {
   selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
   // A soft disc rather than a pin: an address is arithmetic on the town's grid, good to a block, not a survey.
   setSpot(at);
@@ -1586,21 +1587,25 @@ function showAt(at, app, clockNow, forId = null) {
   // Otherwise (a place found, a long press) the spot either end of a journey: to it from where the rider is, or from it
   // to a stop, place or address asked for next.
   const go = forId ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${forId}/${atPath(at)}">${corners()}Directions from here</a></div>`
-    : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/search?from=${encodeURIComponent(spotKey(at.lat, at.lon, at.label))}">From here</a></div>`;
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span></div></div>${go}
+    : toFrom ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}/${atPath(spotOf(toFrom))}">${corners()}Directions to here</a></div>`
+    : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath(at)}">From here</a></div>`;
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span></div></div>${go}
     ${near.length ? near.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
   const key = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
-  if (lastFocused !== key) map.easeTo({ padding: pad(), center: [at.lon, at.lat], zoom: forId ? map.getZoom() : Math.max(map.getZoom(), 14.5), offset: cardOffset(card), duration: 700 });
+  if (lastFocused !== key) map.easeTo({ padding: pad(), center: [at.lon, at.lat], zoom: forId || toFrom ? map.getZoom() : Math.max(map.getZoom(), 14.5), offset: cardOffset(card), duration: 700 });
   lastFocused = key;
 }
 /** The map asked where the rider will start from, for directions to a stop: the ask on the card, the map left as it is. */
-function askSpot(toId, app) {
+function askSpot(toId, app, dest = false) {
   const sp = spotOf(toId), si = D.stopById[toId], name = sp ? sp.label || 'the spot you picked' : si === undefined ? '' : stop(si).hub ? D.hub.name : stop(si).name;
   selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
   const card = col.querySelector('#mapcard');
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">Directions to ${name}</span><div class="name"><span>Tap where you'll start from</span></div>
+  // Asked where to (a journey from a spot), or where from (to a stop or spot): the same ask, the other way round.
+  card.innerHTML = dest ? html`<div class="grip"></div><div class="head"><span class="eyebrow">Directions from ${name}</span><div class="name"><span>Tap where you're going</span></div>
+    <div class="muted">A stop, or any spot: the stops you could walk to it from are the end.</div></div>`
+    : html`<div class="grip"></div><div class="head"><span class="eyebrow">Directions to ${name}</span><div class="name"><span>Tap where you'll start from</span></div>
     <div class="muted">A stop, or any spot: the stops you could walk to from it are the start.</div></div>`;
   card.classList.remove('hidden', 'peek');
   requestAnimationFrame(() => card.classList.add('open'));
@@ -1650,7 +1655,7 @@ function pickBus(id, app) {
   const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
   map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: cardOffset(card), duration: 500 });
 }
-async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, focus, hub, hubPick, tick, bus, journey, busId }, app, clockNow) {
+async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId }, app, clockNow) {
   await init(app);
   // One map for the whole app. On a phone it docks into the page's small slot (a stop's or a route's) or a run
   // sheet's, and comes back to its column for the Map tab. Three maps were three WebGL contexts, one too many for a
@@ -1675,7 +1680,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   if (wide() && app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');
   if (app.route.name !== 'map') col.querySelector('#mapresults').classList.add('hidden');   // the search's list is the Map tab's, not the page's beside it
   notice(clockNow);
-  pickFor = from || null;
+  pickFor = from || null; pickTo = to || null;
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
   if (tick) return;   // the minute turning is no reason to move the map
@@ -1693,10 +1698,11 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   map.resize();   // its own idea of its size can lag a map just shown again (hidden, it shrank to nothing)
   if (app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');   // a card tapped up beside one page isn't the next's
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
-  if (stopId || ustopId || routeShort || alertId || hub || at || from) { selectedBus = null; selectedU = null; }
+  if (stopId || ustopId || routeShort || alertId || hub || at || from || to) { selectedBus = null; selectedU = null; }
   if (busId) { lastFocused = 'b:' + busId; focusRoute = undefined; return busIn(busId, app); }
   if (at) return showAt(at, app, clockNow);
   if (from) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(from, app); }
+  if (to) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(to, app, true); }
   if (hub) {
     selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
     hubBay = hubPick || null;

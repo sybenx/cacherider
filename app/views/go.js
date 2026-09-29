@@ -6,7 +6,7 @@ import { clockText, relative, metres, fmtDay, dayName } from '../time.js';
 import { routeName, html, icon, badge, time, headsign, liveMark, liveWord, sched, corners, stopTitle } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { spotOf } from '../geo.js';
+import { spotOf, spotKey, atPath } from '../geo.js';
 import { U, planNet, chip } from '../usu.js';
 import { nearMe, app } from '../main.js';
 
@@ -22,7 +22,23 @@ function ends({ to, from, at }) {
   return { spot, dest, d, name, fromSi, origin };
 }
 
+/** Directions from a spot, where to not chosen yet (#/go/-/at/…): the same page as directions to one, the other way
+ *  round. Where to: where the rider is, a spot on the map, a stop, place or address, the Transit Center. */
+function fromOnly(at) {
+  const name = at.label || 'the spot you picked', path = atPath(at), key = spotKey(at.lat, at.lon, at.label);
+  const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
+  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="#/map/${path}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a></div>`];
+  parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>From ${name}</h1></div>`);
+  parts.push(html`<div class="ask"><button class="btn btn-primary btn-lg blueprint" id="go-home" type="button" data-from="${path}">${corners()}${icon('near', 20)}To where I am</button>
+    <a class="btn btn-secondary btn-lg btn-block" href="#/map/to/${key}">${icon('map', 20)}To a spot on the map</a>
+    <a class="btn btn-secondary btn-lg btn-block" href="#/search?from=${encodeURIComponent(key)}">To a stop, place or address</a>
+    ${hubBay ? html`<a class="btn btn-secondary btn-lg btn-block" href="#/go/${hubBay}/${path}">To the ${D.hub.name}</a>` : ''}
+    <span class="ask-note">Location stays on this device. It picks the stops you could get off at, a walk from where you are.</span></div>`);
+  return { html: parts.join(''), mount, title: 'Directions' };
+}
+
 export function render({ to, from, at, plan }, clockNow) {
+  if (to === '-' && at) return fromOnly(at);
   const e = ends({ to, from, at }), { spot, dest, d, name, fromSi, origin } = e;
   if (dest === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such stop</h2></div>`, title: 'Directions' };
   const key = encodeURIComponent(to);   // the destination in the search's address
@@ -35,13 +51,14 @@ export function render({ to, from, at, plan }, clockNow) {
   const chosen = !!at || fromSi !== undefined;
   const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'where you are';
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
-  parts.push(html`<div class="fromline">${icon(at ? 'pin' : 'near', 16)}<span>From <b>${fromName}</b></span>
+  // The start's line, with its ways to change it, once there is one; before that the ask is the whole choice.
+  if (origin) parts.push(html`<div class="fromline">${icon(at ? 'pin' : 'near', 16)}<span>From <b>${fromName}</b></span>
     <span class="fromacts">${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></span></div>`);
   if (!origin) {
     parts.push(html`<div class="ask"><button class="btn btn-primary btn-lg blueprint" id="go-near" type="button">${corners()}${icon('near', 20)}From where I am</button>
-      ${hubBay ? html`<a class="btn btn-secondary btn-lg btn-block" href="#/go/${to}/${hubBay}">From the ${D.hub.name}</a>` : ''}
+      <a class="btn btn-secondary btn-lg btn-block" href="#/map/from/${to}">${icon('map', 20)}From a spot on the map</a>
       <a class="btn btn-secondary btn-lg btn-block" href="#/search?for=${key}">From a stop, place or address</a>
-      <a class="btn btn-secondary btn-lg btn-block" href="#/map/from/${to}">From a spot on the map</a>
+      ${hubBay ? html`<a class="btn btn-secondary btn-lg btn-block" href="#/go/${to}/${hubBay}">From the ${D.hub.name}</a>` : ''}
       <span class="ask-note">Location stays on this device. It picks the stops you can walk to.</span></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
   }
@@ -214,6 +231,9 @@ function whereabouts(l) {
 function mount(el) {
   const b = el.querySelector('#go-near');
   if (b) b.onclick = () => nearMe(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
+  // From a spot to where the rider is: their fix is the end.
+  const h = el.querySelector('#go-home');
+  if (h) h.onclick = () => nearMe(g => { if (g) location.hash = `#/go/${spotKey(g.lat, g.lon, 'where you are')}/${h.dataset.from}`; });
   // A way tapped (not one of its stops' links): that way on the map.
   const open = c => { if (c && location.hash !== c.dataset.href) location.hash = c.dataset.href; };
   for (const c of el.querySelectorAll('.plan[data-href]')) {

@@ -6,7 +6,7 @@ import { html, icon, badges, depRow, stopRow, routeLinkItems } from '../ui.js';
 import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote, hoursWords } from '../usu.js';
 import { miniSlot, mountMini } from './mini.js';
 import { afterSave, app, isDesktop } from '../main.js';
-import { spotKey } from '../geo.js';
+import { spotKey, atPath } from '../geo.js';
 
 export function render({ id }, clockNow) {
   if (!U) return { html: html`<div class="empty"><h2>Shuttle data isn't loaded</h2></div>`, title: 'Shuttle' };
@@ -26,7 +26,7 @@ export function render({ id }, clockNow) {
   const key = spotKey(s.lat, s.lon, s.name);
   parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${cs ? html`<span class="muted" style="font-size:14px">Connect stop: ${cs.name}</span>` : ''}
     <div class="badges wide">${chips(s.routes, 30)}${cs ? html.raw(routeLinkItems(D.stopById[cs.id])) : ''}</div>
-    <div class="golinks"><a class="golink" href="#/go/${key}">${icon('route', 16)}How to get here</a><a class="golink" href="#/search?from=${encodeURIComponent(key)}">${icon('fwd', 16)}From here</a></div></div>`);
+    <div class="golinks"><a class="golink" href="#/go/${key}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div></div>`);
 
   const rows = board(si);
   if (hasData() && noBuses() && !isStale()) {

@@ -9,7 +9,7 @@ import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, liveTag, live, board } from '../usu.js';
 import { results, pickOf, forPick } from './find.js';
-import { byWalk } from '../geo.js';
+import { byWalk, spotOf, spotKey } from '../geo.js';
 
 export function render({ q, page, pick, from }, clockNow) {
   const app = window.__app;
@@ -143,6 +143,11 @@ function searchPage(q, clockNow, app, pick = null) {
   parts.push(html`<div class="titlebar m-only"><span class="wordmark">Cache Rider</span><button class="btn btn-secondary" id="near">${icon('near', 20)}Near me${app && app.geo ? html.raw(' <span class="muted">· on</span>') : ''}</button></div>`);
   if (pick) parts.push(html`<div class="notice pickfrom">${icon('route', 16)}<span>${pick.to ? 'Where will you start from?' : 'Where to?'} A stop, a place or an address. ${pick.to ? 'Going to' : 'Setting off from'} <b>${pick.name}</b></span></div>`);
   parts.push(html`<div class="pad"><form class="search" id="search" role="search" data-for="${pick && pick.to || ''}" data-from="${pick && pick.from || ''}"><input class="input" type="search" placeholder="${pick ? 'Stop, place or address' : 'Street, place or route, e.g. 500 North'}" value="${q}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form></div>`);
+  // Or on the map: a stop tapped, or any spot. Up top, beside the box, as the other way of saying where.
+  if (pick) {
+    const key = k => { const sp = spotOf(k); return sp ? spotKey(sp.lat, sp.lon, sp.label) : k; };
+    parts.push(html`<div class="pad pickmap"><a class="btn btn-secondary btn-lg btn-block" href="${pick.to ? '#/map/from/' + key(pick.to) : '#/map/to/' + key(pick.from)}">${icon('map', 20)}${pick.to ? 'Pick the start on the map' : 'Pick where to on the map'}</a></div>`);
+  }
   if (q) { parts.push(results(q, clockNow, pick)); return { html: parts.join(''), mount, title: 'Search' }; }
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
