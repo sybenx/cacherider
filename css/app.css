@@ -425,9 +425,9 @@ a.twinline { text-decoration: none; }
 /* the night's end on a departure: 'Last full run', 'Last run (partial, to …)' */
 .lastrun { font-size: 0.6562rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; line-height: 1.35; color: var(--color-text); }
 .livetag { display: inline-flex; align-items: center; gap: 5px; font-size: 0.6562rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-700); white-space: nowrap; }
-.livetag i { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); animation: crPulse 2s ease-out infinite; flex: none; }
-@keyframes crPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 45%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
-@media (prefers-reduced-motion: reduce) { .livetag i { animation: none; } }
+.livetag i { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent); flex: none; }
+/* Still: it pulsed, a box-shadow animation that repainted every frame for every tag on screen, twenty and more on a
+   route's sheet, and kept a phone's processor a quarter busy doing nothing. Only the finger moves things. */
 .nobus { margin: 4px 16px 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .nobus .title { font-family: var(--font-heading); font-weight: 600; font-size: 1.625rem; line-height: 1.05; }
 .nobus .sub { font-size: 0.9375rem; line-height: 1.45; color: var(--cr-muted); text-wrap: pretty; }
@@ -721,7 +721,7 @@ a.twinline { text-decoration: none; }
 .tc-loop .rel { font-size: 0.8125rem; color: var(--cr-muted); white-space: nowrap; }
 .tc-loop .where { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem; line-height: 1.3; }
 .tc-loop .where i { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--cr-muted); }
-.tc-loop .where.live i { background: var(--color-accent); animation: crPulse 2s ease-out infinite; }
+.tc-loop .where.live i { background: var(--color-accent); }
 .hbay { display: block; width: 28px; height: 28px; text-decoration: none; cursor: pointer; }
 .hbay .b { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 4px; font-family: var(--font-heading); font-weight: 600; font-size: 1rem; line-height: 1; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.35); }
 .hbay .tag { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); font-family: var(--font-heading); font-weight: 600; font-size: 0.625rem; line-height: 1; letter-spacing: .03em; padding: 2px 4px; white-space: nowrap; background: var(--color-bg); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--cr-line); border-radius: 3px; }
@@ -949,7 +949,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 @media (max-width: 839px) {
   #runsheet { top: 42%; pointer-events: none; }
   #runsheet .rs-scrim { display: none; }
-  #runsheet .rs { height: 100%; pointer-events: auto; border-top: 1px solid var(--cr-line); }
+  #runsheet .rs { height: 100%; pointer-events: auto; border-top: 1px solid var(--cr-line); box-shadow: 0 -6px 18px rgba(0,0,0,.18); }   /* its shade up over the map, not down over the tabs */
   #body:has(> #runsheet) #mapcard { visibility: hidden; }
 }
 /* the wide About: the alerts and the data on the right */
