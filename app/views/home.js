@@ -62,7 +62,7 @@ function landing(clockNow, app) {
   // three of the list a tap harder to find). Beside a wide screen's map, the top bar's box is this one.
   const first = !stopHero && !geo;
   // A first visit: what the app is, in a line, before the ways in (a search box and a location button said nothing of it).
-  if (first) parts.push(html`<p class="land-purpose">When the next ${D.agency.brand} bus leaves your stop, live where the buses report.</p>`);
+  if (first) parts.push(html`<p class="land-purpose">See when the next bus comes to your stop.</p>`);
   parts.push(html`<div class="ask${first ? '' : ' land-where'}">
     <form class="search" id="search" role="search"><input class="input" type="search" placeholder="${first ? 'Street, place or route' : 'Where to?'}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
     ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
