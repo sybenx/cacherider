@@ -99,11 +99,10 @@ export function forPick(el, pick) {
   // A place or an address found: its own spot is that end (the walk between it and the nearest stops is worked out).
   el.querySelectorAll('a.note[href^="#/map/at/"]').forEach(a => { const [ll, label] = a.getAttribute('href').slice(9).split('/'), [lat, lon] = ll.split(',').map(Number); a.setAttribute('href', endHref(pick, null, { lat, lon, label: decodeURIComponent(label || '') })); a.textContent = endWord(pick); });
 }
-/** The results on the map: a stop its page (the map with its sheet), a shuttle stop or loop its card, a place or an address its spot
+/** The results on the map: a stop or a shuttle stop its page (the map with its sheet), a shuttle loop its own, a place or an address its spot
  *  with the stops nearest it (the whole heading, not just its note). Routes and the Transit Center already go there. */
 export function forMap(el) {
   el.querySelectorAll('a[href^="#/usu/route/"]').forEach(a => a.setAttribute('href', '#/map/uroute/' + a.getAttribute('href').slice(12)));
-  el.querySelectorAll('a[href^="#/usu/"]:not([href^="#/usu/route/"])').forEach(a => a.setAttribute('href', '#/map/usu/' + a.getAttribute('href').slice(6)));
   el.querySelectorAll('.section.between > a.note[href^="#/map/at/"]').forEach(a => {
     const head = a.parentElement, link = document.createElement('a'), note = document.createElement('span');
     link.className = head.className; link.href = a.getAttribute('href');

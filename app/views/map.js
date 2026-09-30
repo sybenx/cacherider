@@ -7,7 +7,7 @@ import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../tim
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
-import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
+import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap } from './find.js';
@@ -1535,8 +1535,10 @@ function select(id, app, fly = false, zoomIn = false) {
   }
   // From one stop to the next on the map, the address replaced: Back is the map, not each stop tapped on the way.
   const to = '#/stop/' + id;
-  if (/^#\/(stop\/|map\/\d)/.test(location.hash)) location.replace(to); else location.hash = to;
+  if (STOP_PAGE.test(location.hash)) location.replace(to); else location.hash = to;
 }
+/** A stop's page, or a shuttle stop's (or an old link to either on the map): the address a stop tapped replaces. */
+const STOP_PAGE = /^#\/(stop\/|usu\/(?!route\/)|map\/(\d|usu\/))/;
 /** What can wait a frame: a card drawn and on screen first, the tap answered at once; its times worked out and put in
  *  just after, the first chance the phone has once that frame is painted. */
 const afterPaint = f => requestAnimationFrame(() => setTimeout(f, 0));
@@ -1747,7 +1749,6 @@ export function liveUpdate(app) {
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
   if (hubOn) { hubBadges(); hubBuses(); }
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimesSoon(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
-  if (selectedU !== null) uCard(app);
 }
 // A cheap tablet (four cores or fewer, or 4 GB or less) spends its frames on the map: its buses jump to each fix.
 const WEAK = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
@@ -1840,29 +1841,15 @@ function selectU(id, app, closer = false) {
   clearSpot();
   const si = U.stopById[id];
   if (si === undefined) return;
-  if (U.shared[si]) return select(D.stops[U.shared[si].j].id, app, true, closer ? 'closer' : false);   // one pole, one dot: the Connect stop's card
-  const zoom = closer ? Math.min(18, Math.max(16, map.getZoom() + 1.5)) : Math.max(map.getZoom(), 15);
-  if (wide() && app.route.name !== 'map') {
-    map.easeTo({ padding: pad(), center: [U.stops[si].lon, U.stops[si].lat], zoom, duration: 700 });
-    location.hash = '#/usu/' + id; return;
-  }
-  selectedU = si; selectedBus = null; selected = null; uHilite = id; hiLines = []; hiLoops = U.stops[si].routes.map(ri => U.routes[ri].id); applySelection();
-  for (const m of busMarkers.values()) m.el.classList.remove('on');
+  if (U.shared[si]) return select(D.stops[U.shared[si].j].id, app, true, closer ? 'closer' : false);   // one pole, one dot: the Connect stop's page
+  // Its page, as a Connect stop's is (select): the card before it said its first lines again with an Open button.
   const s = U.stops[si];
-  uCard(app, true);   // the stop at once, its buses the moment after
-  afterPaint(() => { if (selectedU === si) uCard(app); });
-  const card = col.querySelector('#mapcard');
-  map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom, offset: cardOffset(card), duration: 650 });
-}
-function uCard(app, bare = false) {
-  const si = selectedU, s = U.stops[si];
-  const card = col.querySelector('#mapcard');
-  const rows = bare ? null : board(si);
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${U.name}${U.shared[si] ? ' · also Connect' : ''}</span><div class="name"><span>${s.name}</span></div>${chips(s.routes, 24)}</div>
-    ${!rows ? '' : hasData() ? html`<div class="list">${rows.slice(0, 3).map(r => liveRow(r, { href: '#/usu/' + s.id }))}</div>` : html`<div class="empty"><p>Finding the buses…</p></div>`}
-    <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/usu/${s.id}">${corners()}Open stop</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${spotKey(s.lat, s.lon, s.name)}">Get here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">From here</a></div>`;
-  card.classList.remove('hidden');
-  requestAnimationFrame(() => card.classList.add('open'));
+  if (new RegExp('^#/usu/' + id + '(?:[/?]|$)').test(location.hash)) {
+    if (closer) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.min(18, Math.max(16, map.getZoom() + 1.5)), duration: 650 });
+    return;
+  }
+  const to = '#/usu/' + id;
+  if (STOP_PAGE.test(location.hash)) location.replace(to); else location.hash = to;
 }
 
 /** An address: a pin, and the card lists the stops nearest it. */
@@ -1943,7 +1930,9 @@ let pageShown = null;   // the stop page last put in the sheet
 function pageSheet(page, app, fresh) {
   const card = col.querySelector('#mapcard');
   const markup = `<div class="grip"></div><div class="pagesheet">${page.html}</div>`;
-  const again = card.dataset.page === page.key && !!card.querySelector(':scope > .pagesheet');
+  // Redrawn in place only while it's up: swiped away, the page is still in the card, and the same stop tapped again
+  // came up as a redraw, at the whole card's height, not at its opening one.
+  const again = card.dataset.page === page.key && !!card.querySelector(':scope > .pagesheet') && card.classList.contains('open');
   if (!again && !fresh) return;   // a tick with something else in the card (a stop tapped on the map): left be
   if (again) { if (card.lastHtml !== markup) morph(card, markup); }
   else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
@@ -2189,7 +2178,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     const pole = U.shared[si];   // at a Connect stop's pole: that dot is this stop on the map
     selected = pole ? D.stops[pole.j].id : null; uHilite = pole ? '' : ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
     if (page) { if (pole) select(D.stops[pole.j].id, app, false); else { selectedU = null; applySelection(); } pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
-    else if (app.route.name === 'map') { if (pole) select(D.stops[pole.j].id, app, changed); else if (changed) selectU(ustopId, app); else { selectedU = si; uCard(app); } }
+    else if (app.route.name === 'map') { lastFocused = null; selectU(ustopId, app); }   // an old #/map/usu/<stop> link: its page
     else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
   } else if (journey) {
     // A way from the directions page: nothing picked, the way drawn (mainJourney) and its card.
