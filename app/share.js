@@ -36,7 +36,7 @@ export async function qrSvg(text) {
 
 let dlg = null;
 /** The panel: it appears (no slide), and goes with its close button, a tap outside it, Escape, or the page changing. */
-export async function openShare({ url, title, lines = [] }) {
+export async function openShare({ url, title, lines = [], also = [] }) {
   if (!dlg) {
     dlg = document.createElement('dialog');
     dlg.className = 'sharedlg';
@@ -49,7 +49,9 @@ export async function openShare({ url, title, lines = [] }) {
     <div class="sd-qr"></div>
     ${lines.length ? `<div class="sd-lines">${lines.map(l => `<span>${esc(l)}</span>`).join('')}</div>` : ''}
     <div class="sd-acts">${send ? `<button type="button" class="btn btn-primary sd-send">${shareIcon(18).s}Send link</button>` : ''}<button type="button" class="btn ${send ? 'btn-secondary' : 'btn-primary'} sd-copy">${icon('copy', 18).s}<span>Copy link</span></button></div>
-    <input class="sd-url" readonly value="${esc(url)}" aria-label="The link" hidden>`;
+    <input class="sd-url" readonly value="${esc(url)}" aria-label="The link" hidden>
+    ${also.map((a, k) => `<button type="button" class="btn btn-ghost sd-also" data-k="${k}">${esc(a.label)}</button>`).join('')}`;
+  for (const b of dlg.querySelectorAll('.sd-also')) b.onclick = () => { dlg.close(); also[+b.dataset.k].act(); };
   dlg.querySelector('.sd-close').onclick = () => dlg.close();
   const sb = dlg.querySelector('.sd-send');
   if (sb) sb.onclick = () => navigator.share({ title, url }).catch(() => {});

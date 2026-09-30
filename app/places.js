@@ -21,14 +21,21 @@ export function savePlace(at, name) {
 export function forgetPlace(id) { setPlaces(myPlaces().filter(p => p.id !== id)); dispatchEvent(new Event('placeschange')); }
 
 /** The star on a place's card: filled when it's saved. */
-export function placeStar(at) {
+export function placeStar(at, bare = false) {
   const p = placeAt(at.lat, at.lon);
-  return html`<button type="button" class="btn btn-ghost placestar" data-place="${JSON.stringify({ lat: at.lat, lon: at.lon, label: at.label || '' })}" aria-pressed="${p ? 'true' : 'false'}" aria-label="${p ? 'Saved as ' + p.name : 'Save this place'}">${icon('star', 22, 1.5, p ? 'currentColor' : 'none')}<span>${p ? p.name : 'Save'}</span></button>`;
+  return html`<button type="button" class="btn btn-ghost placestar${bare ? ' bare' : ''}" data-place="${JSON.stringify({ lat: at.lat, lon: at.lon, label: at.label || '' })}" aria-pressed="${p ? 'true' : 'false'}" aria-label="${p ? 'Saved as ' + p.name : 'Save place'}" title="${p ? 'Saved as ' + p.name : 'Save place'}">${icon('star', 22, 1.5, p ? 'currentColor' : 'none')}<span>${p ? p.name : 'Save place'}</span></button>`;
+}
+/** A link's place as it goes to someone else: a saved place's point and name are the sharer's (Home, exactly where),
+ *  so it goes as its address, rounded to the street, as 'Share where you are' does. */
+export function sharedAs(lat, lon, label) {
+  const p = placeAt(lat, lon);
+  if (!p) return { lat, lon, label };
+  return { lat: Math.round(lat / 0.0005) * 0.0005, lon: Math.round(lon / 0.0005) * 0.0005, label: p.label || 'a place' };
 }
 
 let dlg = null;
 /** Save as: Home, Work, School, the place's own name, or one typed. Saved already: the same, and Remove. */
-function openSave(at) {
+export function openSave(at) {
   if (!dlg) {
     dlg = document.createElement('dialog');
     dlg.className = 'sharedlg placedlg';
@@ -67,6 +74,7 @@ addEventListener('placeschange', () => {
   for (const b of document.querySelectorAll('[data-place]')) {
     const at = JSON.parse(b.dataset.place), p = placeAt(at.lat, at.lon);
     b.setAttribute('aria-pressed', p ? 'true' : 'false');
-    b.innerHTML = icon('star', 22, 1.5, p ? 'currentColor' : 'none').s + `<span>${esc(p ? p.name : 'Save')}</span>`;
+    b.innerHTML = icon('star', 22, 1.5, p ? 'currentColor' : 'none').s + `<span>${esc(p ? p.name : 'Save place')}</span>`;
+    b.setAttribute('aria-label', p ? 'Saved as ' + p.name : 'Save place'); b.title = b.getAttribute('aria-label');
   }
 });

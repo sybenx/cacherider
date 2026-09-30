@@ -6,6 +6,7 @@ import { metres } from '../time.js';
 import { routeName, html, icon, badge, badges, stopRow, esc } from '../ui.js';
 import { parseAddress, geocode, townState, spotKey, spotOf, atPath } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, live, hasData } from '../usu.js';
+import { myPlaces } from '../places.js';
 
 /** One end of a journey being asked for: `to`, a stop or spot being gone to (a result is the start), or `from`, a spot
  *  being set off from (a result is where to); each with its name. Null for a plain search. */
@@ -22,7 +23,18 @@ export function endHref(pick, id, sp) {
 }
 export const endWord = pick => pick.to ? 'Start from here' : 'Go here';
 /** `later`: the rows without their next buses, for the keystroke's own frame; fillLater puts them in just after. */
+/** The rider's saved places as rows: directions there, or, picking an end of a journey, that end. With a query, those
+ *  whose name it starts ('ho', Home), first in the results; without, all of them (a search box before a word). */
+export function placeRows(q = '', pick = null) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const list = myPlaces().filter(p => words.every(w => p.name.toLowerCase().split(/\s+/).some(x => x.startsWith(w))));
+  if (!list.length) return '';
+  return html`<div class="section">${icon('star', 16)}Your places</div><div class="list">${list.map(p => html`<a class="row placerow" href="${pick ? endHref(pick, null, { lat: p.lat, lon: p.lon, label: p.name }) : '#/go/' + spotKey(p.lat, p.lon, p.name)}"><div class="mid"><span class="name">${p.name}</span>${p.label && p.label !== p.name ? html`<span class="sub">${p.label}</span>` : ''}</div>${icon('fwd', 18)}</a>`)}</div>`.s;
+}
 export function results(q, clockNow, pick = null, later = false) {
+  return html.raw(placeRows(q, pick) + resultsOf(q, clockNow, pick, later));
+}
+function resultsOf(q, clockNow, pick, later) {
   const nx = i => later ? null : nextAt(i, 1, clockNow)[0];
   let hits = search(q);
   const addr = parseAddress(q);

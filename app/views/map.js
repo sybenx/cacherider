@@ -10,10 +10,10 @@ import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk } from '../geo.
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
-import { results as searchResults, forMap } from './find.js';
+import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
 import { openShare, siteLink } from '../share.js';
-import { placeStar } from '../places.js';
+import { placeStar, openSave } from '../places.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
@@ -1159,7 +1159,8 @@ function northControl() {
 function shareHere() {
   if (!meGeo) return;
   const lat = Math.round(meGeo.lat / 0.0005) * 0.0005, lon = Math.round(meGeo.lon / 0.0005) * 0.0005, label = whereabouts(lat, lon) || 'where I am';
-  openShare({ url: siteLink('go/' + spotKey(lat, lon, label)), title: 'Share where you are', lines: [`Directions to ${label}`, 'Rounded to the street, from wherever they open it'] });
+  openShare({ url: siteLink('go/' + spotKey(lat, lon, label)), title: 'Share where you are', lines: [`Directions to ${label}`, 'Rounded to the street, from wherever they open it'],
+    also: [{ label: 'Save as a place (Home, Work…)', act: () => openSave({ lat, lon, label }) }] });   // at home, the natural moment to set it
 }
 /** Where the map rested after the near view was last framed: the Map tab, tapped with the map still there, goes on out. */
 let homeRest = null;
@@ -1223,7 +1224,14 @@ function wireChrome(app) {
     results.querySelectorAll('a:not([data-q])').forEach(a => a.onclick = clear);
   }, 200); };
   input.oninput = () => mapSearch(input.value);
-  input.onfocus = () => { if (input.value.trim()) mapSearch(input.value); };
+  // Before a word, the rider's saved places (the Stops tab's search has them the same): directions there in a tap.
+  input.onfocus = () => {
+    if (input.value.trim()) return mapSearch(input.value);
+    const rows = placeRows();
+    if (!rows) return;
+    results.innerHTML = rows; results.classList.remove('hidden'); results.scrollTop = 0;
+    results.querySelectorAll('a').forEach(a => a.onclick = clear);
+  };
 }
 
 function placeMe(geo) {

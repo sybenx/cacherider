@@ -8,7 +8,7 @@ import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
 import { spotOf, spotKey, atPath } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
-import { myPlaces } from '../places.js';
+import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, chip, shuttleAlso, hours } from '../usu.js';
 import { nearMe, app } from '../main.js';
 
@@ -48,7 +48,7 @@ function headOf(to, e, at, t) {
   // None chosen yet, and no location: the choice.
   const chosen = !!at || fromSi !== undefined;
   const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'where you are';
-  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a>${shareButton(shareOf(name, chosen ? fromName : null, t))}</div>`];
+  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a>${spot ? placeStar({ lat: d.lat, lon: d.lon, label: d.label || name }, true) : ''}${shareButton(shareOf(name, chosen ? fromName : null, t))}</div>`];
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
   // Where from, the trip's first setting, as when (whenControl) is its second: a button alike, the pin for 'from', the
@@ -61,8 +61,12 @@ function headOf(to, e, at, t) {
 /** What a shared link to these directions opens: the address as it is, but the way picked only from a start picked
  *  (from the rider's location the start is theirs, not the sharer's, and so are the ways), and said in words. */
 function shareOf(name, fromName, t) {
-  const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
+  let [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
   const q = new URLSearchParams(query);
+  // A saved place at either end goes as its address, rounded to the street: never 'Home', exactly where.
+  const as = (lat, lon, label) => sharedAs(+lat, +lon, decodeURIComponent(label || ''));
+  path = path.replace(/@(-?[\d.]+),(-?[\d.]+)(?::([^/]*))?/, (m, la, lo, lb) => { const p = as(la, lo, lb); if (p.label !== decodeURIComponent(lb || '')) { name = p.label; } return spotKey(p.lat, p.lon, p.label); })
+    .replace(/at\/(-?[\d.]+),(-?[\d.]+)\/([^/?]*)/, (m, la, lo, lb) => { const p = as(la, lo, lb); if (fromName && p.label !== decodeURIComponent(lb || '')) fromName = p.label; return atPath(p); });
   if (!fromName) q.delete('plan');
   const c = leaveAt(t, now()), qs = q.toString();
   const when = c ? `${c.by ? 'Arrive by' : 'Leave at'} ${clockText(c.min)}${c.ymd !== now().ymd ? ', ' + fmtDay(c.ymd, true) : ''}` : '';

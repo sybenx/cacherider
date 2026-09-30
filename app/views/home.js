@@ -8,8 +8,8 @@ import { routeName, html, icon, badge, badges, time, sched, corners, stopRow, si
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
-import { results, pickOf, forPick, endHref } from './find.js';
-import { myPlaces, placeNamed } from '../places.js';
+import { results, pickOf, forPick, placeRows } from './find.js';
+import { placeNamed } from '../places.js';
 import { byWalk, spotOf, spotKey, walkMins } from '../geo.js';
 import { isWide } from '../wide.js';
 
@@ -230,8 +230,7 @@ function searchPage(q, clockNow, app, pick = null) {
     return { html: parts.join(''), mount, title: 'Search' };
   }
   // Saved places, before a word is typed: directions there (or, picking an end, that end) in a tap.
-  const mine = myPlaces();
-  if (mine.length) parts.push(html`<div class="section">${icon('star', 16)}Your places</div><div class="list">${mine.map(p => html`<a class="row placerow" href="${pick ? endHref(pick, null, { lat: p.lat, lon: p.lon, label: p.name }) : '#/go/' + spotKey(p.lat, p.lon, p.name)}"><div class="mid"><span class="name">${p.name}</span>${p.label && p.label !== p.name ? html`<span class="sub">${p.label}</span>` : ''}</div>${icon('fwd', 18)}</a>`)}</div>`);
+  parts.push(html.raw(placeRows('', pick)));
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
   if (rec.length) parts.push(html`<div class="section">${icon('history', 16)}Recent on this device</div><div class="list">${rec.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
