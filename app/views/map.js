@@ -596,6 +596,8 @@ async function made(app) {
     else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now()); }
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
     else if (app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) location.hash = '#/map';
+    // At the Center, a route picked from its badge: put away as well, the board back as it was.
+    else if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub');
   };
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
