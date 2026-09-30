@@ -75,17 +75,10 @@ function runParts(t, si, ymd) {
   shown = { key: t.trip + ':' + si + ':' + delay + ':' + rows.length, legs: legs.filter(l => l.seq.length > 1 || legs.indexOf(l) === 0), points };
   const foot = back !== false ? `<p class="run-then">Back at this stop at ${esc(clockText(back))}.</p>` : '';
   return {
-    top: close => `<div class="run-top">${badge(t.r, 26).s}<div class="col"><b>The ${esc(clockText(t.min))} from here</b><span class="muted">${esc(headsign(t))}${delay ? ` · running ${delay} min late` : ''}</span></div><button type="button" class="btn btn-ghost btn-icon" ${close} aria-label="Close">${icon('close', 20).s}</button></div>`,
+    top: (close, step = '') => `<div class="run-top">${badge(t.r, 26).s}<div class="col"><b>The ${esc(clockText(t.min))} from here</b><div class="rs-sub"><span class="muted">${esc(headsign(t))}${delay ? ` · running ${delay} min late` : ''}</span>${step}</div></div><button type="button" class="btn btn-ghost btn-icon" ${close} aria-label="Close">${icon('close', 20).s}</button></div>`,
     list: stopsRows.length ? `<div class="run-stops">${html1}</div>` : '<p class="muted">This stop is the end of its run.</p>',
     foot,
   };
-}
-
-/** The picked time in the middle of the day's row, if the row is wider than its room. */
-function centreStrip(el) {
-  const s = el.querySelector('.day-strip'), on = s && s.querySelector('.on');
-  // Once for each run picked: redrawn for the feed, the strip stays where the rider has scrolled it.
-  if (on && s._centred !== on) { s._centred = on; s.scrollLeft = on.offsetLeft - (s.clientWidth - on.offsetWidth) / 2; }
 }
 
 /** The day at a stop, an hour to a column, from the current hour; the next day with buses once today's are done.
@@ -117,30 +110,33 @@ export function restOfDay(si, next, clockNow, pick) {
 }
 
 // ---- the run: a sheet over the stop page, with its own address (…?run=trip&on=day), so Back closes it
-/** The sheet's markup for `trip` on day `on`: the run's title, the day's times in a row to switch runs, and the run's
- *  stops, over the map, which draws the run. Null when there's no such run here. */
+/** The sheet's markup for `trip` on day `on`: the run's title, with the run before and the one after a tap (or a swipe
+ *  across) away, and the run's stops, over the map, which draws the run. Null when there's no such run here. The
+ *  day's times were a row under the title to scroll: four of thirty in view, and the question is nearly always the
+ *  next bus or the one before (the stop's page behind has the whole day). */
 export function runSheet(si, next, clockNow, trip, on) {
   const d = dayOf(si, next, clockNow);
   const t = (d && d.ymd === on && d.rows.find(x => x.trip === trip)) || next.find(x => x.trip === trip && x.ymd === on);
   if (!t) return null;
   const p = runParts(t, si, on);
   const row = d && d.ymd === on ? d.rows : next.filter(x => x.ymd === on);
-  const strip = row.map(x => depBtn(x, { today: on === clockNow.ymd, ymd: on }, clockNow, x.trip === trip)).join('');
+  const i = row.findIndex(x => x.trip === trip), today = on === clockNow.ymd;
+  const stepBtn = (x, dir) => x ? `<button type="button" class="rs-step${today && x.min < clockNow.min ? ' past' : ''}" data-trip="${x.trip}" data-on="${on}" data-step="${dir}" aria-label="The ${esc(clockText(x.min))}">${dir < 0 ? icon('back', 18).s : ''}<span>${esc(clock(x.min).h)}</span>${dir > 0 ? icon('fwd', 18).s : ''}</button>`
+    : `<span class="rs-step none"></span>`;
+  const step = i < 0 ? '' : `<div class="rs-steps">${stepBtn(row[i - 1], -1)}${stepBtn(row[i + 1], 1)}</div>`;
   return `<div class="rs-scrim" data-rs-close></div>
     <div class="rs" role="dialog" aria-label="The ${esc(clockText(t.min))} from here">
-      <div class="rs-grip"></div>${p.top('data-rs-close')}
-      <div class="day-strip rs-strip">${strip}</div>
+      <div class="rs-grip"></div>${p.top('data-rs-close', step)}
       <div class="rs-list">${p.list}${p.foot}</div>
     </div>`;
 }
-/** Wire the sheet: its times switch the run in place (Back still closes it in one go), its stops light theirs on the
- *  map and, tapped again, open, and × or the shade close it. */
+/** Wire the sheet: the run before and after switch it in place, tapped or swiped across (Back still closes it in one
+ *  go), its stops light theirs on the map and, tapped again, open, and × or the shade close it. */
 export function wireSheet(sheet, { swap, close }) {
   if (!sheet) return;
-  centreStrip(sheet);
   const map = () => import('./map.js');
   sheet.onclick = e => {
-    const b = e.target.closest('[data-rs-close], .rs-strip [data-trip], .run-stop');
+    const b = e.target.closest('[data-rs-close], .rs-steps [data-trip], .run-stop');
     if (!b) return;
     if (b.matches('[data-rs-close]')) return close();
     if (b.dataset.trip) return swap(+b.dataset.trip, b.dataset.on);
@@ -168,6 +164,19 @@ export function wireSheet(sheet, { swap, close }) {
   };
   // Set, not added: the sheet is redrawn in place as the feed comes in, its elements kept, and wired again each time.
   for (const el of [top, sheet.querySelector('.run-top')]) if (el) { el.ontouchstart = start; el.ontouchmove = move; el.ontouchend = end; }
+  // Across, anywhere on it: the run after (to the left) or before (to the right), as directions step between ways.
+  let sx = null, sy = 0;
+  if (box) {
+    box.ontouchstart = e => { if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; } else sx = null; };
+    box.ontouchend = e => {
+      if (sx === null || !e.changedTouches[0]) return;
+      const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+      sx = null;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < 2 * Math.abs(dy)) return;
+      const b = sheet.querySelector(`.rs-steps [data-step="${dx < 0 ? 1 : -1}"]`);
+      if (b) swap(+b.dataset.trip, b.dataset.on);
+    };
+  }
 }
 /** The run the sheet shows, for the big map to draw beside a narrower page. */
 export const sheetRun = () => shown;

@@ -833,14 +833,18 @@ a.hr-dep { color: inherit; text-decoration: none; padding: 2px 4px; margin: 0 -4
 a.hr-dep:hover { background: var(--cr-hover); }
 .tc-day { margin-top: 12px; }
 /* the day as one row of times, a run open: scrolled sideways */
-.day-strip { position: relative; display: flex; gap: 4px; overflow-x: auto; padding: 8px 2px 10px; scrollbar-width: thin; }
-/* a finger swipes it: no bar drawn under the times (it read as a stray line under the first) */
-@media (pointer: coarse) { .day-strip { scrollbar-width: none; } .day-strip::-webkit-scrollbar { display: none; } }
-.day-strip .hr-dep { flex: none; margin: 0; padding: 4px 8px; border: 1px solid var(--cr-line); }
 button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); background: var(--color-accent-100); }
 .run-top { display: flex; align-items: center; gap: 12px; }
 .run-top .col { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .run-top b { font: 600 1.25rem var(--font-heading); }
+/* the run before and the one after, beside the title: a tap (or a swipe across the sheet) switches to it */
+.rs-sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rs-steps { display: flex; flex: none; gap: 4px; }
+.rs-step { display: inline-flex; align-items: center; justify-content: center; gap: 1px; min-width: 64px; min-height: 40px; padding: 0 4px; border: 1px solid var(--cr-line); background: none; color: var(--color-text); font: 600 0.9375rem var(--font-heading); font-variant-numeric: tabular-nums; cursor: pointer; }
+.rs-step:hover { background: var(--cr-hover); }
+.rs-step.past { color: var(--cr-muted); }
+.rs-step.none { border-color: transparent; cursor: default; }
+.rs-step svg { flex: none; }
 .run-top .muted { font-size: 0.8438rem; color: var(--cr-muted); }
 .run-stop.hot { background: var(--cr-hover); }
 .run-stop.skipped { padding-block: 3px; }
@@ -958,7 +962,6 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .rs { position: absolute; left: 0; right: 0; bottom: 0; height: 92%; display: flex; flex-direction: column; background: var(--color-bg); box-shadow: var(--shadow-lg); transition: transform .25s cubic-bezier(.2,.7,.2,1); }
 .rs-grip { flex: none; width: 40px; height: 4px; margin: 8px auto 4px; border-radius: 2px; background: var(--cr-line); }
 .rs .run-top { flex: none; padding: 2px 8px 8px 16px; }
-.rs-strip { flex: none; padding: 2px 16px 10px; }
 .rs-list { flex: 1; min-height: 0; padding: 0 16px 18px; }
 /* the run sheet's list scrolls on its own; the route sheet's (the same class) is the map card's, which scrolls it: a
    scroll box of its own there, with nothing to scroll and its overscroll contained, swallowed the finger */
