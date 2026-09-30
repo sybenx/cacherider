@@ -838,7 +838,7 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 .run-top .col { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .run-top b { font: 600 1.25rem var(--font-heading); }
 /* the run before and the one after, beside the title: a tap (or a swipe across the sheet) switches to it */
-.rs-sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rs-sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }   /* clear of the title above it */
 .rs-steps { display: flex; flex: none; gap: 4px; }
 .rs-step { display: inline-flex; align-items: center; justify-content: center; gap: 1px; min-width: 64px; min-height: 40px; padding: 0 4px; border: 1px solid var(--cr-line); background: none; color: var(--color-text); font: 600 0.9375rem var(--font-heading); font-variant-numeric: tabular-nums; cursor: pointer; }
 .rs-step:hover { background: var(--cr-hover); }
