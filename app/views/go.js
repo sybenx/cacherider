@@ -51,9 +51,9 @@ function headOf(to, e, at) {
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
   // Where from, the trip's first setting, as when (whenControl) is its second: a button alike, the pin for 'from', the
   // name whole, and tapped, the ways to change it under it. It was 'From 1111 N…' and three buttons on a line.
-  if (origin) parts.push(html`<div class="gowhen gofrom"><button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t">${fromName}</span>${icon('down', 16)}</button>
-    <div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div></div>`);
-  return { parts, key, hubBay };
+  const from = origin ? { btn: html`<button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t">${fromName}</span></button>`,
+    acts: html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div>` } : null;
+  return { parts, key, hubBay, from };
 }
 
 /** When, from the address: 'leave at' (t=20260930-0815) or 'arrive by' (t=a20260930-0900), as the clock picked
@@ -101,16 +101,20 @@ function whenControl(c, clockNow) {
   const key = (c ? (c.by ? 'a' : '') + c.ymd + c.min : '');
   if (pickFor !== key) { pickFor = key; pickBy = !!(c && c.by); pickOpen = false; }
   const by = pickBy;
-  return html`<div class="gowhen"><button type="button" class="btn btn-secondary" id="go-when" aria-expanded="${pickOpen ? 'true' : 'false'}">${icon('clock', 18)}<span class="gw-t">${label}</span>${icon('down', 16)}</button>
-    <div class="gowhen-pick"${pickOpen ? '' : ' hidden'}><div class="seg" role="group" aria-label="Leave or arrive"><button type="button" data-by="0" aria-pressed="${by ? 'false' : 'true'}">Leave at</button><button type="button" data-by="1" aria-pressed="${by ? 'true' : 'false'}">Arrive by</button></div><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
-    <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div></div>`;
+  return { btn: html`<button type="button" class="btn btn-secondary" id="go-when" aria-expanded="${pickOpen ? 'true' : 'false'}">${icon('clock', 18)}<span class="gw-t">${label}</span></button>`,
+    pick: html`<div class="gowhen-pick"${pickOpen ? '' : ' hidden'}><div class="seg" role="group" aria-label="Leave or arrive"><button type="button" data-by="0" aria-pressed="${by ? 'false' : 'true'}">Leave at</button><button type="button" data-by="1" aria-pressed="${by ? 'true' : 'false'}">Arrive by</button></div><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
+    <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div>` };
 }
+/** Where from and when, the trip's two settings: side by side where both fit (when drops under where from where they
+ *  don't, the start's name kept whole), each one's choices opening under them the whole width. No arrow on either:
+ *  a bordered button says it's one, and the two arrows kept 'from here' and 'leave now' from sharing a phone's line. */
+const tripRow = (from, when) => html`<div class="gowhen"><div class="gw-row">${from ? from.btn : ''}${when.btn}</div>${from ? from.acts : ''}${when.pick}</div>`;
 
 export function render({ to, from, at, plan, t }, clockNow) {
   if (to === '-' && at) return fromOnly(at);
   const e = ends({ to, from, at }), { spot, dest, d, name, origin } = e;
   if (dest === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such stop</h2></div>`, title: 'Directions' };
-  const { parts, key, hubBay } = headOf(to, e, at);
+  const { parts, key, hubBay, from: fromCtl } = headOf(to, e, at);
   if (!origin) {
     parts.push(html`<div class="ask"><button class="btn btn-primary btn-lg blueprint" id="go-near" type="button">${corners()}${icon('near', 20)}From where I am</button>
       <a class="btn btn-secondary btn-lg btn-block" href="#/map/from/${to}">${icon('map', 20)}From a spot on the map</a>
@@ -121,7 +125,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
   }
 
   const fixed = leaveAt(t, clockNow);
-  parts.push(whenControl(fixed, clockNow));
+  parts.push(tripRow(fromCtl, whenControl(fixed, clockNow)));
   const { found, c, lateBy, sh } = waysFor(origin, dest, fixed, clockNow);   // the shuttle too, while it runs
   const also = shuttleNote(origin.si !== undefined ? stop(origin.si) : origin, d, c, sh);
   if (found.walk !== undefined) {
@@ -207,7 +211,7 @@ export function journey({ to, from, at, t }, key, clockNow) {
   const fixed = leaveAt(t, clockNow), { found, c, lateBy, sh } = waysFor(e.origin, e.dest, fixed, clockNow);
   const J = pickPlan(found.plans || [], key, e, c, fixed ? t : null);
   const also = shuttleNote(e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d, c, sh);
-  if (J) { const { parts } = headOf(to, e, at); parts.push(whenControl(fixed, clockNow)); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed, also); J.mount = el => mount(el, null, true); }
+  if (J) { const { parts, from } = headOf(to, e, at); parts.push(tripRow(from, whenControl(fixed, clockNow))); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed, also); J.mount = el => mount(el, null, true); }
   return J;
 }
 
@@ -324,9 +328,12 @@ function mount(el, _app, inCard = false) {
   // Leave now, at a time, or arrive by one: the button opens the pickers; Set puts the time in the address (the ways
   // worked out afresh from it), Now takes it out. A way picked before goes: it was a way from another time.
   const fb = el.querySelector('#go-from'), fa = el.querySelector('.fromacts');
-  if (fb && fa) fb.onclick = () => { fromOpen = fa.hidden; fa.hidden = !fromOpen; fb.setAttribute('aria-expanded', String(fromOpen)); };
   const w = el.querySelector('#go-when'), pick = el.querySelector('.gowhen-pick');
-  if (w && pick) w.onclick = () => { pickOpen = pick.hidden; pick.hidden = !pickOpen; w.setAttribute('aria-expanded', String(pickOpen)); };
+  // One open at a time: both open under the row, and two there at once didn't say which was whose.
+  const setFrom = on => { fromOpen = on; if (fa) fa.hidden = !on; if (fb) fb.setAttribute('aria-expanded', String(on)); };
+  const setPick = on => { pickOpen = on; if (pick) pick.hidden = !on; if (w) w.setAttribute('aria-expanded', String(on)); };
+  if (fb && fa) fb.onclick = () => { const on = fa.hidden; setFrom(on); if (on) setPick(false); };
+  if (w && pick) w.onclick = () => { const on = pick.hidden; setPick(on); if (on) setFrom(false); };
   for (const b of el.querySelectorAll('.gowhen-pick [data-by]')) b.onclick = () => { pickBy = b.dataset.by === '1'; for (const x of el.querySelectorAll('.gowhen-pick [data-by]')) x.setAttribute('aria-pressed', String(x === b)); };
   const set = el.querySelector('#go-set');
   if (set) set.onclick = () => {

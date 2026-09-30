@@ -192,11 +192,10 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 .sa-row .col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sa-row .sub { font-size: 0.8125rem; line-height: 1.4; color: var(--cr-muted); }
 .gowhen { display: flex; flex-direction: column; gap: 8px; padding: 4px 16px 10px; }
-.gowhen > .btn { align-self: flex-start; gap: 8px; max-width: 100%; }
-.gowhen > .btn .gw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gowhen > .btn > svg:last-child { color: var(--cr-muted); margin-left: -2px; }
-.gowhen > .btn[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
-.gowhen.gofrom { padding-bottom: 0; }   /* where from, then when, one under the other */
+.gw-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.gw-row > .btn { gap: 8px; max-width: 100%; min-width: 0; }
+.gw-row > .btn[aria-expanded="true"] { background: var(--cr-hover); }   /* open: its choices under the row */
+.gw-row > .btn .gw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gowhen-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .gowhen-pick[hidden] { display: none; }
 .gowhen-pick .input { width: auto; flex: 1 1 140px; min-height: 44px; }
