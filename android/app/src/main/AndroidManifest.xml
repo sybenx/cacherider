@@ -25,6 +25,10 @@
       <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR_DARK" android:resource="@color/bars" />
       <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_DIVIDER_COLOR" android:resource="@color/bars_light" />
       <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_DIVIDER_COLOR_DARK" android:resource="@color/bars" />
+      <!-- The splash is Android's own start screen again (the launcher icon in its 160 dp circle, 240 dp across), so
+           the hand-over from the system's to this one, shown until the page draws, can't be seen: from drawable-xxxhdpi,
+           so a phone scales it down to that size (from drawable/ it was taken for a low-density image and blown up
+           three times, cropped off the screen), and shown unscaled, centred. -->
       <meta-data android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE" android:resource="@drawable/splash" />
       <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR" android:resource="@color/splash" />
       <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_FADE_OUT_DURATION" android:value="200" />
