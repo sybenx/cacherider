@@ -161,14 +161,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div></div></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
   }
-  if (!found.plans.length) {
-    const o = origin.si !== undefined ? stop(origin.si) : origin, apart = distance(o.lat, o.lon, d.lat, d.lon);
-    if (apart > 1000) return { html: parts.concat(noBus(d, name, apart)).join(''), mount, title: 'Directions' };
-    if (also) parts.push(also);
-    parts.push(html`<div class="empty"><h2>No way there by bus</h2><p>Nothing in the timetable joins these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
-    if (hubBay && origin.si !== D.hub.bays[0].stop) parts.push(html`<div class="chips"><a class="chip" href="#/go/${to}/${hubBay}">Try from the ${D.hub.name}</a></div>`);
-    return { html: parts.join(''), mount, title: 'Directions' };
-  }
+  if (!found.plans.length) return { html: parts.concat(noWay(e, to, hubBay, also)).join(''), mount, title: 'Directions', journey: noWayJourney(e, to, parts, hubBay, also) };
   // Directions are the map: the first way (or the one the address names) drawn, and this, the sheet under it (beside
   // it on a wide screen), with the ways as rows to draw another.
   if (lateBy) parts.push(tooLate(fixed));
@@ -240,6 +233,13 @@ export function journey({ to, from, at, t }, key, clockNow) {
   const fixed = leaveAt(t, clockNow), { found, c, lateBy, sh } = waysFor(e.origin, e.dest, fixed, clockNow);
   const J = pickPlan(found.plans || [], key, e, c, fixed ? t : null);
   const also = shuttleNote(e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d, c, sh);
+  // No way by bus (and not a walk): the map all the same, the two ends on it, so a rider who knows the roads sees
+  // the way by car or on foot; the card says there's no bus.
+  if (!J && found.walk === undefined && !(found.plans || []).length) {
+    const { parts, from, hubBay } = headOf(to, e, at, t);
+    parts.push(tripRow(from, whenControl(fixed, clockNow)));
+    return noWayJourney(e, to, parts, hubBay, also);
+  }
   if (J) { const { parts, from } = headOf(to, e, at, t); parts.push(tripRow(from, whenControl(fixed, clockNow))); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed, also); J.mount = el => mount(el, null, true); }
   return J;
 }
@@ -250,6 +250,21 @@ const where = x => isU(x) ? U.stops[+x.slice(1)] : stop(x);
 const stopHref = x => isU(x) ? '#/usu/' + where(x).id : '#/stop/' + where(x).id;
 /** No bus goes there, and it's beyond a walk: said plainly, with what does go. How far; POOL, Connect's own
  *  on-demand ride, where the place is in its zone; and the phone's own maps for the rest. No driving worked out here. */
+/** No way there by bus: far off, the maps app for the rest; within a walk's reach of the stops, no way in the week. */
+function noWay(e, to, hubBay, also) {
+  const { origin, d, name } = e, o = origin.si !== undefined ? stop(origin.si) : origin, apart = distance(o.lat, o.lon, d.lat, d.lon);
+  if (apart > 1000) return [noBus(d, name, apart)];
+  const out = also ? [also] : [];
+  out.push(html`<div class="empty"><h2>No way there by bus</h2><p>Nothing in the timetable joins these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
+  if (hubBay && origin.si !== D.hub.bays[0].stop) out.push(html`<div class="chips"><a class="chip" href="#/go/${to}/${hubBay}">Try from the ${D.hub.name}</a></div>`);
+  return out;
+}
+/** The map's side of it: just the two ends, framed, and the page as its card. */
+function noWayJourney(e, to, parts, hubBay, also) {
+  const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
+  return { none: true, base: 'none:' + to, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon },
+    sheet: () => html`<div class="gohead gonone">${parts}${noWay(e, to, hubBay, also)}</div>`, mount: el => mount(el, null, true) };
+}
 function noBus(d, name, apart) {
   const miles = apart / 1609.344, far = miles >= 10 ? Math.round(miles) + ' miles' : miles.toFixed(1) + ' miles';
   const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1), android = /Android/.test(ua);

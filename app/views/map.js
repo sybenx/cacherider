@@ -1171,13 +1171,12 @@ function nearControl() {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'nearbtn'; b.title = 'Near me'; b.setAttribute('aria-label', 'Near me');
       b.innerHTML = icon('near', 20).s;
       // First tap, the stretch view (the rider and what they'd ride from); every tap after, them close up, until the map
-      // is left and come back to. Arriving on the Map tab counts as the first (it opened on the stretch view), unless
-      // the map's been moved since. It never turns location off.
+      // is left and come back to, or the Map tab's tapped. It never turns location off.
       b.onclick = () => nearMe(geo => {
         if (!geo) return;
         placeMe(geo);
-        const [t, f, ids] = locTaps || !movedSinceHome() ? closeView(geo) : homeView(geo);
-        if (ids) markNear(ids);
+        const [t, f, ids] = locTaps ? closeView(geo) : homeView(geo);
+        if (ids) markNear(ids, 'home');
         locTaps++;
         frame(t, { ...f, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700 });
       });
@@ -1874,7 +1873,9 @@ function homeView(geo) {
 /** The rider's four nearest stops, as the home page lists them (its big one and the three beneath): by the walk. */
 const nearFour = g => byWalk(nearest(g.lat, g.lon, 24).filter(x => !D.stops[x.i].hub), g.lat, g.lon).slice(0, 4);
 /** Marked at any zoom, with their names: out in the valley the stretch view is wider than stops are drawn. */
-function markNear(ids = []) {
+let nearBy = null;   // whose marks they are: the stretch view's ('home') or a no-way map's ('none')
+function markNear(ids = [], by = null) {
+  nearBy = ids.length ? by : null;
   if (!map || !map.getLayer('stops-near')) return;
   for (const id of ['stops-near', 'stops-near-labels']) map.setFilter(id, ['in', ['get', 'id'], ['literal', ids]]);
 }
@@ -1886,9 +1887,9 @@ const closeView = g => [[g.lon, g.lat], { bearing: 0, zoom: 15.5, maxZoom: 15.5 
 let townTap = false;
 function frameHome(app, duration, again = false) {
   const town = !!app.geo && again && (townTap || !movedSinceHome());
-  if (town) { townTap = true; markNear(); frame(homeBounds(), { ...HOME_FIT, duration }); return; }
+  if (town) { townTap = true; locTaps = 0; homeRest = null; markNear(); frame(homeBounds(), { ...HOME_FIT, duration }); return; }   // the locate button then starts at the stretch view again
   const [t, f, ids] = homeView(app.geo);
-  markNear(ids);
+  markNear(/^#\/map/.test(location.hash) ? ids : [], 'home');   // the map made under another page (a stop, directions): theirs, not these
   const rest = () => { const c = map.getCenter(); homeRest = { zoom: map.getZoom(), lat: c.lat, lon: c.lng }; };
   map.once('moveend', rest);
   if (!frame(t, { ...f, duration })) { map.off('moveend', rest); rest(); }
@@ -2687,9 +2688,31 @@ function dressJourney() {
   map.setPaintProperty('stops', 'circle-stroke-color', paperInk());
 }
 /** The way drawn, or put away (null). Drawn afresh only when the way itself changes; framed when it's a new one. */
+let jrNone = null;   // a 'no way by bus' up: its two ends on the map, its card
 async function mainJourney(J, app) {
   if (!map) return;
   if (!ready) { if (J) map.once('load', () => mainJourney(J, app)); return; }
+  if (!(J && J.none) && jrNone) {
+    jrNone = null; if (nearBy === 'none') markNear();   // its own marks only: the stretch view may have just made its own
+    if (map.getSource('jr')) map.getSource('jr').setData({ type: 'FeatureCollection', features: [] });
+    const card = col.querySelector('#mapcard');
+    if (!J && card.querySelector(':scope > .gonone')) card.classList.remove('open', 'peek');
+  }
+  if (J && J.none) {
+    if (JR) mainJourney(null, app);
+    addJourneyLayers(map);
+    map.getSource('jr').setData({ type: 'FeatureCollection', features: [['start', J.from], ['end', J.to]].map(([k, p]) => ({ type: 'Feature', properties: { k }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
+    // As the stretch view has them: the start's four nearest stops, marked with their names, where a bus could be met.
+    const four = nearFour(J.from).filter(x => x.d < 20000);
+    markNear(four.map(x => D.stops[x.i].id), 'none');
+    if (app.route.name === 'map' && !wide()) journeyCard(J, app);
+    if (jrNone === J.base) return;
+    jrNone = J.base;
+    const b = new maplibregl.LngLatBounds([J.from.lon, J.from.lat], [J.from.lon, J.from.lat]).extend([J.to.lon, J.to.lat]);
+    for (const x of four) b.extend([D.stops[x.i].lon, D.stops[x.i].lat]);
+    requestAnimationFrame(() => frame(b, { margin: wide() ? 80 : 56, maxZoom: 16, bearing: 0, duration: 600 }));
+    return;
+  }
   if (!J) {
     if (!JR) return;
     JR = null; jrKey = null; jrFramed = null;
