@@ -210,7 +210,7 @@ export function loadWords(b) {
 export function chip(ri, size = 30) {
   const r = U.routes[ri];
   const fs = size >= 36 ? 17 : size >= 32 ? 15 : 14;
-  return raw(`<span class="uchip" style="min-width:${size}px;height:${size}px;font-size:${fs / 16}rem;background:${esc(r.color)};color:${esc(r.text)}" title="${esc(r.name)}">${esc(r.short)}</span>`);
+  return raw(`<span class="uchip" data-u="${esc(r.id)}" style="min-width:${size}px;height:${size}px;font-size:${fs / 16}rem;background:${esc(r.color)};color:${esc(r.text)}" title="${esc(r.name)}">${esc(r.short)}</span>`);
 }
 export function chips(ris, size = 30) { return raw(`<div class="badges wide">${ris.map(ri => chip(ri, size).s).join('')}</div>`); }
 export function meter(b, wide = false) {

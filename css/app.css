@@ -183,6 +183,8 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 .badge-28 { min-width: 28px; height: 28px; padding: 0 4px; border-radius: 4px; font-size: 1rem; }
 .badge-24 { min-width: 24px; height: 24px; padding: 0 4px; border-radius: 4px; font-size: 0.8125rem; }
 .badge-20 { min-width: 20px; height: 20px; padding: 0 3px; border-radius: 4px; font-size: 0.6875rem; }
+/* a route under the pointer on a desktop, on the map or here: its badges ringed */
+.badge.hov, .uchip.hov { box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent); }
 .badges { display: flex; gap: 4px; flex-wrap: wrap; }
 .badges.wide { gap: 6px; }
 
