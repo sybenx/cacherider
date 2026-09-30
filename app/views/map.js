@@ -1548,7 +1548,9 @@ function hubRoom() {
 let hubFlew = false;   // the Center flown to (from a view with it on screen): the way back is flown too, where it's to such a view
 function fitHub(arriving = false, duration = 700, fly = false) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
-  if (arriving && !hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
+  // Arrived at from the map zoomed in on the Center already (its badges up), that's where it was: it was kept only when
+  // the Center's view was off, and the Map tab went back to a view from before, the town's.
+  if (arriving) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
   // Arriving from another tab it was there at once: the flight from the town down to the bays, turning half round on
   // the way, loaded the streets at every zoom between and re-placed every label, frame by frame, 700 ms of a phone's
   // work. With the zooms between built ahead (warmViews) and the map lighter to draw, it flies again, briefly, where
