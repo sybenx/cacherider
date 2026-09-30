@@ -599,7 +599,7 @@ async function made(app) {
     // At the Center, a route picked from its badge: put away as well, the board back as it was. Nothing picked there,
     // the board is put away for the map itself: the Map tab, the map where it is, turned north (as its north button).
     else if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub');
-    else if (/^#\/hub(\?|$)/.test(location.hash)) { stayOff = true; location.hash = '#/map'; }
+    else if (/^#\/hub(\?|$)/.test(location.hash)) leaveHubKept();
   };
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
@@ -1140,7 +1140,7 @@ function northControl() {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'northbtn'; b.title = 'Point north'; b.setAttribute('aria-label', 'Point north');
       b.innerHTML = icon('compass', 20).s;
       // On the Center, turning the map is using it as a map: the Map tab, the bays where they are, turned north.
-      b.onclick = () => { if (/^#\/hub/.test(location.hash)) { stayOff = true; location.hash = '#/map'; } else m.resetNorth({ duration: 400 }); };
+      b.onclick = () => { if (/^#\/hub/.test(location.hash)) leaveHubKept(); else m.resetNorth({ duration: 400 }); };
       const sync = () => { const a = m.getBearing(); el.classList.toggle('on', Math.abs(a) > 0.5); b.querySelector('svg').style.transform = `rotate(${-a}deg)`; };
       m.on('rotate', sync); m.on('rotateend', sync); sync();
       this.off = () => { m.off('rotate', sync); m.off('rotateend', sync); };
@@ -1828,7 +1828,17 @@ export function resetView(app, once = false, to = null, jump = false) {
 /** The Map tab from the Transit Center: the map as it was before the Center framed itself, north up, nothing picked
  *  (a tab keeps its place; a second tap is the reset). The whole of Logan when the app opened at the Center. Done
  *  once the Map tab is drawn, as the reset is. */
-let beforeHub = null, backDue = false, stayOff = false;   // stayOff: the Center left by its north button, the map kept
+let beforeHub = null, backDue = false, stayOff = false, stayAt = null;
+/** Leaving the Center for the Map tab, the map kept (its north button, a tap off the board): where the rider was
+ *  looking, the middle of what the board left in view, to keep in the middle once the map is turned north. */
+function leaveHubKept() {
+  const box = map.getContainer(), r = room(), left = padLeft || 0;
+  // The board's own rest, not the card's state: a tap on the map has put the card away by now (select), and the
+  // middle of the whole map, under the board, was kept instead of what the rider could see.
+  if (!wide() && hubRest) r.bottom = Math.max(r.bottom, box.clientHeight - hubRest);
+  const x = left + (box.clientWidth - left + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
+  stayAt = map.unproject([x, y]); stayOff = true; location.hash = '#/map';
+}   // stayOff: the Center left by its north button, the map kept
 export function leaveHub() { backDue = true; }
 /** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
  *  out or panned off), and on a phone its board back up if it was put away. */
@@ -2149,7 +2159,15 @@ export async function show(o, app, clockNow) {
     const own = stayOff || o.stopId || o.routeShort || o.ustopId || o.uRoute || o.alertId || o.at || o.journey || o.run || o.busId || o.page || o.from || o.to;
     // Left by its north button or a tap off the board: the bays north up in the whole map, not turned about a middle
     // that was set above the board (they came to rest low on the screen).
-    if (stayOff) { hubTurned = false; northDue = false; requestAnimationFrame(() => frame(hubBounds(), { margin: wide() ? 50 : HUB_M, maxZoom: 18.4, bearing: 0, duration: 500 })); }
+    // Zoomed out or panned off them first, the rider's own view is kept, only turned north.
+    if (stayOff) {
+      const onBays = map.getZoom() >= HUB_Z - 0.5 && map.getBounds().contains([D.hub.lon, D.hub.lat]);
+      hubTurned = false; northDue = false;
+      // Turned about the map's own middle, half under the board, the place looked at swung off to the screen's foot.
+      const at = stayAt; stayAt = null;
+      requestAnimationFrame(() => onBays ? frame(hubBounds(), { margin: wide() ? 50 : HUB_M, maxZoom: 18.4, bearing: 0, duration: 500 })
+        : frame(at ? [at.lng, at.lat] : map.getCenter().toArray(), { zoom: map.getZoom(), bearing: 0, duration: 500 }));
+    }
     else if (own) { northDue = true; if (!map.isMoving()) northAgain(true); } else backDue = true;
   }
   stayOff = false;
