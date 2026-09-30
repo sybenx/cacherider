@@ -13,6 +13,7 @@ import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
 import { openShare, siteLink } from '../share.js';
+import { lightInks } from '../ink.js';
 import { placeStar, openSave } from '../places.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
@@ -47,6 +48,14 @@ function mix(hex, paper, k) {
   return '#' + [1, 3, 5].map(i => c(i).toString(16).padStart(2, '0')).join('');
 }
 let darkOf = null;   // a Connect route's colour → its dark map shade, drawn apart where two are alike (data.js)
+/** A route's line on the light map: pale ones sunk to show, alike ones on shared streets turned apart (ink.js). */
+let lightOf = null;
+function sinkLine(hex) {
+  lightOf ??= lightInks(D.routes.map(r => ({ color: r.color, stops: new Set(Object.values(r.stops || {}).flat().filter(si => D.stops[si] && !D.stops[si].hub)) })));
+  return lightOf.get(hex.slice(1).toUpperCase()) || hex;
+}
+/** A route's colour as the map draws it: lifted on the dark map, sunk on the light. Badges keep the feed's own. */
+const lineInk = hex => dark() ? lift(hex) : sinkLine(hex);
 function lift(hex) {
   darkOf ??= new Map(D.routes.filter(r => r.dcolor).map(r => [r.color.toUpperCase(), '#' + r.dcolor]));
   const own = darkOf.get(hex.slice(1).toUpperCase());
@@ -159,7 +168,7 @@ function style(sat = true) {
 
 function stopsGeo() {
   const ymd = now().ymd;
-  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: '#' + route(s.routes[0]).color, dcolor: lift('#' + route(s.routes[0]).color), closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: sinkLine('#' + route(s.routes[0]).color), dcolor: lift('#' + route(s.routes[0]).color), closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 
 /** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes:
@@ -197,7 +206,7 @@ function closedSegments(fc) {
   const out = [], gaps = {};
   for (const c of cuts) {
     for (const [d0, d1] of unvouched(c, grid)) {
-      out.push({ type: 'Feature', properties: { color: '#' + c.r.color, dcolor: lift('#' + c.r.color), route: c.ri }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
+      out.push({ type: 'Feature', properties: { color: sinkLine('#' + c.r.color), dcolor: lift('#' + c.r.color), route: c.ri }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
       (gaps[c.shape] ||= []).push([(c.base + d0) % c.total, (c.base + d1) % c.total]);
     }
   }
@@ -381,7 +390,7 @@ function arrowImage(hex, darkPaper) {
 function makeArrows(m) {
   const d = dark();
   for (const r of D.routes) {
-    const hex = d ? lift('#' + r.color).slice(1) : r.color, id = 'arw-' + hex + '-' + (d ? 'd' : 'l');
+    const hex = (d ? lift('#' + r.color) : sinkLine('#' + r.color)).slice(1), id = 'arw-' + hex + '-' + (d ? 'd' : 'l');
     if (!m.hasImage(id)) m.addImage(id, arrowImage(hex, d), { pixelRatio: 2 });
   }
 }
@@ -395,7 +404,7 @@ function shapes() {
   if (!shapesFC) shapesFC = Promise.all([
     fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json()),
     fetch(BASE + 'data/crossings.json').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => { const c = '#' + route(l.route).color, dc = lift(c); return { type: 'Feature', properties: { color: c, dcolor: dc, fade: mix(c, '#f2f2f3', 0.3), dfade: mix(dc, '#101214', 0.3), soft: mix(c, '#f2f2f3', 0.35), dsoft: mix(dc, '#101214', 0.35), route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }; }) }; })
+  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => { const raw = '#' + route(l.route).color, c = sinkLine(raw), dc = lift(raw); return { type: 'Feature', properties: { color: c, dcolor: dc, fade: mix(c, '#f2f2f3', 0.3), dfade: mix(dc, '#101214', 0.3), soft: mix(c, '#f2f2f3', 0.35), dsoft: mix(dc, '#101214', 0.35), route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }; }) }; })
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
@@ -1577,7 +1586,7 @@ function fitHub(arriving = false, duration = 700, fly = false) {
 /** A route in view paints every stop it calls at in its own colour; otherwise a stop wears its first route's. */
 function tintStops(m, ri) {
   const dk = dark(), base = ['get', dk ? 'dcolor' : 'color'];
-  const c = ri === undefined ? null : dk ? lift('#' + D.routes[ri].color) : '#' + D.routes[ri].color;
+  const c = ri === undefined ? null : lineInk('#' + D.routes[ri].color);
   const fill = c ? ['case', ['in', ri, ['get', 'routes']], c, base] : base;
   for (const id of ['stops', 'stops-lit']) {
     m.setPaintProperty(id, 'circle-color', ['case', ['get', 'closed'], dk ? '#101214' : '#f2f2f3', fill]);
@@ -2571,7 +2580,7 @@ async function drawRun(T) {
   dressForRun(m, R);
   if (R.key === T.key) return;
   const key = T.key = R.key;
-  const col = ri => dark() ? lift('#' + D.routes[ri].color) : '#' + D.routes[ri].color;
+  const col = ri => lineInk('#' + D.routes[ri].color);
   const fc = await shapes();
   if (T.key !== key) return;
   const legs = R.legs.filter(l => l.seq.length > 1).map(l => ({ ...l, path: fc ? runPath(fc, l.ri, l.seq) : l.seq.map(([, si]) => [D.stops[si].lon, D.stops[si].lat]) }));
@@ -2737,7 +2746,7 @@ async function mainJourney(J, app) {
     return;
   }
   const p = J.plans[J.i], rides = p.legs.filter(l => l.kind === 'ride');
-  const colOf = l => l.u ? U.routes[l.r].color : dark() ? lift('#' + D.routes[l.r].color) : '#' + D.routes[l.r].color;
+  const colOf = l => l.u ? U.routes[l.r].color : lineInk('#' + D.routes[l.r].color);
   const tint = {}, ustops = new Set();
   for (const l of rides) for (const x of l.stops) {
     if (typeof x !== 'string') { tint[D.stops[x].id] ??= colOf(l); continue; }
@@ -3096,7 +3105,7 @@ const KX = Math.cos(41.74 * Math.PI / 180) * 111320, KY = 110540;   // degrees t
  *  the start to faint at the end, where it melts into the road: where two stretches of the way share a road, the
  *  stronger is the sooner. */
 function fadePieces(path, hex, props) {
-  const col = dark() ? lift('#' + hex) : '#' + hex, [r, g, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
+  const col = lineInk('#' + hex), [r, g, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
   const L = [0];
   for (let i = 1; i < path.length; i++) L.push(L[i - 1] + Math.hypot((path[i][0] - path[i - 1][0]) * KX, (path[i][1] - path[i - 1][1]) * KY));
   const T = L[L.length - 1];
@@ -3116,7 +3125,7 @@ function fadePieces(path, hex, props) {
 /** A strand's arrows, in its lane: the way in a few long stretches (its pieces are too short to carry one each), each
  *  as strong as the strand is there, so where a loop comes back past, the sooner way's arrows are the plain ones. */
 function arrowLines(path, hex, lane) {
-  const c = dark() ? lift('#' + hex).slice(1) : hex.toLowerCase(), L = [0];
+  const c = lineInk('#' + hex).slice(1).toLowerCase(), L = [0];
   for (let i = 1; i < path.length; i++) L.push(L[i - 1] + Math.hypot((path[i][0] - path[i - 1][0]) * KX, (path[i][1] - path[i - 1][1]) * KY));
   const T = L[L.length - 1], N = Math.max(1, Math.min(6, Math.round(T / 700))), out = [];
   for (let n = 0, i = 0; n < N; n++) {
@@ -3161,7 +3170,7 @@ async function drawRuns() {
   const strand = (path, hex, ln) => {
     const k = ns++;
     if (k >= RUN_STRANDS.length) return [];   // more ways than layers: no stop in the valley has them
-    map.setPaintProperty(RUN_STRANDS[k], 'line-gradient', fadeRamp(dark() ? lift('#' + hex) : '#' + hex));
+    map.setPaintProperty(RUN_STRANDS[k], 'line-gradient', fadeRamp(lineInk('#' + hex)));
     return [{ type: 'Feature', properties: { strand: k, wf, lane: ln }, geometry: { type: 'LineString', coordinates: path } }];
   };
   const lane = idx => (idx - (n - 1) / 2) * wf * 1.15;
