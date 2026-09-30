@@ -1005,7 +1005,7 @@ function wireGrip(app) {
       return;
     }
     if (e.target.closest('a, button, [data-go]')) return;
-    if (board()) return;
+    if (board()) { if (hubFolded) hubFold(false); return; }   // folded, a tap on it opens it
     if (peeked()) { delete card.dataset.tall; toFull(); }
     else if (e.target.closest('.grip')) toPeek();
   });
@@ -1016,13 +1016,29 @@ function wireGrip(app) {
   let wheelAt = 0, wheelLast = -1e9;
   card.addEventListener('wheel', e => {
     const fresh = e.timeStamp - wheelLast > 300; wheelLast = e.timeStamp;
-    if (e.ctrlKey || board()) return;
+    if (e.ctrlKey) return;
+    if (board()) {
+      // A fresh scroll up at its top folds it (not the tail of the one that brought it there); folded, down opens it.
+      if (!hubFolded && e.deltaY < 0 && card.scrollTop <= 0 && fresh) { e.preventDefault(); hubFold(true); }
+      else if (hubFolded && e.deltaY > 0) { e.preventDefault(); hubFold(false); }
+      return;
+    }
     if (!peeked() && e.deltaY < 0 && card.scrollTop <= 0 && fresh && card.classList.contains('open') && !wide()) { e.preventDefault(); wheelAt = e.timeStamp; toPeek(); return; }
     if (!peeked() || e.deltaY <= 0) return;
     e.preventDefault();
     if (e.timeStamp - wheelAt < 400) return;   // one opening for one flick
     wheelAt = e.timeStamp; delete card.dataset.tall; toFull();
   }, { passive: false });
+  // The board: a swipe down begun at its top folds it, one up opens it again (its own scroll does the rest).
+  let bY = null, bTop = false;
+  card.addEventListener('touchstart', e => { if (board() && e.touches.length === 1) { bY = e.touches[0].clientY; bTop = card.scrollTop <= 0; } else bY = null; }, { passive: true });
+  card.addEventListener('touchend', e => {
+    if (bY === null || !board()) return;
+    const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : bY) - bY;
+    bY = null;
+    if (!hubFolded && bTop && dy > 60) hubFold(true);
+    else if (hubFolded && dy < -40) hubFold(false);
+  });
   card.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) { y0 = null; return; }
     y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = e.timeStamp; claimed = false;
@@ -1366,20 +1382,32 @@ function hubCard(clockNow) {
   else { card.innerHTML = markup; card.classList.remove('peek'); hubKey = s.pick || ''; }
   card.classList.remove('hidden');
   card.classList.add('open');
-  if (!again) { hubPlace(card); card.scrollTop = 0; }
+  if (!again) { hubFolded = false; hubPlace(card); card.scrollTop = 0; }
   hubMount(card);
 }
 /** The board on a phone rests where the bays' own room ends (hubRoom), the countdown at the least, and scrolls as one
  *  page over the map: down, it slides up over the bays and on through the departures; back at its top, it's where
  *  it rested. The card is the map's height, the room above the board an empty band that lets the map have the finger.
  *  It had two sizes, snapped between, and a scroll that opened it out covered the bays with no way back but the grip. */
-let hubRest = 0;   // the board's top, from the map's
+let hubRest = 0, hubFolded = false;   // the board's top, from the map's; folded down to its countdown
 function hubPlace(card) {
   const H = map.getContainer().clientHeight, top = topCover();
   const g = card.querySelector(':scope > .grip'), h = card.querySelector(':scope > .head');
   const headH = (g ? g.offsetHeight : 24) + (h ? h.offsetHeight : 100) + 1;
-  hubRest = Math.max(top, Math.min(hubRoom(), H - headH));
+  const rest = Math.max(top, Math.min(hubRoom(), H - headH));
+  hubRest = hubFolded ? Math.max(rest, H - headH) : rest;
+  card.classList.toggle('hubfold', hubFolded);
   card.style.setProperty('--hub-top', top + 'px'); card.style.setProperty('--hub-room', (hubRest - top) + 'px');
+}
+/** A swipe down at the board's top folds it to its first card (when the next group leaves, and who's in), the bays
+ *  framed larger in the room it frees; up, or a tap on it, and it's back where it rests. Never put away: gone, only
+ *  leaving the Center brought it back. */
+function hubFold(on) {
+  const card = col.querySelector('#mapcard');
+  if (hubFolded === on || !card.querySelector(':scope > .hubsheet')) return;
+  hubFolded = on; card.scrollTop = 0;
+  hubPlace(card);
+  fitHub();
 }
 /** The bays, and how the Center frames them: south up, as a rider stands at the Center facing the hall from 500
  *  North; in to the bays' own zoom at the least, whatever covers the map. */

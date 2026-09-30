@@ -537,7 +537,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
    under it, all one scroll, so down slides the board up over the map and back at the top it rests where it was */
 .mapcard.open:has(> .hubsheet) { top: var(--hub-top, 0px); max-height: none; padding-top: var(--hub-room, 0px); background: transparent; border-top: 0; box-shadow: none; pointer-events: none; scrollbar-width: none; }
 .mapcard.open:has(> .hubsheet)::-webkit-scrollbar { display: none; }
-.mapcard.open:has(> .hubsheet) > * { pointer-events: auto; display: flow-root; }   /* margins kept inside, no gap that's the map's */
+.mapcard.open:has(> .hubsheet) > * { pointer-events: auto; display: flow-root; }
+.mapcard.hubfold { overflow-y: hidden; }   /* folded to its countdown: a swipe up or a tap opens it, it doesn't scroll */   /* margins kept inside, no gap that's the map's */
 /* the board's ground, from the band's end down, painted on the card's scrolled content so it moves with the board */
 .mapcard.open:has(> .hubsheet) { background: linear-gradient(transparent var(--hub-room, 0px), var(--color-bg) var(--hub-room, 0px)) local; }
 .mapcard.open:has(> .hubsheet) > .grip { border-radius: 0; border-top: 1px solid var(--cr-line); box-shadow: 0 -6px 18px rgba(0,0,0,.18); cursor: default; }

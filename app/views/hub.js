@@ -5,6 +5,9 @@ import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn } from '../
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord } from '../ui.js';
 import { rt, rtStale, isLoop } from '../rt.js';
+/** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
+ *  said 'aren't coming in right now' on every open, a second before they were. */
+const rtDown = () => rtStale() && (rt.at > 0 || !!rt.error);
 
 let countIv = 0;   // the pulse countdown's ticker
 const IN_RADIUS = 110;   // metres from the hall: a bus this close is in
@@ -154,7 +157,7 @@ function together(st, clockNow) {
     const loose = leaving.filter(k => st[k].loose).length, away = leaving.filter(k => st[k].away).length, quiet = leaving.filter(k => !st[k].out).length;
     const rest = [coming ? coming + ' on the way' : '', late ? late + ' running late' : '', away ? away + ' still on a run' : '', loose ? loose + ' out without an estimate' : '', quiet ? quiet + ' not reporting' : ''].filter(Boolean).join(', ');
     note = html`<span class="tc-note"><b>${inN} of ${n} in.</b>${rest ? ' ' + rest.replace(/^./, c => c.toUpperCase()) + '.' : ''}</span>`;
-  } else if (p.day === 0 && rtStale()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
+  } else if (p.day === 0 && rtDown()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
   return html`<div class="tc-together blueprint">${corners()}
     <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}</span></div><div class="end">${end}</div></div>
     ${leaving.length ? html`<div class="bars"><div class="segs" style="grid-template-columns:repeat(${leaving.length},minmax(0,1fr))">${html.raw(segs)}</div>${note}</div>` : ''}</div>`;
@@ -259,7 +262,8 @@ function dayTimes(s, clockNow) {
 }
 
 function footnote(st) {
-  if (rtStale()) return html`<p class="tc-foot">Live bus positions aren't coming in right now, so every time here is the scheduled one.</p>`;
+  if (rtDown()) return html`<p class="tc-foot">Live bus positions aren't coming in right now, so every time here is the scheduled one.</p>`;
+  if (rtStale()) return '';   // its first word not in yet
   const name = s => s.loop ? D.routes[s.ris[0]].long : 'Route ' + s.k;
   const list = (xs, one, many) => xs.length ? ' ' + (xs.length === 1 ? xs[0] + one : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1] + many) : '';
   const live = Object.values(st).filter(s => !s.off && s.eta === null);
