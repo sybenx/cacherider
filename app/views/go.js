@@ -333,7 +333,17 @@ function mount(el, _app, inCard = false) {
   const nw = el.querySelector('#go-now');
   if (nw) nw.onclick = () => location.replace(location.href.split('#')[0] + hashWith(null));
   // A way's row: that way drawn, in place (Back still leaves the directions). On a phone the map's card handles the tap.
-  const open = c => { if (c && location.hash !== c.dataset.go) location.replace(location.href.split('#')[0] + c.dataset.go); };
+  // The one already drawn, tapped again: its legs, brought into view (on a phone the map's card does it).
+  const open = c => {
+    if (!c) return;
+    if (c.classList.contains('picked')) {
+      // the panel alone scrolled to them: scrollIntoView moved the whole app's frame too, the header off the top
+      const legs = el.querySelector('.journeysheet'), box = el.closest('#side') || el;
+      if (legs) box.scrollTop += legs.getBoundingClientRect().top - box.getBoundingClientRect().top - 8;
+      return;
+    }
+    if (location.hash !== c.dataset.go) location.replace(location.href.split('#')[0] + c.dataset.go);
+  };
   for (const c of el.querySelectorAll('.jrow[data-go]')) {
     if (!inCard) c.onclick = () => open(c);
     c.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === c) { e.preventDefault(); open(c); } };

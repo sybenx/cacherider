@@ -988,6 +988,13 @@ function wireGrip(app) {
   card.addEventListener('click', e => {
     // A way's row is a tap on that way, not on the card: it opened the card out, and the way picked was framed in the
     // sliver of map left above it.
+    // The way already picked, tapped again: its legs, the card opened out and brought to them.
+    if (e.target.closest('.jrow.picked')) {
+      if (peeked()) { delete card.dataset.tall; card.classList.remove('peek'); }
+      const legs = card.querySelector(':scope > .journeysheet');
+      if (legs) card.scrollTop = legs.offsetTop - 8;
+      return;
+    }
     if (e.target.closest('a, button, [data-go]')) return;
     if (board()) return;
     if (peeked()) { delete card.dataset.tall; toFull(); }
