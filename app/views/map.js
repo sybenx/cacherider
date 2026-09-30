@@ -2235,7 +2235,7 @@ function searchMarks(m) {
 /** Called by the router whenever the map is on screen. */
 let shownHash = null, lastMeasured = '';
 export async function show(o, app, clockNow) {
-  if (!/^#\/map/.test(location.hash)) { locTaps = 0; townTap = false; markNear(); }   // the map left: both buttons start again at the stretch view
+  if (!/^#\/(map|hub)/.test(location.hash)) { locTaps = 0; townTap = false; markNear(); }   // the map left (the Center is the map too): both buttons start again at the stretch view
   await showPage(o, app, clockNow);
   // Marked once the map's ready: a reload straight onto a search gets there before its style does.
   wantMarks = wide() && o.searchMarks || null;
