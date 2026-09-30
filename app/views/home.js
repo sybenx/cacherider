@@ -2,7 +2,7 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
+import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
@@ -61,11 +61,16 @@ function landing(clockNow, app) {
   // Where to: the box on the page whichever way it opened (a stop's rider got an icon in the header, the question
   // three of the list a tap harder to find). Beside a wide screen's map, the top bar's box is this one.
   const first = !stopHero && !geo;
+  // A first visit: what the app is, in a line, before the ways in (a search box and a location button said nothing of it).
+  if (first) parts.push(html`<p class="land-purpose">When the next ${D.agency.brand} bus leaves your stop, live where the buses report.</p>`);
   parts.push(html`<div class="ask${first ? '' : ' land-where'}">
     <form class="search" id="search" role="search"><input class="input" type="search" placeholder="${first ? 'Street, place or route' : 'Where to?'}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
     ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
       <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : ''}</div>`);
   parts.push(hubLine(clockNow));
+  // And what the app does, shown rather than said: the busiest stops, by the day's departures, with their next buses.
+  // A newcomer may find their own there; either way the page isn't half empty on a first visit.
+  if (first) { const busy = busiest(clockNow); if (busy.length) parts.push(html`<div class="land-eye"><span>Busiest stops today</span></div><div class="list">${busy.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`); }
   if (isWide()) parts.push(chips());   // beside the map, every route a tap away: the page has the room, and the map lights it
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
@@ -124,6 +129,24 @@ function stopHeroBlock(si, why, clockNow) {
     ${then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${when(t, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : ''}</a></div>`;
 }
 
+/** The stops with the most departures on the day (from the timetable, nothing picked by hand): not the Center's bays,
+ *  which have their line, and each at least 800 m from those before it, so they're places across the town and not
+ *  one stretch of Main Street three times over (a pair across the road goes with it). Worked out once a day. */
+let busyFor = null, busyList = [];
+function busiest(clockNow, n = 4) {
+  if (busyFor === clockNow.ymd) return busyList;
+  const counts = D.stops.map((s, i) => [i, s.hub ? 0 : timesOn(i, clockNow.ymd).length]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]);
+  const out = [], taken = new Set();
+  for (const [i] of counts) {
+    const s = stop(i);
+    if (taken.has(i) || out.some(j => distance(s.lat, s.lon, stop(j).lat, stop(j).lon) < 800)) continue;
+    out.push(i); taken.add(i);
+    if (s.twin) taken.add(s.twin[0]);
+    if (out.length >= n) break;
+  }
+  busyFor = clockNow.ymd; busyList = out;
+  return out;
+}
 /** The Transit Center as a line: when the next group leaves and how soon, its tab a tap away. It was a framed card
  *  with a 42 px time, between the rider's stop and the stops beside it. */
 function hubLine(clockNow) {

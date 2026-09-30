@@ -661,7 +661,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .land-hub .col { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; font-weight: 500; }
 .land-hub .sub { font-size: 0.8438rem; font-weight: 400; color: var(--cr-muted); }
 .land-hub .sub b { color: var(--color-text); font-weight: 600; }
-.land > .ask { padding-top: 14px; }   /* where to: first on a first visit, under the rider's stop and the stops beside it after */
+.land > .ask { padding-top: 14px; }
+.land-purpose { margin: 14px 16px 0; font: 600 1.25rem/1.3 var(--font-heading); text-wrap: pretty; }   /* a first visit: what it is, in a line */   /* where to: first on a first visit, under the rider's stop and the stops beside it after */
 .hero { display: flex; flex-direction: column; gap: 14px; margin: 18px 12px 0 16px; padding-right: 16px; border-right: 2px solid var(--color-text); color: inherit; text-decoration: none; }
 .hero .eye { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .hero .eye .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
