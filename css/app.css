@@ -591,7 +591,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .nobus-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .nobus-maps { padding: 4px 16px 16px; font-size: 0.9375rem; }
 .nobus-maps a { color: var(--color-accent-700); }
-.fromline { display: flex; align-items: center; gap: 8px; padding: 6px 16px 10px; font-size: 0.9062rem; color: var(--cr-muted); border-bottom: 1px solid var(--cr-line); }
+/* where from, whole: the ways to change it drop to a line of their own where both don't fit ('From 1111 N…' before) */
+.fromline { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 0; padding: 6px 16px 10px; font-size: 0.9062rem; color: var(--cr-muted); border-bottom: 1px solid var(--cr-line); }
 .fromline > svg { color: var(--color-accent-700); flex: none; }
 .fromline > span:not(.fromacts) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fromline b { color: var(--color-text); font-weight: 600; }
