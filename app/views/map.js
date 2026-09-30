@@ -927,10 +927,13 @@ function fitPeek(card) {
   // The directions: down to the way drawn, the rows above it with it, so the map keeps half the screen at least.
   const pk = card.querySelector('.gohead .jrow.picked');
   if (pk) { card.style.setProperty('--peek', Math.min(pk.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.5 * map.getContainer().clientHeight) + 'px'); return; }
-  // The Center's board: down to the loops, the countdown and the Green and Blue's next buses together, the bays framed
-  // in what's left above. Swiped back down from the whole board, the same (it had come down to the countdown alone).
-  const lp = card.querySelector(':scope > .hubsheet .tc-loops');
-  if (lp) { card.style.setProperty('--peek', Math.round(Math.min(lp.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2, 0.55 * map.getContainer().clientHeight)) + 'px'); return; }
+  // The Center's board: the map keeps the bays' own height (the arc across the screen's width) and the board has the
+  // rest, down to the countdown at the least; a short screen's board scrolls, a tall one's shows the next buses too.
+  if (card.querySelector(':scope > .hubsheet')) {
+    const h = card.querySelector('.head'), headH = h ? h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2 : 120;
+    const room = map.getContainer().clientHeight - hubRoom();
+    card.style.setProperty('--peek', Math.round(Math.max(headH, Math.min(room, card.scrollHeight))) + 'px'); return;
+  }
   // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it).
   const h = card.querySelector('.head');
   if (h) card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2) + 'px');
@@ -1354,13 +1357,26 @@ function hubCard(clockNow) {
   hubMount(card);
 }
 /** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
+/** The map's height the bays need on a phone: the arc across the width, south up, its badges and their tags clear of
+ *  the search bar above it and the board below. */
+const HUB_SIDE = 34, HUB_ROW = 40;
+function hubRoom() {
+  let w = 180, n = 90, e = -180, so = -90;
+  for (const b of D.hub.bays) { w = Math.min(w, b.lon); e = Math.max(e, b.lon); so = Math.max(so, b.lat); n = Math.min(n, b.lat); }
+  const my = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
+  const spanX = (e - w) / 360, spanY = (my(so) - my(n)) / (2 * Math.PI);   // as fractions of the world
+  const width = map.getContainer().clientWidth - 2 * HUB_SIDE;
+  const z = Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * spanX))));
+  return Math.round(topCover() + 2 * HUB_ROW + spanY * 512 * 2 ** z);
+}
 function fitHub(arriving = false) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
   if (arriving && !hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
   const bb = new maplibregl.LngLatBounds();
   for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
   const card = col.querySelector('#mapcard'), h = map.getContainer().clientHeight, p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
-  if (!wide() && card.classList.contains('open')) p.bottom += card.offsetHeight;
+  // A phone's: the room above the board is the bays' own (hubRoom), so they fill its width.
+  if (!wide() && card.classList.contains('open')) Object.assign(p, { top: HUB_ROW + topCover(), bottom: HUB_ROW + card.offsetHeight, left: HUB_SIDE, right: HUB_SIDE });
   p.bottom = Math.min(p.bottom, Math.max(60, h - p.top - 160));   // the bays always get some room
   settlePad();
   // South up, as a rider stands at the Center facing the hall from 500 North: part of the framing, not a turn of its own.
