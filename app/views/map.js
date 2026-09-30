@@ -611,20 +611,13 @@ let stayRoute = false;
 function pickRoute(ri, app) {
   const h = '#/map/route/' + encodeURIComponent(D.routes[ri].short);
   if (location.hash === h || location.hash.startsWith(h + '/') || location.hash.startsWith(h + '?')) {
-    settlePad(); map.fitBounds(routeBounds(ri), { padding: routePad(), duration: 700, maxZoom: 15.5 });
+    frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
     const card = col.querySelector('#mapcard');
     if (!wide() && card.querySelector(':scope > .routesheet')) { card.classList.remove('peek'); card.classList.add('open'); }
     return;
   }
   stayRoute = true; location.hash = h;
 }
-/** Room round a route fitted to the map: on a phone, above its sheet. */
-const routePad = (n = 40) => {
-  const card = col.querySelector('#mapcard'), p = fitPad(n), h = map.getContainer().clientHeight;
-  if (!wide() && card.classList.contains('open')) p.bottom += card.offsetHeight;
-  p.bottom = Math.min(p.bottom, Math.max(n, h - p.top - 120));   // a route always gets some room, the map just shown or not
-  return p;
-};
 // ---- a route: the map with the route lit and its times, and its stops in order as the map's card (a phone's) or
 // beside it (a wide screen's panel), each with the route's next call there. Once the route page; now the map's.
 
@@ -915,8 +908,8 @@ function ringBus(id) {
   wantRing = null; ringed = id;
   applySelection();   // its way on from where it is, the route stepped back behind it, as a bus picked on the map
   if (focusRoute !== undefined) routeTimesSoon(focusRoute, now());   // and the route's times, that bus's
-  const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
-  map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: wide() ? [0, 0] : cardOffset(card), duration: 500 });
+  const ll = m.marker.getLngLat();
+  frame([ll.lng, ll.lat], { duration: 500 });
 }
 document.addEventListener('click', e => {
   const a = e.target.closest && e.target.closest('[data-ring]');
@@ -1372,19 +1365,10 @@ function hubPlace(card) {
   hubRest = Math.max(top, Math.min(hubRoom(), H - headH));
   card.style.setProperty('--hub-top', top + 'px'); card.style.setProperty('--hub-room', (hubRest - top) + 'px');
 }
-/** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
-/** The Center's zoom as fitHub frames it (near enough: a phone's card and a wide screen's panel as they'll be). */
-function hubZoom(bb) {
-  if (!wide()) return hubFitZoom();
-  const cam = map.cameraForBounds(bb, { padding: { top: 60 + topCover(), bottom: 60, left: 50, right: 50 }, maxZoom: 18.4, bearing: 180 });
-  return Math.max(HUB_Z + 0.2, cam ? cam.zoom : 18);
-}
-function hubFitZoom() {
-  let w = 180, e = -180;
-  for (const b of D.hub.bays) { w = Math.min(w, b.lon); e = Math.max(e, b.lon); }
-  const width = map.getContainer().clientWidth - 2 * HUB_SIDE;
-  return Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * (e - w) / 360))));
-}
+/** The bays, and how the Center frames them: south up, as a rider stands at the Center facing the hall from 500
+ *  North; in to the bays' own zoom at the least, whatever covers the map. */
+function hubBounds() { const bb = new maplibregl.LngLatBounds(); for (const b of D.hub.bays) bb.extend([b.lon, b.lat]); return bb; }
+const hubFit = () => ({ margin: wide() ? 50 : HUB_M, bearing: 180, minZoom: HUB_Z + 0.2, maxZoom: 18.4 });
 
 /** The tiles of the views a tab will ask for, built ahead while the map sits idle: the Center's bays, and the town as
  *  the Map tab shows it. Built only when first shown, each was gray a beat after its tab was tapped, seconds after
@@ -1411,9 +1395,7 @@ function warmViews() {
       T.getRenderableIds = function (...a) { const ids = renderable.apply(this, a); return warmKeys.size ? ids.filter(k => !warmKeys.has(k) || ideal.has(k)) : ids; };
       T._warmed = true;
     }
-    const bb = new maplibregl.LngLatBounds();
-    for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
-    const hz = hubZoom(bb), cams = [{ center: HOME, zoom: 13 }];
+    const bb = hubBounds(), fit = frameCam(bb, hubFit()), hz = fit ? fit.zoom : 18, cams = [{ center: HOME, zoom: 13 }];
     if (bornCam) cams.push(bornCam);
     if (beforeHub) cams.push(beforeHub);
     for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: 180 });
@@ -1456,35 +1438,23 @@ function tilesFor(T, cam) {
 
 /** The map's height the bays need on a phone: the arc across the width, south up, its badges and their tags clear of
  *  the search bar above it and the board below. */
-const HUB_SIDE = 34, HUB_ROW = 40;
+const HUB_M = 36;   // the margin round the bays on a phone
 function hubRoom() {
   let w = 180, n = 90, e = -180, so = -90;
   for (const b of D.hub.bays) { w = Math.min(w, b.lon); e = Math.max(e, b.lon); so = Math.max(so, b.lat); n = Math.min(n, b.lat); }
   const my = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
   const spanX = (e - w) / 360, spanY = (my(so) - my(n)) / (2 * Math.PI);   // as fractions of the world
-  const width = map.getContainer().clientWidth - 2 * HUB_SIDE;
+  const width = map.getContainer().clientWidth - 2 * HUB_M;
   const z = Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * spanX))));
-  return Math.round(topCover() + 2 * HUB_ROW + spanY * 512 * 2 ** z);
+  return Math.round(topCover() + 2 * HUB_M + spanY * 512 * 2 ** z);
 }
 function fitHub(arriving = false) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
   if (arriving && !hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
-  const bb = new maplibregl.LngLatBounds();
-  for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
-  const card = col.querySelector('#mapcard'), h = map.getContainer().clientHeight, p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
-  // A phone's: the room above the board is the bays' own (hubRoom), so they fill its width.
-  if (!wide() && card.classList.contains('open')) Object.assign(p, { top: HUB_ROW + topCover(), bottom: HUB_ROW + (card.querySelector(':scope > .hubsheet') && hubRest ? h - hubRest : card.offsetHeight), left: HUB_SIDE, right: HUB_SIDE });
-  p.bottom = Math.min(p.bottom, Math.max(60, h - p.top - 160));   // the bays always get some room
-  settlePad();
-  // South up, as a rider stands at the Center facing the hall from 500 North: part of the framing, not a turn of its own.
-  const cam = map.cameraForBounds(bb, { padding: p, maxZoom: 18.4, bearing: 180 });
-  if (!cam) return;
-  // The bays' own middle, set in the middle of the room left for them: right at whatever zoom the floor gives (the
-  // fit's centre is only right at the fit's zoom).
   // Arriving from another tab, it's there at once: a flight from the town down to the bays, turning half round on the
   // way, loaded the streets at every zoom between and re-placed every label, frame by frame, 700 ms of a phone's work
   // that no finger asked for. Framed again from the Center itself (its tab tapped again), it moves.
-  map.easeTo({ center: bb.getCenter(), zoom: Math.max(HUB_Z + 0.2, cam.zoom), bearing: 180, offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2], duration: arriving ? 0 : 700 });
+  if (!frame(hubBounds(), { ...hubFit(), duration: arriving ? 0 : 700 })) return;
   hubTurned = true; northDue = false;
 }
 
@@ -1536,7 +1506,7 @@ function select(id, app, fly = false, zoomIn = false, go = true) {
   // button under them, a tap more for what was already there.
   if (new RegExp('^#/stop/' + id + '(?:[/?]|$)').test(location.hash)) {
     // Tapped again on the map: closer in.
-    if (zoomIn === 'closer') map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.min(18, Math.max(16, map.getZoom() + 1.5)), duration: 650 });
+    if (zoomIn === 'closer') frame([s.lon, s.lat], { zoom: Math.min(18, Math.max(16, map.getZoom() + 1.5)), duration: 650 });
     return;
   }
   // From one stop to the next on the map, the address replaced: Back is the map, not each stop tapped on the way.
@@ -1583,16 +1553,10 @@ export function selectPool(id, app) {
   card.classList.remove('hidden');
   requestAnimationFrame(() => {
     card.classList.add('open');
-    map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), offset: cardOffset(card), duration: 650, essential: true });
+    frame([s.lon, s.lat], { zoom: Math.max(map.getZoom(), 15), duration: 650, essential: true });
   });
 }
 
-/** Where a stop goes with a card open: above a phone's card, which spans the bottom; on a wide screen, where the card
- *  sits in the bottom right corner, the middle of the map it leaves clear, to its left. Beside a page the map is
- *  narrower, and its plain middle can fall under the card. */
-// The stop in the middle of the map left clear: beside the card on a wide screen, above it on a phone, and below the
-// search bar and any notice either way.
-const cardOffset = card => wide() ? [-(card.offsetWidth + 16) / 2, topCover() / 2] : [0, (topCover() - card.offsetHeight) / 2];
 
 function notice(clockNow) {
   const n = col.querySelector('#mapnotice');
@@ -1683,10 +1647,51 @@ function topCover() {
   for (const el of col.querySelectorAll('.mapbar, #mapnotice')) { const r = el.getBoundingClientRect(); if (r.height && !el.classList.contains('hidden')) cover = Math.max(cover, r.bottom - top); }
   return cover;
 }
-/** A fit's margins, the top's past the search bar and any notice, so what's framed isn't under them. */
-const fitPad = n => ({ top: n + topCover(), bottom: n + runCover(), left: n, right: n });
-/** A run's sheet over the lower part of a phone's map: what's fitted goes above it. */
-const runCover = () => { const rs = !wide() && document.querySelector('#runsheet .rs'); return rs ? rs.offsetHeight : 0; };
+/** The part of the map left clear, as its margins: the search bar and any notice across the top; on a phone the sheet
+ *  up over the bottom (the run's, or the map's card as it rests, the Center's board down to where it rests); on a
+ *  wide screen the card in its bottom right corner, a column the map's height. The panel is the map's own padding
+ *  (pad) already. */
+function room() {
+  const card = col.querySelector('#mapcard'), H = map.getContainer().clientHeight, r = { top: topCover(), bottom: 0, left: 0, right: 0 };
+  const up = !!card && card.classList.contains('open') && getComputedStyle(card).visibility !== 'hidden';
+  if (!wide()) {
+    const rs = document.querySelector('#runsheet .rs');
+    r.bottom = rs ? rs.offsetHeight : !up ? 0 : card.querySelector(':scope > .hubsheet') && hubRest ? H - hubRest : card.offsetHeight;
+  } else if (up) r.right = card.offsetWidth + 16;
+  return r;
+}
+const MIN_ROOM = 120;   // what's framed gets this much height at least, whatever covers the map
+/** Where a place goes in the room left (room): a shape (bounds) fitted with a margin round it, between minZoom and
+ *  maxZoom; a point ([lon, lat]) at `zoom`, or the map's own. Its middle in the room's middle at whatever zoom it
+ *  comes to (a fit's own centre is right only at the fit's own zoom). `bearing`: turned so (unset, as it is). */
+function frameCam(target, { margin, zoom, minZoom = 0, maxZoom = 19, bearing } = {}) {
+  const r = room(), H = map.getContainer().clientHeight, m = margin ?? (wide() ? 40 : 16);
+  const p = { top: r.top + m, bottom: r.bottom + m, left: r.left + m, right: r.right + m };
+  p.bottom = Math.min(p.bottom, Math.max(m, H - p.top - MIN_ROOM));
+  const brg = bearing ?? map.getBearing();
+  let z = zoom ?? map.getZoom(), center = target;
+  if (!Array.isArray(target)) {
+    if (target.isEmpty()) return null;
+    const cam = map.cameraForBounds(target, { padding: p, maxZoom, bearing: brg });
+    if (!cam) return null;
+    z = cam.zoom; center = midOf(target);
+  }
+  return { center, zoom: Math.min(maxZoom, Math.max(minZoom, z)), bearing: brg, offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2] };
+}
+/** Framed: every stop, route, run, way, the Center, a spot, an alert's stops, all in the one room, the one way. There
+ *  were five reckonings of the room (the panel alone, the search bar and a run's sheet, those and a phone's card, a
+ *  card's corner for a point, the Center's own) and nine margins among them, and a fix to one missed the rest. */
+function frame(target, { duration = 600, essential = false, ...o } = {}) {
+  settlePad();
+  const c = frameCam(target, o);
+  if (c) map.easeTo({ ...c, duration, essential });
+  return c;
+}
+/** A box's middle as the map draws it (Mercator), not its latitudes' average. */
+function midOf(b) {
+  const my = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)), y = (my(b.getNorth()) + my(b.getSouth())) / 2;
+  return [(b.getWest() + b.getEast()) / 2, (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI];
+}
 let padUntil = 0;
 const settlePad = () => { if (map.getPadding().left !== (padLeft || 0)) map.setPadding(pad()); };
 function panelPad(app) {
@@ -1851,7 +1856,7 @@ function selectU(id, app, closer = false) {
   // Its page, as a Connect stop's is (select): the card before it said its first lines again with an Open button.
   const s = U.stops[si];
   if (new RegExp('^#/usu/' + id + '(?:[/?]|$)').test(location.hash)) {
-    if (closer) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.min(18, Math.max(16, map.getZoom() + 1.5)), duration: 650 });
+    if (closer) frame([s.lon, s.lat], { zoom: Math.min(18, Math.max(16, map.getZoom() + 1.5)), duration: 650 });
     return;
   }
   const to = '#/usu/' + id;
@@ -1923,9 +1928,11 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
     if (road && road.length === 1) routeTimesSoon(road[0], now());
   });
   card.classList.remove('hidden');
-  requestAnimationFrame(() => card.classList.add('open'));
-  const key = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
-  if (lastFocused !== key) map.easeTo({ padding: pad(), center: [at.lon, at.lat], zoom: forId || toFrom ? map.getZoom() : Math.max(map.getZoom(), 14.5), offset: cardOffset(card), duration: 700 });
+  const key = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4), move = lastFocused !== key;
+  requestAnimationFrame(() => {
+    card.classList.add('open');   // up first: the spot goes above it
+    if (move) frame([at.lon, at.lat], { zoom: forId || toFrom ? map.getZoom() : Math.max(map.getZoom(), 14.5), duration: 700 });
+  });
   lastFocused = key;
 }
 /** A stop's page as the map's sheet (a phone's, a portrait tablet's), as a route's stops and the Transit Center's
@@ -1969,9 +1976,8 @@ function openingPeek(card) {
 }
 /** A stop framed above its sheet: at the streets, in the middle of the map left over. */
 function frameStop(ll) {
-  const card = col.querySelector('#mapcard');
   // A run up by the frame (a time opened): the run's framing is the one, however the two land.
-  requestAnimationFrame(() => { if (!MT.R) map.easeTo({ padding: pad(), center: ll, zoom: Math.max(map.getZoom(), 16), offset: cardOffset(card), duration: 650, essential: true }); });
+  requestAnimationFrame(() => { if (!MT.R) frame(ll, { zoom: Math.max(map.getZoom(), 16), duration: 650, essential: true }); });
 }
 
 /** The map asked where the rider will start from, for directions to a stop: the ask on the card, the map left as it is. */
@@ -2008,8 +2014,7 @@ function searchMarks(m) {
   if (pts.every(p => { const q = map.project(p); return q.x >= x0 && q.x <= W - 16 && q.y >= y0 && q.y <= H - 16; })) return;
   const b = new maplibregl.LngLatBounds();
   for (const p of pts) b.extend(p);
-  settlePad();
-  map.fitBounds(b, { padding: fitPad(60), duration: 600, maxZoom: 16 });
+  frame(b, { maxZoom: 16 });
 }
 
 /** Called by the router whenever the map is on screen. */
@@ -2055,8 +2060,7 @@ function busIn(id, app) {
   selectBus(id, app);
   const ll = m.marker.getLngLat(), b = new maplibregl.LngLatBounds([ll.lng, ll.lat], [ll.lng, ll.lat]);
   b.extend([D.hub.lon, D.hub.lat]);
-  settlePad();
-  requestAnimationFrame(() => map.fitBounds(b, { padding: routePad(), duration: 700, maxZoom: 16, bearing: 0 }));
+  requestAnimationFrame(() => frame(b, { maxZoom: 16, bearing: 0, duration: 700 }));
 }
 async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
@@ -2127,7 +2131,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     selected = null; uHilite = ''; hiLines = []; hiLoops = [uRoute]; focusRoute = undefined; applySelection();
     // On a phone or a portrait tablet its page is the map's sheet, the loop framed above it, as a Connect route's is.
     if (page) pageSheet(page, app, true); else col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized)) settlePad(), map.fitBounds(uRouteBounds(uRoute), { padding: page ? routePad() : fitPad(40), duration: 700, maxZoom: 16 });
+    if (focus && (changed || resized)) frame(uRouteBounds(uRoute), { maxZoom: 16, duration: 700 });
     return;
   }
   // An alert from the About page: its route drawn on top, the stops it closes framed (marked already, as every
@@ -2142,7 +2146,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     const b = new maplibregl.LngLatBounds();
     if (sts.length) for (const si of sts) b.extend([D.stops[si].lon, D.stops[si].lat]);
     else for (const ri of ris) b.extend(routeBounds(ri));
-    if (!b.isEmpty()) settlePad(), map.fitBounds(b, { padding: 80, duration: 700, maxZoom: 16 });
+    frame(b, { maxZoom: 16, duration: 700 });   // it was a flat 80 px: under a phone's sheet and the search bar
     return;
   }
   if (routeShort) {
@@ -2159,7 +2163,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     // On a phone's Map tab its stops are the card, the map framed above it; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide() && routeArgs) sheetCard(routeArgs, clockNow);
     else col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized || whole) && !stayRoute) settlePad(), map.fitBounds(routeBounds(ri), { padding: routePad(), duration: 700, maxZoom: 15.5 });
+    if (focus && (changed || resized || whole) && !stayRoute) frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
     stayRoute = false;
     if (bus) ringBus(bus); else wantRing = null;
     return;
@@ -2175,7 +2179,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
       // stop list there is no card, and a fresh arrival eases to the stop itself.
       if (page) { select(stopId, app, false, false, false); pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
       else if (app.route.name === 'map') { lastFocused = null; select(stopId, app); }   // an old #/map/<stop> link: its page, framed as it comes
-      else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
+      else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) frame([s.lon, s.lat], { zoom: Math.max(map.getZoom(), 15), duration: 700 });
     }
   } else if (ustopId && U) {
     const si = U.stopById[ustopId];
@@ -2187,7 +2191,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     selected = pole ? D.stops[pole.j].id : null; uHilite = pole ? '' : ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
     if (page) { if (pole) select(D.stops[pole.j].id, app, false, false, false); else { selectedU = null; applySelection(); } pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
     else if (app.route.name === 'map') { lastFocused = null; selectU(ustopId, app); }   // an old #/map/usu/<stop> link: its page
-    else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
+    else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) frame([s.lon, s.lat], { zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
   } else if (journey) {
     // A way from the directions page: nothing picked, the way drawn (mainJourney) and its card.
     lastFocused = null; selected = null; uHilite = ''; hiLines = []; hiLoops = []; focusRoute = undefined;
@@ -2331,10 +2335,7 @@ async function drawRun(T) {
   // Clear of the search bar and notice, and on a phone of the run's sheet: the whole run in the map above it, with a
   // little room round it, never further out than zoom 11.25: a loop about town fits (the Green Loop at 11.4 on a
   // phone); a long route out of town (12 to Hyrum) is centred and runs off the edges rather than shrink to a thread.
-  settlePad();
-  const b = runBounds(R), p = fitPad(wide() ? T.pad : 24), cam = m.cameraForBounds(b, { padding: p, maxZoom: 16 });
-  // the run's middle in the middle of the room left, whatever the zoom came to
-  if (cam) m.easeTo({ center: b.getCenter(), zoom: Math.max(cam.zoom, 11.25), offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2], bearing: 0, duration: 600 });
+  frame(runBounds(R), { margin: wide() ? T.pad : 24, minZoom: 11.25, maxZoom: 16, bearing: 0 });
 }
 /** The run's times, each to the right of its bus's way, as the map is turned now: the screen's right, left, above or
  *  below, whichever is nearest the road's right-hand side. Placed again when the map turns. */
@@ -2376,7 +2377,7 @@ export function runHot(si) { const T = MT; if (T.R) { T.R.hot = si; if (T.m && T
 export function runFocus(si) {
   runHot(si);
   const T = MT;
-  if (T.m && D.stops[si]) T.m.easeTo({ padding: pad(), center: [D.stops[si].lon, D.stops[si].lat], zoom: Math.max(T.m.getZoom(), 15), duration: 500 });
+  if (T.m && D.stops[si]) frame([D.stops[si].lon, D.stops[si].lat], { zoom: Math.max(map.getZoom(), 15), duration: 500 });
 }
 
 // ---- a way from the directions page, drawn: each ride along its route's line in the route's colour (a shuttle's
@@ -2486,9 +2487,8 @@ async function mainJourney(J, app) {
   jrFramed = J.hrefs[J.i];
   const b = new maplibregl.LngLatBounds();
   for (const f of [...lines, ...marks]) for (const c of f.geometry.type === 'Point' ? [f.geometry.coordinates] : f.geometry.coordinates) b.extend(c);
-  sized(); settlePad();
-  // A narrow margin: above a sheet with every way in it the map is a strip, and a long way was drawn small in it.
-  map.fitBounds(b, { padding: routePad(16), duration: 600, maxZoom: 16.5, bearing: 0 });
+  sized();
+  frame(b, { maxZoom: 16.5, bearing: 0 });
 }
 /** A phone's card for the directions: the page's own sheet (where to and from, the ways as rows, the drawn way told
  *  leg by leg), under the map with the way drawn. A row tapped draws that way; a swipe across, the next. */
