@@ -1890,7 +1890,10 @@ function homeView(geo) {
   if (!b || !four.length) return [b, fit];
   const out = new maplibregl.LngLatBounds([geo.lon - 0.0015, geo.lat - 0.001], [geo.lon + 0.0015, geo.lat + 0.001]);   // a little round them: not on the edge
   for (const x of four) out.extend([D.stops[x.i].lon, D.stops[x.i].lat]);
-  return [out, { ...fit, maxZoom: 16, margin: wide() ? 80 : 56 }, four.map(x => D.stops[x.i].id)];   // room for their names
+  // At the Transit Center, the blocks round it (about 15.2, as it opened there before): its nearest street stops are
+  // close, and framed alone they came in at 16, the Center's own street and little else.
+  const atHub = D.hub && distance(geo.lat, geo.lon, D.hub.lat, D.hub.lon) <= 150;
+  return [out, { ...fit, maxZoom: atHub ? 15.2 : 16, margin: wide() ? 80 : 56 }, four.map(x => D.stops[x.i].id)];   // room for their names
 }
 /** The rider's four nearest stops, as the home page lists them (its big one and the three beneath): by the walk. */
 const nearFour = g => byWalk(nearest(g.lat, g.lon, 24).filter(x => !D.stops[x.i].hub), g.lat, g.lon).slice(0, 4);
