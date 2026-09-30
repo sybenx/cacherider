@@ -114,11 +114,11 @@ function nextHour(st, pick, clockNow) {
   const title = soon ? 'Leaving in the next hour' : f ? (f.day === 0 ? 'Next buses, from ' : (f.day === 1 ? 'Tomorrow' : dayName(f.ymd)) + ' from ') + clockText(f.min) : 'Next buses';
   const tags = !rtStale();
   const out = rows.map(({ t, s, first }) => {
-    const tag = !first || !tags || s.off ? '' : s.eta === 0 ? 'IN' : s.eta > 0 ? s.eta + ' MIN' : '';
+    const tag = !first || !tags || s.off ? '' : s.eta === 0 ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : '';
     return html`<a class="tcb-row${pick === s.k ? ' on' : ''}" href="${first ? cardHref(s, pick) : '#/hub' + (pick === s.k ? '' : '/' + s.k)}">
       <span class="tcb-t">${was(schedOf(t), t.min)}<span class="t${t.live ? ' est' : ''}">${clock(t.min).h}</span></span>
       ${badge(t.r, 26)}<span class="tcb-mid"><span class="dest">${headsign(t)}</span><span class="sub${t.live ? ' live' : ''}">${t.live ? liveWord(t) : t.onTime ? 'Scheduled · on time' : 'Scheduled'}</span>${lastTag(t)}</span>
-      <span class="tcb-tag">${tag ? html.raw(`<span class="tag${tag === 'IN' ? ' in' : ''}">${tag}</span>`) : ''}</span></a>`;
+      <span class="tcb-tag">${tag ? html.raw(`<span class="tag${tag === 'HERE' ? ' in' : ''}">${tag}</span>`) : ''}</span></a>`;
   });
   return html`<div class="tcb"><div class="section between"><span>${title}</span>${rows.some(r => r.t.live) ? html`<span class="note">struck is the timetable</span>` : ''}</div>
     ${out.length ? out : html`<p class="tc-foot">Nothing leaves in the next hour.</p>`}</div>`;
@@ -158,7 +158,7 @@ function together(st, clockNow) {
     const coming = leaving.filter(k => st[k].eta > 0).length, late = leaving.filter(k => st[k].late).length;
     const loose = leaving.filter(k => st[k].loose).length, away = leaving.filter(k => st[k].away).length, quiet = leaving.filter(k => !st[k].out).length;
     const rest = [coming ? coming + ' on the way' : '', late ? late + ' running late' : '', away ? away + ' still on a run' : '', loose ? loose + ' out without an estimate' : '', quiet ? quiet + ' not reporting' : ''].filter(Boolean).join(', ');
-    note = html`<span class="tc-note"><b>${inN} of ${n} in.</b>${rest ? ' ' + rest.replace(/^./, c => c.toUpperCase()) + '.' : ''}</span>`;
+    note = html`<span class="tc-note"><b>${inN} of ${n} here.</b>${rest ? ' ' + rest.replace(/^./, c => c.toUpperCase()) + '.' : ''}</span>`;
   } else if (p.day === 0 && rtDown()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
   return html`<div class="tc-together blueprint">${corners()}
     <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}</span></div><div class="end">${end}</div></div>
@@ -209,7 +209,7 @@ export function bays(bay, clockNow) {
   return keys().map(k => {
     const s = st[k], ri = s.ris[s.ris.length - 1], r = D.routes[ri], b = D.hub.bays.find(x => x.routes.includes(ri));
     if (!b) return null;
-    const tag = !tags || s.off ? '' : s.eta === 0 ? 'IN' : s.eta > 0 ? s.eta + ' MIN' : '';
+    const tag = !tags || s.off ? '' : s.eta === 0 ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : '';
     return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);
 }

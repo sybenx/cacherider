@@ -1386,7 +1386,7 @@ function hubBadges() {
     for (const [c, on] of [['on', b.on], ['dim', b.dim], ['off', b.off]]) m.el.classList.toggle(c, on);
     m.el.href = b.on ? '#/hub' : '#/hub/' + b.k;
     m.el.title = b.title;
-    const inner = `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag${b.tag === 'IN' ? ' in' : ''}">${b.tag.replace(' MIN', "'")}</span>` : '');
+    const inner = `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag${b.tag === 'HERE' ? ' in' : ''}">${b.tag.replace(' MIN', 'm')}</span>` : '');
     if (m.el.innerHTML !== inner) m.el.innerHTML = inner;
   }
   easeBays();

@@ -216,7 +216,7 @@ function loopAtHub(t, u, sid, hit) {
 export function predict(t) {
   if (t.trip === undefined || t.day || rtStale() || !D.trips) return null;
   const u = rt.trips[D.trips[t.trip]];
-  if (!u) return dueOnRun(t) ? KEEPS : null;   // no word on it yet: on time if its bus, on the trip before, is due in
+  if (!u) return t.min - now().min < 120 && dueOnRun(t) ? KEEPS : null;   // no word on it yet: on time if its bus, on the trip before, is due in (within two hours: later, the run before isn't under way)
   const p = feedSays(t, u);
   // From a Transit Center bay, a departure can't leave before the bus that runs it is in: that bus (the trip's own
   // vehicle) may still be finishing the trip before. Every screen reads this one rule.

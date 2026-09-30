@@ -551,7 +551,10 @@ export function nextAt(si, n = 7, clockNow = now(), days = 8, filter = null) {
   for (let day = 0; day < days && out.length < n; day++) {
     const ymd = dayFrom(clockNow.ymd, day).ymd;
     let rows = timesOn(si, ymd);
-    if (day === 0) rows = rows.map(live).filter(t => !t.gone && t.min >= clockNow.min).sort((a, b) => a.min - b.min);   // a late bus is still coming
+    // A late bus is still coming: today's rows from an hour and a half back, each with the feed's word. Only those, and
+    // only the route asked for: every row of the day through the feed made the Transit Center's board, a bay's day of
+    // every route's departures for each route's next three, a beat on a phone.
+    if (day === 0) rows = rows.filter(t => t.min >= clockNow.min - 90 && (!filter || filter(t))).map(live).filter(t => !t.gone && t.min >= clockNow.min).sort((a, b) => a.min - b.min);
     for (const t of rows) {
       if (filter && !filter(t)) continue;
       out.push({ ...t, day, ymd });
