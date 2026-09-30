@@ -1949,15 +1949,17 @@ function pageSheet(page, app, fresh) {
   if (card.dataset.opening === page.key) { openingPeek(card); card.classList.add('peek'); card.dataset.tall = '1'; if (!again) setTimeout(() => { if (card.dataset.opening === page.key) openingPeek(card); }, 400); }
   card.classList.add('open');
 }
-/** The sheet's opening height: down to its second departure (the next bus, and the one after), or the head alone
- *  where there's none; never more than most of the map. */
+/** The sheet's opening height: down to the next bus, or where that would take more than half the map (a long name,
+ *  the road across), or there's none, to the head alone: the stop, its routes, the way there. It went on to the bus
+ *  after, and at a stop with a stop across the road that was most of the screen, the map it was tapped on gone. */
 function openingPeek(card) {
-  const pg = card.querySelector('.pagesheet'), nx = pg.querySelector('.next');
-  const rows = [...pg.querySelectorAll('.list > *')].filter(r => !r.matches('.dayhead, .endservice'));
-  const end = nx ? rows[0] || nx : rows[1] || rows[0] || pg.querySelector('.head');
-  if (!end) return fitPeek(card);
-  const h = end.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1;
-  card.style.setProperty('--peek', Math.round(Math.min(h, 0.85 * map.getContainer().clientHeight)) + 'px');
+  const pg = card.querySelector('.pagesheet'), nx = pg.querySelector('.next'), head = pg.querySelector('.head');
+  const H = map.getContainer().clientHeight, top = card.getBoundingClientRect().top - card.scrollTop;
+  const to = el => el.getBoundingClientRect().bottom - top + 1;
+  let h = nx ? to(nx) : Infinity;
+  if (h > 0.5 * H) h = head ? to(head) : Infinity;
+  if (!isFinite(h)) return fitPeek(card);
+  card.style.setProperty('--peek', Math.round(Math.min(h, 0.6 * H)) + 'px');
 }
 /** A stop framed above its sheet: at the streets, in the middle of the map left over. */
 function frameStop(ll) {
