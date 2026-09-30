@@ -48,10 +48,10 @@ function mix(hex, paper, k) {
   return '#' + [1, 3, 5].map(i => c(i).toString(16).padStart(2, '0')).join('');
 }
 let darkOf = null;   // a Connect route's colour → its dark map shade, drawn apart where two are alike (data.js)
-/** A route's line on the light map: pale ones sunk to show, alike ones on shared streets turned apart (ink.js). */
+/** A route's line on the light map: pale ones sunk to show, and a pair that came out alike parted (ink.js). */
 let lightOf = null;
 function sinkLine(hex) {
-  lightOf ??= lightInks(D.routes.map(r => ({ color: r.color, stops: new Set(Object.values(r.stops || {}).flat().filter(si => D.stops[si] && !D.stops[si].hub)) })));
+  lightOf ??= lightInks(D.routes.map(r => ({ color: r.color })));
   return lightOf.get(hex.slice(1).toUpperCase()) || hex;
 }
 /** A route's colour as the map draws it: lifted on the dark map, sunk on the light. Badges keep the feed's own. */
