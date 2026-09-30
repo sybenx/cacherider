@@ -1546,6 +1546,7 @@ function hubRoom() {
   const z = Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * spanX))));
   return Math.round(topCover() + 2 * HUB_M + spanY * 512 * 2 ** z);
 }
+let hubFlew = false;   // the Center flown to (from a view with it on screen): the way back is flown too, where it's to such a view
 function fitHub(arriving = false, duration = 700, fly = false) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
   if (arriving && !hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
@@ -1554,7 +1555,11 @@ function fitHub(arriving = false, duration = 700, fly = false) {
   // work. With the zooms between built ahead (warmViews) and the map lighter to draw, it flies again, briefly, where
   // the map was already on screen (the Map tab, a wide screen), and the half turn is seen rather than sprung: not with
   // less motion asked for, nor on a weak device. Framed again from the Center itself (its tab tapped again), it moves.
-  const flies = fly && !WEAK && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Only from where the Center's on screen: from Fairview's stretch view, 30 km and six zoom levels off, the flight
+  // crossed the valley in half a second with nothing built ahead of it (warmViews builds the town's way down), and
+  // stuttered. From further out it's there at once, as it was.
+  const flies = fly && !WEAK && !matchMedia('(prefers-reduced-motion: reduce)').matches && map.getBounds().contains([D.hub.lon, D.hub.lat]);
+  if (arriving) hubFlew = flies;
   if (!frame(hubBounds(), { ...hubFit(), duration: arriving ? (flies ? 550 : 0) : duration })) return;
   hubTurned = true; northDue = false;
 }
@@ -1906,7 +1911,8 @@ export function resetView(app, once = false, to = null, jump = false, due = fals
   select(null, app);
   // Back from the Center (jump 'hub'): the flight there in reverse, the half turn unwound, as briefly; at once where
   // the flight in was (less motion asked for, a weak device).
-  const still = jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches || jump === 'hub' && WEAK;
+  const backTo = !to && jump === 'hub' && homeView(app.geo)[0];   // back from the Center to the stretch view: flown only if the Center's in it
+  const still = jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches || jump === 'hub' && (WEAK || !hubFlew || (backTo && !Array.isArray(backTo) && !backTo.contains([D.hub.lon, D.hub.lat])));
   const duration = still ? 0 : jump === 'hub' ? 550 : 600;
   if (to) map.easeTo({ padding: pad(), center: to.center, zoom: to.zoom, bearing: 0, duration });
   else frameHome(app, duration, !due);
