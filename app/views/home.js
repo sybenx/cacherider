@@ -7,9 +7,9 @@ import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js'
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
-import { U, stopRowU, chip, live, shuttleWords, offHours, isStale } from '../usu.js';
+import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
 import { results, pickOf, forPick } from './find.js';
-import { byWalk, spotOf, spotKey } from '../geo.js';
+import { byWalk, spotOf, spotKey, walkMins } from '../geo.js';
 import { isWide } from '../wide.js';
 
 export function render({ q, page, pick, from }, clockNow) {
@@ -22,16 +22,23 @@ export function render({ q, page, pick, from }, clockNow) {
 function landing(clockNow, app) {
   if (app) window.__app = app;   // the hero's pointer reads the fix from it
   const sv = saved();
-  const firstSaved = sv.find(id => !id.startsWith('u:') && D.stopById[id] !== undefined);
+  const okU = id => id.startsWith('u:') && !!U && U.stopById[id.slice(2)] !== undefined;
+  const firstSaved = sv.find(id => okU(id) || !id.startsWith('u:') && D.stopById[id] !== undefined);
   // The big one: the stop you're standing near, when location is on and it's close enough to walk to; else your
   // first saved stop; else the Transit Center. Saved stops are the list beneath, every one but the hero.
   // Past the Transit Center's bays, a dozen stops at one address: standing there, the nearest is still a street's stop.
   const near = app && app.geo ? byWalk(nearest(app.geo.lat, app.geo.lon, 24).filter(x => !stop(x.i).hub), app.geo.lat, app.geo.lon)[0] : null;   // the quickest walk, the climb counted
-  let heroSi, heroWhy = '';
-  if (near && near.d <= 800) { heroSi = near.i; heroWhy = 'Nearest'; }
+  // A shuttle stop is the nearest when its walk is the shorter and a bus is on its way to it: off hours, or with no bus
+  // out on its loops, the Connect stop's timetable is the answer. One at a Connect stop's pole is that stop.
+  const nearU = app && app.geo ? nearestShuttle(app.geo) : null;
+  const uWins = nearU && nearU.d <= 800 && board(nearU.i).some(r => r.est) && (!near || near.d > 800 || nearU.mins < walkMins(app.geo.lat, app.geo.lon, D.stops[near.i].lat, D.stops[near.i].lon, near.d));
+  let heroSi, heroU, heroWhy = '';
+  if (uWins) { heroU = nearU.i; heroWhy = 'Nearest'; }
+  else if (near && near.d <= 800) { heroSi = near.i; heroWhy = 'Nearest'; }
+  else if (firstSaved !== undefined && firstSaved.startsWith('u:')) { heroU = U.stopById[firstSaved.slice(2)]; heroWhy = 'Saved'; }
   else if (firstSaved !== undefined) { heroSi = D.stopById[firstSaved]; heroWhy = 'Saved'; }
   else if (near) { heroSi = near.i; heroWhy = 'Nearest'; }
-  const stopHero = heroSi !== undefined;
+  const stopHero = heroSi !== undefined || heroU !== undefined;
   const geo = app && app.geo;
   const [dow, date, mon] = fmtDay(clockNow.ymd).split(' ');
   const parts = [html`<div class="land-top m-only"><span class="wordmark">Cache Rider</span><span class="land-right"><span class="land-date">${dow} <span class="muted">${mon} ${date}</span></span>
@@ -43,9 +50,10 @@ function landing(clockNow, app) {
   // saved), and the stops beside it; then where to (search, directions); then the Center, whose own tab has the rest;
   // then what's broken today. Without a stop yet, the ways to one come first, and the Center is a line, not the page:
   // its big countdown was the Transit Center tab's answer twice, to a first visitor who's seldom there.
-  if (stopHero) parts.push(stopHeroBlock(heroSi, heroWhy, clockNow));
+  if (heroU !== undefined) parts.push(shuttleHeroBlock(heroU, heroWhy, clockNow));
+  else if (stopHero) parts.push(stopHeroBlock(heroSi, heroWhy, clockNow));
 
-  const heroId = stopHero ? stop(heroSi).id : null;
+  const heroId = heroU !== undefined ? 'u:' + U.stops[heroU].id : heroSi !== undefined ? stop(heroSi).id : null;
   const others = sv.filter(id => id !== heroId);
   if (others.length || (sv.length && app && app.editSaved)) {
     // Only when there's something beneath: one saved stop is the big one above, star and all.
@@ -55,8 +63,11 @@ function landing(clockNow, app) {
     else if (others.length) parts.push(html`<div class="list">${others.map(id => id.startsWith('u:') ? (U && U.stopById[id.slice(2)] !== undefined ? stopRowU(U.stopById[id.slice(2)]) : '') : stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
   }
   if (geo) {   // the stops near you, under whatever is saved: a saved stop across town mustn't hide the one you're standing at
-    const rows = byWalk(nearest(geo.lat, geo.lon, 24).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)), geo.lat, geo.lon).slice(0, 3);
-    if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy === 'Nearest' ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
+    // Connect's and the shuttle's together, by the walk: a shuttle stop at a Connect stop's pole is that stop's row.
+    const rowsC = byWalk(nearest(geo.lat, geo.lon, 24).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)), geo.lat, geo.lon);
+    const rowsU = U ? nearestShuttles(geo, 6).filter(x => x.i !== heroU && !sv.includes('u:' + U.stops[x.i].id) && x.d <= 800).map(x => ({ ...x, u: true })) : [];
+    const rows = [...rowsC, ...rowsU].sort((a, b) => a.mins - b.mins || a.d - b.d).slice(0, 3);
+    if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy === 'Nearest' ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d, u }) => u ? stopRowU(i, { dist: metres(d) }) : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
   }
   // Where to: the box on the page whichever way it opened (a stop's rider got an icon in the header, the question
   // three of the list a tap harder to find). Beside a wide screen's map, the top bar's box is this one.
@@ -96,6 +107,33 @@ function chips() {
 function giant(min, est = false) {
   const c = clock(min), [hh, mm] = c.h.split(':');
   return html`<div class="giant${est ? ' est' : ''}${hh.length > 1 && c.ap ? ' long' : ''}" aria-label="${clockText(min)}"><span>${hh}</span><span class="colon"><i></i><i></i></span><span>${mm}</span>${c.ap ? html`<span class="ap">${c.ap}</span>` : ''}</div>`;   // AM or PM, lest Monday's 6:30 read as tonight's
+}
+
+/** Shuttle stops nearest a point that aren't a Connect stop's pole (that stop stands for them), by the walk. */
+function nearestShuttles(g, n = 4) {
+  if (!U) return [];
+  return U.stops.map((s, i) => ({ i, s, d: distance(g.lat, g.lon, s.lat, s.lon) })).filter(x => x.s.routes.length && !U.shared[x.i])
+    .sort((a, b) => a.d - b.d).slice(0, n * 2).map(x => ({ i: x.i, d: x.d, mins: walkMins(g.lat, g.lon, x.s.lat, x.s.lon, x.d) }))
+    .sort((a, b) => a.mins - b.mins || a.d - b.d).slice(0, n);
+}
+const nearestShuttle = g => nearestShuttles(g, 1)[0] || null;
+
+/** The big one for a shuttle stop: no timetable, so the minutes till the nearest bus on any of its loops, estimated
+ *  from where it is, and the next after it. With no bus out, the hours instead. */
+function shuttleHeroBlock(si, why, clockNow) {
+  const s = U.stops[si], rows = board(si).filter(r => r.est), stale = isStale();
+  const g = window.__app && window.__app.geo;
+  const mine = saved().includes('u:' + s.id);
+  const way = g ? html`${html.raw(pointerMark(s.lat, s.lon, g, true))} · ` : '';
+  const tag = rows.length ? liveTag(stale ? 'Last seen ' + lastSeen() : 'Estimated') : '';
+  const eye = html`<div class="eye"><span class="eyebrow${mine ? ' savedmark' : ''}">${mine ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · ${way}Shuttle</span>${tag}</div>`;
+  if (!rows.length) return html`<div class="hero">${eye}<a class="hero-main" href="#/usu/${s.id}"><span class="stopname">${s.name}</span><div class="hero-none">${hasData() ? 'No shuttles on the road' : 'Looking for shuttles…'}${hasData() ? html`<span class="sub">${hoursWords()}</span>` : ''}</div></a></div>`;
+  const [first, then] = rows, e = first.est, r = U.routes[first.ri];
+  const big = e.here ? html`<div class="giant count est"><span>HERE</span></div>` : html`<div class="giant count est"><span>${e.min}</span><span class="unit">MIN</span></div>`;
+  const away = e.here ? 'at the stop' : e.stops === null ? metres(e.d) + ' away' : e.stops + (e.stops === 1 ? ' stop' : ' stops') + ' away';
+  return html`<div class="hero">${eye}<a class="hero-main" href="#/usu/${s.id}"><span class="stopname">${s.name}</span>${big}
+    <div class="who">${chip(first.ri, 44)}<div class="mid"><span class="dest">${r.name}</span><span class="sub">${away}</span></div></div>
+    ${then ? html`<div class="then"><span class="eyebrow muted">Then</span><span class="t t-26">${chip(then.ri, 26)} ${then.est.here ? 'here' : then.est.min + ' min'}</span></div>` : ''}</a></div>`;
 }
 
 function stopHeroBlock(si, why, clockNow) {
