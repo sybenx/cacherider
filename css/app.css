@@ -185,6 +185,12 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 .badge-20 { min-width: 20px; height: 20px; padding: 0 3px; border-radius: 4px; font-size: 0.6875rem; }
 /* a route under the pointer on a desktop, on the map or here: its badges ringed */
 .badge.hov, .uchip.hov { box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent); }
+/* directions: leave now, or at a day and time picked */
+.gowhen { display: flex; flex-direction: column; gap: 8px; padding: 4px 16px 10px; }
+.gowhen > .btn { align-self: flex-start; gap: 8px; }
+.gowhen-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.gowhen-pick[hidden] { display: none; }
+.gowhen-pick .input { width: auto; flex: 1 1 140px; min-height: 44px; }
 .badges { display: flex; gap: 4px; flex-wrap: wrap; }
 .badges.wide { gap: 6px; }
 

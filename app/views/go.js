@@ -2,7 +2,7 @@
 // to the first stop, the bus, where to change, where to get off, in order, with when.
 import { D, stop, stopIndex, distance, tripStops, POOL, inPool } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
-import { clockText, relative, metres, fmtDay, dayName, now } from '../time.js';
+import { clockText, relative, metres, fmtDay, dayName, now, dayFrom } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
@@ -56,7 +56,30 @@ function headOf(to, e, at) {
   return { parts, key, hubBay };
 }
 
-export function render({ to, from, at, plan }, clockNow) {
+/** 'Leave at', from the address (t=20260930-0815): the clock the ways are worked out from, or null for now. A time
+ *  already gone is now. */
+function leaveAt(t, clockNow) {
+  const m = /^(\d{8})-(\d{2})(\d{2})$/.exec(t || '');
+  if (!m) return null;
+  const c = { ymd: m[1], dow: dayFrom(m[1]).dow, min: +m[2] * 60 + +m[3], sec: 0 };
+  return c.ymd < clockNow.ymd || (c.ymd === clockNow.ymd && c.min <= clockNow.min) ? null : c;
+}
+/** The feed's word counts for now and the next hour and a half today; a time further off is the timetable's alone
+ *  (and the shuttle, whose times are its buses' whereabouts, only then). */
+const liveFor = (c, clockNow) => !c || (c.ymd === clockNow.ymd && c.min - clockNow.min <= 90);
+const hashWith = t => location.hash.split('?')[0] + (t ? '?t=' + t : '');
+const dayWord = ymd => { const today = now().ymd; return ymd === today ? 'today' : ymd === dayFrom(today, 1).ymd ? 'tomorrow' : dayName(ymd); };
+/** Leave now, or at a time picked: the button says which; tapped, the phone's own date and time pickers, a week ahead. */
+function whenControl(c, clockNow) {
+  const today = dayFrom(clockNow.ymd), iso = ymd => ymd.slice(0, 4) + '-' + ymd.slice(4, 6) + '-' + ymd.slice(6, 8);
+  const at = c || clockNow, hh = String(Math.floor(at.min / 60) % 24).padStart(2, '0'), mm = String(at.min % 60).padStart(2, '0');
+  const label = c ? `Leave ${clockText(c.min)} ${dayWord(c.ymd)}` : 'Leave now';
+  return html`<div class="gowhen"><button type="button" class="btn btn-secondary" id="go-when" aria-expanded="false">${icon('clock', 18)}${label}</button>
+    <div class="gowhen-pick" hidden><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
+    <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div></div>`;
+}
+
+export function render({ to, from, at, plan, t }, clockNow) {
   if (to === '-' && at) return fromOnly(at);
   const e = ends({ to, from, at }), { spot, dest, d, name, origin } = e;
   if (dest === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such stop</h2></div>`, title: 'Directions' };
@@ -70,7 +93,9 @@ export function render({ to, from, at, plan }, clockNow) {
     return { html: parts.join(''), mount, title: 'Directions' };
   }
 
-  const found = journeys(origin, dest, clockNow, 8, planNet(clockNow));   // the shuttle too, while it runs
+  const fixed = leaveAt(t, clockNow), c = fixed || clockNow, live = liveFor(fixed, clockNow);
+  parts.push(whenControl(fixed, clockNow));
+  const found = journeys(origin, dest, c, 8, live ? planNet(c) : null, live);   // the shuttle too, while it runs
   if (found.walk !== undefined) {
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div></div></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
@@ -84,21 +109,22 @@ export function render({ to, from, at, plan }, clockNow) {
   }
   // Directions are the map: the first way (or the one the address names) drawn, and this, the sheet under it (beside
   // it on a wide screen), with the ways as rows to draw another.
-  const J = pickPlan(found.plans, plan, e, clockNow);
-  return { html: sheet(J, parts, clockNow), mount, title: 'Directions', keepScroll: true, journey: J };
+  const J = pickPlan(found.plans, plan, e, c, fixed ? t : null);
+  return { html: sheet(J, parts, c, !!fixed), mount, title: 'Directions', keepScroll: true, journey: J };
 }
 /** The sheet: the head, the ways as rows (the drawn one marked), then the drawn way told leg by leg. */
-function sheet(J, head, clockNow) {
+function sheet(J, head, clockNow, fixed = false) {
   const p0 = J.plans[0];
-  const day = p0.day > 0 ? html`<div class="dayhead">${p0.day === 1 ? 'Tomorrow, ' + fmtDay(p0.ymd) : fmtDay(p0.ymd, true)} · nothing more today</div>` : '';
-  return html`<div class="gohead">${head}${day}<div class="jrows" role="list">${J.plans.map((p, k) => planRow(p, J.hrefs[k], k === J.i, clockNow))}</div></div>
+  const day = p0.day > 0 ? html`<div class="dayhead">${fixed ? fmtDay(p0.ymd, true) + ' · nothing more that day' : (p0.day === 1 ? 'Tomorrow, ' + fmtDay(p0.ymd) : fmtDay(p0.ymd, true)) + ' · nothing more today'}</div>` : '';
+  return html`<div class="gohead">${head}${day}<div class="jrows" role="list">${J.plans.map((p, k) => planRow(p, J.hrefs[k], k === J.i, clockNow, fixed))}</div></div>
     <div class="journeysheet legs">${planLegs(J.plans[J.i], J)}</div>
     <div class="fine">Worked out on this phone from the timetable and the live feed: leave when it says, and the next bus is the answer if one is missed. Walks are as the crow flies.</div>`.s;
 }
 /** A way as a row: leave and arrive, then its legs, each a badge (or the walker) with a word. */
-function planRow(p, href, picked, clockNow) {
+function planRow(p, href, picked, clockNow, fixed = false) {
   const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || l.u));
-  const rel = p.day === 0 ? relative({ min: p.leave, day: 0 }, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
+  // leaving at a time picked: which day, not how long from a moment that isn't now
+  const rel = fixed ? dayWord(p.ymd) : p.day === 0 ? relative({ min: p.leave, day: 0 }, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
   const legs = p.legs.filter(l => l.kind === 'ride' || l.mins >= 1).map(l => l.kind === 'walk' ? html`<span class="jleg">${icon('walk', 18)}${l.mins}m</span>`
     : html`<span class="jleg">${l.u ? chip(l.r, 20) : badge(l.r, 20)}${l.off - l.on}m</span>`);
   return html`<div class="jrow${picked ? ' picked' : ''}" role="listitem link" tabindex="0" data-go="${href}"${picked ? ' aria-current="true"' : ''}>
@@ -130,24 +156,26 @@ function findPlan(plans, key) {
 /** The way picked, with the others beside it for the map's card: { plans, i, from, to, dest, hrefs, top(k), legs(k),
  *  back }. A way whose first bus has since gone (the rider is on it) is kept as it was, first. */
 let kept = null;
-function pickPlan(plans, key, e, clockNow) {
+function pickPlan(plans, key, e, clockNow, t = null) {
   const base = location.hash.split('?')[0];
-  let list = plans, i = findPlan(plans, key);
-  if (i < 0 && kept && kept.base === base && kept.key === key) { list = [kept.plan, ...plans]; i = 0; }
+  let list = plans, i = key ? findPlan(plans, key) : -1;
+  // Kept only for a way picked (not the first of whatever's listed, which then showed twice), and for the same time.
+  if (i < 0 && key && kept && kept.base === base && kept.key === key && kept.t === t) { list = [kept.plan, ...plans]; i = 0; }
   if (i < 0) { if (!plans.length) return null; i = 0; }
-  kept = { base, key, plan: list[i] };
+  kept = { base, key, t, plan: list[i] };
   const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
   return { plans: list, i, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon }, name: e.name, base,
-    hrefs: list.map(p => base + '?plan=' + encodeURIComponent(planKey(p))),
+    hrefs: list.map(p => base + '?' + (t ? 't=' + t + '&' : '') + 'plan=' + encodeURIComponent(planKey(p))),   // a time picked goes with the way
     dest: e.dest, destName: e.name };
 }
 /** For the Map tab on a phone: the way the address names, worked out afresh, or null when there's none to draw. */
-export function journey({ to, from, at }, key, clockNow) {
+export function journey({ to, from, at, t }, key, clockNow) {
   const e = ends({ to, from, at });
   if (e.dest === undefined || !e.origin) return null;
-  const found = journeys(e.origin, e.dest, clockNow, 8, planNet(clockNow));
-  const J = pickPlan(found.plans || [], key, e, clockNow);
-  if (J) { const { parts } = headOf(to, e, at); J.sheet = () => sheet(J, parts, clockNow); J.mount = el => mount(el, null, true); }
+  const fixed = leaveAt(t, clockNow), c = fixed || clockNow, live = liveFor(fixed, clockNow);
+  const found = journeys(e.origin, e.dest, c, 8, live ? planNet(c) : null, live);
+  const J = pickPlan(found.plans || [], key, e, c, fixed ? t : null);
+  if (J) { const { parts } = headOf(to, e, at); parts.push(whenControl(fixed, clockNow)); J.sheet = () => sheet(J, parts, c, !!fixed); J.mount = el => mount(el, null, true); }
   return J;
 }
 
@@ -261,6 +289,17 @@ function mount(el, _app, inCard = false) {
   // From a spot to where the rider is: their fix is the end.
   const h = el.querySelector('#go-home');
   if (h) h.onclick = () => nearMe(g => { if (g) location.hash = `#/go/${spotKey(g.lat, g.lon, 'where you are')}/${h.dataset.from}`; });
+  // Leave now or at a time: the button opens the pickers; Set puts the time in the address (the ways worked out
+  // afresh from it), Now takes it out. A way picked before goes: it was a way from another time.
+  const w = el.querySelector('#go-when'), pick = el.querySelector('.gowhen-pick');
+  if (w && pick) w.onclick = () => { pick.hidden = !pick.hidden; w.setAttribute('aria-expanded', String(!pick.hidden)); };
+  const set = el.querySelector('#go-set');
+  if (set) set.onclick = () => {
+    const d = el.querySelector('#go-date').value.replace(/-/g, ''), tm = el.querySelector('#go-time').value.replace(':', '');
+    if (/^\d{8}$/.test(d) && /^\d{4}$/.test(tm)) location.replace(location.href.split('#')[0] + hashWith(d + '-' + tm));
+  };
+  const nw = el.querySelector('#go-now');
+  if (nw) nw.onclick = () => location.replace(location.href.split('#')[0] + hashWith(null));
   // A way's row: that way drawn, in place (Back still leaves the directions). On a phone the map's card handles the tap.
   const open = c => { if (c && location.hash !== c.dataset.go) location.replace(location.href.split('#')[0] + c.dataset.go); };
   for (const c of el.querySelectorAll('.jrow[data-go]')) {

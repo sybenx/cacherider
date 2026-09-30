@@ -166,7 +166,7 @@ function rideTo(t, seq, i, wanted, best = false) {
  * few, sorted by arrival: none is kept that another beats on leaving, arriving and walking all at once. Nothing
  * today: the first day with a way.
  */
-export function journeys(origin, dest, clockNow, days = 8, sh = null) {
+export function journeys(origin, dest, clockNow, days = 8, sh = null, live = true) {
   SH = sh; SERVED = new Set(sh ? sh.loops.flatMap(l => l.stops) : []);
   if (SH) SH.now = clockNow.min;
   const spot = typeof dest === 'object', d = spot ? dest : stop(dest), o = origin.si !== undefined ? stop(origin.si) : origin;
@@ -194,7 +194,7 @@ export function journeys(origin, dest, clockNow, days = 8, sh = null) {
   for (let day = 0; day < days; day++) {
     const ymd = dayFrom(clockNow.ymd, day).ymd;
     if (!servicesOn(ymd).size) continue;
-    const plans = search(starts, wanted, at, spot ? d : dest, ymd, day === 0 ? clockNow.min : 0, day === 0, day);
+    const plans = search(starts, wanted, at, spot ? d : dest, ymd, day === 0 ? clockNow.min : 0, day === 0 && live, day);   // live: the feed's word on today's buses, not a later day's or a time far ahead
     if (plans.length) return { plans };
   }
   // Within a walk, with no bus there worth taking: the walk.

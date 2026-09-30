@@ -200,14 +200,14 @@ async function render(tick = false) {
   const goArgs = seg[0] === 'go' ? { to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: dec(seg[4] || '') } : null } : null;
   // Directions are the map: on a phone, whenever there's a way to draw, the map with it drawn and the ways as its card.
   // Before a start is chosen, or with no way by bus, the page as it is.
-  const goJ = goArgs && goArgs.to !== '-' && !isDesktop() ? go.journey(goArgs, q.plan, clockNow) : null;
+  const goJ = goArgs && goArgs.to !== '-' && !isDesktop() ? go.journey({ ...goArgs, t: q.t }, q.plan, clockNow) : null;
   const goMap = !!goJ;
   const name = routeArgs && isDesktop() ? 'route' : hubMap || goMap ? 'map' : seg[0] || 'home';
   let view;
   try {
     if (name === 'home') view = home.render({ q: q.q || '', page: 'home' }, clockNow);
     else if (name === 'search') view = home.render({ q: q.q || '', page: 'search', pick: q.for || '', from: q.from || '' }, clockNow);
-    else if (name === 'go') view = go.render({ ...goArgs, plan: q.plan }, clockNow);
+    else if (name === 'go') view = go.render({ ...goArgs, plan: q.plan, t: q.t }, clockNow);
     else if (name === 'stop') view = stopView.render({ id: seg[1], full: seg[2] === 'all', run: q.run, on: q.on }, clockNow);
     else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
     else if (name === 'route') view = (await ensureMap()).routePage(routeArgs, clockNow);
