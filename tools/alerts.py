@@ -131,6 +131,17 @@ except Exception:
 for a in alerts:
     a['routes'] = sorted(set(a.get('routes') or []) | {routes[r] for r in a['routeIds'] if r in routes})
     a['routeIds'] = [r for r in a['routeIds'] if r not in routes]
+# Kept two days after the agency drops it at its posted end: one posted to end at midnight ends some time the next
+# day (the app counts it closed through that day), but the notice is gone at midnight. Not one dropped before its end
+# (called off), and never one the agency lists now.
+try:
+    was = json.load(open(os.path.join(ROOT, 'data', 'alerts.json')))['alerts']
+except Exception:
+    was = []
+nowS, ids = time.time(), {a['id'] for a in alerts}
+for a in was:
+    if a['id'] not in ids and a.get('end') and a['end'] <= nowS and nowS - a['end'] < 2 * 86400:
+        alerts.append({**a, 'lapsed': True})
 alerts.sort(key=lambda a: (a['start'] or 0, a['id']))
 out = {'fetched': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'source': SITE + ' + ' + URL, 'alerts': alerts}
 p = os.path.join(ROOT, 'data', 'alerts.json')

@@ -159,11 +159,12 @@ export async function loadAlerts({ relay = true } = {}) {
   try {
     let j = null;
     if (relay) try { const r = await fetch(LIVE_URL + 'alerts', { cache: 'no-store' }); if (r.ok) j = await r.json(); } catch { /* the file, then */ }
-    if (!j || !Array.isArray(j.alerts)) {
-      const r = await fetch(BASE + 'data/alerts.json', { cache: 'no-cache' });
-      if (!r.ok) return;
-      j = await r.json();
-    }
+    // The file's too, beside the relay's: it keeps an alert two days after the agency drops it at its posted end
+    // ('lapsed', tools/alerts.py), and the relay has only what the agency lists now.
+    let file = null;
+    try { const r = await fetch(BASE + 'data/alerts.json', { cache: 'no-cache' }); if (r.ok) file = await r.json(); } catch { /* the relay's alone */ }
+    if (!j || !Array.isArray(j.alerts)) { if (!file) return; j = file; }
+    else if (file) { const have = new Set(j.alerts.map(a => a.id)); j = { ...j, alerts: [...j.alerts, ...(file.alerts || []).filter(a => a.lapsed && !have.has(a.id))] }; }
     await load();   // the stops and routes the alerts name
     const byStop = {}, byRoute = {};
     for (const a of j.alerts) {
@@ -199,16 +200,25 @@ const ymdOf = epoch => (ymdFmt ||= new Intl.DateTimeFormat('en-CA', { timeZone: 
  *  alert naming a day in its title ends that day. */
 export function alertsUntil(alerts) {
   let last = null;
-  for (const a of alerts) { const e = a.names && (!a.end || a.names > ymdOf(a.end)) ? a.names : a.end ? ymdOf(a.end) : null; if (e && (!last || e > last)) last = e; }
+  for (const a of alerts) { const e = a.names && (!a.end || a.names > endDay(a)) ? a.names : a.end ? endDay(a) : null; if (e && (!last || e > last)) last = e; }
   return last;
 }
-export const alertOn = (a, ymd) => (!a.start || ymdOf(a.start) <= ymd) && (!a.end || ymdOf(a.end) >= ymd || (a.names && a.names >= ymd)) && !doneToday(a, ymd);
+/** The day an alert ends. Posted to end at midnight (the last minute of a day), it ends some time the next day, the
+ *  hour not said: the Route 2 and 5 detours on 200 East were posted to end Tue 29 Sep 11:59 PM, dropped from the
+ *  notices at midnight, and the stops were still closed Wednesday afternoon ('ending Wednesday' is some time
+ *  Wednesday). Closed through that day, as 'until the detour ends, later today'; one ending at an hour ends then. */
+const endDay = a => {
+  const e = ymdOf(a.end), t = (hmFmt ||= new Intl.DateTimeFormat('en-GB', { timeZone: D.agency.tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })).format(new Date(a.end * 1000));
+  return t === '23:59' ? dayFrom(e, 1).ymd : e;
+};
+let hmFmt = null;
+export const alertOn = (a, ymd) => (!a.start || ymdOf(a.start) <= ymd) && (!a.end || endDay(a) >= ymd || (a.names && a.names >= ymd)) && !doneToday(a, ymd);
 /** On its last day an alert is over when its buses are: a day's detour posted until midnight stops marking stops
  *  after its routes' last trips have run (the whole system's, for an alert naming none), with time for a late one:
  *  a route's last run is on time, near enough, but a loop's can be half an hour behind. */
 function doneToday(a, ymd) {
   if (!a.end) return false;
-  const e = ymdOf(a.end), last = a.names && a.names > e ? a.names : e;
+  const e = endDay(a), last = a.names && a.names > e ? a.names : e;
   if (last !== ymd) return false;
   const c = now();
   if (c.ymd !== ymd || finding) return false;
