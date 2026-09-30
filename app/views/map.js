@@ -490,9 +490,9 @@ async function made(app) {
   // A desktop's pointer over a line: that route drawn up, its badges in the panel ringed. Looked up once a frame at most.
   if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
     let at = null;
-    map.on('mousemove', e => { if (!at) requestAnimationFrame(() => { const p = at; at = null; if (!p || !ready) return;
-      const f = map.queryRenderedFeatures([[p.x - 4, p.y - 4], [p.x + 4, p.y + 4]], { layers: ['route-hover', 'route-on', 'route-lines', 'usu-line-on', 'usu-lines'].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none') })[0];
-      hover(!f ? {} : f.source === 'ulines' ? { us: [f.properties.id] } : { rs: [f.properties.route] }); }); at = e.point; });
+    // A place, not a line: every route on the road under the pointer lit, the ones a click there lists ('On this
+    // road'). It was the one line drawn on top, flickering between five on Main Street.
+    map.on('mousemove', e => { if (!at) requestAnimationFrame(() => { const p = at; at = null; if (!p || !ready) return; hover(linesNear(p, 8)); }); at = e.point; });
     map.getCanvas().addEventListener('mouseleave', () => hover());
   }
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
@@ -584,7 +584,7 @@ async function made(app) {
     // No stop there, but a route's line: that route lit up with its times, where the map is. Where several share the
     // road, the card asks which.
     // A route the timetable splits by time of day (16 AM and PM) is one route here: the half on the road now or next.
-    const ris = [...new Map(map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['route-lines'] }).map(f => f.properties.route).sort((a, b) => a - b).map(ri => [familyKey(ri), ri])).values()].map(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute) ? focusRoute : familyNow(ri, now()));   // the half up stays up
+    const ris = [...new Map(linesNear(e.point, r).rs.map(ri => [familyKey(ri), ri])).values()].map(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute) ? focusRoute : familyNow(ri, now()));   // the half up stays up
     const card = col.querySelector('#mapcard'), cardOpen = card.classList.contains('open');
     // A route up on the Map tab, its sheet (or a card over it) open: a tap on nothing puts the card away and leaves the
     // route lit; the next tap puts the route away.
@@ -1643,6 +1643,12 @@ const STOP_PAGE = /^#\/(stop\/|usu\/(?!route\/)|map\/(\d|usu\/))/;
 /** What can wait a frame: a card drawn and on screen first, the tap answered at once; its times worked out and put in
  *  just after, the first chance the phone has once that frame is painted. */
 const afterPaint = f => requestAnimationFrame(() => setTimeout(f, 0));
+/** The routes (and shuttle loops) drawn within r px of a point: a road's, as a tap takes them and a hover lights them. */
+function linesNear(p, r) {
+  const layers = ['route-hover', 'route-on', 'route-lines', 'usu-line-on', 'usu-lines'].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+  const fs = map.queryRenderedFeatures([[p.x - r, p.y - r], [p.x + r, p.y + r]], { layers });
+  return { rs: [...new Set(fs.filter(f => f.source !== 'ulines').map(f => f.properties.route))].sort((a, b) => a - b), us: [...new Set(fs.filter(f => f.source === 'ulines').map(f => f.properties.id))] };
+}
 /** The pointer over a route, a shuttle loop or a stop, on a desktop: drawn up on the map, and their badges in the panel
  *  ringed. From the panel (a badge, a stop's row) or the map (its lines) alike; nothing, everything back. */
 let hoverKey = '';
