@@ -2341,7 +2341,9 @@ async function drawRun(T) {
       if (a && b && (a[0] !== b[0] || a[1] !== b[1])) way.set(si, Math.atan2((b[0] - a[0]) * Math.cos(s.lat * Math.PI / 180), b[1] - a[1]) * 180 / Math.PI);
     }
   }
-  T.labels = { way, features: R.points.map(p => ({ si: p.si, color: col(p.r), t: p.t, big: p.rank <= 1, rank: p.rank })) };
+  // This ride's times alone: the bus's later runs, drawn lighter, often come back up the same road, and their times
+  // stood beside this one's at every stop, two columns to tell apart (the sheet lists them).
+  T.labels = { way, features: R.points.filter(p => !p.leg).map(p => ({ si: p.si, color: col(p.r), t: p.t, big: p.rank <= 1, rank: p.rank })) };
   placeRunLabels(T);
   // the first run solid, the bus's later ones lighter: which way round is which
   m.getSource('run').setData({ type: 'FeatureCollection', features: legs.map((l, i) => ({ type: 'Feature', properties: { color: col(l.ri), later: i > 0 }, geometry: { type: 'LineString', coordinates: l.path } })) });
@@ -2360,9 +2362,10 @@ function placeRunLabels(T) {
   if (!T.m || !T.labels || !T.m.getSource('runt')) return;
   const turn = T.m.getBearing(), { way } = T.labels;
   const side = si => {
-    if (!way.has(si)) return { a: 'left', o: [0.9, 0] };
+    // Clear of the bus on the line (its marker 28 px across at a run's zoom), not under it as it passes.
+    if (!way.has(si)) return { a: 'left', o: [1.5, 0] };
     const r = ((way.get(si) + 90 - turn) % 360 + 360) % 360;   // the bus's right, as a bearing on the screen
-    return r < 45 || r >= 315 ? { a: 'bottom', o: [0, -0.8] } : r < 135 ? { a: 'left', o: [0.9, 0] } : r < 225 ? { a: 'top', o: [0, 0.8] } : { a: 'right', o: [-0.9, 0] };
+    return r < 45 || r >= 315 ? { a: 'bottom', o: [0, -1.4] } : r < 135 ? { a: 'left', o: [1.5, 0] } : r < 225 ? { a: 'top', o: [0, 1.4] } : { a: 'right', o: [-1.5, 0] };
   };
   T.m.getSource('runt').setData({ type: 'FeatureCollection', features: T.labels.features.map(p => ({ type: 'Feature', properties: { ...p, ...side(p.si) }, geometry: { type: 'Point', coordinates: [D.stops[p.si].lon, D.stops[p.si].lat] } })) });
 }
