@@ -78,7 +78,7 @@ function style(sat = true) {
       lines: { type: 'geojson', data: drawn.lines || { type: 'FeatureCollection', features: [] } },
       lclosed: { type: 'geojson', data: drawn.closed || { type: 'FeatureCollection', features: [] } },   // the stretches of route we can't vouch for
       spot: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-      runs: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },   // the way on from a picked bus or stop, in pieces that fade
+      runs: { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features: [] } },   // the way on from a picked bus or stop, fading along itself
       ustops: { type: 'geojson', data: usuStopsGeo() },
       pool: { type: 'geojson', data: poolGeo() },
       places: { type: 'geojson', data: placesGeo() },
@@ -95,10 +95,11 @@ function style(sat = true) {
       { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': '#007AB8', 'circle-opacity': 0.15, 'circle-stroke-color': '#007AB8', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
-      // The way on from a picked bus or stop: bright there, fading as it goes, in pieces each with its own strength (a
-      // gradient is one per layer, and a stop with three routes needs three). Butt ends, so the pieces meet without
-      // beads. Several ways from one stop run as strands side by side (`lane`, in widths), each a little narrower (`wf`).
-      { id: 'runs', type: 'line', source: 'runs', filter: ['all', ['!', ['to-boolean', ['get', 'approx']]], ['!', ['to-boolean', ['get', 'arrow']]]], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]] } },
+      // The way on from a picked bus or stop: bright there, fading smoothly as it goes, one line a strand with its own
+      // gradient (a layer holds one gradient, so a strand a layer; a stop with three routes lights three). It was up to
+      // 48 pieces a strand, each a step fainter: bands, and a seam at every bend where two pieces met. Several ways from
+      // one stop run as strands side by side (`lane`, in widths), each a little narrower (`wf`).
+      ...RUN_STRANDS.map((id, k) => ({ id, type: 'line', source: 'runs', filter: ['==', ['get', 'strand'], k], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-gradient': fadeRamp('#888888'), 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]] } })),
       // A shuttle loop drawn stop to stop (no shape to follow): its way on dashed, as its line is.
       { id: 'runs-approx', type: 'line', source: 'runs', filter: ['all', ['to-boolean', ['get', 'approx']], ['!', ['to-boolean', ['get', 'arrow']]]], layout: { 'line-join': 'round', 'line-cap': 'butt' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'wf']], 14, ['*', 8, ['get', 'wf']], 17, ['*', 12, ['get', 'wf']]], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', 4, ['get', 'lane']], 14, ['*', 8, ['get', 'lane']], 17, ['*', 12, ['get', 'lane']]], 'line-dasharray': [2, 1.2] } },
       // Which way a lit route goes, and a way on: small arrows along the line from the streets in, each in its line's
@@ -119,7 +120,7 @@ function style(sat = true) {
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
       // Stops from the streets in (z14); further out only the lit route's, in the layer after, so a stop is there because it was asked for.
-      { id: 'stops', type: 'circle', source: 'stops', minzoom: 14, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
+      { id: 'stops', type: 'circle', source: 'stops', minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
         // a closed stop is a hollow ring in its route's colour
         'circle-color': ['case', ['get', 'closed'], flavor === 'dark' ? '#101214' : '#f2f2f3', ['get', col]],
         'circle-stroke-color': ['case', ['get', 'closed'], ['get', col], flavor === 'dark' ? '#101214' : '#ffffff'],
@@ -136,7 +137,7 @@ function style(sat = true) {
   const under = st.layers.findIndex(l => /^roads_labels/.test(l.id));
   st.layers.splice(under >= 0 ? under : st.layers.findIndex(l => l.id === 'spot-fill'), 0, placeLabels);
   const all = st.layers.find(l => l.id === 'stops'), { minzoom, ...lit } = all;
-  st.layers.splice(st.layers.indexOf(all) + 1, 0, { ...lit, id: 'stops-lit', maxzoom: 14, filter: ['in', ['get', 'id'], ['literal', []]] });
+  st.layers.splice(st.layers.indexOf(all) + 1, 0, { ...lit, id: 'stops-lit', maxzoom: 12, filter: ['in', ['get', 'id'], ['literal', []]] });
   // A lit route's timed stops (its timepoints, where an early bus waits): a ring round the dot in the map's ink.
   st.layers.splice(st.layers.indexOf(all) + 2, 0, { id: 'stops-tp', type: 'circle', source: 'stops', filter: ['in', ['get', 'id'], ['literal', []]],
     paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 5, 14, 9, 17, 12.5, 19, 16], 'circle-opacity': 0, 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.2, 15, 2], 'circle-stroke-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20' } });
@@ -344,6 +345,12 @@ function squareImage(hex) {
 }
 /** An arrow for a line, pointing along it (+x, as line placement lays an icon): a chevron in the line's colour edged
  *  in the paper's, drawn at twice the size for a sharp screen. Made on demand, one per colour and look. */
+/** The way-on strands' layers, one each; and a strand's fade, full strength at its start to a trace at its end. */
+const RUN_STRANDS = ['runs', 'runs-1', 'runs-2', 'runs-3', 'runs-4', 'runs-5', 'runs-6', 'runs-7'];
+function fadeRamp(col) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
+  return ['interpolate', ['linear'], ['line-progress'], 0, `rgba(${r},${g},${b},1)`, 1, `rgba(${r},${g},${b},0.08)`];
+}
 const ARROWS = { 'symbol-placement': 'line', 'symbol-spacing': 120, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': false, 'icon-ignore-placement': true, 'icon-padding': 1 };
 function arrowImage(hex, darkPaper) {
   const k = 2, n = 12 * k, c = document.createElement('canvas');
@@ -574,7 +581,7 @@ async function made(app) {
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; runsKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -1929,12 +1936,21 @@ export async function show(o, app, clockNow) {
   if (o.hub && app.route.name === 'map' && !wide() && (o.tick ? !!col.querySelector('#mapcard.open > .hubsheet') : !col.querySelector('#mapcard.open > .hubsheet'))) hubCard(clockNow);
   if (o.tick) hubBadges();
   if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
-  if (!o.hub && hubTurned && !o.tick) { northDue = true; if (!map.isMoving()) northAgain(true); }   // another tab: north up again
+  // Off the Center to another tab: a page that frames something of its own (a stop, a route, a way) gets north up and
+  // frames it; any other (Stops, search, About, the Map tab) gets the map back as it was before the Center, at once.
+  // North alone left a desktop's map on the bays, turned: Transit Center, Stops, then Map never came out again.
+  if (!o.hub && hubTurned && !o.tick) {
+    const own = o.stopId || o.routeShort || o.ustopId || o.uRoute || o.alertId || o.at || o.journey || o.run || o.busId || o.page || o.from || o.to;
+    if (own) { northDue = true; if (!map.isMoving()) northAgain(true); } else backDue = true;
+  }
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   mainJourney(o.journey || null, app);   // a way from the directions page
-  if ((resetDue || backDue) && app.route.name === 'map' && !o.hub) { const back = backDue, to = back ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to, back); }   // back from the Center: there at once, as the Center came
+  if (((resetDue && app.route.name === 'map') || backDue) && !o.hub) { const back = backDue, to = back ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to, back); }   // back from the Center: there at once, as the Center came
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
-  routeTimesSoon(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
+  // A page's picture is a picture: no times on it. A route's page keeps its route's, a picked bus its own, and a road
+  // tapped with one route on it that route's: the feed's redraw every few seconds took those away again.
+  const road = !o.run && !o.hub && !JR && !o.journey && selected === null && selectedU === null && !pb && hiLines.length === 1 && focusRoute === undefined ? hiLines[0] : null;
+  routeTimesSoon(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : road, clockNow);
 }
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
 let wantIn = null;
@@ -2168,7 +2184,7 @@ function runBounds(R) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60 };
-const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', 'runs', 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-edge', 'pool-stops'];
+const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-edge', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
@@ -2259,7 +2275,7 @@ function mainRun(R) {
   for (const id of ['run', 'runt']) if (map.getSource(id)) map.getSource(id).setData({ type: 'FeatureCollection', features: [] });
   for (const id of RUN_HIDE) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
   map.setFilter('stops', null);
-  map.setLayerZoomRange('stops', 14, 24);
+  map.setLayerZoomRange('stops', 12, 24);
   applySelection();
   quiet();   // back at the Center, its view again
 }
@@ -2325,7 +2341,7 @@ async function mainJourney(J, app) {
     for (const id of ['run', 'jr']) if (map.getSource(id)) map.getSource(id).setData({ type: 'FeatureCollection', features: [] });
     for (const id of [...RUN_HIDE, 'stop-selected']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
     map.setFilter('stops', null); map.setFilter('usu-stops', null);
-    map.setLayerZoomRange('stops', 14, 24);
+    map.setLayerZoomRange('stops', 12, 24);
     const card = col.querySelector('#mapcard');
     if (card.querySelector(':scope > .journeysheet')) card.classList.remove('open', 'peek');
     applySelection();
@@ -2570,7 +2586,7 @@ function pathFrom(ti0, k, ri, clockNow) {
   return path;
 }
 /** A way's bus coming to it, with the direction arrows: the layers a way drawn leaves up (the rest of a run's go). */
-const APPROACH = ['runs', 'runs-approx', 'runs-arrows'];
+const APPROACH = [...RUN_STRANDS, 'runs-approx', 'runs-arrows'];
 /** The bus a way's ride boards, from the feed: the one on the ride's trip, or the one the feed says will run it. */
 function rideBus(l) {
   if (l.u || l.t.trip === undefined) return null;
@@ -2748,6 +2764,14 @@ async function drawRuns() {
   const fc = wants.length ? await shapes() : null;
   if (!map || !map.getSource('runs') || pick !== [selectedBus || ringed, selected, selectedU, uHilite].join('|')) return;   // moved on while the shapes came
   const n = wants.length + loops.length, feats = [], wf = n === 1 ? 1 : n === 2 ? 0.75 : 0.6;   // strands side by side, each narrower
+  // One line a strand, faded along itself by its layer's gradient in its route's colour.
+  let ns = 0;
+  const strand = (path, hex, ln) => {
+    const k = ns++;
+    if (k >= RUN_STRANDS.length) return [];   // more ways than layers: no stop in the valley has them
+    map.setPaintProperty(RUN_STRANDS[k], 'line-gradient', fadeRamp(dark() ? lift('#' + hex) : '#' + hex));
+    return [{ type: 'Feature', properties: { strand: k, wf, lane: ln }, geometry: { type: 'LineString', coordinates: path } }];
+  };
   const lane = idx => (idx - (n - 1) / 2) * wf * 1.15;
   for (const [idx, w] of wants.entries()) {
     // The shape of each route in turn: the tail onto another route is that route's shape.
@@ -2777,9 +2801,10 @@ async function drawRuns() {
         path = [w.from, ...path.slice(bi + 1), ...(round ? [...path.slice(1, bi + 1), w.from] : [])];
       }
     }
-    if (path.length > 1) feats.push(...fadePieces(path, D.routes[w.ri].color, { wf, lane: lane(idx) }), ...arrowLines(path, D.routes[w.ri].color, lane(idx)));
+    if (path.length > 1) feats.push(...strand(path, D.routes[w.ri].color, lane(idx)), ...arrowLines(path, D.routes[w.ri].color, lane(idx)));
   }
-  for (const [k, w] of loops.entries()) feats.push(...fadePieces(w.path, U.routes[w.ri].color.slice(1), { wf, lane: lane(wants.length + k), approx: !U.routes[w.ri].shape.length }), ...arrowLines(w.path, U.routes[w.ri].color.slice(1), lane(wants.length + k)));
+  for (const [k, w] of loops.entries()) { const hx = U.routes[w.ri].color.slice(1), ln = lane(wants.length + k);
+    feats.push(...(U.routes[w.ri].shape.length ? strand(w.path, hx, ln) : fadePieces(w.path, hx, { wf, lane: ln, approx: true })), ...arrowLines(w.path, U.routes[w.ri].color.slice(1), lane(wants.length + k))); }
   feats.sort((x, y) => (x.properties.a ?? 0) - (y.properties.a ?? 0));   // the brightest pieces drawn last, on top, where ways share a road
   runsKey = key;
   map.getSource('runs').setData({ type: 'FeatureCollection', features: feats });

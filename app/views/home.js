@@ -4,7 +4,7 @@
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live } from '../usu.js';
@@ -62,6 +62,7 @@ function landing(clockNow, app) {
       <button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
       <span class="ask-note">Location stays on this device, used only to sort stops.</span></div>`);
   }
+  if (isWide()) parts.push(chips());   // beside the map, every route a tap away: the page has the room, and the map lights it
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   const detours = activeAlerts(clockNow.ymd).filter(a => (a.stops || []).length || (a.routes || []).length);
@@ -72,6 +73,13 @@ function landing(clockNow, app) {
   if (sv.length) parts.push(installCard());   // the offer waits until a rider has saved a stop: proof it's their app
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
   return { html: html`<div class="land">${html.raw(parts.join(''))}</div>`.s, mount, title: '' };
+}
+
+/** Every route as a chip: Connect's badges, then the shuttle's in their own colours. Each lights its route on the map. */
+function chips() {
+  const connect = D.routes.map((r, i) => html`<a href="#/map/route/${encodeURIComponent(r.short)}" aria-label="${routeName(i, false)}">${badge(i, 36)}</a>`);
+  const campus = U ? U.routes.map((r, ri) => r.stops.length ? html`<a href="#/usu/route/${r.id}" aria-label="${r.name}">${chip(ri, 36)}</a>` : '') : [];
+  return html`<div class="land-eye"><span>Routes</span></div><div class="routes">${connect}</div>${campus.some(Boolean) ? html`<div class="land-eye"><span>Aggie Shuttle</span></div><div class="routes campus">${campus}</div>` : ''}`;
 }
 
 /** The giant time: hours, the two accent squares of the colon, minutes, and AM or PM small. */
