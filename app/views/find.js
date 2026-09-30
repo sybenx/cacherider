@@ -29,7 +29,12 @@ export function placeRows(q = '', pick = null) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const list = myPlaces().filter(p => words.every(w => p.name.toLowerCase().split(/\s+/).some(x => x.startsWith(w))));
   if (!list.length) return '';
-  return html`<div class="section">${icon('star', 16)}Your places</div><div class="list">${list.map(p => html`<a class="row placerow" href="${pick ? endHref(pick, null, { lat: p.lat, lon: p.lon, label: p.name }) : '#/go/' + spotKey(p.lat, p.lon, p.name)}"><div class="mid"><span class="name">${p.name}</span>${p.label && p.label !== p.name ? html`<span class="sub">${p.label}</span>` : ''}</div>${icon('fwd', 18)}</a>`)}</div>`.s;
+  // All of them (no query): Edit, as the home page's saved stops have it; each row then renames (the Save as sheet)
+  // or goes (✕). places.js does both in place.
+  const mid = p => html`<div class="mid"><span class="name">${p.name}</span>${p.label && p.label !== p.name ? html`<span class="sub">${p.label}</span>` : ''}</div>`;
+  return html`<div class="placelist"><div class="section between"><span>${icon('star', 16)}Your places</span>${words.length ? '' : html`<button type="button" class="btn btn-ghost edit" data-place-edit>Edit</button>`}</div>
+    <div class="list">${list.map(p => html`<div class="placeitem" data-id="${p.id}"><a class="row placerow" href="${pick ? endHref(pick, null, { lat: p.lat, lon: p.lon, label: p.name }) : '#/go/' + spotKey(p.lat, p.lon, p.name)}">${mid(p)}${icon('fwd', 18)}</a>
+      <div class="placeedit"><button type="button" class="row placerow" data-place-rename="${JSON.stringify({ lat: p.lat, lon: p.lon, label: p.label })}" aria-label="Rename ${p.name}">${mid(p)}<span class="note">Rename</span></button><button type="button" class="btn btn-ghost btn-icon" data-place-forget="${p.id}" aria-label="Remove ${p.name}">${icon('close', 20)}</button></div></div>`)}</div></div>`.s;
 }
 export function results(q, clockNow, pick = null, later = false) {
   return html.raw(placeRows(q, pick) + resultsOf(q, clockNow, pick, later));

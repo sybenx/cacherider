@@ -63,14 +63,30 @@ export function openSave(at) {
   if (!dlg.open) dlg.showModal();
 }
 
+// The search's list of them: Edit / Done, a row's rename (the Save as sheet) and ✕, all where they are.
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-place-edit], [data-place-rename], [data-place-forget]');
+  if (!t) return;
+  e.preventDefault(); e.stopPropagation();
+  if (t.hasAttribute('data-place-edit')) { const on = t.closest('.placelist').classList.toggle('editing'); t.textContent = on ? 'Done' : 'Edit'; }
+  else if (t.hasAttribute('data-place-rename')) openSave(JSON.parse(t.dataset.placeRename));
+  else forgetPlace(t.dataset.placeForget);
+}, true);
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-place]');
   if (!b) return;
   e.preventDefault(); e.stopPropagation();
   try { openSave(JSON.parse(b.dataset.place)); } catch { /* a malformed place: nothing to save */ }
 });
-// A star on the screen follows a save or a removal at once.
+// A star on the screen follows a save or a removal at once, and so does the search's list (a row gone, a name new;
+// a Home saved elsewhere moves off the row it was).
 addEventListener('placeschange', () => {
+  const all = myPlaces();
+  for (const row of document.querySelectorAll('.placeitem')) {
+    const p = all.find(x => x.id === row.dataset.id);
+    if (!p) { const list = row.closest('.placelist'); row.remove(); if (list && !list.querySelector('.placeitem')) list.remove(); continue; }
+    for (const n of row.querySelectorAll('.name')) n.textContent = p.name;
+  }
   for (const b of document.querySelectorAll('[data-place]')) {
     const at = JSON.parse(b.dataset.place), p = placeAt(at.lat, at.lon);
     b.setAttribute('aria-pressed', p ? 'true' : 'false');
