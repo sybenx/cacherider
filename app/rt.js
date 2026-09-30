@@ -317,6 +317,11 @@ function feedSays(t, u) {
     if (!D.stops[t.si].hub || (isLoop(t.r) && loopSpacing(t.r))) return { gone: true };
     const ms = left.get(D.trips[t.trip] + ':' + sid);
     if (ms && Date.now() - ms < LEFT_GRACE) return held(t, toMin(Math.floor(Date.now() / 1000)) - t.min);
+    // Its bus still at the bay, though the feed has it gone (its time passed, the bay dropped): it hasn't left, and a
+    // late bus leaves when it's ready. Now, until it pulls out. A Blue Loop 12:53, in at 1:00 (2026-09-30), was
+    // dropped with its bus sitting there, and the bay's badge showed the 1:11's bus, 12 min out.
+    const bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v), st = D.stops[t.si];
+    if (bus && bus.trip === D.trips[t.trip] && distance(bus.lat, bus.lon, st.lat, st.lon) < 110) return held(t, toMin(Math.floor(Date.now() / 1000)) - t.min);
     return held(t, 0);
   }
   if (l >= 0 && i > l && u.lastDelay !== null) return { ...held(t, u.lastDelay), est: true };
