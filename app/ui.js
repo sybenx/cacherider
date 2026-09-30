@@ -113,7 +113,7 @@ export const liveTag = t => liveMark(t.live && t.live.est ? 'Estimated' : 'Live'
 export function lively(t) {
   if (t.live || t.gone) return t;
   const p = predict(t);
-  return !p ? t : p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p };
+  return !p ? t : p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true, cancelled: !!p.cancelled } : { ...t, min: p.min, live: p };
 }
 /** The timetable's minute for a departure, live or not. The big time is always this one. */
 export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
@@ -180,6 +180,10 @@ export function depRow(t0, clockNow, opts = {}) {
   return raw(`<div class="row${opts.href ? ' tap' : ''}">${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
 }
 
+/** A run the feed says is cancelled, in a list of departures: its time struck, 'Cancelled', nothing to count down to. */
+export function cancelledRow(t) {
+  return raw(`<div class="row cancelled">${badge(t.r, 36).s}<div class="mid"><span class="name">${esc(headsign(t))}</span><span class="sub cancelnote">Cancelled</span></div><div class="end"><s class="t t-26">${esc(clock(t.min).h)}</s></div></div>`);
+}
 /** A stop row for the home and search lists, with its next bus on the right. */
 function stopEnd(next, clockNow, opts = {}) {
   return next

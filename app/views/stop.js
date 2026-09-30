@@ -2,7 +2,8 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom } from '../time.js';
-import { routeNames, html, icon, badge, time, sched, corners, depRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
+import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
+import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
 import { metres as m2 } from '../time.js';
@@ -94,6 +95,11 @@ export function render({ id, full, run, on }, clockNow) {
   }
 
   const first = next[0];
+  // Runs the feed says are cancelled, today in the next two hours: before the next bus, said above it (the one a rider
+  // came for may be one); after it, struck in the list in their place. They'd been a gap, the list jumping past them.
+  const cx = cancelledAt(si, clockNow, 120);
+  const cxBefore = cx.filter(t => first.day > 0 || t.min < first.min);
+  if (cxBefore.length) parts.push(html`<div class="notice cancelnotice">${icon('ban', 16)}<span><b>Cancelled:</b> ${cxBefore.map(t => routeName(t.r, false) + ' at ' + clockText(t.min)).join(', ')}</span></div>`);
   const dayWord0 = first.day === 0 ? '' : first.day === 1 ? 'tomorrow, ' + dayName(first.ymd, true) : dayName(first.ymd);
   // A detour closing this stop pushes the next bus to after it ends, days off: say so, in the warning yellow.
   // Across a day without buses (Saturday evening to Monday): 'Monday · no buses Sunday', lest it read as tomorrow.
@@ -117,7 +123,7 @@ export function render({ id, full, run, on }, clockNow) {
     const past = t => t.day === 0 && (t.gone || t.min < clockNow.min);
     const label = all[0].day === 0 ? fmtDay(clockNow.ymd, true) : fmtDay(all[0].ymd, true);
     parts.push(html`<div class="dayhead">${label} · ${all.length} departures${alertLink(all[0].ymd)}</div>`);
-    parts.push(html`<div class="list">${all.map(t => html.raw(`<div style="${past(t) ? 'opacity:.45' : ''}">${depRow(t, clockNow, { rel: past(t) ? 'gone' : relative(t, clockNow) }).s}</div>`))}</div>`);
+    parts.push(html`<div class="list">${all.map(t => html.raw(t.cancelled && t.min >= clockNow.min ? cancelledRow(t).s : `<div style="${past(t) ? 'opacity:.45' : ''}">${depRow(t, clockNow, { rel: past(t) ? 'gone' : relative(t, clockNow) }).s}</div>`))}</div>`);
     parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${s.id}">What's next</a></div>`);
     return { html: parts.join(''), title: s.name, mount, keepScroll: true };
   }
@@ -125,7 +131,10 @@ export function render({ id, full, run, on }, clockNow) {
   const rest = next.slice(1);
   let lastDay = first.day, lastYmd = first.ymd;
   const rows = [];
+  const cxAfter = cx.filter(t => !cxBefore.includes(t));
   for (const t of rest) {
+    while (cxAfter.length && t.day === 0 && cxAfter[0].min <= t.min) rows.push(cancelledRow(cxAfter.shift()).s);
+    if (t.day !== 0 && cxAfter.length) rows.push(...cxAfter.splice(0).map(c => cancelledRow(c).s));
     if (t.day !== lastDay) {
       // Tonight's last bus here, then the next day's: a clear break, lest a Monday time read as later tonight.
       if (lastDay === 0) rows.push(html`<div class="endservice"><span>End of service today</span></div>`.s);

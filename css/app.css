@@ -790,6 +790,12 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .tc-together .tc-seg.in b { color: var(--color-text); }
 .tc-note { font-size: 0.8125rem; color: var(--cr-muted); }
 .tc-note b { font-weight: 600; color: var(--color-text); }
+.tc-conn { display: block; margin-top: 4px; }
+.tc-conn.waits { color: var(--color-text); }
+.row.cancelled .name { color: var(--cr-muted); }
+.row.cancelled .end s { color: var(--cr-muted); }
+.cancelnote { color: var(--warn-ink); font-weight: 600; font-size: 0.75rem; letter-spacing: .06em; text-transform: uppercase; }
+.cancelnotice b { color: var(--color-text); }
 .tc-loops { margin: 22px 16px 0; }
 .tc-loops .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 14px 8px; border-bottom: 1px solid var(--cr-line); }
 .tc-loops .note { font-size: 0.7812rem; color: var(--cr-muted); }

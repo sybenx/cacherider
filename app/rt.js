@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, LIVE_URL, tripStops, tripEnd, runOf } from './data.js';
+import { D, setLive, distance, LIVE_URL, tripStops, tripEnd, runOf, timesOn } from './data.js';
 import { now, dayDiff, clockText } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -226,7 +226,7 @@ export function predict(t) {
     if (a <= tripStops(t.trip)[0][0] + 1) return KEEPS;   // in within its minute: it leaves on it
     return D.stops[t.si] && D.stops[t.si].hub && !(isLoop(t.r) && loopSpacing(t.r)) ? { min: Math.ceil(a), delay: Math.ceil(a) - t.min, est: true } : null;
   }
-  if (u.cancelled) return { gone: true };   // a run the feed says is cancelled isn't coming (the relay passes it on: c 1)
+  if (u.cancelled) return { gone: true, cancelled: true };   // a run the feed says is cancelled isn't coming (the relay passes it on: c 1)
   const p = feedSays(t, u);
   // From a Transit Center bay, a departure can't leave before the bus that runs it is in: that bus (the trip's own
   // vehicle) may still be finishing the trip before. Every screen reads this one rule.
@@ -347,7 +347,14 @@ export const heldAt = (si, delay, ri) => D.stops[si] && D.stops[si].hub && !(isL
 const held = (t, delay) => { const d = heldAt(t.si, delay, t.r); return { min: t.min + d, delay: d }; };
 /** The Green and Blue Loops: far off their timetable in traffic as a matter of course, so no late or early word. */
 export const isLoop = ri => (D.hub.loops || []).includes(ri);
-setLive(t => { const p = predict(t); if (!p) return t; return p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p }; });
+setLive(t => { const p = predict(t); if (!p) return t; return p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true, cancelled: !!p.cancelled } : { ...t, min: p.min, live: p }; });
+/** Today's departures from a stop the feed says are cancelled, from now to `within` minutes on (`ok`: which to look
+ *  at, by route): kept in a list, struck, so a rider waiting for one sees it isn't coming rather than a gap. */
+export function cancelledAt(si, clockNow = now(), within = 60, ok = null) {
+  if (rtStale() || !D.trips) return [];
+  return timesOn(si, clockNow.ymd).filter(t => t.min >= clockNow.min && t.min - clockNow.min <= within && (!ok || ok(t)) && t.trip !== undefined && rt.trips[D.trips[t.trip]]?.cancelled)
+    .map(t => ({ ...t, day: 0, ymd: clockNow.ymd, cancelled: true }));
+}
 
 /** How late a bus is now: the feed's minute at the stop it calls at next against the timetable's. The number every
  *  screen agrees on: the feed's word at its trip's last stop (`lastDelay`) is its guess at the rest of the run, and
