@@ -51,7 +51,7 @@ function headOf(to, e, at) {
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
   // Where from, the trip's first setting, as when (whenControl) is its second: a button alike, the pin for 'from', the
   // name whole, and tapped, the ways to change it under it. It was 'From 1111 N…' and three buttons on a line.
-  const from = origin ? { btn: html`<button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t">${gridShort(fromName)}</span></button>`,
+  const from = origin ? { btn: html`<button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t" data-short="${gridShort(fromName)}">${fromName}</span></button>`,
     acts: html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div>` } : null;
   return { parts, key, hubBay, from };
 }
@@ -105,9 +105,24 @@ function whenControl(c, clockNow) {
     pick: html`<div class="gowhen-pick"${pickOpen ? '' : ' hidden'}><div class="seg" role="group" aria-label="Leave or arrive"><button type="button" data-by="0" aria-pressed="${by ? 'false' : 'true'}">Leave at</button><button type="button" data-by="1" aria-pressed="${by ? 'true' : 'false'}">Arrive by</button></div><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
     <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div>` };
 }
-/** A grid address the short way, in the button's room: '1111 N 1200 E', '55 N Main'. A direction only after a number,
- *  so North Logan and West Stadium stay as they are. */
+/** A grid address the short way: '1111 N 1200 E', '55 N Main'. A direction only after a number, so North Logan and
+ *  West Stadium stay as they are. Used only where it helps (fitTrip): whole, the words read better. */
 const gridShort = n => String(n).replace(/(\d+)\s+(North|South|East|West)\b/g, (_, d, w) => d + ' ' + w[0]);
+/** The start's name whole, unless shortening it (1111 N 1200 E) is what lets where from and when share a line, or
+ *  keeps a name too long for a line of its own from being cut. Measured as drawn. */
+function fitTrip(fb, w) {
+  const t = fb && fb.querySelector('.gw-t[data-short]');
+  if (!t || !w || !fb.offsetWidth) return;
+  const full = t.dataset.full || (t.dataset.full = t.textContent), short = t.dataset.short;
+  if (short === full) return;
+  const inline = () => Math.round(fb.getBoundingClientRect().top) === Math.round(w.getBoundingClientRect().top);
+  const cut = () => t.scrollWidth > t.clientWidth + 1;
+  t.textContent = full;
+  if (inline() && !cut()) return;
+  t.textContent = short;
+  if (inline() && !cut()) return;
+  if (!cut()) { t.textContent = full; if (cut()) t.textContent = short; }   // on a line of its own: whole if it fits there
+}
 /** Where from and when, the trip's two settings: side by side where both fit (when drops under where from where they
  *  don't, the start's name kept whole), each one's choices opening under them the whole width. No arrow on either:
  *  a bordered button says it's one, and the two arrows kept 'from here' and 'leave now' from sharing a phone's line. */
@@ -332,6 +347,7 @@ function mount(el, _app, inCard = false) {
   // worked out afresh from it), Now takes it out. A way picked before goes: it was a way from another time.
   const fb = el.querySelector('#go-from'), fa = el.querySelector('.fromacts');
   const w = el.querySelector('#go-when'), pick = el.querySelector('.gowhen-pick');
+  fitTrip(fb, w);
   // One open at a time: both open under the row, and two there at once didn't say which was whose.
   const setFrom = on => { fromOpen = on; if (fa) fa.hidden = !on; if (fb) fb.setAttribute('aria-expanded', String(on)); };
   const setPick = on => { pickOpen = on; if (pick) pick.hidden = !on; if (w) w.setAttribute('aria-expanded', String(on)); };
