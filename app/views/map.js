@@ -4,10 +4,10 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, stop, route, nextAt, timed, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
-import { routeName, routeNames, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard } from '../ui.js';
+import { routeName, routeNames, html, icon, timedMark, badge, badges, time, sched, corners, depRow, stopRow, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
-import { U, live, busNext, stopRowU, nearestUSU, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
+import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap } from './find.js';
@@ -1360,8 +1360,9 @@ function select(id, app, fly = false, zoomIn = false) {
     if (location.hash !== '#/stop/' + id) location.hash = '#/stop/' + id;
     card.classList.remove('open'); return;
   }
-  card.innerHTML = stopCard(si, now());
+  card.innerHTML = stopCard(si, now(), true);
   wireStopCard(card, app);
+  afterPaint(() => { if (selected === id && card.querySelector(`:scope > .head[data-stop="${id}"]`)) { morph(card, stopCard(si, now())); wireStopCard(card, app); } });
   if (card.classList.contains('peek')) fitPeek(card);   // a new head, its own height
   card.classList.remove('hidden');
   requestAnimationFrame(() => {
@@ -1372,21 +1373,27 @@ function select(id, app, fly = false, zoomIn = false) {
     map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom, offset: cardOffset(card), duration: 650, essential: true });
   });
 }
-/** A stop's card: its name and routes, its next three buses, the way to its page and to directions. */
-function stopCard(si, clockNow) {
+/** What can wait a frame: a card drawn and on screen first, the tap answered at once; its times worked out and put in
+ *  just after, the first chance the phone has once that frame is painted. */
+const afterPaint = f => requestAnimationFrame(() => setTimeout(f, 0));
+/** A stop's card: its name and routes, its next three buses, the way to its page and to directions. `bare`: without
+ *  the times, for the tap's own frame (they follow, afterPaint). */
+function stopCard(si, clockNow, bare = false) {
   const s = stop(si);
+  const next = bare ? null : nextAt(si, 3, clockNow);
   const fromHub = metres(distance(s.lat, s.lon, D.hub.lat, D.hub.lon));
   const closed = closedRoutes(si, clockNow.ymd), al = stopAlerts(si, clockNow.ymd);
   const end = al.length ? alertsUntil(al) : null, until = end ? (end === clockNow.ymd ? ' today' : ' until ' + fmtDay(end)) : '';
   const alertLine = al.length ? html`<span class="eyebrow alert${closed.size ? ' warnmark' : ''}">${icon('ban', 14)}${closed.size ? routeNames([...closed]) + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' + until : al[0].title}</span>` : '';
   // The twin across the road, the stop for the other way: a pill at the right of the eyebrow, with its next bus, so
   // the card grows by nothing for it; a tap swaps the card to it without leaving the map.
-  const twinLine = s.twin ? acrossPill(si, clockNow, { button: true, bare: true }) : '';
+  const twinLine = s.twin ? acrossPill(si, clockNow, { button: true, bare }) : '';
   // The shuttle stop at the same pole, drawn as this one dot: its routes, and a way to its buses.
   const sh = U && U.sharedByCvtd[si], us = sh ? U.stops[sh.i] : null;
   const shuttleLine = us ? html`<a class="shuttleline" href="#/usu/${us.id}"><span class="eyebrow">${icon('hub', 14)}Also the USU shuttle · ${us.name}</span>${chips(us.routes, 20)}</a>` : '';
   const poolLine = poolAt(si) ? html`<span class="eyebrow poolline">${icon('info', 14)}Also a POOL pickup · on-demand ride, <a href="tel:${POOL.phone}">${POOL.phone}</a></span>` : '';
   return html`<div class="grip"></div><div class="head" data-stop="${s.id}"><div class="eyerow"><span class="eyebrow">${s.town} · Stop ${s.code || s.id}${s.by ? ` · ${s.by}` : twinLine ? '' : ` · ${fromHub} from the ${D.hub.name}`}</span>${twinLine}</div><div class="name"><span>${s.name}</span>${routeLinks(si)}</div>${shuttleLine}${poolLine}${alertLine}</div>
+    ${!next ? '' : next.length ? next.map(t => depRow(t, clockNow, { warn: t.day > 0 && closed.has(t.r) })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${s.id}">Get here</a></div>`.s;
 }
 function wireStopCard(card, app) {
@@ -1642,13 +1649,13 @@ function selectBus(id, app) {
   hiLines = []; hiLoops = b && !c ? [U.routes[b.ri].id] : [];
   applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
-  busCard(app);
-  if (c && focusRoute !== undefined) routeTimes(c.ri, now());   // on its route's page, the route's times become this bus's; off it, the map has none
+  busCard(app, true);   // the bus at once; where it's headed next, with its minutes, the moment after
+  afterPaint(() => { if (selectedBus !== id) return; busCard(app); if (c) routeTimes(c.ri, now()); });   // its times along its route: the route's, if up, become this bus's; else its own appear
 }
 /** A Connect bus: its route and headsign, where it's headed next with the feed's minutes. */
-function connectCard(b, app) {
+function connectCard(b, app, bare = false) {
   const r = D.routes[b.ri], clockNow = now();
-  const next = busStops(b, 5);
+  const next = bare ? [] : busStops(b, 5);
   const card = col.querySelector('#mapcard');
   // The word comes from the next stop the timetable has a row for: never the trip's final one, which on a loop
   // is the stop it left from, an hour's schedule earlier. Only that one left, the card just says Live.
@@ -1658,7 +1665,7 @@ function connectCard(b, app) {
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : r.long}</span></div></div>
-    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span></a>`)}</div>` : ''}
+    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${n.min - clockNow.min <= 0 ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
@@ -1670,13 +1677,13 @@ function schedAt(si, b) {
   for (const rows of Object.values(D.times[si] || {})) for (const t of rows) if (t[4] === ti) return t[0];
   return null;
 }
-function busCard(app) {
+function busCard(app, bare = false) {
   const c = findBus(selectedBus);
-  if (c) return connectCard(c, app);
+  if (c) return connectCard(c, app, bare);
   const b = live.buses.find(x => x.id === selectedBus);
   if (!b) return;
   const r = U.routes[b.ri];
-  const next = r.shape.length ? busNext(b, 4) : [];
+  const next = !bare && r.shape.length ? busNext(b, 4) : [];
   // A route with no stops is a charter: a bus booked for an event (usually the university's), with no
   // fixed route to show and none of the regular routes' hours to hold it to.
   const charter = !r.stops.length;
@@ -1687,7 +1694,7 @@ function busCard(app) {
     ${b.cap ? html`<div class="load">${meter(b, true)}<span>${loadWords(b)}</span></div>` : ''}
     ${charter ? html`<div class="hours">${icon('info', 15)}<span>Booked for an event, with no fixed route or stops.</span></div>`
       : hours(b.ri) ? html`<div class="hours">${icon('clock', 15)}<span>${untilWords(b.ri) ? html`<b>${untilWords(b.ri).replace(/^./, c => c.toUpperCase())}</b> · ` : ''}usually ${hours(b.ri)}</span></div>` : ''}${charter ? '' : offNote([b.ri])}</div>
-    ${next.length ? html`<div class="nextstops"><i class="line" style="background:${r.color}"></i>${next.map((n, i) => html`<a class="ns${n.here && i === 0 ? ' here' : ''}" href="#/usu/${U.stops[n.si].id}"><span class="dot"><i style="${n.here && i === 0 ? 'background:' + r.color : ''}"></i></span><span class="nm">${U.stops[n.si].name}</span></a>`)}</div>` : ''}
+    ${next.length ? html`<div class="nextstops"><i class="line" style="background:${r.color}"></i>${next.map((n, i) => html`<a class="ns${n.here && i === 0 ? ' here' : ''}" href="#/usu/${U.stops[n.si].id}"><span class="dot"><i style="${n.here && i === 0 ? 'background:' + r.color : ''}"></i></span><span class="nm">${U.stops[n.si].name}</span><span class="when">${n.here && i === 0 ? 'here now' : isStale() ? '' : 'about ' + Math.max(1, n.min) + ' min'}</span></a>`)}</div>` : ''}
     ${charter ? '' : html`<div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`}`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
@@ -1707,14 +1714,17 @@ function selectU(id, app, closer = false) {
   selectedU = si; selectedBus = null; selected = null; uHilite = id; hiLines = []; hiLoops = U.stops[si].routes.map(ri => U.routes[ri].id); applySelection();
   for (const m of busMarkers.values()) m.el.classList.remove('on');
   const s = U.stops[si];
-  uCard(app);
+  uCard(app, true);   // the stop at once, its buses the moment after
+  afterPaint(() => { if (selectedU === si) uCard(app); });
   const card = col.querySelector('#mapcard');
   map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom, offset: cardOffset(card), duration: 650 });
 }
-function uCard(app) {
+function uCard(app, bare = false) {
   const si = selectedU, s = U.stops[si];
   const card = col.querySelector('#mapcard');
+  const rows = bare ? null : board(si);
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${U.name}${U.shared[si] ? ' · also Connect' : ''}</span><div class="name"><span>${s.name}</span></div>${chips(s.routes, 24)}</div>
+    ${!rows ? '' : hasData() ? html`<div class="list">${rows.slice(0, 3).map(r => liveRow(r, { href: '#/usu/' + s.id }))}</div>` : html`<div class="empty"><p>Finding the buses…</p></div>`}
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/usu/${s.id}">${corners()}Open stop</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${spotKey(s.lat, s.lon, s.name)}">Get here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">From here</a></div>`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
@@ -1768,10 +1778,19 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
     : toFrom ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}/${atPath(spotOf(toFrom))}">${corners()}Directions to here</a></div>`
     : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath(at)}">From here</a></div>`;
   // On a road, its routes' next buses only, each with where it's going, and the routes as badges that light them.
+  const next = i => nextAt(i, 1, clockNow, 8, road ? t => road.includes(t.r) : undefined)[0];
   const lines = road ? html`<div class="roadroutes">${road.map(ri => html`<button type="button" class="roadroute" data-ri="${ri}" aria-label="${routeName(ri, false)} on the map">${badge(ri, 30)}</button>`)}</div>` : '';
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span></div>${lines}</div>${go}
-    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare: true }) : stopRow(x.i, null, clockNow, { dist: metres(x.d) + ' away', bare: true })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`;
+  // The stops at once, their next buses (and a road's route times on the map) the moment after.
+  const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span></div>${lines}</div>${go}
+    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`.s;
+  card.innerHTML = markup(true);
   card.querySelectorAll('[data-ri]').forEach(b => { b.onclick = () => pickRoute(+b.dataset.ri, app); });
+  const spotKeyNow = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
+  afterPaint(() => {
+    if (lastFocused !== spotKeyNow || selected !== null || selectedBus !== null) return;   // something else picked meanwhile
+    morph(card, markup(false));
+    if (road && road.length === 1) routeTimes(road[0], now());
+  });
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
   const key = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
@@ -1877,7 +1896,8 @@ export async function show(o, app, clockNow) {
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   mainJourney(o.journey || null, app);   // a way from the directions page
   if ((resetDue || backDue) && app.route.name === 'map' && !o.hub) { const back = backDue, to = back ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to, back); }   // back from the Center: there at once, as the Center came
-  routeTimes(focusRoute !== undefined && !o.run ? focusRoute : null, clockNow);   // times on the map only on a route's page
+  const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
+  routeTimes(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
 let wantIn = null;
