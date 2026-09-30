@@ -1415,8 +1415,11 @@ function hubFold(on) {
   const card = col.querySelector('#mapcard');
   if (hubFolded === on || !card.querySelector(':scope > .hubsheet')) return;
   hubFolded = on; card.scrollTop = 0;
+  // Slid, not snapped: the board and its ground move together (--hub-room, a registered length, eases), and the
+  // bays are framed again over the same time.
+  card.classList.add('hubslide'); clearTimeout(card._slide); card._slide = setTimeout(() => card.classList.remove('hubslide'), 320);
   hubPlace(card);
-  fitHub();
+  fitHub(false, 280);
 }
 /** The bays, and how the Center frames them: south up, as a rider stands at the Center facing the hall from 500
  *  North; in to the bays' own zoom at the least, whatever covers the map. */
@@ -1504,13 +1507,13 @@ function hubRoom() {
   const z = Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * spanX))));
   return Math.round(topCover() + 2 * HUB_M + spanY * 512 * 2 ** z);
 }
-function fitHub(arriving = false) {
+function fitHub(arriving = false, duration = 700) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
   if (arriving && !hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
   // Arriving from another tab, it's there at once: a flight from the town down to the bays, turning half round on the
   // way, loaded the streets at every zoom between and re-placed every label, frame by frame, 700 ms of a phone's work
   // that no finger asked for. Framed again from the Center itself (its tab tapped again), it moves.
-  if (!frame(hubBounds(), { ...hubFit(), duration: arriving ? 0 : 700 })) return;
+  if (!frame(hubBounds(), { ...hubFit(), duration: arriving ? 0 : duration })) return;
   hubTurned = true; northDue = false;
 }
 
