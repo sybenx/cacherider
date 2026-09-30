@@ -172,6 +172,31 @@ export function rideSecs(ri, a, b) {
   for (const o of r.stops) { if (o === a || o === b) continue; const da = ((r.stopAlong[o] - r.stopAlong[a]) % r.length + r.length) % r.length; if (da > 0 && da < d) between++; }
   return d / SPEED + (between + 1) * DWELL;
 }
+/** The loops that go from near one place to near another, for directions when the shuttle isn't in them (no buses out,
+ *  or a time picked: with no timetable there are no times to plan with). Each loop's best pair of stops, the walks to
+ *  and from them as the crow flies, and the ride along the loop; only where that beats walking the whole way. */
+export function shuttleAlso(o, d, near = 600) {
+  if (!U) return [];
+  const out = [], WALK = 80;   // metres a minute on foot
+  U.routes.forEach((r, ri) => {
+    if (r.stops.length < 2) return;
+    let best = null;
+    for (const a of r.stops) {
+      const wa = distance(o.lat, o.lon, U.stops[a].lat, U.stops[a].lon);
+      if (wa > near) continue;
+      for (const b of r.stops) {
+        if (b === a) continue;
+        const wb = distance(U.stops[b].lat, U.stops[b].lon, d.lat, d.lon);
+        if (wb > near) continue;
+        const secs = rideSecs(ri, a, b), mins = (wa + wb) / WALK + secs / 60;
+        if (!best || mins < best.mins) best = { ri, a, b, wa, wb, secs, mins };
+      }
+    }
+    if (best) out.push(best);
+  });
+  const whole = distance(o.lat, o.lon, d.lat, d.lon) / WALK;
+  return out.filter(x => x.mins < whole - 3).sort((x, y) => x.mins - y.mins).slice(0, 2);
+}
 /** The shuttle as the trip planner sees it, while it runs: its stops, the loops with a bus on them inside their
  *  hours, each bus's wait at a stop and the seconds on from there. Null when none is running or the feed has gone
  *  quiet, and the planner is Connect's alone. */

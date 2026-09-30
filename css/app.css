@@ -186,6 +186,11 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 /* a route under the pointer on a desktop, on the map or here: its badges ringed */
 .badge.hov, .uchip.hov { box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent); }
 /* directions: leave now, or at a day and time picked */
+/* the shuttle where the ways couldn't have it: which loop, the ride, when it runs */
+.shuttle-also { display: flex; flex-direction: column; gap: 10px; padding: 4px 16px 12px; }
+.sa-row { display: flex; gap: 10px; align-items: flex-start; }
+.sa-row .col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sa-row .sub { font-size: 0.8125rem; line-height: 1.4; color: var(--cr-muted); }
 .gowhen { display: flex; flex-direction: column; gap: 8px; padding: 4px 16px 10px; }
 .gowhen > .btn { align-self: flex-start; gap: 8px; }
 .gowhen-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

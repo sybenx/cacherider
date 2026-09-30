@@ -7,7 +7,7 @@ import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTit
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
 import { spotOf, spotKey, atPath } from '../geo.js';
-import { U, planNet, chip } from '../usu.js';
+import { U, planNet, chip, shuttleAlso, hours } from '../usu.js';
 import { nearMe, app } from '../main.js';
 
 /** Where to and where from, from the address: the stop or spot, its name, and the origin (null till one's chosen). */
@@ -68,14 +68,24 @@ function leaveAt(t, clockNow) {
  *  today (from the day's start if later); none, the first way there, said so (lateBy). */
 function waysFor(origin, dest, fixed, clockNow) {
   const c = fixed || clockNow, live = liveFor(fixed, clockNow), sh = live ? planNet(clockNow) : null;
-  if (!fixed || !fixed.by) return { found: journeys(origin, dest, c, 8, live ? planNet(c) : null, live), c, live };
+  if (!fixed || !fixed.by) { const sh2 = live ? planNet(c) : null; return { found: journeys(origin, dest, c, 8, sh2, live), c, live, sh: sh2 }; }
   const from = fixed.ymd === clockNow.ymd ? clockNow : { ...fixed, min: 0 };
   const found = journeys(origin, dest, from, 8, sh, live, fixed.min);
-  if (found.walk !== undefined || found.plans.length) return { found, c, live };
-  return { found: journeys(origin, dest, from, 8, sh, live), c: from, live, lateBy: true };
+  if (found.walk !== undefined || found.plans.length) return { found, c, live, sh };
+  return { found: journeys(origin, dest, from, 8, sh, live), c: from, live, lateBy: true, sh };
 }
 /** The feed's word counts for now and the next hour and a half today; a time further off is the timetable's alone
  *  (and the shuttle, whose times are its buses' whereabouts, only then). */
+/** The shuttle where the ways above couldn't have it (its buses not out, or a time picked: no timetable, no times),
+ *  on a day it runs: the loops that go from near here to near there, how long the ride, and when it runs. */
+function shuttleNote(o, d, c, sh) {
+  if (sh || !U || !U.service || !U.service.days[(dayFrom(c.ymd).dow + 6) % 7]) return '';
+  const also = shuttleAlso(o, d);
+  if (!also.length) return '';
+  const hrs = ri => { const h = hours(ri); return h.charAt(0).toUpperCase() + h.slice(1); };
+  return html`<div class="shuttle-also">${also.map(x => html`<div class="sa-row">${chip(x.ri, 24)}<div class="col"><b>The ${U.name} also goes there</b>
+    <span class="sub">${U.routes[x.ri].name}: on at ${U.stops[x.a].name}${x.wa >= 60 ? ` (${metres(x.wa)} walk)` : ''}, about ${Math.max(1, Math.round(x.secs / 60))} min to ${U.stops[x.b].name}. ${hrs(x.ri)}. Its times show here while its buses are out.</span></div></div>`)}</div>`;
+}
 const tooLate = c => html`<div class="callout">${icon('info', 20)}<div><b>No bus gets there by ${clockText(c.min)}</b><div class="sub">The first way there:</div></div></div>`;
 const liveFor = (c, clockNow) => !c || (c.ymd === clockNow.ymd && c.min - clockNow.min <= 90);
 const hashWith = t => location.hash.split('?')[0] + (t ? '?t=' + t : '');
@@ -112,7 +122,8 @@ export function render({ to, from, at, plan, t }, clockNow) {
 
   const fixed = leaveAt(t, clockNow);
   parts.push(whenControl(fixed, clockNow));
-  const { found, c, lateBy } = waysFor(origin, dest, fixed, clockNow);   // the shuttle too, while it runs
+  const { found, c, lateBy, sh } = waysFor(origin, dest, fixed, clockNow);   // the shuttle too, while it runs
+  const also = shuttleNote(origin.si !== undefined ? stop(origin.si) : origin, d, c, sh);
   if (found.walk !== undefined) {
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div></div></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
@@ -120,6 +131,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
   if (!found.plans.length) {
     const o = origin.si !== undefined ? stop(origin.si) : origin, apart = distance(o.lat, o.lon, d.lat, d.lon);
     if (apart > 1000) return { html: parts.concat(noBus(d, name, apart)).join(''), mount, title: 'Directions' };
+    if (also) parts.push(also);
     parts.push(html`<div class="empty"><h2>No way there by bus</h2><p>Nothing in the timetable joins these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
     if (hubBay && origin.si !== D.hub.bays[0].stop) parts.push(html`<div class="chips"><a class="chip" href="#/go/${to}/${hubBay}">Try from the ${D.hub.name}</a></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
@@ -128,13 +140,13 @@ export function render({ to, from, at, plan, t }, clockNow) {
   // it on a wide screen), with the ways as rows to draw another.
   if (lateBy) parts.push(tooLate(fixed));
   const J = pickPlan(found.plans, plan, e, c, fixed ? t : null);
-  return { html: sheet(J, parts, c, !!fixed), mount, title: 'Directions', keepScroll: true, journey: J };
+  return { html: sheet(J, parts, c, !!fixed, also), mount, title: 'Directions', keepScroll: true, journey: J };
 }
 /** The sheet: the head, the ways as rows (the drawn one marked), then the drawn way told leg by leg. */
-function sheet(J, head, clockNow, fixed = false) {
+function sheet(J, head, clockNow, fixed = false, also = '') {
   const p0 = J.plans[0];
   const day = p0.day > 0 ? html`<div class="dayhead">${fixed ? fmtDay(p0.ymd, true) + ' · nothing more that day' : (p0.day === 1 ? 'Tomorrow, ' + fmtDay(p0.ymd) : fmtDay(p0.ymd, true)) + ' · nothing more today'}</div>` : '';
-  return html`<div class="gohead">${head}${day}<div class="jrows" role="list">${J.plans.map((p, k) => planRow(p, J.hrefs[k], k === J.i, clockNow, fixed))}</div></div>
+  return html`<div class="gohead">${head}${day}${also}<div class="jrows" role="list">${J.plans.map((p, k) => planRow(p, J.hrefs[k], k === J.i, clockNow, fixed))}</div></div>
     <div class="journeysheet legs">${planLegs(J.plans[J.i], J)}</div>
     <div class="fine">Worked out on this phone from the timetable and the live feed: leave when it says, and the next bus is the answer if one is missed. Walks are as the crow flies.</div>`.s;
 }
@@ -190,9 +202,10 @@ function pickPlan(plans, key, e, clockNow, t = null) {
 export function journey({ to, from, at, t }, key, clockNow) {
   const e = ends({ to, from, at });
   if (e.dest === undefined || !e.origin) return null;
-  const fixed = leaveAt(t, clockNow), { found, c, lateBy } = waysFor(e.origin, e.dest, fixed, clockNow);
+  const fixed = leaveAt(t, clockNow), { found, c, lateBy, sh } = waysFor(e.origin, e.dest, fixed, clockNow);
   const J = pickPlan(found.plans || [], key, e, c, fixed ? t : null);
-  if (J) { const { parts } = headOf(to, e, at); parts.push(whenControl(fixed, clockNow)); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed); J.mount = el => mount(el, null, true); }
+  const also = shuttleNote(e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d, c, sh);
+  if (J) { const { parts } = headOf(to, e, at); parts.push(whenControl(fixed, clockNow)); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed, also); J.mount = el => mount(el, null, true); }
   return J;
 }
 
