@@ -3,6 +3,7 @@
 import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom } from '../time.js';
 import { routeNames, html, icon, badge, time, sched, corners, depRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
+import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
 import { metres as m2 } from '../time.js';
 import { afterSave, app } from '../main.js';
@@ -18,6 +19,7 @@ export function render({ id, full, run, on }, clockNow) {
   const parts = [];
   const sv = isSaved(s.id);
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
+    ${shareButton({ url: siteLink('stop/' + s.id), title: s.name, lines: [`Stop ${s.code || s.id}${s.town && s.town !== 'Logan' ? ' · ' + s.town : ''}`, 'Its next buses, live when they report'] })}
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
   const sd = side(si);
   const eyebrow = `${s.town} · Stop ${s.code || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces

@@ -2,6 +2,7 @@
 import { D, BASE, pref, A, activeAlerts, alertRoutes } from '../data.js';
 import { fmtDay, is24, isKm } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
+import { shareBlock, siteLink, fillQRs } from '../share.js';
 import { U } from '../usu.js';
 import { installState, installSheet, app, themeButton, cycleTheme, nearMe, nearOff, toggleClock, toggleUnits } from '../main.js';
 
@@ -39,6 +40,7 @@ export function render({ section }, clockNow) {
       <p>${D.feed.version || ''}</p>
       <p><a href="${D.agency.url}" target="_blank" rel="noopener">${site(D.agency.url)}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fare free</a>` : ''}${U && U.url ? html`<br><a href="${U.url}" target="_blank" rel="noopener">${site(U.url)}</a>${U.phone ? ' · ' + U.phone : ''} · fare free` : ''}</p>
       <p><a href="https://github.com/sybenx/cacherider" target="_blank" rel="noopener">Source on GitHub</a> · Companion to the <a href="https://github.com/sybenx/headway" target="_blank" rel="noopener">Headway</a> Pebble watchface. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, via Protomaps.</p></div>
+    ${shareBlock({ url: siteLink(''), title: 'Share Cache Rider', lines: ['Next buses for Cache Valley, on any phone. Nothing to install.'] })}
     <div class="fine">Cache Rider isn't affiliated with ${D.agency.name}${U && U.agency ? ' or ' + U.agency : ''}.</div>`;
   return {
     title: 'About',
@@ -65,6 +67,7 @@ function installBlock() {
 const MARK = BASE + 'tiles/.saved', INDEX = BASE + 'tiles/tiles.json';   // the mark: in the map cache only once every tile is
 
 async function mount(el) {
+  fillQRs(el);
   const th = el.querySelector('#theme');
   if (th) th.onclick = cycleTheme;
   for (const b of el.querySelectorAll('[data-clock]')) b.onclick = () => { if ((b.dataset.clock === '24') !== is24()) toggleClock(); };

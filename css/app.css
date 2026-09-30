@@ -385,6 +385,26 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 /* saved stops */
 .section.saved .edit { margin-left: auto; min-height: 36px; padding: 0 8px; font-family: var(--font-body); font-size: 0.9375rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .backbar .save { margin-left: auto; font-size: 1rem; gap: 6px; }
+/* Share: the phone's own glyph and the word, quiet, beside Save or across from Back */
+.sharebtn { margin-left: auto; font-size: 0.9375rem; gap: 6px; color: var(--cr-muted); padding-inline: 8px; }
+.sharebtn + .save { margin-left: 0; }
+.sharedlg { width: min(340px, calc(100vw - 32px)); padding: 16px; border: 0; border-radius: 12px; background: var(--color-bg); color: var(--color-text); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+.sharedlg::backdrop { background: rgba(0,0,0,.5); }
+.sharedlg .sd-top { display: flex; align-items: flex-start; gap: 8px; }
+.sharedlg h2 { flex: 1; margin: 6px 0 0; font-size: 1.125rem; font-weight: 600; line-height: 1.25; }
+.sharedlg .sd-close { margin: -4px -8px 0 0; color: var(--cr-muted); }
+.sharedlg .sd-qr { margin: 14px auto 0; width: 220px; max-width: 100%; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #fff; }
+.sharedlg .sd-qr svg { display: block; width: 100%; height: 100%; }
+.sharedlg .sd-lines { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; font-size: 0.875rem; color: var(--cr-muted); text-align: center; }
+.sharedlg .sd-acts { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.sharedlg .sd-acts .btn { justify-content: center; gap: 8px; min-height: 48px; }
+.shareblock { display: flex; gap: 16px; align-items: center; margin: 16px; padding: 14px; border: 1px solid var(--cr-line); border-radius: 12px; }
+.shareblock .sb-qr { flex: none; width: 112px; height: 112px; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: #fff; cursor: zoom-in; }
+.shareblock .sb-qr svg { display: block; width: 100%; height: 100%; }
+.shareblock .sb-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 0.875rem; color: var(--cr-muted); }
+.shareblock .sb-side b { font-size: 1rem; color: var(--color-text); font-weight: 600; }
+.shareblock .sb-send { align-self: flex-start; margin-top: 8px; gap: 6px; min-height: 40px; }
+.sharedlg .sd-url { width: 100%; margin-top: 10px; font-size: 0.8125rem; padding: 8px; }
 .backbar .save[aria-pressed="true"] svg { color: var(--color-accent-700); }
 .editrow { cursor: default; }
 .editrow:hover { background: none; }
@@ -621,10 +641,12 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .mapcard:has(> .pagesheet):not(.peek) { max-height: calc(100% - 72px); }
 .mapcard > .pagesheet .backbar { padding-top: 0; }
 /* in the card, the head in one line: Back as its arrow beside where to; the page's eyebrow and town left out */
-.mapcard .gohead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.mapcard .gohead { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
 .mapcard .gohead > :not(.backbar):not(.head) { grid-column: 1 / -1; }
-.mapcard .gohead .backbar { padding: 0 0 0 4px; align-self: start; }   /* beside the title, not between it and where from */
-.mapcard .gohead .backbar .btn { font-size: 0; gap: 0; min-width: 40px; padding-inline: 8px; }
+.mapcard .gohead .backbar { display: contents; }   /* its two buttons either side of the title, not above it */
+.mapcard .gohead .backbar > .btn:first-child { grid-column: 1; grid-row: 1; align-self: start; margin-left: 4px; font-size: 0; gap: 0; min-width: 40px; padding-inline: 8px; }
+.mapcard .gohead .head { grid-column: 2; grid-row: 1; }
+.mapcard .gohead .sharebtn { grid-column: 3; grid-row: 1; align-self: start; margin-right: 8px; }
 .mapcard .gohead .head.tight { padding: 2px 16px 8px 0; }
 .mapcard .gohead .head .eyebrow, .mapcard .gohead .head .muted { display: none; }
 .mapcard .gohead .head.tight h1 { font-size: 1.375rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

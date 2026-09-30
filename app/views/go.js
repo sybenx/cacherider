@@ -7,6 +7,7 @@ import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTit
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
 import { spotOf, spotKey, atPath } from '../geo.js';
+import { shareButton, siteLink } from '../share.js';
 import { U, planNet, chip, shuttleAlso, hours } from '../usu.js';
 import { nearMe, app } from '../main.js';
 
@@ -38,15 +39,15 @@ function fromOnly(at) {
 }
 
 /** The page's head: Back, where to, and where from with its ways to change it (once there's a start). */
-function headOf(to, e, at) {
+function headOf(to, e, at, t) {
   const { spot, d, name, fromSi, origin } = e;
   const key = encodeURIComponent(to);   // the destination in the search's address
   const geo = app.geo;
   const back = spot ? `#/map/at/${d.lat.toFixed(5)},${d.lon.toFixed(5)}/${encodeURIComponent(d.label)}` : `#/stop/${d.id}`;
-  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a></div>`];
   // None chosen yet, and no location: the choice.
   const chosen = !!at || fromSi !== undefined;
   const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'where you are';
+  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a>${shareButton(shareOf(name, chosen ? fromName : null, t))}</div>`];
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
   // Where from, the trip's first setting, as when (whenControl) is its second: a button alike, the pin for 'from', the
@@ -56,6 +57,16 @@ function headOf(to, e, at) {
   return { parts, key, hubBay, from };
 }
 
+/** What a shared link to these directions opens: the address as it is, but the way picked only from a start picked
+ *  (from the rider's location the start is theirs, not the sharer's, and so are the ways), and said in words. */
+function shareOf(name, fromName, t) {
+  const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
+  const q = new URLSearchParams(query);
+  if (!fromName) q.delete('plan');
+  const c = leaveAt(t, now()), qs = q.toString();
+  const when = c ? `${c.by ? 'Arrive by' : 'Leave at'} ${clockText(c.min)}${c.ymd !== now().ymd ? ', ' + fmtDay(c.ymd, true) : ''}` : '';
+  return { url: siteLink(path + (qs ? '?' + qs : '')), title: `Directions to ${name}`, lines: [fromName ? `From ${fromName}` : 'From wherever they are when they open it', when].filter(Boolean) };
+}
 /** When, from the address: 'leave at' (t=20260930-0815) or 'arrive by' (t=a20260930-0900), as the clock picked
  *  and `by` for the second; null for now. A time already gone is now. */
 function leaveAt(t, clockNow) {
@@ -132,7 +143,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
   if (to === '-' && at) return fromOnly(at);
   const e = ends({ to, from, at }), { spot, dest, d, name, origin } = e;
   if (dest === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such stop</h2></div>`, title: 'Directions' };
-  const { parts, key, hubBay, from: fromCtl } = headOf(to, e, at);
+  const { parts, key, hubBay, from: fromCtl } = headOf(to, e, at, t);
   if (!origin) {
     parts.push(html`<div class="ask"><button class="btn btn-primary btn-lg blueprint" id="go-near" type="button">${corners()}${icon('near', 20)}From where I am</button>
       <a class="btn btn-secondary btn-lg btn-block" href="#/map/from/${to}">${icon('map', 20)}From a spot on the map</a>
@@ -229,7 +240,7 @@ export function journey({ to, from, at, t }, key, clockNow) {
   const fixed = leaveAt(t, clockNow), { found, c, lateBy, sh } = waysFor(e.origin, e.dest, fixed, clockNow);
   const J = pickPlan(found.plans || [], key, e, c, fixed ? t : null);
   const also = shuttleNote(e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d, c, sh);
-  if (J) { const { parts, from } = headOf(to, e, at); parts.push(tripRow(from, whenControl(fixed, clockNow))); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed, also); J.mount = el => mount(el, null, true); }
+  if (J) { const { parts, from } = headOf(to, e, at, t); parts.push(tripRow(from, whenControl(fixed, clockNow))); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed, also); J.mount = el => mount(el, null, true); }
   return J;
 }
 
