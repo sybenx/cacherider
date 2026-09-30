@@ -48,11 +48,11 @@ function headOf(to, e, at) {
   const chosen = !!at || fromSi !== undefined;
   const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'where you are';
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
-  // Where from, under where to, whole: tapped, the ways to change it open under the head. They were a line of their
-  // own beside the name, on a phone 'From 1111 N…' and three buttons, for a start that's seldom changed.
-  const fromBtn = origin ? html`<button type="button" class="fromname" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}">${icon(at ? 'pin' : 'near', 14)}<span>from <b>${fromName}</b></span>${icon('down', 14)}</button>` : '';
-  parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}${fromBtn}</div>`);
-  if (origin) parts.push(html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div>`);
+  parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
+  // Where from, the trip's first setting, as when (whenControl) is its second: a button alike, the pin for 'from', the
+  // name whole, and tapped, the ways to change it under it. It was 'From 1111 N…' and three buttons on a line.
+  if (origin) parts.push(html`<div class="gowhen gofrom"><button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t">${fromName}</span>${icon('down', 16)}</button>
+    <div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div></div>`);
   return { parts, key, hubBay };
 }
 
@@ -101,7 +101,7 @@ function whenControl(c, clockNow) {
   const key = (c ? (c.by ? 'a' : '') + c.ymd + c.min : '');
   if (pickFor !== key) { pickFor = key; pickBy = !!(c && c.by); pickOpen = false; }
   const by = pickBy;
-  return html`<div class="gowhen"><button type="button" class="btn btn-secondary" id="go-when" aria-expanded="${pickOpen ? 'true' : 'false'}">${icon('clock', 18)}${label}</button>
+  return html`<div class="gowhen"><button type="button" class="btn btn-secondary" id="go-when" aria-expanded="${pickOpen ? 'true' : 'false'}">${icon('clock', 18)}<span class="gw-t">${label}</span>${icon('down', 16)}</button>
     <div class="gowhen-pick"${pickOpen ? '' : ' hidden'}><div class="seg" role="group" aria-label="Leave or arrive"><button type="button" data-by="0" aria-pressed="${by ? 'false' : 'true'}">Leave at</button><button type="button" data-by="1" aria-pressed="${by ? 'true' : 'false'}">Arrive by</button></div><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
     <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div></div>`;
 }
@@ -188,11 +188,13 @@ function findPlan(plans, key) {
 let kept = null;
 function pickPlan(plans, key, e, clockNow, t = null) {
   const base = location.hash.split('?')[0];
-  let list = plans, i = key ? findPlan(plans, key) : -1;
+  let list = plans, i = key ? findPlan(plans, key) : -1, own = i >= 0;
   // Kept only for a way picked (not the first of whatever's listed, which then showed twice), and for the same time.
-  if (i < 0 && key && kept && kept.base === base && kept.key === key && kept.t === t) { list = [kept.plan, ...plans]; i = 0; }
+  if (i < 0 && key && kept && kept.base === base && kept.key === key && kept.t === t) { list = [kept.plan, ...plans]; i = 0; own = true; }
   if (i < 0) { if (!plans.length) return null; i = 0; }
-  kept = { base, key, t, plan: list[i] };
+  // Only the way the address names is kept under its name: a way gone before this page was drawn (a reload after its
+  // bus left) fell back to the first listed, kept as that name, and was listed again on top of itself at the next draw.
+  kept = own ? { base, key, t, plan: list[i] } : null;
   const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
   return { plans: list, i, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon }, name: e.name, base,
     hrefs: list.map(p => base + '?' + (t ? 't=' + t + '&' : '') + 'plan=' + encodeURIComponent(planKey(p))),   // a time picked goes with the way
