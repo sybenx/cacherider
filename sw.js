@@ -1,6 +1,9 @@
 // Cache Rider's service worker: the app and the timetable kept on the phone,
 // the map's tiles kept as they are seen, or all at once from the About page.
-const VERSION = 'cr-v172';
+// The phone answers from what it keeps, never waiting on the network: the app
+// as this version installed it (a deploy is a new version, and the page offers
+// a reload), the data files as last fetched, each checked behind the page.
+const VERSION = 'cr-v173';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js',
@@ -30,10 +33,27 @@ self.addEventListener('fetch', e => {
   if (path === 'tiles/tiles.json') return e.respondWith(tileIndex(e.request));
   if (path.startsWith('tiles/')) return e.respondWith(cacheFirst(e.request, 'cr-map'));
   if (path.startsWith('vendor/basemaps-assets/')) return e.respondWith(cacheFirst(e.request, 'cr-assets'));
-  if (path.startsWith('data/')) return e.respondWith(networkFirst(e.request));
-  if (path.startsWith('fonts/') || path.startsWith('vendor/')) return e.respondWith(cacheFirst(e.request, VERSION));
-  e.respondWith(networkFirst(e.request));
+  // The timetable is dated inside (the app picks each day's services), so the one kept is right today; a newer one
+  // is fetched behind it for the next time the app opens.
+  if (path.startsWith('data/')) return e.respondWith(keptThenChecked(e));
+  e.respondWith(shell(e.request));
 });
+
+/** The app itself, as this version installed it: all its files from one deploy. */
+async function shell(req) {
+  const c = await caches.open(VERSION);
+  const hit = await c.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? await c.match('./index.html') : null);
+  return hit || networkFirst(req);
+}
+
+/** A data file as last fetched, at once, and the network asked behind it; the network waited on only with nothing kept. */
+async function keptThenChecked(e) {
+  const c = await caches.open(VERSION);
+  const hit = await c.match(e.request, { ignoreSearch: true });
+  if (!hit) return networkFirst(e.request);
+  e.waitUntil(fetch(e.request, { cache: 'no-cache' }).then(res => res.ok ? c.put(e.request, res) : null).catch(() => {}));
+  return hit;
+}
 
 async function cacheFirst(req, name) {
   const c = await caches.open(name);

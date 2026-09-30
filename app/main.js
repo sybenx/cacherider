@@ -82,6 +82,8 @@ function parse() {
 }
 
 export const isDesktop = isWide;
+/** The files past the timetable (search's, the shuttle's, POOL's, walks'), in: the map waits for them. */
+let extrasReady = false, extras = null;
 /** Wide enough for a page to take the whole width, in columns (the Transit Center). */
 
 async function ensureMap() {
@@ -256,8 +258,11 @@ async function render(tick = false) {
     runSheetOf(view);
     if (!unchanged) view.mount && view.mount(side, app);
   } else runSheetOf(view);   // a stop as the map's sheet: its run sheet here too, before the sheet's mount wires it
-  // The map is drawn for the Map tab (a phone's stop and its run are the map with a sheet) and beside a wide screen's pages.
-  if (mapOpen || isDesktop()) {
+  // The map is drawn for the Map tab (a phone's stop and its run are the map with a sheet) and beside a wide screen's pages,
+  // once the shuttle, places and the rest it draws are in: beside a first page drawn without them, a moment after it.
+  // A phone's map page asked for in the moment before they're in (the home page's stop tapped at once) waits for them.
+  if (mapOpen && !extrasReady && extras) await extras;
+  if ((mapOpen || isDesktop()) && extrasReady) {
     const m = await ensureMap();
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: dec(seg[3] || '') } : null;
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert', mapB = name === 'map' && seg[1] === 'bus';
@@ -509,10 +514,21 @@ function syncHeader(name, q) {
   else if (name !== 'map') input.value = '';
 }
 
+/** Whether the first page answers from the timetable alone, the rest coming after it: the home page, and beside a wide
+ *  screen's map a stop and the Transit Center too (the map waits for the rest instead). A phone's stop and the
+ *  Center are the map with a sheet, and search, directions and the shuttle need the rest to say anything. */
+function lightFirst() {
+  const h = location.hash || '#/';
+  return ['#', '#/'].includes(h) || isDesktop() && /^#\/(stop\/|hub(\/|$))/.test(h);
+}
+
 async function boot() {
+  // The first page asks only for the timetable and the alerts file, both kept on the phone: never the relay, never the
+  // files for search, the shuttle, POOL and walks, which follow it.
   try {
-    await Promise.all([load(), loadGrid()]);
-    await Promise.all([loadUSU(), loadAlerts(), loadPlaces(), loadPool(), loadElevation()]);   // the lie of the land, for timing walks   // after the timetable: shared kerbs and alerts need its stops and routes
+    await Promise.all([load(), loadAlerts({ relay: false })]);
+    extras = Promise.all([loadGrid(), loadUSU(), loadPlaces(), loadPool(), loadElevation()]).catch(() => {}).then(() => { extrasReady = true; });   // the lie of the land, for timing walks; shared kerbs need the timetable's stops
+    if (!lightFirst()) await extras;
   } catch (e) {
     side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;
     return;
@@ -526,9 +542,12 @@ async function boot() {
   matchMedia(WIDE_MQ).addEventListener('change', () => render());
   render();
   autoLocate();
+  // The rest in, the page again with it (a saved shuttle stop, the map beside a wide screen); then the relay's alerts,
+  // fresher than the file by up to an hour, the page again if they say something new.
+  extras.then(() => render()).then(() => loadAlerts()).then(() => render());
   // The map built out of sight once the first page is up (on a phone most pages are the map), so its first tap
   // doesn't wait on it; after the page's own work, whenever the phone has a moment.
-  (window.requestIdleCallback || (f => setTimeout(f, 300)))(() => ensureMap().then(m => m.warm(app)), { timeout: 1500 });
+  extras.then(() => (window.requestIdleCallback || (f => setTimeout(f, 300)))(() => ensureMap().then(m => m.warm(app)), { timeout: 1500 }));
   // The day and time at the right of the desktop header: to the minute, as the buses run.
   const tc = document.getElementById('topclock');
   const tick = () => {
@@ -552,12 +571,12 @@ async function boot() {
   onLive(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   onRt(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').then(reg => {
-    // A new worker taking over while the app is open means what's running is the old app (a phone keeps it open for
-    // days): a quiet bar offers a reload. Not on a fresh load, where the page is fresh already and the new worker
-    // simply catches up behind it. The check runs on coming back to the app and hourly, since the browser's own
-    // only runs on a navigation.
-    const openedAt = Date.now();
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (Date.now() - openedAt > 60e3) updateBar(); });
+    // A new worker taking over means what's running is the old app: the page is served from what the phone keeps,
+    // so even a fresh load is the last version until the new one is in. A quiet bar offers a reload. Not on the very
+    // first visit, when there was no worker and the page came from the network. The check runs on coming back to the
+    // app and hourly, since the browser's own only runs on a navigation.
+    const hadWorker = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadWorker) updateBar(); });
     const check = () => reg.update().catch(() => {});
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
     setInterval(check, 3600e3);

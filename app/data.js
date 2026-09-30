@@ -4,17 +4,20 @@ import { now, dayFrom, dayDiff, setZone, dayName, clockText } from './time.js';
 export let D = null;           // the reduced feed
 export const BASE = new URL('..', import.meta.url).href;   // the app's root, wherever it is served from
 
-export async function load() {
-  if (D) return D;
-  const r = await fetch(BASE + 'data/cvtd.json', { cache: 'no-cache' });
-  if (!r.ok) throw new Error('schedule ' + r.status);
-  D = await r.json(); requests = null;
-  setZone(D.agency.tz);
-  D.routeByShort = Object.fromEntries(D.routes.map((r, i) => [r.short, i]));
-  D.stopById = Object.fromEntries(D.stops.map((s, i) => [s.id, i]));
-  apart(D.routes);
-  for (const r of D.routes) r.tpSet = new Set(r.tp || []);
-  return D;
+// Once, however many ask at the same time (the alerts wait on it for the stops and routes they name).
+let loading = null;
+export function load() {
+  return loading ??= (async () => {
+    const r = await fetch(BASE + 'data/cvtd.json', { cache: 'no-cache' });
+    if (!r.ok) throw new Error('schedule ' + r.status);
+    D = await r.json(); requests = null;
+    setZone(D.agency.tz);
+    D.routeByShort = Object.fromEntries(D.routes.map((r, i) => [r.short, i]));
+    D.stopById = Object.fromEntries(D.stops.map((s, i) => [s.id, i]));
+    apart(D.routes);
+    for (const r of D.routes) r.tpSet = new Set(r.tp || []);
+    return D;
+  })().catch(e => { loading = null; throw e; });
 }
 /** A timepoint of a route's: a stop its timetable is kept to, where an early bus waits for its time (the feed's
  *  own mark, stop_times' timepoint, the same stops on every trip of a route). */
@@ -147,17 +150,19 @@ export function searchPlaces(q, limit = 8) {
   return { list: all.slice(0, limit), more: Math.max(0, all.length - limit) };
 }
 /** The live relay, which serves the agency's notices minutes after they're posted; data/alerts.json (fetched by
- *  GitHub every so often) stands in when it can't be reached. */
+ *  GitHub every so often) stands in when it can't be reached. The first page is drawn from the file alone, kept on
+ *  the phone, and never waits on the relay: `relay: false`. */
 export const LIVE_URL = 'https://live.cacherider.com/';
-export async function loadAlerts() {
+export async function loadAlerts({ relay = true } = {}) {
   try {
     let j = null;
-    try { const r = await fetch(LIVE_URL + 'alerts', { cache: 'no-store' }); if (r.ok) j = await r.json(); } catch { /* the file, then */ }
+    if (relay) try { const r = await fetch(LIVE_URL + 'alerts', { cache: 'no-store' }); if (r.ok) j = await r.json(); } catch { /* the file, then */ }
     if (!j || !Array.isArray(j.alerts)) {
       const r = await fetch(BASE + 'data/alerts.json', { cache: 'no-cache' });
       if (!r.ok) return;
       j = await r.json();
     }
+    await load();   // the stops and routes the alerts name
     const byStop = {}, byRoute = {};
     for (const a of j.alerts) {
       if (!/^https?:\/\//i.test(a.url || '')) a.url = '';   // a link out, and only that: never a script's
@@ -167,7 +172,7 @@ export async function loadAlerts() {
       for (const id of a.stops || []) (byStop[id] ||= []).push(a);
       for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
     }
-    A = { ...j, byStop, byRoute, loadedAt: Date.now() };
+    A = { ...j, byStop, byRoute, loadedAt: relay ? Date.now() : A.loadedAt };   // the file alone is no check of the relay
   } catch { /* the app is fine without alerts */ }
 }
 // A notice that closes a stop but assigns none ('Due to construction, the stop at 355 North Main St. in Logan is
