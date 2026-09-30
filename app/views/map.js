@@ -1375,24 +1375,34 @@ const hubFit = () => ({ margin: wide() ? 50 : HUB_M, bearing: 180, minZoom: HUB_
  *  the app had opened with nothing else to do: opened on the Center, the town's tiles waited for the Map tab, and
  *  the other way round. MapLibre has no way to load a view it isn't showing, so this reaches into its tile manager
  *  (the vendored build, pinned; anything not as expected and it does nothing): a view's tiles by its own covering,
- *  loaded beside the ones on screen and kept out of the drawing, then let go to its cache once they're in. */
-let warmStyle = null, warmExtra = [], warmKeys = new Set();
+ *  asked for beside the ones on screen, and each put in its cache the moment it's in, before a frame is drawn. Left
+ *  among the tiles on screen, a frame readied its labels for drawing while placing none of them: their buffers made
+ *  empty, and once that view was shown every frame threw on them ("length of new data ... current length of 0"). */
+let warmStyle = null, warmExtra = [];
 function warmViews() {
   if (!map || !ready || !map.style || warmStyle === map.style || map.isMoving()) return;
   const T = map.style.tileManagers && map.style.tileManagers.protomaps;
-  if (!T || typeof T.update !== 'function' || typeof T._updateRetainedTiles !== 'function' || typeof T._addTile !== 'function' || !T._inViewTiles || !T.transform || typeof T.transform.clone !== 'function') return;
+  if (!T || typeof T.update !== 'function' || typeof T._updateRetainedTiles !== 'function' || typeof T._addTile !== 'function' || typeof T._tileLoaded !== 'function'
+    || typeof T._removeTile !== 'function' || !T._inViewTiles || !T._outOfViewCache || typeof T._outOfViewCache.has !== 'function' || !T.transform || typeof T.transform.clone !== 'function') return;
   warmStyle = map.style;
   try {
     if (!T._warmed) {
-      const retain = T._updateRetainedTiles, renderable = T.getRenderableIds;
+      const retain = T._updateRetainedTiles, loaded = T._tileLoaded;
       let ideal = new Set();
       T._updateRetainedTiles = function (ids, z) {
         ideal = new Set(ids.map(i => i.key));
         const kept = retain.call(this, ids, z);
-        for (const id of warmExtra) { this._addTile(id); kept[id.key] = id; }
+        for (const id of warmExtra) if (!ideal.has(id.key)) { this._addTile(id); kept[id.key] = id; }
         return kept;
       };
-      T.getRenderableIds = function (...a) { const ids = renderable.apply(this, a); return warmKeys.size ? ids.filter(k => !warmKeys.has(k) || ideal.has(k)) : ids; };
+      T._tileLoaded = function (tile, ...rest) {
+        const r = loaded.call(this, tile, ...rest), k = tile.tileID.key;
+        if (warmExtra.some(id => id.key === k)) {
+          warmExtra = warmExtra.filter(id => id.key !== k);
+          if (!ideal.has(k) && this._inViewTiles.getTileById(k) === tile) this._removeTile(k);   // to the cache, undrawn
+        }
+        return r;
+      };
       T._warmed = true;
     }
     const bb = hubBounds(), fit = frameCam(bb, hubFit()), hz = fit ? fit.zoom : 18, cams = [{ center: HOME, zoom: 13 }];
@@ -1400,22 +1410,15 @@ function warmViews() {
     if (beforeHub) cams.push(beforeHub);
     for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: 180 });
     const want = new Map();
-    for (const c of cams) for (const id of tilesFor(T, c)) if (!T._inViewTiles.getTileById(id.key)) want.set(id.key, id);
+    for (const c of cams) for (const id of tilesFor(T, c)) if (!T._inViewTiles.getTileById(id.key) && !T._outOfViewCache.has(id)) want.set(id.key, id);
     if (!want.size) return;
-    warmExtra = [...want.values()]; warmKeys = new Set(want.keys());
+    warmExtra = [...want.values()];
     // Its tiles are fitted to the view only when the map moves (a repaint alone doesn't): asked here, at the view as it is.
     const refit = () => T.update(T.transform, T.terrain);
-    refit(); map.triggerRepaint();
-    const t0 = Date.now();
-    const done = () => {
-      const left = warmExtra.filter(id => { const t = T._inViewTiles.getTileById(id.key); return t && !t.hasData() && t.state !== 'errored'; });
-      if (left.length && Date.now() - t0 < 8000) return setTimeout(done, 150);
-      // In: let go to the cache (a tile with labels is held a fade's length first, still kept out of the drawing).
-      warmExtra = []; if (!map.isMoving()) refit(); map.triggerRepaint();
-      setTimeout(() => { warmKeys = new Set(); }, 1500);
-    };
-    setTimeout(done, 150);
-  } catch { warmExtra = []; warmKeys = new Set(); }
+    refit();
+    // Any not in after a while (the tiles slow to come): let go, not kept loading beside the view for good.
+    setTimeout(() => { if (warmExtra.length) { warmExtra = []; if (!map.isMoving()) refit(); } }, 8000);
+  } catch { warmExtra = []; }
 }
 /** The tiles MapLibre would want for a camera, a little past the screen's edges: its own covering, run on a copy of
  *  the map's transform, with nothing added or let go. */
