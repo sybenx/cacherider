@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, LIVE_URL, tripStops, tripEnd } from './data.js';
+import { D, setLive, distance, LIVE_URL, tripStops, tripEnd, runOf } from './data.js';
 import { now, dayDiff, clockText } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -216,7 +216,7 @@ function loopAtHub(t, u, sid, hit) {
 export function predict(t) {
   if (t.trip === undefined || t.day || rtStale() || !D.trips) return null;
   const u = rt.trips[D.trips[t.trip]];
-  if (!u) return null;
+  if (!u) return dueOnRun(t) ? KEEPS : null;   // no word on it yet: on time if its bus, on the trip before, is due in
   const p = feedSays(t, u);
   // From a Transit Center bay, a departure can't leave before the bus that runs it is in: that bus (the trip's own
   // vehicle) may still be finishing the trip before. Every screen reads this one rule.
@@ -234,15 +234,35 @@ export function predict(t) {
   if (p && !p.gone && h && !(isLoop(t.r) && loopSpacing(t.r)) && h.seq.findIndex(([m, si]) => si === t.si && m === t.min) > h.k) {
     const leaves = isLoop(t.r) ? Math.max(h.at, Math.min(h.sched, h.at + 10)) : Math.max(h.at, h.sched), floor = leaves + t.min - h.sched;
     const hit = u.at.get(D.stops[t.si].id), feedAt = hit && !hit.skipped ? toMin(hit.time) + (hit.time % 60) / 60 : p.min;
-    if (floor - feedAt >= 1) return floor === t.min ? null : { ...p, min: floor, delay: floor - t.min, est: true };
+    if (floor - feedAt >= 1) return floor === t.min ? KEEPS : { ...p, min: floor, delay: floor - t.min, est: true };
   }
   // A run its bus hasn't started yet (still on the one before, or not out), the feed's time for it the timetable's to
-  // within the minute: nothing live to say, so the timetable's, in black, not 'Live · On time' a minute early.
+  // within the minute: nothing live to say, so the timetable's, in black, not 'Live · On time' a minute early. On time
+  // all the same when the bus on the run before is due in by this one's start: that's the bus's word, not the feed's
+  // copy of the timetable. Not out, or due in late: the timetable's alone.
   if (p && !p.gone && !p.est && D.stops[t.si]) {
     const hit = u.at.get(D.stops[t.si].id), bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v);
-    if (hit && !hit.skipped && !(bus && bus.trip === D.trips[t.trip]) && Math.abs(toMin(hit.time) + (hit.time % 60) / 60 - t.min) < 1) return null;
+    if (hit && !hit.skipped && !(bus && bus.trip === D.trips[t.trip]) && Math.abs(toMin(hit.time) + (hit.time % 60) / 60 - t.min) < 1) return bus && dueBy(bus, u) ? KEEPS : null;
   }
   return p;
+}
+/** The timetable's minute, and on time: the bus that runs the trip is at its bay till then (held back to it), or due in
+ *  from the run before by the trip's start. Said 'Scheduled · on time'; not a live time, nothing moved. */
+const KEEPS = { keeps: true };
+/** Whether a bus on another trip gets to that trip's last stop by the start of trip `u` (both the feed's times; the
+ *  start, for a trip not yet begun, is the timetable's). */
+function dueBy(b, u) {
+  const prev = rt.trips[b.trip], end = prev && prev.stops.find(s => s[1] === prev.end), start = Math.min(...u.stops.map(s => s[2]));
+  return !!end && isFinite(start) && end[2] <= start + 30;
+}
+/** A trip the feed says nothing of yet, whose bus is out on the run's trip before it: whether that trip's last stop is
+ *  due by this one's first minute. The first trip of a run has no bus to go by. */
+function dueOnRun(t) {
+  const run = runOf(t.trip, now().ymd), i = run.indexOf(t.trip);
+  if (i <= 0) return false;
+  const b = rt.buses.find(x => x.trip === D.trips[run[i - 1]]), prev = b && rt.trips[b.trip], first = tripStops(t.trip)[0];
+  const end = prev && prev.stops.find(s => s[1] === prev.end);
+  return !!end && !!first && toMin(end[2]) <= first[0];
 }
 /** When the bus that runs a trip gets to the Transit Center, if it's still on its way in on the trip before; else null. */
 function inbound(u, id) {
@@ -291,7 +311,7 @@ export const heldAt = (si, delay, ri) => D.stops[si] && D.stops[si].hub && !(isL
 const held = (t, delay) => { const d = heldAt(t.si, delay, t.r); return { min: t.min + d, delay: d }; };
 /** The Green and Blue Loops: far off their timetable in traffic as a matter of course, so no late or early word. */
 export const isLoop = ri => (D.hub.loops || []).includes(ri);
-setLive(t => { const p = predict(t); if (!p) return t; return p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p }; });
+setLive(t => { const p = predict(t); if (!p) return t; return p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p }; });
 
 /** How late a bus is now: the feed's minute at the stop it calls at next against the timetable's. The number every
  *  screen agrees on: the feed's word at its trip's last stop (`lastDelay`) is its guess at the rest of the run, and

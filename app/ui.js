@@ -85,7 +85,7 @@ export function time(min, size = 26, est = false) {
 
 export const sched = t => raw(t && t.req
   ? `<span class="sched req" title="The bus calls here this way only when asked: pull the cord to get off, or call ${esc(D.agency.phone)} ahead to be picked up">On request</span>`
-  : `<span class="sched">${icon('clock', 11).s}Scheduled</span>`);
+  : `<span class="sched">${icon('clock', 11).s}Scheduled${t && t.onTime ? ' · on time' : ''}</span>`);
 export const corners = () => raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>');
 
 /** What a departure is headed for: 'to N Logan · CV Hospital', 'to Preston', 'Island · Wilson · Tabernacle', 'Green
@@ -109,7 +109,7 @@ export const liveTag = t => liveMark(t.live && t.live.est ? 'Estimated' : 'Live'
 export function lively(t) {
   if (t.live || t.gone) return t;
   const p = predict(t);
-  return !p ? t : p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p };
+  return !p ? t : p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true } : { ...t, min: p.min, live: p };
 }
 /** The timetable's minute for a departure, live or not. The big time is always this one. */
 export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
