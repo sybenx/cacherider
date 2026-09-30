@@ -10,6 +10,7 @@ import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
 import { results, pickOf, forPick, placeRows } from './find.js';
 import { placeNamed } from '../places.js';
+import { hubHero, mount as hubMount } from './hub.js';
 import { byWalk, spotOf, spotKey, walkMins } from '../geo.js';
 import { isWide } from '../wide.js';
 
@@ -51,7 +52,10 @@ function landing(clockNow, app) {
   // saved), and the stops beside it; then where to (search, directions); then the Center, whose own tab has the rest;
   // then what's broken today. Without a stop yet, the ways to one come first, and the Center is a line, not the page:
   // its big countdown was the Transit Center tab's answer twice, to a first visitor who's seldom there.
-  if (heroU !== undefined) parts.push(shuttleHeroBlock(heroU, heroWhy, clockNow));
+  // At the Center (150 m of it): its next group is the big card, not a street stop past its bays.
+  const atHub = !!(app && app.geo && D.hub && distance(app.geo.lat, app.geo.lon, D.hub.lat, D.hub.lon) <= 150);
+  if (atHub) parts.push(hubHero(clockNow));
+  else if (heroU !== undefined) parts.push(shuttleHeroBlock(heroU, heroWhy, clockNow));
   else if (stopHero) parts.push(stopHeroBlock(heroSi, heroWhy, clockNow));
 
   const heroId = heroU !== undefined ? 'u:' + U.stops[heroU].id : heroSi !== undefined ? stop(heroSi).id : null;
@@ -242,6 +246,7 @@ let focusNext = false;   // arriving from the home page's box: the search's own 
 function mount(el, app) {
   window.__app = app;
   wirePointers(el, app);
+  if (el.querySelector('.hubhero')) hubMount(el);   // the Center's countdown, by the second, as on its board
   const form = el.querySelector('#search');
   // Choosing one end of a journey: the stops listed lead to the journey from (or to) each.
   const pick = form && pickOf(form.dataset.for, form.dataset.from);

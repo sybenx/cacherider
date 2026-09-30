@@ -387,9 +387,12 @@ export function nearOff() {
   render();
 }
 
-/** On load, locate only when the browser says it's already allowed: never a prompt before a tap. */
+/** On load, and back to the app with the fix gone stale (two minutes: a phone is mostly resumed, not opened, and the
+ *  morning's fix at home was the nearest stop at noon at work), locate only when the browser says it's already
+ *  allowed: never a prompt before a tap. The rough fix first, then the GPS's, as ever. */
 async function autoLocate() {
   if (pref('near') !== 'on' || !navigator.permissions) return;
+  if (app.geo && Date.now() - app.geo.at < 120000) return;
   try {
     const st = await navigator.permissions.query({ name: 'geolocation' });
     if (st.state === 'granted') locate();
@@ -599,7 +602,7 @@ async function boot() {
     lastMin = m;
     render(true);
   }, 5000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); else render(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; autoLocate(); if (Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); else render(); });
   setInterval(() => { if (document.visibilityState === 'visible' && Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); }, 60e3);   // a notice posted while the app is open shows within minutes
   // Fresh bus positions redraw a live screen in place.
   onLive(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });

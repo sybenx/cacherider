@@ -1072,3 +1072,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
   .tc-loop .when .t-36 { font-size: 1.625rem; }
   .tc-loop .where, .tc-loop .lastrun { flex-basis: 100%; }
 }
+/* The home page's big card at the Transit Center: the board's own group card, and the way to the board. */
+.hubhero { margin: 14px 16px 0; display: flex; flex-direction: column; gap: 8px; }
+.hubhero .tc-together { margin: 0; }
+.hubhero-open { gap: 8px; min-height: 44px; }

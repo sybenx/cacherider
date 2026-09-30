@@ -79,6 +79,12 @@ function board(bay, clockNow) {
   return { st, pick };
 }
 
+/** The home page's big card for a rider at the Center: the next group, as the board's own card, and a way to the board.
+ *  A rider standing in the Center wants its departures, not the nearest street stop past its bays. */
+export function hubHero(clockNow) {
+  const { st } = board(null, clockNow);
+  return html`<div class="hubhero"><div class="eye"><span class="eyebrow">You're at the ${D.hub.name}</span></div>${together(st, clockNow)}<a class="btn btn-secondary btn-block hubhero-open" href="#/hub">${icon('hub', 18)}The whole board</a></div>`;
+}
 /** The board as a page, beside the map on a wide screen. */
 export function render({ bay }, clockNow) {
   const H = D.hub;
