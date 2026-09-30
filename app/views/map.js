@@ -927,6 +927,10 @@ function fitPeek(card) {
   // The directions: down to the way drawn, the rows above it with it, so the map keeps half the screen at least.
   const pk = card.querySelector('.gohead .jrow.picked');
   if (pk) { card.style.setProperty('--peek', Math.min(pk.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.5 * map.getContainer().clientHeight) + 'px'); return; }
+  // The Center's board: down to the loops, the countdown and the Green and Blue's next buses together, the bays framed
+  // in what's left above. Swiped back down from the whole board, the same (it had come down to the countdown alone).
+  const lp = card.querySelector(':scope > .hubsheet .tc-loops');
+  if (lp) { card.style.setProperty('--peek', Math.round(Math.min(lp.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2, 0.55 * map.getContainer().clientHeight)) + 'px'); return; }
   // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it).
   const h = card.querySelector('.head');
   if (h) card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2) + 'px');
@@ -978,7 +982,10 @@ function wireGrip(app) {
     // A stop's sheet opens part way (down to its next two buses): a swipe down from there is down to its head, the map
     // to the finger; the next one puts it away.
     const tall = !!card.dataset.tall && !!card.querySelector(':scope > .pagesheet');
-    if (claimed === 'down') { if (peeked() && !tall) away(); else { delete card.dataset.tall; toPeek(at); } }
+    // The Center's board isn't put away: gone, there was nothing to bring it back but leaving the Center and coming back,
+    // and a finger scrolling up to its top and on down put it there.
+    const board = !!card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash);
+    if (claimed === 'down') { if (peeked() && board) slide(at, 0); else if (peeked() && !tall) away(); else { delete card.dataset.tall; toPeek(at); } }
     else if (peeked()) { delete card.dataset.tall; toFull(at); }
     else { slide(at, 0); const href = pageHref(); if (href) location.hash = href; }   // the page slides up over the map
   };
@@ -989,9 +996,14 @@ function wireGrip(app) {
   });
   // A mouse's wheel or a trackpad (a desktop window narrow enough for a phone's layout): scrolled on a card down to
   // its head, the card opens out, as a swipe up does; it had nothing to scroll, so did nothing. Opened, it scrolls.
-  let wheelAt = 0;
+  // Opened and at its top, a fresh scroll up (not the tail of the one that brought it there) is down to its head again,
+  // as a swipe down is: there was no way back but the grip.
+  let wheelAt = 0, wheelLast = -1e9;
   card.addEventListener('wheel', e => {
-    if (!peeked() || e.deltaY <= 0 || e.ctrlKey) return;
+    const fresh = e.timeStamp - wheelLast > 300; wheelLast = e.timeStamp;
+    if (e.ctrlKey) return;
+    if (!peeked() && e.deltaY < 0 && card.scrollTop <= 0 && fresh && card.classList.contains('open') && !wide()) { e.preventDefault(); wheelAt = e.timeStamp; toPeek(); return; }
+    if (!peeked() || e.deltaY <= 0) return;
     e.preventDefault();
     if (e.timeStamp - wheelAt < 400) return;   // one opening for one flick
     wheelAt = e.timeStamp; delete card.dataset.tall; toFull();
@@ -1337,14 +1349,7 @@ function hubCard(clockNow) {
   else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); hubKey = s.pick || ''; }
   card.classList.remove('hidden');
   card.classList.add('open');
-  if (!again) {
-    fitPeek(card);
-    // The board opens down to the loops, the countdown and the Green and Blue's next buses together, the bays framed in
-    // what's left above: a route picked opens at its own card.
-    const lp = !s.pick && card.querySelector('.tc-loops');
-    if (lp) card.style.setProperty('--peek', Math.round(Math.min(lp.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2, 0.55 * map.getContainer().clientHeight)) + 'px');
-    card.classList.add('peek');
-  }
+  if (!again) { fitPeek(card); card.classList.add('peek'); }   // down to the loops; a route picked, its own card
   hubMount(card);
 }
 /** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
