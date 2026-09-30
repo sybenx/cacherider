@@ -169,7 +169,8 @@ export function depRow(t0, clockNow, opts = {}) {
 export function stopRow(si, next0, clockNow, opts = {}) {
   const s = stop(si);
   const next = next0 ? lively(next0) : next0;
-  const end = next
+  // bare: a stop as the map lists it, no time at all (its times are its page's)
+  const end = opts.bare ? '' : next
     ? `<div class="end"><div class="when">${badge(next.r, 20).s}${when(next, 22).s}</div>${loopArrival(next) ? '' : `<span class="rel">${esc(relative(next, clockNow))}</span>`}${next.live ? liveTag(next).s : sched(next).s}</div>`
     : `<div class="end"><span class="rel${opts.warn ? ' warnmark' : ''}">${esc(opts.none || 'No service today')}</span></div>`;
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
@@ -220,8 +221,8 @@ export function side(si) {
  *  it's offered, with that side's next bus. `dest` adds where that bus is going ('to Transit Center'), which anyone
  *  can use where a compass word can't; it's the first thing cut when the pill runs short. A link to that stop's page;
  *  on the map's card, a button that swaps the card to it. */
-export function acrossPill(si, clockNow, { button = false, dest = false } = {}) {
-  const [ti, td] = stop(si).twin, t = stop(ti), n = nextAt(ti, 1, clockNow)[0], sd = side(ti);
+export function acrossPill(si, clockNow, { button = false, dest = false, bare = false } = {}) {
+  const [ti, td] = stop(si).twin, t = stop(ti), n = bare ? null : nextAt(ti, 1, clockNow)[0], sd = side(ti);   // bare: the map's, no time
   dest = dest && n && tellsApart(n);
   const title = esc(`${t.name}${sd ? ' · ' + sd : ''} · ${metres(td)}`);
   const inner = `${icon('swap', 14).s}<span class="tw-way">Across the road</span>${n ? `<span class="tw-t">· ${esc(clockText(n.min))}</span>` : ''}${dest ? `<span class="tw-d">· ${esc(headsign(n))}</span>` : ''}`;
