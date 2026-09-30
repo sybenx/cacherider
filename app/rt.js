@@ -252,8 +252,8 @@ const KEEPS = { keeps: true };
 /** Whether a bus on another trip gets to that trip's last stop by the start of trip `u` (both the feed's times; the
  *  start, for a trip not yet begun, is the timetable's). */
 function dueBy(b, u) {
-  const prev = rt.trips[b.trip], end = prev && prev.stops.find(s => s[1] === prev.end), start = Math.min(...u.stops.map(s => s[2]));
-  return !!end && isFinite(start) && end[2] <= start + 30;
+  const prev = rt.trips[b.trip], at = prev && endAt(b, prev), start = Math.min(...u.stops.map(s => s[2]));
+  return at != null && isFinite(start) && at <= start + 30;
 }
 /** A trip the feed says nothing of yet, whose bus is out on the run's trip before it: whether that trip's last stop is
  *  due by this one's first minute. The first trip of a run has no bus to go by. */
@@ -261,8 +261,8 @@ function dueOnRun(t) {
   const run = runOf(t.trip, now().ymd), i = run.indexOf(t.trip);
   if (i <= 0) return false;
   const b = rt.buses.find(x => x.trip === D.trips[run[i - 1]]), prev = b && rt.trips[b.trip], first = tripStops(t.trip)[0];
-  const end = prev && prev.stops.find(s => s[1] === prev.end);
-  return !!end && !!first && toMin(end[2]) <= first[0];
+  const at = prev && endAt(b, prev);
+  return at != null && !!first && toMin(at) <= first[0];
 }
 /** When the bus that runs a trip gets to the Transit Center, if it's still on its way in on the trip before; else null. */
 function inbound(u, id) {
@@ -271,9 +271,27 @@ function inbound(u, id) {
   if (!b || b.trip === id) return null;
   const prev = rt.trips[b.trip];
   if (!prev) return null;
-  const end = prev.stops.find(s => s[1] === prev.end);
-  if (!end || !D.stops[D.stopById[end[0]]]?.hub || end[2] < Date.now() / 1000 - 60) return null;
-  return toMin(end[2]);
+  const end = prev.stops.find(s => s[1] === prev.end), at = endAt(b, prev);
+  if (!end || !D.stops[D.stopById[end[0]]]?.hub || at === null || at < Date.now() / 1000 - 60) return null;
+  return toMin(at);
+}
+/** Whether the feed has lost a bus's trip: not a stop of it served, and its timetable over. The feed then times the
+ *  whole trip again from now: a Route 5 bus 116 m from the Center, in for its 8:00, was 'back at 8:22' (2026-09-30),
+ *  its 7:30 trip done but never marked off. The bus's place is the word then, not the feed's. */
+function lost(b, u) {
+  if (!u.stops.length || u.stops[0][1] > 1) return false;
+  const ts = tripStops(D.trips.indexOf(b.trip));
+  return ts.length > 0 && toMin(Date.now() / 1000) > ts[ts.length - 1][0] + 2;
+}
+/** When a bus gets to its trip's last stop, in seconds: the feed's time; where the feed has lost the trip, from where
+ *  the bus is (there, within 150 m; else the way at a town bus's pace, 6 m/s, a road 1.4 times the straight line). */
+export function endAt(b, u) {
+  const end = u.stops.find(s => s[1] === u.end);
+  if (!lost(b, u)) return end ? end[2] : null;
+  const last = end ? D.stops[D.stopById[end[0]]] : null;
+  if (!last) return null;
+  const d = distance(b.lat, b.lon, last.lat, last.lon);
+  return Date.now() / 1000 + (d < 150 ? 0 : d * 1.4 / 6);
 }
 function feedSays(t, u) {
   const sid = D.stops[t.si].id;

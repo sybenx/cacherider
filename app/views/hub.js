@@ -4,7 +4,7 @@
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord } from '../ui.js';
-import { rt, rtStale, isLoop } from '../rt.js';
+import { rt, rtStale, isLoop, endAt } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
 const rtDown = () => rtStale() && (rt.at > 0 || !!rt.error);
@@ -47,7 +47,8 @@ function status(k, clockNow) {
       else if (!u) loose = true;
       else {
         const next = u.stops.filter(([sid, , time, rel]) => rel !== 1 && time >= nowSec - 30 && D.stops[D.stopById[sid]]?.hub).sort((x, y) => x[1] - y[1])[0];
-        if (next) e = Math.max(1, Math.round((next[2] - nowSec) / 60)); else { away = true; if (own) bus = bus || b.id; }
+        const at = next && next[1] === u.end ? endAt(b, u) : next && next[2];   // its trip's end: the feed's, or where the bus is if the feed's lost it
+        if (next) e = at - nowSec < 60 && next[1] === u.end && at !== next[2] ? 0 : Math.max(1, Math.round((at - nowSec) / 60)); else { away = true; if (own) bus = bus || b.id; }
       }
       if (e !== null && (eta === null || e < eta)) { eta = e; bus = b.id; }
     }
