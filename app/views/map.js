@@ -1469,6 +1469,11 @@ function freshStopCard(app, clockNow) {
  *  ringed. From the panel (a badge, a stop's row) or the map (its lines) alike; nothing, everything back. */
 let hoverKey = '';
 export function hover({ rs = [], us = [], stop = '' } = {}) {
+  // Only on the home page with nothing picked: anywhere else, or with a stop, bus, route or way up, the map is already
+  // saying something, and a line lit under the pointer would talk over it.
+  const quietHome = ['', '#', '#/'].includes(location.hash) && selected === null && selectedBus === null && selectedU === null && !uHilite
+    && focusRoute === undefined && !hiLines.length && !hiLoops.length && !JR && !MT.R && !hubOn;
+  if (!quietHome) rs = [], us = [], stop = '';
   const key = rs.join(',') + '|' + us.join(',') + '|' + stop;
   if (key === hoverKey || !map || !ready) return;
   hoverKey = key;
