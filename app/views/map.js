@@ -2165,7 +2165,7 @@ export async function show(o, app, clockNow) {
   // frames it; any other (Stops, search, About, the Map tab) gets the map back as it was before the Center, at once.
   // North alone left a desktop's map on the bays, turned: Transit Center, Stops, then Map never came out again.
   if (!o.hub && hubTurned && !o.tick) {
-    const own = stayOff || o.stopId || o.routeShort || o.ustopId || o.uRoute || o.alertId || o.at || o.journey || o.run || o.busId || o.page || o.from || o.to;
+    const own = stayOff || o.stopId || o.routeShort || o.ustopId || o.campus || o.uRoute || o.alertId || o.at || o.journey || o.run || o.busId || o.page || o.from || o.to;
     // Left by its north button or a tap off the board: the bays north up in the whole map, not turned about a middle
     // that was set above the board (they came to rest low on the screen).
     // Zoomed out or panned off them first, the rider's own view is kept, only turned north.
@@ -2203,7 +2203,7 @@ function busIn(id, app) {
   b.extend([D.hub.lon, D.hub.lat]);
   requestAnimationFrame(() => frame(b, { maxZoom: 16, bearing: 0, duration: 700 }));
 }
-async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
+async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
   // A spot's disc and pin go with its card: gone to another page (the Center, a stop, Stops) the card was replaced and
   // the dashed disc stayed on the map. Kept for a spot's own address and for picking one; not by the minute's redraw.
@@ -2278,6 +2278,17 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     // On a phone or a portrait tablet its page is the map's sheet, the loop framed above it, as a Connect route's is.
     if (page) pageSheet(page, app, true); else col.querySelector('#mapcard').classList.remove('open');
     if (focus && (changed || resized)) frame(uRouteBounds(uRoute), { maxZoom: 16, duration: 700 });
+    return;
+  }
+  // The shuttle as a whole, from the home page's line: campus framed, every loop drawn on top (at the zoom that fits
+  // them all they'd otherwise be put away).
+  if (campus && U) {
+    lastFocused = 'campus';
+    selected = null; uHilite = ''; hiLines = []; hiLoops = U.routes.filter(r => r.stops.length).map(r => r.id); focusRoute = undefined; applySelection();
+    col.querySelector('#mapcard').classList.remove('open');
+    const b = new maplibregl.LngLatBounds();
+    for (const r of U.routes) if (r.stops.length) b.extend(uRouteBounds(r.id));
+    frame(b, { maxZoom: 16, duration: 700 });
     return;
   }
   // An alert from the About page: its route drawn on top, the stops it closes framed (marked already, as every

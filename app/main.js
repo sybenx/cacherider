@@ -272,6 +272,7 @@ async function render(tick = false) {
       stopId: name === 'map' && !hubMap && !goMap && !at && !from && !mapU && !mapR && !mapUR && !mapA && !mapB && seg[1] !== 'to' && seg[1] !== 'from' ? seg[1] : name === 'stop' ? seg[1] : null, from, to,
       uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
+      campus: mapU && !seg[2],   // the home page's shuttle line: campus, its loops drawn
       routeShort: routeArgs ? routeArgs.short : null, routeArgs,
       alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map

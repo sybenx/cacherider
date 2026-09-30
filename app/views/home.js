@@ -7,7 +7,7 @@ import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js'
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
-import { U, stopRowU, chip, live } from '../usu.js';
+import { U, stopRowU, chip, live, shuttleWords, offHours, isStale } from '../usu.js';
 import { results, pickOf, forPick } from './find.js';
 import { byWalk, spotOf, spotKey } from '../geo.js';
 import { isWide } from '../wide.js';
@@ -62,12 +62,12 @@ function landing(clockNow, app) {
   // three of the list a tap harder to find). Beside a wide screen's map, the top bar's box is this one.
   const first = !stopHero && !geo;
   // A first visit: what the app is, in a line, before the ways in (a search box and a location button said nothing of it).
-  if (first) parts.push(html`<p class="land-purpose">See when the next bus comes to your stop.</p>`);
+  if (first) parts.push(html`<p class="land-purpose">See when the next bus comes to your stop, Connect or the Aggie Shuttle.</p>`);
   parts.push(html`<div class="ask${first ? '' : ' land-where'}">
     <form class="search" id="search" role="search"><input class="input" type="search" placeholder="${first ? 'Street, place or route' : 'Where to?'}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
     ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
       <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : ''}</div>`);
-  parts.push(hubLine(clockNow));
+  parts.push(hubLine(clockNow), shuttleLine(clockNow));
   // And what the app does, shown rather than said: the busiest stops, by the day's departures, with their next buses.
   // A newcomer may find their own there; either way the page isn't half empty on a first visit.
   if (first) { const busy = busiest(clockNow); if (busy.length) parts.push(html`<div class="land-eye"><span>Busiest stops today</span></div><div class="list">${busy.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`); }
@@ -154,6 +154,16 @@ function hubLine(clockNow) {
   if (!p) return '';
   const soon = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
   return html`<a class="land-hub" href="#/hub">${icon('hub', 18)}<span class="col"><span>${D.hub.name}</span><span class="sub">${(D.hub.pulseName || 'All routes').replace(/\s+leave$/, '')} leave at <b>${clockText(p.min)}</b> · ${soon}</span></span>${icon('fwd', 18)}</a>`;
+}
+
+/** The Aggie Shuttle as a line under the Center's, so a rider knows it's here too: its loops' colours, and whether
+ *  it's running. To the map, on campus with its loops drawn. */
+function shuttleLine(clockNow) {
+  if (!U || !U.routes.some(r => r.stops.length)) return '';
+  const dots = U.routes.filter(r => r.stops.length).map(r => html`<i style="background:${esc(r.color)}"></i>`);
+  const n = live.buses.length && !isStale() && !offHours() ? live.buses.length : 0;   // out of hours, a bus reporting may be parked
+  const w = [n ? `${n} ${n === 1 ? 'bus' : 'buses'} out` : '', shuttleWords(clockNow)].filter(Boolean).join(' · ');
+  return html`<a class="land-hub land-usu" href="#/map/usu"><span class="udots" aria-hidden="true">${dots}</span><span class="col"><span>Aggie Shuttle</span><span class="sub">${w || 'USU’s campus loops'}</span></span>${icon('fwd', 18)}</a>`;
 }
 
 // ---- search, on its own page

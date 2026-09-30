@@ -273,6 +273,17 @@ export function hoursWords() {
   const late = Object.entries(svc.late || {}).map(([n, m]) => `the ${n} until ${clockShort(m)}`);
   return `USU lists ${days} service, ${clockShort(svc.start)} to ${clockShort(svc.end)}${late.length ? ', with ' + late.join(' and ') : ''}.`;
 }
+/** The shuttle as a whole in a few words, for the home page: "running until 10 PM" in its hours, else its days and
+ *  hours, "weekdays, 7 AM to 10 PM". From USU's listed hours (the home page doesn't ask the feed). */
+export function shuttleWords(clockNow = now()) {
+  const svc = U && U.service;
+  if (!svc) return '';
+  const end = Math.max(svc.end, ...Object.values(svc.late || {}));
+  if (!offHours(null, clockNow)) return 'running until ' + clockShort(end);
+  const on = svc.days.map((d, i) => d ? i : -1).filter(i => i >= 0);
+  const days = on.length === 5 && on[0] === 0 && on[4] === 4 ? 'weekdays' : on.map(i => DAY_NAMES[(i + 1) % 7].slice(0, 3)).join(', ');
+  return `${days}, ${clockShort(svc.start)} to ${clockShort(end)}`;
+}
 /** Today's last run for a route, as "runs until 10 PM" or "ends in about 40 min", or '' when it isn't a running day. */
 export function untilWords(ri, clockNow = now()) {
   const svc = U && U.service;
