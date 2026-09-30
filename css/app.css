@@ -434,9 +434,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 /* the night's end on a departure: 'Last full run', 'Last run (partial, to …)' */
 .lastrun { font-size: 0.6562rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; line-height: 1.35; color: var(--color-text); }
 .livetag { display: inline-flex; align-items: center; gap: 6px; font-size: 0.6562rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-700); white-space: nowrap; }
-/* a small dot with its halo a ring clear of it (outline-offset: the gap shows whatever is behind, a picked row's tint
-   too); the halo was a shadow hard against a dot that filled it, one blur */
-.livetag i { width: 5px; height: 5px; margin: 0 2px 0 3px; border-radius: 50%; background: var(--color-accent); outline: 1.5px solid color-mix(in srgb, var(--color-accent) 55%, transparent); outline-offset: 2px; flex: none; }
+/* a plain dot: a halo pressed against it read as one blur, and a ring clear of it as a radio button picked */
+.livetag i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); flex: none; }
 /* Still: it pulsed, a box-shadow animation that repainted every frame for every tag on screen, twenty and more on a
    route's sheet, and kept a phone's processor a quarter busy doing nothing. Only the finger moves things. */
 .nobus { margin: 4px 16px 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
