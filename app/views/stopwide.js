@@ -72,7 +72,7 @@ function runParts(t, si, ymd) {
     seen.add(x.s);
     points.push({ si: x.s, t: x.skip ? '' : x === lastStop && ended ? clockText(x.m) + ' · end' : clock(x.m).h, rank: x === lastStop ? 1 : i + 2, leg: x.leg, r: x.r });
   });
-  shown = { key: t.trip + ':' + si + ':' + delay + ':' + rows.length, legs: legs.filter(l => l.seq.length > 1 || legs.indexOf(l) === 0), points };
+  shown = { key: t.trip + ':' + si + ':' + delay + ':' + rows.length, trip: t.trip, ymd, legs: legs.filter(l => l.seq.length > 1 || legs.indexOf(l) === 0), points };
   const foot = back !== false ? `<p class="run-then">Back at this stop at ${esc(clockText(back))}.</p>` : '';
   return {
     top: (close, step = '') => `<div class="run-top">${badge(t.r, 26).s}<div class="col"><b>The ${esc(clockText(t.min))} from here</b><div class="rs-sub"><span class="muted">${esc(headsign(t))}${delay ? ` · running ${delay} min late` : ''}</span>${step}</div></div><button type="button" class="btn btn-ghost btn-icon" ${close} aria-label="Close">${icon('close', 20).s}</button></div>`,

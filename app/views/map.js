@@ -1607,8 +1607,17 @@ const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 /** A way drawn for another day: no bus out now is one of its. */
 const wayLater = () => !!(JR && JR.plan && JR.plan.ymd !== now().ymd);
+/** A run drawn: the bus running it (or the feed's for it), today; none else is its. The route's every bus was bright
+ *  on it, and the 5:30 twelve half way to Hyrum stood on the 6:00's line as if it were the 6:00's. */
+function runBusId() {
+  const R = MT.R;
+  if (!R || R.trip === undefined || R.ymd !== now().ymd) return null;
+  const b = rideBus({ t: { trip: R.trip } });
+  return b ? b.id : null;
+}
 function dimBus(m) {
   if (wayLater()) return true;
+  if (MT.R) return m.id !== runBusId();
   if (JR && JR.appBus) return m.id !== JR.appBus;   // a way drawn with its bus coming: that bus alone, the rest dim
   const on = hiLines.length ? hiLines : runRoutes;
   if (m.kind === 'c') return (on.length > 0 && !on.includes(m.ri)) || hiLoops.length > 0;
@@ -1617,6 +1626,7 @@ function dimBus(m) {
 /** A bus on a lit route or loop: drawn at full size and tappable however far out the map is zoomed. */
 function litBus(m) {
   if (wayLater()) return false;
+  if (MT.R) return m.id === runBusId();
   if (JR && JR.appBus) return m.id === JR.appBus;
   return m.kind === 'c' ? hiLines.includes(m.ri) || runRoutes.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
 }
