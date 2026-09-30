@@ -89,13 +89,14 @@ function runOf(ti, ymd) {
 
 /** Departures from a stop on a day from a minute on: the feed's word on today's (a late bus is still coming; one
  *  that has been is not). Cached for the search, which asks about the same change stops again and again. */
-function deps(si, ymd, from, live, cache) {
+function deps(si, ymd, from, live, cache, until = null) {
   // A shuttle stop: every loop that calls there, each bus's estimate a departure. Today's only: tomorrow has no buses yet.
   if (isU(si)) {
     if (!SH || !live) return [];
     const out = [];
-    for (const l of SH.loops) if (l.stops.includes(uOf(si))) for (const w of SH.waits(uOf(si), l.ri)) if (SH.now + w.min >= from) out.push({ u: true, r: l.ri, si, min: SH.now + w.min, secs: w.secs });
-    return out.sort((a, b) => a.min - b.min).slice(0, MAX_ON);
+    for (const l of SH.loops) if (l.stops.includes(uOf(si))) for (const w of SH.waits(uOf(si), l.ri)) if (SH.now + w.min >= from && (until === null || SH.now + w.min <= until)) out.push({ u: true, r: l.ri, si, min: SH.now + w.min, secs: w.secs });
+    out.sort((a, b) => a.min - b.min);
+    return until === null ? out.slice(0, MAX_ON) : out.slice(-MAX_ON);
   }
   const k = si + '|' + ymd;
   let rows = cache.get(k);
@@ -104,6 +105,8 @@ function deps(si, ymd, from, live, cache) {
     if (live) rows = rows.map(t => lively({ ...t, day: 0, ymd })).filter(t => !t.gone).sort((a, b) => a.min - b.min);
     cache.set(k, rows);
   }
+  // To arrive by a time: the last few leaving before it, not the first few after a minute.
+  if (until !== null) return rows.filter(t => t.min >= from && t.min <= until).slice(-MAX_ON);
   const out = [];
   let first = null;   // the window of departures looked at starts at the first one, not at the minute asked (a day's first bus can be hours off)
   for (const t of rows) { if (t.min < from) continue; if (first === null) first = t.min; if (t.min > first + AHEAD || out.length >= MAX_ON) break; out.push(t); }
@@ -166,7 +169,7 @@ function rideTo(t, seq, i, wanted, best = false) {
  * few, sorted by arrival: none is kept that another beats on leaving, arriving and walking all at once. Nothing
  * today: the first day with a way.
  */
-export function journeys(origin, dest, clockNow, days = 8, sh = null, live = true) {
+export function journeys(origin, dest, clockNow, days = 8, sh = null, live = true, by = null) {
   SH = sh; SERVED = new Set(sh ? sh.loops.flatMap(l => l.stops) : []);
   if (SH) SH.now = clockNow.min;
   const spot = typeof dest === 'object', d = spot ? dest : stop(dest), o = origin.si !== undefined ? stop(origin.si) : origin;
@@ -191,6 +194,19 @@ export function journeys(origin, dest, clockNow, days = 8, sh = null, live = tru
   // Standing at the stop wanted, or within its walk: no bus to catch.
   const apart = Math.round(distance(o.lat, o.lon, d.lat, d.lon));
   if (origin.si === dest || apart <= WALK_FROM) return { walk: apart, plans: [] };
+  // Arriving by a minute (`by`) on clockNow's day, leaving no earlier than clockNow: that day only, the ways that get
+  // there by then, the latest leaving first; the last few buses before it from each first stop, however early (a
+  // route that runs mornings and evenings). Nothing among those (a connection that only runs mornings): the few before
+  // them, and so on back through the day.
+  if (by !== null) {
+    if (!servicesOn(clockNow.ymd).size) return { plans: [] };
+    const upto = new Map(starts.filter(st => !at.has(st.si)).map(st => [st.si, by - st.walk]));
+    while (upto.size) {
+      const plans = search(starts, wanted, at, spot ? d : dest, clockNow.ymd, clockNow.min, live, 0, by, upto);
+      if (plans.length) return { plans };
+    }
+    return { plans: [] };
+  }
   for (let day = 0; day < days; day++) {
     const ymd = dayFrom(clockNow.ymd, day).ymd;
     if (!servicesOn(ymd).size) continue;
@@ -202,7 +218,7 @@ export function journeys(origin, dest, clockNow, days = 8, sh = null, live = tru
   return { plans: [] };
 }
 
-function search(starts, wanted, at, dest, ymd, min0, live, day) {
+function search(starts, wanted, at, dest, ymd, min0, live, day, by = null, upto = null) {
   const cache = new Map(), spot = typeof dest === 'object', end = spot ? dest : stop(dest);
   const found = [];
   const done = (legs, walk0, walkEnd) => {
@@ -216,7 +232,14 @@ function search(starts, wanted, at, dest, ymd, min0, live, day) {
   };
   for (const st of starts) {
     if (at.has(st.si)) continue;   // a first stop that is as good as the destination is a walk, said elsewhere
-    for (const t of deps(st.si, ymd, min0 + st.walk, live, cache)) {
+    let ts;
+    if (upto) {
+      // Arriving by: the last few leaving this stop up to its mark, and the mark moved back past them for another pass.
+      if (!upto.has(st.si)) continue;
+      ts = deps(st.si, ymd, min0 + st.walk, live, cache, upto.get(st.si));
+      if (ts.length < MAX_ON) upto.delete(st.si); else upto.set(st.si, ts[0].min - 1);
+    } else ts = deps(st.si, ymd, min0 + st.walk, live, cache);
+    for (const t of ts) {
       const got = rideOf(t, ymd);
       if (!got) continue;
       const [seq, i] = got;
@@ -260,12 +283,14 @@ function search(starts, wanted, at, dest, ymd, min0, live, day) {
   // the climb in them, and WALK_LESS of them at least), with fewer changes the tiebreak where two arrive as soon. So
   // a way that spares the walk is kept though it's no faster (Route 2 and across the road to the Green Loop, not up
   // the hill on foot); one that spares a minute by riding on round a loop is not.
+  if (by !== null) for (let i = found.length - 1; i >= 0; i--) if (found[i].arrive > by) found.splice(i, 1);
   for (const p of found) p.walk = p.legs.reduce((n, l) => n + (l.kind === 'walk' ? l.mins : 0), 0);
   found.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
   const kept = [];
   for (const p of found) {
     if (!kept.some(q => q.leave >= p.leave && q.arrive <= p.arrive && q.walk < p.walk + WALK_LESS && (q.arrive < p.arrive || q.changes <= p.changes))) kept.push(p);
   }
-  kept.sort((a, b) => a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
+  if (by !== null) kept.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.walk - b.walk);
+  else kept.sort((a, b) => a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
   return kept.slice(0, 4);
 }

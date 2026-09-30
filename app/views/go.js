@@ -56,26 +56,43 @@ function headOf(to, e, at) {
   return { parts, key, hubBay };
 }
 
-/** 'Leave at', from the address (t=20260930-0815): the clock the ways are worked out from, or null for now. A time
- *  already gone is now. */
+/** When, from the address: 'leave at' (t=20260930-0815) or 'arrive by' (t=a20260930-0900), as the clock picked
+ *  and `by` for the second; null for now. A time already gone is now. */
 function leaveAt(t, clockNow) {
-  const m = /^(\d{8})-(\d{2})(\d{2})$/.exec(t || '');
+  const m = /^(a?)(\d{8})-(\d{2})(\d{2})$/.exec(t || '');
   if (!m) return null;
-  const c = { ymd: m[1], dow: dayFrom(m[1]).dow, min: +m[2] * 60 + +m[3], sec: 0 };
+  const c = { ymd: m[2], dow: dayFrom(m[2]).dow, min: +m[3] * 60 + +m[4], sec: 0, by: !!m[1] };
   return c.ymd < clockNow.ymd || (c.ymd === clockNow.ymd && c.min <= clockNow.min) ? null : c;
+}
+/** The ways for a time picked, or for now: arriving by, the latest leaving that get there in time, from now on if it's
+ *  today (from the day's start if later); none, the first way there after all, said so (lateBy). */
+function waysFor(origin, dest, fixed, clockNow) {
+  const c = fixed || clockNow, live = liveFor(fixed, clockNow), sh = live ? planNet(clockNow) : null;
+  if (!fixed || !fixed.by) return { found: journeys(origin, dest, c, 8, live ? planNet(c) : null, live), c, live };
+  const from = fixed.ymd === clockNow.ymd ? clockNow : { ...fixed, min: 0 };
+  const found = journeys(origin, dest, from, 8, sh, live, fixed.min);
+  if (found.walk !== undefined || found.plans.length) return { found, c, live };
+  return { found: journeys(origin, dest, from, 8, sh, live), c: from, live, lateBy: true };
 }
 /** The feed's word counts for now and the next hour and a half today; a time further off is the timetable's alone
  *  (and the shuttle, whose times are its buses' whereabouts, only then). */
+const tooLate = c => html`<div class="callout">${icon('info', 20)}<div><b>No bus gets there by ${clockText(c.min)}</b><div class="sub">The first way there after all:</div></div></div>`;
 const liveFor = (c, clockNow) => !c || (c.ymd === clockNow.ymd && c.min - clockNow.min <= 90);
 const hashWith = t => location.hash.split('?')[0] + (t ? '?t=' + t : '');
 const dayWord = ymd => { const today = now().ymd; return ymd === today ? 'today' : ymd === dayFrom(today, 1).ymd ? 'tomorrow' : dayName(ymd); };
-/** Leave now, or at a time picked: the button says which; tapped, the phone's own date and time pickers, a week ahead. */
+let pickBy = false, pickOpen = false, pickFor = null;
+/** Leave now, at a time picked, or arrive by one: the button says which; tapped, Leave or Arrive and the phone's own
+ *  date and time pickers, a week ahead. */
 function whenControl(c, clockNow) {
   const today = dayFrom(clockNow.ymd), iso = ymd => ymd.slice(0, 4) + '-' + ymd.slice(4, 6) + '-' + ymd.slice(6, 8);
   const at = c || clockNow, hh = String(Math.floor(at.min / 60) % 24).padStart(2, '0'), mm = String(at.min % 60).padStart(2, '0');
-  const label = c ? `Leave ${clockText(c.min)} ${dayWord(c.ymd)}` : 'Leave now';
-  return html`<div class="gowhen"><button type="button" class="btn btn-secondary" id="go-when" aria-expanded="false">${icon('clock', 18)}${label}</button>
-    <div class="gowhen-pick" hidden><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
+  const label = c ? `${c.by ? 'Arrive by' : 'Leave'} ${clockText(c.min)} ${dayWord(c.ymd)}` : 'Leave now';
+  // Leave or arrive as switched in the pickers, kept through the page's redraws (the minute, the feed) till Set.
+  const key = (c ? (c.by ? 'a' : '') + c.ymd + c.min : '');
+  if (pickFor !== key) { pickFor = key; pickBy = !!(c && c.by); pickOpen = false; }
+  const by = pickBy;
+  return html`<div class="gowhen"><button type="button" class="btn btn-secondary" id="go-when" aria-expanded="${pickOpen ? 'true' : 'false'}">${icon('clock', 18)}${label}</button>
+    <div class="gowhen-pick"${pickOpen ? '' : ' hidden'}><div class="seg" role="group" aria-label="Leave or arrive"><button type="button" data-by="0" aria-pressed="${by ? 'false' : 'true'}">Leave at</button><button type="button" data-by="1" aria-pressed="${by ? 'true' : 'false'}">Arrive by</button></div><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
     <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div></div>`;
 }
 
@@ -93,9 +110,9 @@ export function render({ to, from, at, plan, t }, clockNow) {
     return { html: parts.join(''), mount, title: 'Directions' };
   }
 
-  const fixed = leaveAt(t, clockNow), c = fixed || clockNow, live = liveFor(fixed, clockNow);
+  const fixed = leaveAt(t, clockNow);
   parts.push(whenControl(fixed, clockNow));
-  const found = journeys(origin, dest, c, 8, live ? planNet(c) : null, live);   // the shuttle too, while it runs
+  const { found, c, lateBy } = waysFor(origin, dest, fixed, clockNow);   // the shuttle too, while it runs
   if (found.walk !== undefined) {
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div></div></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
@@ -109,6 +126,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
   }
   // Directions are the map: the first way (or the one the address names) drawn, and this, the sheet under it (beside
   // it on a wide screen), with the ways as rows to draw another.
+  if (lateBy) parts.push(tooLate(fixed));
   const J = pickPlan(found.plans, plan, e, c, fixed ? t : null);
   return { html: sheet(J, parts, c, !!fixed), mount, title: 'Directions', keepScroll: true, journey: J };
 }
@@ -172,10 +190,9 @@ function pickPlan(plans, key, e, clockNow, t = null) {
 export function journey({ to, from, at, t }, key, clockNow) {
   const e = ends({ to, from, at });
   if (e.dest === undefined || !e.origin) return null;
-  const fixed = leaveAt(t, clockNow), c = fixed || clockNow, live = liveFor(fixed, clockNow);
-  const found = journeys(e.origin, e.dest, c, 8, live ? planNet(c) : null, live);
+  const fixed = leaveAt(t, clockNow), { found, c, lateBy } = waysFor(e.origin, e.dest, fixed, clockNow);
   const J = pickPlan(found.plans || [], key, e, c, fixed ? t : null);
-  if (J) { const { parts } = headOf(to, e, at); parts.push(whenControl(fixed, clockNow)); J.sheet = () => sheet(J, parts, c, !!fixed); J.mount = el => mount(el, null, true); }
+  if (J) { const { parts } = headOf(to, e, at); parts.push(whenControl(fixed, clockNow)); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed); J.mount = el => mount(el, null, true); }
   return J;
 }
 
@@ -289,14 +306,16 @@ function mount(el, _app, inCard = false) {
   // From a spot to where the rider is: their fix is the end.
   const h = el.querySelector('#go-home');
   if (h) h.onclick = () => nearMe(g => { if (g) location.hash = `#/go/${spotKey(g.lat, g.lon, 'where you are')}/${h.dataset.from}`; });
-  // Leave now or at a time: the button opens the pickers; Set puts the time in the address (the ways worked out
-  // afresh from it), Now takes it out. A way picked before goes: it was a way from another time.
+  // Leave now, at a time, or arrive by one: the button opens the pickers; Set puts the time in the address (the ways
+  // worked out afresh from it), Now takes it out. A way picked before goes: it was a way from another time.
   const w = el.querySelector('#go-when'), pick = el.querySelector('.gowhen-pick');
-  if (w && pick) w.onclick = () => { pick.hidden = !pick.hidden; w.setAttribute('aria-expanded', String(!pick.hidden)); };
+  if (w && pick) w.onclick = () => { pickOpen = pick.hidden; pick.hidden = !pickOpen; w.setAttribute('aria-expanded', String(pickOpen)); };
+  for (const b of el.querySelectorAll('.gowhen-pick [data-by]')) b.onclick = () => { pickBy = b.dataset.by === '1'; for (const x of el.querySelectorAll('.gowhen-pick [data-by]')) x.setAttribute('aria-pressed', String(x === b)); };
   const set = el.querySelector('#go-set');
   if (set) set.onclick = () => {
     const d = el.querySelector('#go-date').value.replace(/-/g, ''), tm = el.querySelector('#go-time').value.replace(':', '');
-    if (/^\d{8}$/.test(d) && /^\d{4}$/.test(tm)) location.replace(location.href.split('#')[0] + hashWith(d + '-' + tm));
+    const by = pickBy ? 'a' : '';
+    if (/^\d{8}$/.test(d) && /^\d{4}$/.test(tm)) location.replace(location.href.split('#')[0] + hashWith(by + d + '-' + tm));
   };
   const nw = el.querySelector('#go-now');
   if (nw) nw.onclick = () => location.replace(location.href.split('#')[0] + hashWith(null));
