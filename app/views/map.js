@@ -1907,7 +1907,11 @@ function markNear(ids = [], by = null) {
  *  a tap brings it back. */
 let townTap = false;
 function frameHome(app, duration, again = false) {
-  const town = !!app.geo && again && (townTap || !movedSinceHome());
+  // At the Transit Center (150 m, as the home page's card has it) the tab opens on the town: the Center close up is its
+  // own tab, and what the map adds there is the routes and the buses on their way in. The locate button still gives
+  // the streets round about.
+  const atHub = !!app.geo && !!D.hub && distance(app.geo.lat, app.geo.lon, D.hub.lat, D.hub.lon) <= 150;
+  const town = !!app.geo && (atHub || again && (townTap || !movedSinceHome()));
   if (town) { townTap = true; homeRest = null; markNear(); frame(homeBounds(), { ...HOME_FIT, duration }); return; }
   toNear(app.geo, duration);
   townTap = false;
