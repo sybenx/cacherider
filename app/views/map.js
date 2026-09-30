@@ -1826,18 +1826,29 @@ const HOME_FIT = { bearing: 0, maxZoom: 14 };
  *  the tab's second tap. Stretched a zoom level at most: out along an arm (Preston, Hyrum) the whole valley is no view
  *  of anything, and the map opens on them. Out of the valley, the town alone. */
 let meGeo = null;
-function homeView(geo) {
+function homeView(geo, close = false) {
   const b = homeBounds(), fit = { ...HOME_FIT };
-  if (!b || !geo || b.contains([geo.lon, geo.lat]) || !D.stops.some(s => distance(geo.lat, geo.lon, s.lat, s.lon) < 400)) return [b, fit];
-  const wide = new maplibregl.LngLatBounds(b.getSouthWest(), b.getNorthEast()).extend([geo.lon - 0.004, geo.lat - 0.003]).extend([geo.lon + 0.004, geo.lat + 0.003]);   // room round them: not on the edge
-  const was = frameCam(b, fit), now = frameCam(wide, fit);
-  if (was && now && was.zoom - now.zoom <= 1) return [wide, fit];
-  return [[geo.lon, geo.lat], { ...fit, zoom: 14 }];
+  if (geo && close) return [[geo.lon, geo.lat], { ...fit, zoom: 15.5, maxZoom: 15.5 }];   // the tab's other view: them, close up
+  // In the valley (20 km from a stop, however far out along an arm: Fairview, Preston), the town stretched to take
+  // them in, however wide that is; it was a zoom level's stretch at most, else them alone, and within 400 m of a stop.
+  if (!b || !geo || b.contains([geo.lon, geo.lat]) || !D.stops.some(s => distance(geo.lat, geo.lon, s.lat, s.lon) < 20000)) return [b, fit];
+  return [new maplibregl.LngLatBounds(b.getSouthWest(), b.getNorthEast()).extend([geo.lon - 0.004, geo.lat - 0.003]).extend([geo.lon + 0.004, geo.lat + 0.003]), fit];   // room round them: not on the edge
+}
+/** The Map tab's view last framed, and where the map then rested: tapped again with the map still there, the tab
+ *  gives the other view (the town with the rider in it, or the rider close up); moved since, the town again. */
+let homeAt = null;
+function frameHome(app, duration, due = false) {
+  const g = app.geo, c = map.getCenter(), still = !!homeAt && Math.abs(map.getZoom() - homeAt.zoom) < 0.05 && distance(c.lat, c.lng, homeAt.lat, homeAt.lon) < 30;
+  const close = !!g && !due && still && !homeAt.close;
+  const [t, f] = homeView(g, close);
+  const rest = () => { const e = map.getCenter(); homeAt = { close, zoom: map.getZoom(), lat: e.lat, lon: e.lng }; };
+  map.once('moveend', rest);
+  if (!frame(t, { ...f, duration })) map.off('moveend', rest);
 }
 /** Where the map is first made (before it has a size to fit the home view to): the home view's middle. */
 const homeCentre = () => { const b = homeBounds(); return b ? b.getCenter().toArray() : [D.hub.lon, D.hub.lat]; };
 let resetDue = false;   // asked for as the Map tab opens: done once it's drawn (the panel's room going would stop it)
-export function resetView(app, once = false, to = null, jump = false) {
+export function resetView(app, once = false, to = null, jump = false, due = false) {
   if (once) { resetDue = true; return; }
   if (!map) return;
   selectedBus = null; selectedU = null; lastFocused = null; hubTurned = false; northDue = false;
@@ -1848,7 +1859,7 @@ export function resetView(app, once = false, to = null, jump = false) {
   const still = jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches || jump === 'hub' && WEAK;
   const duration = still ? 0 : jump === 'hub' ? 550 : 600;
   if (to) map.easeTo({ padding: pad(), center: to.center, zoom: to.zoom, bearing: 0, duration });
-  else { const [t, f] = homeView(app.geo); frame(t, { ...f, duration }); }
+  else frameHome(app, duration, due);
 }
 /** The Map tab from the Transit Center: the map as it was before the Center framed itself, north up, nothing picked
  *  (a tab keeps its place; a second tap is the reset). The whole of Logan when the app opened at the Center. Done
@@ -2198,7 +2209,7 @@ export async function show(o, app, clockNow) {
   stayOff = false;
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   mainJourney(o.journey || null, app);   // a way from the directions page
-  if (((resetDue && app.route.name === 'map') || backDue) && !o.hub) { const back = backDue && !resetDue, to = back ? beforeHub : null, jump = backDue ? 'hub' : false; resetDue = backDue = false; resetView(app, false, to, jump); }   // back from the Center: flown back, as the Center was flown to
+  if (((resetDue && app.route.name === 'map') || backDue) && !o.hub) { const back = backDue && !resetDue, to = back ? beforeHub : null, jump = backDue ? 'hub' : false; resetDue = backDue = false; resetView(app, false, to, jump, true); }   // back from the Center: flown back, as the Center was flown to
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   // A page's picture is a picture: no times on it. A route's page keeps its route's, a picked bus its own, and a road
   // tapped with one route on it that route's: the feed's redraw every few seconds took those away again.
@@ -2236,7 +2247,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // Made before it had a size: the home view, now there's a screen to fit it to (a stop, a route or the Center then
   // frames itself over this). The canvas brought to the box first: made hidden, it's MapLibre's 400 by 300 until the
   // resize watcher's next frame, and the town fitted into that opened two zoom levels out.
-  if (homePending) { homePending = false; sized(); const [t, f] = homeView(app.geo); frame(t, { ...f, duration: 0 }); }
+  if (homePending) { homePending = false; sized(); frameHome(app, 0, true); }
   // Measured again when it may have changed; not on every minute and feed redraw, when a resize's move events would
   // cut short a tap waiting out its double-tap beat.
   const measured = box.clientWidth + 'x' + box.clientHeight;
