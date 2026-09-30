@@ -12,6 +12,7 @@ import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, 
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
+import { openShare, siteLink } from '../share.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
@@ -1149,6 +1150,16 @@ function northControl() {
   };
 }
 
+/** The rider's dot tapped: directions to where they are, to send someone ('come to me'). Rounded to the street
+ *  (about 50 m, the grid the app names places by), and the panel says what the link shows before anything's sent. */
+function shareHere() {
+  if (!meGeo) return;
+  const lat = Math.round(meGeo.lat / 0.0005) * 0.0005, lon = Math.round(meGeo.lon / 0.0005) * 0.0005, label = whereabouts(lat, lon) || 'where I am';
+  openShare({ url: siteLink('go/' + spotKey(lat, lon, label)), title: 'Share where you are', lines: [`Directions to ${label}`, 'Rounded to the street, from wherever they open it'] });
+}
+/** Taps on the locate button this visit to the map, and where the map rested after the stretch view was last framed. */
+let locTaps = 0, homeRest = null;
+const movedSinceHome = () => { if (!homeRest) return true; const c = map.getCenter(); return Math.abs(map.getZoom() - homeRest.zoom) > 0.05 || distance(c.lat, c.lng, homeRest.lat, homeRest.lon) > 30; };
 /** Near me: the map to where you are, with your dot on it. */
 function nearControl() {
   return {
@@ -1156,7 +1167,16 @@ function nearControl() {
       const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
       const b = document.createElement('button'); b.type = 'button'; b.className = 'nearbtn'; b.title = 'Near me'; b.setAttribute('aria-label', 'Near me');
       b.innerHTML = icon('near', 20).s;
-      b.onclick = () => nearMe(geo => { if (geo) { placeMe(geo); m.flyTo({ center: [geo.lon, geo.lat], zoom: 15.5 }); } });
+      // First tap, the stretch view (the rider and what they'd ride from); every tap after, them close up, until the map
+      // is left and come back to. Arriving on the Map tab counts as the first (it opened on the stretch view), unless
+      // the map's been moved since. It never turns location off.
+      b.onclick = () => nearMe(geo => {
+        if (!geo) return;
+        placeMe(geo);
+        const [t, f] = locTaps || !movedSinceHome() ? closeView(geo) : homeView(geo);
+        locTaps++;
+        frame(t, { ...f, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700 });
+      });
       el.appendChild(b); this.el = el; return el;
     },
     onRemove() { this.el.remove(); },
@@ -1206,7 +1226,13 @@ function wireChrome(app) {
 function placeMe(geo) {
   meGeo = geo;
   if (!map) return;
-  if (!meMarker) { const el = document.createElement('div'); el.className = 'me-marker'; meMarker = new maplibregl.Marker({ element: el }); }
+  if (!meMarker) {
+    const el = document.createElement('div'); el.className = 'me-marker';
+    el.setAttribute('role', 'button'); el.setAttribute('aria-label', 'Share where you are'); el.tabIndex = 0;
+    const go = e => { e.stopPropagation(); e.preventDefault(); shareHere(); };
+    el.addEventListener('click', go); el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') go(e); });
+    meMarker = new maplibregl.Marker({ element: el });
+  }
   meMarker.setLngLat([geo.lon, geo.lat]).addTo(map);
 }
 
@@ -1826,24 +1852,38 @@ const HOME_FIT = { bearing: 0, maxZoom: 14 };
  *  the tab's second tap. Stretched a zoom level at most: out along an arm (Preston, Hyrum) the whole valley is no view
  *  of anything, and the map opens on them. Out of the valley, the town alone. */
 let meGeo = null;
-function homeView(geo, close = false) {
+/** The stretch view: where the rider is, with what they'd ride from. In town or at its edge (2 km from the home view's
+ *  box), the town with them in it; out in the valley (20 km of a stop: Fairview, Preston), them and their nearest stops
+ *  with buses that day, not the whole valley with them a dot at one end; out of it, the town alone. */
+const roomRound = (b, g) => b.extend([g.lon - 0.004, g.lat - 0.003]).extend([g.lon + 0.004, g.lat + 0.003]);   // not on the edge
+function homeView(geo) {
   const b = homeBounds(), fit = { ...HOME_FIT };
-  if (geo && close) return [[geo.lon, geo.lat], { ...fit, zoom: 15.5, maxZoom: 15.5 }];   // the tab's other view: them, close up
-  // In the valley (20 km from a stop, however far out along an arm: Fairview, Preston), the town stretched to take
-  // them in, however wide that is; it was a zoom level's stretch at most, else them alone, and within 400 m of a stop.
-  if (!b || !geo || b.contains([geo.lon, geo.lat]) || !D.stops.some(s => distance(geo.lat, geo.lon, s.lat, s.lon) < 20000)) return [b, fit];
-  return [new maplibregl.LngLatBounds(b.getSouthWest(), b.getNorthEast()).extend([geo.lon - 0.004, geo.lat - 0.003]).extend([geo.lon + 0.004, geo.lat + 0.003]), fit];   // room round them: not on the edge
+  if (!b || !geo || b.contains([geo.lon, geo.lat])) return [b, fit];
+  const edge = distance(geo.lat, geo.lon, Math.min(Math.max(geo.lat, b.getSouth()), b.getNorth()), Math.min(Math.max(geo.lon, b.getWest()), b.getEast()));
+  if (edge < 2000) return [roomRound(new maplibregl.LngLatBounds(b.getSouthWest(), b.getNorthEast()), geo), fit];
+  let ymd = now().ymd;
+  if (!servicesOn(ymd).size) ymd = nextServiceDay(now()) || ymd;
+  const served = D.stops.map((s, i) => ({ s, i, d: distance(geo.lat, geo.lon, s.lat, s.lon) })).filter(x => x.d < 20000 && !x.s.hub).sort((x, y) => x.d - y.d)
+    .filter(x => timesOn(x.i, ymd).length).slice(0, 3);
+  if (!served.length) return [b, fit];
+  const out = roomRound(new maplibregl.LngLatBounds([geo.lon, geo.lat], [geo.lon, geo.lat]), geo);
+  for (const x of served) out.extend([x.s.lon, x.s.lat]);
+  return [out, { ...fit, maxZoom: 15 }];
 }
-/** The Map tab's view last framed, and where the map then rested: tapped again with the map still there, the tab
- *  gives the other view (the town with the rider in it, or the rider close up); moved since, the town again. */
-let homeAt = null;
-function frameHome(app, duration, due = false) {
-  const g = app.geo, c = map.getCenter(), still = !!homeAt && Math.abs(map.getZoom() - homeAt.zoom) < 0.05 && distance(c.lat, c.lng, homeAt.lat, homeAt.lon) < 30;
-  const close = !!g && !due && still && !homeAt.close;
-  const [t, f] = homeView(g, close);
-  const rest = () => { const e = map.getCenter(); homeAt = { close, zoom: map.getZoom(), lat: e.lat, lon: e.lng }; };
+/** The rider close up: the locate button's second tap, and every one after while the map's on screen. */
+const closeView = g => [[g.lon, g.lat], { bearing: 0, zoom: 15.5, maxZoom: 15.5 }];
+/** The Map tab's view: the stretch view on arriving, and the town's (the default, without the rider) when it's tapped
+ *  again on the map with a fix, from the stretch view untouched or from the town's already: one way, out, as the
+ *  locate button's is one way, in. Moved off the stretch view first, a tap brings it back. */
+let townTap = false;
+function frameHome(app, duration, again = false) {
+  const town = !!app.geo && again && (townTap || !movedSinceHome());
+  if (town) { townTap = true; frame(homeBounds(), { ...HOME_FIT, duration }); return; }
+  const [t, f] = homeView(app.geo);
+  const rest = () => { const c = map.getCenter(); homeRest = { zoom: map.getZoom(), lat: c.lat, lon: c.lng }; };
   map.once('moveend', rest);
-  if (!frame(t, { ...f, duration })) map.off('moveend', rest);
+  if (!frame(t, { ...f, duration })) { map.off('moveend', rest); rest(); }
+  locTaps = 0; townTap = false;
 }
 /** Where the map is first made (before it has a size to fit the home view to): the home view's middle. */
 const homeCentre = () => { const b = homeBounds(); return b ? b.getCenter().toArray() : [D.hub.lon, D.hub.lat]; };
@@ -1859,7 +1899,7 @@ export function resetView(app, once = false, to = null, jump = false, due = fals
   const still = jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches || jump === 'hub' && WEAK;
   const duration = still ? 0 : jump === 'hub' ? 550 : 600;
   if (to) map.easeTo({ padding: pad(), center: to.center, zoom: to.zoom, bearing: 0, duration });
-  else frameHome(app, duration, due);
+  else frameHome(app, duration, !due);
 }
 /** The Map tab from the Transit Center: the map as it was before the Center framed itself, north up, nothing picked
  *  (a tab keeps its place; a second tap is the reset). The whole of Logan when the app opened at the Center. Done
@@ -2177,6 +2217,7 @@ function searchMarks(m) {
 /** Called by the router whenever the map is on screen. */
 let shownHash = null, lastMeasured = '';
 export async function show(o, app, clockNow) {
+  if (!/^#\/map/.test(location.hash)) { locTaps = 0; townTap = false; }   // the map left: both buttons start again at the stretch view
   await showPage(o, app, clockNow);
   // Marked once the map's ready: a reload straight onto a search gets there before its style does.
   wantMarks = wide() && o.searchMarks || null;
@@ -2247,7 +2288,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // Made before it had a size: the home view, now there's a screen to fit it to (a stop, a route or the Center then
   // frames itself over this). The canvas brought to the box first: made hidden, it's MapLibre's 400 by 300 until the
   // resize watcher's next frame, and the town fitted into that opened two zoom levels out.
-  if (homePending) { homePending = false; sized(); frameHome(app, 0, true); }
+  if (homePending) { homePending = false; sized(); frameHome(app, 0); }
   // Measured again when it may have changed; not on every minute and feed redraw, when a resize's move events would
   // cut short a tap waiting out its double-tap beat.
   const measured = box.clientWidth + 'x' + box.clientHeight;
