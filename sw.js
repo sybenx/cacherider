@@ -3,11 +3,11 @@
 // The phone answers from what it keeps, never waiting on the network: the app
 // as this version installed it (a deploy is a new version, and the page offers
 // a reload), the data files as last fetched, each checked behind the page.
-const VERSION = 'cr-v261';
+const VERSION = 'cr-v262';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js',
-  './app/views/home.js', './app/views/stop.js', './app/views/hub.js', './app/views/about.js', './app/views/map.js', './app/views/ustop.js', './app/views/uroute.js', './app/views/stopwide.js', './app/geo.js', './app/usu.js', './app/rt.js', './app/pointer.js', './app/plan.js', './app/views/go.js', './app/views/find.js', './app/share.js',
+  './app/views/home.js', './app/views/stop.js', './app/views/hub.js', './app/views/about.js', './app/views/map.js', './app/views/ustop.js', './app/views/uroute.js', './app/views/stopwide.js', './app/geo.js', './app/usu.js', './app/rt.js', './app/pointer.js', './app/plan.js', './app/views/go.js', './app/views/find.js', './app/share.js', './app/places.js',
   './vendor/qrcodegen.mjs', './vendor/maplibre-gl.mjs', './vendor/maplibre-gl-shared.mjs', './vendor/maplibre-gl-worker.mjs', './vendor/maplibre-gl.css', './vendor/basemaps.mjs',
   './fonts/barlow-400.woff2', './fonts/barlow-500.woff2', './fonts/barlow-700.woff2', './fonts/barlow-condensed-400.woff2', './fonts/barlow-condensed-600.woff2',
   './icons/icon.svg', './icons/icon-96.png', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './favicon.ico',

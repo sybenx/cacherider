@@ -8,6 +8,7 @@ import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
 import { spotOf, spotKey, atPath } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
+import { myPlaces } from '../places.js';
 import { U, planNet, chip, shuttleAlso, hours } from '../usu.js';
 import { nearMe, app } from '../main.js';
 
@@ -53,7 +54,7 @@ function headOf(to, e, at, t) {
   // Where from, the trip's first setting, as when (whenControl) is its second: a button alike, the pin for 'from', the
   // name whole, and tapped, the ways to change it under it. It was 'From 1111 N…' and three buttons on a line.
   const from = origin ? { btn: html`<button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t" data-short="${gridShort(fromName)}">${fromName}</span></button>`,
-    acts: html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div>` } : null;
+    acts: html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}${myPlaces().filter(p => !(spot && Math.abs(p.lat - d.lat) < 1e-4 && Math.abs(p.lon - d.lon) < 1e-4)).map(p => html`<a class="btn btn-ghost" href="#/go/${to}/${atPath({ lat: p.lat, lon: p.lon, label: p.name })}">${p.name}</a>`)}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div>` } : null;
   return { parts, key, hubBay, from };
 }
 

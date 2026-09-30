@@ -8,7 +8,8 @@ import { routeName, html, icon, badge, badges, time, sched, corners, stopRow, si
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
-import { results, pickOf, forPick } from './find.js';
+import { results, pickOf, forPick, endHref } from './find.js';
+import { myPlaces, placeNamed } from '../places.js';
 import { byWalk, spotOf, spotKey, walkMins } from '../geo.js';
 import { isWide } from '../wide.js';
 
@@ -78,7 +79,7 @@ function landing(clockNow, app) {
     <form class="search" id="search" role="search"><input class="input" type="search" placeholder="${first ? 'Street, place or route' : 'Where to?'}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
     ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
       <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : ''}</div>`);
-  parts.push(hubLine(clockNow), shuttleLine(clockNow));
+  parts.push(homeLine(geo), hubLine(clockNow), shuttleLine(clockNow));
   // And what the app does, shown rather than said: the stops with the most buses today (by the timetable's departures,
   // not by riders: there's no count of those, so not 'popular' or 'busiest'), with their next buses.
   // A newcomer may find their own there; either way the page isn't half empty on a first visit.
@@ -182,6 +183,12 @@ function busiest(clockNow, n = 4) {
   busyFor = clockNow.ymd; busyList = out;
   return out;
 }
+/** 'Take me home': with a Home saved, directions there from where the rider is, in a tap; not when they're there. */
+function homeLine(geo) {
+  const h = placeNamed('Home');
+  if (!h || (geo && distance(geo.lat, geo.lon, h.lat, h.lon) < 300)) return '';
+  return html`<a class="land-hub land-home" href="#/go/${spotKey(h.lat, h.lon, 'Home')}">${icon('house', 18)}<span class="col"><span>Take me home</span>${h.label ? html`<span class="sub">${h.label}</span>` : ''}</span>${icon('fwd', 18)}</a>`;
+}
 /** The Transit Center as a line: when the next group leaves and how soon, its tab a tap away. It was a framed card
  *  with a 42 px time, between the rider's stop and the stops beside it. */
 function hubLine(clockNow) {
@@ -222,6 +229,9 @@ function searchPage(q, clockNow, app, pick = null) {
     parts.push(results(q, clockNow, pick, later));
     return { html: parts.join(''), mount, title: 'Search' };
   }
+  // Saved places, before a word is typed: directions there (or, picking an end, that end) in a tap.
+  const mine = myPlaces();
+  if (mine.length) parts.push(html`<div class="section">${icon('star', 16)}Your places</div><div class="list">${mine.map(p => html`<a class="row placerow" href="${pick ? endHref(pick, null, { lat: p.lat, lon: p.lon, label: p.name }) : '#/go/' + spotKey(p.lat, p.lon, p.name)}"><div class="mid"><span class="name">${p.name}</span>${p.label && p.label !== p.name ? html`<span class="sub">${p.label}</span>` : ''}</div>${icon('fwd', 18)}</a>`)}</div>`);
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
   if (rec.length) parts.push(html`<div class="section">${icon('history', 16)}Recent on this device</div><div class="list">${rec.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
