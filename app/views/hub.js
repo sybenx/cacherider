@@ -47,8 +47,9 @@ function status(k, clockNow) {
       else if (!u) loose = true;
       else {
         const next = u.stops.filter(([sid, , time, rel]) => rel !== 1 && time >= nowSec - 30 && D.stops[D.stopById[sid]]?.hub).sort((x, y) => x[1] - y[1])[0];
-        const at = next && next[1] === u.end ? endAt(b, u) : next && next[2];   // its trip's end: the feed's, or where the bus is if the feed's lost it
-        if (next) e = at - nowSec < 60 && next[1] === u.end && at !== next[2] ? 0 : Math.max(1, Math.round((at - nowSec) / 60)); else { away = true; if (own) bus = bus || b.id; }
+        // Its trip's end: the feed's time, or, where the feed has lost the trip, from where the bus is (in, when it's there).
+        const at = next ? (next[1] === u.end ? endAt(b, u) ?? next[2] : next[2]) : null, placed = next && at !== next[2];
+        if (next) e = placed && at - nowSec < 60 ? 0 : Math.max(1, Math.round((at - nowSec) / 60)); else { away = true; if (own) bus = bus || b.id; }
       }
       if (e !== null && (eta === null || e < eta)) { eta = e; bus = b.id; }
     }

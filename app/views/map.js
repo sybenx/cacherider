@@ -471,7 +471,7 @@ async function made(app) {
   placeControls();
   WIDE.addEventListener('change', placeControls);
   squaresOnDemand(map);
-  map.on('load', () => { ready = true; addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimesSoon(focusRoute, now()); });
+  map.on('load', () => { ready = true; markNear(nearIds, nearBy); addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimesSoon(focusRoute, now()); });
   map.on('idle', () => (window.requestIdleCallback || (f => setTimeout(f, 200)))(warmViews, { timeout: 2000 }));
   map.on('zoom', busScale);
   map.on('move', quiet);
@@ -607,7 +607,7 @@ async function made(app) {
   for (const id of ['stops', 'stops-lit', 'stops-near']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; runsKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; runsKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); markNear(nearIds, nearBy); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -1170,15 +1170,15 @@ function nearControl() {
       const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
       const b = document.createElement('button'); b.type = 'button'; b.className = 'nearbtn'; b.title = 'Near me'; b.setAttribute('aria-label', 'Near me');
       b.innerHTML = icon('near', 20).s;
-      // First tap, the stretch view (the rider and what they'd ride from); every tap after, them close up, until the map
-      // is left and come back to, or the Map tab's tapped. It never turns location off.
+      // The stretch view (the rider and what they'd ride from), unless the map's on it already; then, and every tap
+      // after, them close up, until the map is left and come back to, or the Map tab's tapped. The Map tab the same the
+      // other way: the stretch view, unless on it, then the town's. It never turns location off.
       b.onclick = () => nearMe(geo => {
         if (!geo) return;
         placeMe(geo);
-        const [t, f, ids] = locTaps ? closeView(geo) : homeView(geo);
-        if (ids) markNear(ids, 'home');
-        locTaps++;
-        frame(t, { ...f, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700 });
+        const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700;
+        if (locTaps++ || !movedSinceHome()) { const [t, f] = closeView(geo); frame(t, { ...f, duration }); }
+        else toStretch(geo, duration);
       });
       el.appendChild(b); this.el = el; return el;
     },
@@ -1855,14 +1855,10 @@ function homeBounds() {
   return (homeB = b);
 }
 const HOME_FIT = { bearing: 0, maxZoom: 14 };
-/** The Map tab's view with the rider in it, when they're where the buses are (400 m from a stop): the town, not their
- *  street at 15, and they're in it. It was one or the other: their street with a fix, the town (maybe without them) on
- *  the tab's second tap. Stretched a zoom level at most: out along an arm (Preston, Hyrum) the whole valley is no view
- *  of anything, and the map opens on them. Out of the valley, the town alone. */
-let meGeo = null;
+let meGeo = null;   // the rider's last fix, as the map has it
 /** The stretch view: where the rider is, with what they'd ride from. In town or at its edge (2 km from the home view's
- *  box), the town with them in it; out in the valley (20 km of a stop: Fairview, Preston), them and their nearest stops
- *  with buses that day, not the whole valley with them a dot at one end; out of it, the town alone. */
+ *  box), the town with them in it; out in the valley (20 km of a stop: Fairview, Preston), them and the four stops the
+ *  home page lists as nearest, marked, not the whole valley with them a dot at one end; out of it, the town alone. */
 const roomRound = (b, g) => b.extend([g.lon - 0.004, g.lat - 0.003]).extend([g.lon + 0.004, g.lat + 0.003]);   // not on the edge
 function homeView(geo) {
   const b = homeBounds(), fit = { ...HOME_FIT };
@@ -1877,14 +1873,15 @@ function homeView(geo) {
 }
 /** The rider's four nearest stops, as the home page lists them (its big one and the three beneath): by the walk. */
 const nearFour = g => byWalk(nearest(g.lat, g.lon, 24).filter(x => !D.stops[x.i].hub), g.lat, g.lon).slice(0, 4);
-/** Marked at any zoom, with their names: out in the valley the stretch view is wider than stops are drawn. */
-let nearBy = null;   // whose marks they are: the stretch view's ('home') or a no-way map's ('none')
+let nearBy = null, nearIds = [];   // whose marks they are (the stretch view's, 'home', or a no-way map's, 'none'), and which
+/** Marked at any zoom, with their names: out in the valley the stretch view is wider than stops are drawn. Kept, and put
+ *  on the map once its style is in (a first open straight onto the stretch view marks them before it is), or again. */
 function markNear(ids = [], by = null) {
-  nearBy = ids.length ? by : null;
+  nearBy = ids.length ? by : null; nearIds = ids;
   if (!map || !map.getLayer('stops-near')) return;
   for (const id of ['stops-near', 'stops-near-labels']) map.setFilter(id, ['in', ['get', 'id'], ['literal', ids]]);
 }
-/** The rider close up: the locate button's second tap, and every one after while the map's on screen. */
+/** The rider close up: the locate button's far end. */
 const closeView = g => [[g.lon, g.lat], { bearing: 0, zoom: 15.5, maxZoom: 15.5 }];
 /** The Map tab's view: the stretch view on arriving, and the town's (the default, without the rider) when it's tapped
  *  again on the map with a fix, from the stretch view untouched or from the town's already: one way, out, as the
@@ -1893,12 +1890,17 @@ let townTap = false;
 function frameHome(app, duration, again = false) {
   const town = !!app.geo && again && (townTap || !movedSinceHome());
   if (town) { townTap = true; locTaps = 0; homeRest = null; markNear(); frame(homeBounds(), { ...HOME_FIT, duration }); return; }   // the locate button then starts at the stretch view again
-  const [t, f, ids] = homeView(app.geo);
+  toStretch(app.geo, duration);
+  locTaps = 0; townTap = false;
+}
+/** The stretch view framed (by either button), and where the map comes to rest noted: tapped again with the map still
+ *  there, a button goes on to its far end instead of framing the same view again. */
+function toStretch(geo, duration) {
+  const [t, f, ids] = homeView(geo);
   markNear(/^#\/map/.test(location.hash) ? ids : [], 'home');   // the map made under another page (a stop, directions): theirs, not these
   const rest = () => { const c = map.getCenter(); homeRest = { zoom: map.getZoom(), lat: c.lat, lon: c.lng }; };
   map.once('moveend', rest);
   if (!frame(t, { ...f, duration })) { map.off('moveend', rest); rest(); }
-  locTaps = 0; townTap = false;
 }
 /** Where the map is first made (before it has a size to fit the home view to): the home view's middle. */
 const homeCentre = () => { const b = homeBounds(); return b ? b.getCenter().toArray() : [D.hub.lon, D.hub.lat]; };
@@ -1912,7 +1914,7 @@ export function resetView(app, once = false, to = null, jump = false, due = fals
   // Back from the Center (jump 'hub'): the flight there in reverse, the half turn unwound, as briefly; at once where
   // the flight in was (less motion asked for, a weak device).
   const backTo = !to && jump === 'hub' && homeView(app.geo)[0];   // back from the Center to the stretch view: flown only if the Center's in it
-  const still = jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches || jump === 'hub' && (WEAK || !hubFlew || (backTo && !Array.isArray(backTo) && !backTo.contains([D.hub.lon, D.hub.lat])));
+  const still = jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches || jump === 'hub' && (WEAK || !hubFlew || (backTo && !backTo.contains([D.hub.lon, D.hub.lat])));
   const duration = still ? 0 : jump === 'hub' ? 550 : 600;
   if (to) map.easeTo({ padding: pad(), center: to.center, zoom: to.zoom, bearing: 0, duration });
   else frameHome(app, duration, !due);

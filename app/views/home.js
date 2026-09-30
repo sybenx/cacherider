@@ -2,9 +2,9 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
+import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
+import { routeName, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
