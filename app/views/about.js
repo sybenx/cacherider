@@ -20,7 +20,7 @@ export function render({ section }, clockNow) {
       <div class="setrow"><div class="col"><span class="t">Light or dark</span><span class="s">This device's setting, or always light or dark</span></div>${themeButton('theme')}</div>
       <div class="setrow"><div class="col"><span class="t">Clock</span><span class="s">3:10 PM or 15:10</span></div><div class="seg" role="group" aria-label="Clock"><button type="button" data-clock="12" aria-pressed="${is24() ? 'false' : 'true'}">12-hour</button><button type="button" data-clock="24" aria-pressed="${is24() ? 'true' : 'false'}">24-hour</button></div></div>
       <div class="setrow"><div class="col"><span class="t">Distance</span><span class="s">500 ft or 150 m</span></div><div class="seg" role="group" aria-label="Distance"><button type="button" data-units="mi" aria-pressed="${isKm() ? 'false' : 'true'}">Miles</button><button type="button" data-units="km" aria-pressed="${isKm() ? 'true' : 'false'}">Kilometers</button></div></div>
-      <div class="setrow"><div class="col"><span class="t">Location</span><span class="s">${app.geo ? 'On · sorts stops by distance' : 'Off · turn on to sort stops by distance'}</span>${app.geo ? html`<span class="s">Last found ${clockText(now(new Date(app.geo.at)).min)}${app.geo.acc ? ' · ±' + metres(app.geo.acc) : ''}</span>` : ''}</div><button class="btn btn-secondary" id="aboutnear" type="button">${app.geo ? 'Turn off' : 'Turn on'}</button></div>
+      <div class="setrow"><div class="col"><span class="t">Location</span><span class="s">${app.geo ? 'On · sorts stops by distance' : 'Off · turn on to sort stops by distance'}</span>${app.geo ? html`<span class="s">Last found ${clockText(now(new Date(app.geo.at)).min)}${app.geo.acc ? ' · ±' + metres(app.geo.acc) : ''}${app.geo.stale ? ' · the phone hasn’t found a newer one' : ''}</span>` : ''}</div><button class="btn btn-secondary" id="aboutnear" type="button">${app.geo ? 'Turn off' : 'Turn on'}</button></div>
     </div>
     ${installState() === 'installed' ? '' : html`<div class="section">${icon('down', 16)}On your home screen</div>
     <div class="pad" id="install-about">${installBlock()}</div>`}
@@ -41,6 +41,7 @@ export function render({ section }, clockNow) {
       <p><a href="${D.agency.url}" target="_blank" rel="noopener">${site(D.agency.url)}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fare free</a>` : ''}${U && U.url ? html`<br><a href="${U.url}" target="_blank" rel="noopener">${site(U.url)}</a>${U.phone ? ' · ' + U.phone : ''} · fare free` : ''}</p>
       <p><a href="https://github.com/sybenx/cacherider" target="_blank" rel="noopener">Source on GitHub</a> · Companion to the <a href="https://github.com/sybenx/headway" target="_blank" rel="noopener">Headway</a> Pebble watchface. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, via Protomaps.</p></div>
     ${shareBlock({ url: siteLink(''), title: 'Share Cache Rider', lines: ['Next buses for Cache Valley, on any phone. Nothing to install.'] })}
+    <div class="fine">Build <span id="build">…</span></div>
     <div class="fine">Cache Rider isn't affiliated with ${D.agency.name}${U && U.agency ? ' or ' + U.agency : ''}.</div>`;
   return {
     title: 'About',
@@ -68,6 +69,9 @@ const MARK = BASE + 'tiles/.saved', INDEX = BASE + 'tiles/tiles.json';   // the 
 
 async function mount(el) {
   fillQRs(el);
+  // Which build this phone is running (the service worker's cache is named for it): an update's easier to check than guess.
+  const bd = el.querySelector('#build');
+  if (bd && window.caches) caches.keys().then(ks => { bd.textContent = ks.find(k => /^cr-v\d+$/.test(k)) || 'not installed for offline use'; }).catch(() => {});
   const th = el.querySelector('#theme');
   if (th) th.onclick = cycleTheme;
   for (const b of el.querySelectorAll('[data-clock]')) b.onclick = () => { if ((b.dataset.clock === '24') !== is24()) toggleClock(); };

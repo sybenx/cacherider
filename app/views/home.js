@@ -3,7 +3,7 @@
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords } from '../data.js';
-import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
+import { relative, fmtDay, metres, clock, clockText, dayName, now } from '../time.js';
 import { routeName, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
@@ -35,11 +35,13 @@ function landing(clockNow, app) {
   const nearU = app && app.geo ? nearestShuttle(app.geo) : null;
   const uWins = nearU && nearU.d <= 800 && board(nearU.i).some(r => r.est) && (!near || near.d > 800 || nearU.mins < walkMins(app.geo.lat, app.geo.lon, D.stops[near.i].lat, D.stops[near.i].lon, near.d));
   let heroSi, heroU, heroWhy = '';
-  if (uWins) { heroU = nearU.i; heroWhy = 'Nearest'; }
-  else if (near && near.d <= 800) { heroSi = near.i; heroWhy = 'Nearest'; }
+  // An old fix (the phone found no newer: GrapheneOS indoors) is still used, but said as of when.
+  const nearWord = app && app.geo && app.geo.stale ? 'Nearest as of ' + clockText(now(new Date(app.geo.at)).min) : 'Nearest';
+  if (uWins) { heroU = nearU.i; heroWhy = nearWord; }
+  else if (near && near.d <= 800) { heroSi = near.i; heroWhy = nearWord; }
   else if (firstSaved !== undefined && firstSaved.startsWith('u:')) { heroU = U.stopById[firstSaved.slice(2)]; heroWhy = 'Saved'; }
   else if (firstSaved !== undefined) { heroSi = D.stopById[firstSaved]; heroWhy = 'Saved'; }
-  else if (near) { heroSi = near.i; heroWhy = 'Nearest'; }
+  else if (near) { heroSi = near.i; heroWhy = nearWord; }
   const stopHero = heroSi !== undefined || heroU !== undefined;
   const geo = app && app.geo;
   const [dow, date, mon] = fmtDay(clockNow.ymd).split(' ');
@@ -72,7 +74,7 @@ function landing(clockNow, app) {
     const rowsC = byWalk(nearest(geo.lat, geo.lon, 24).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)), geo.lat, geo.lon);
     const rowsU = U ? nearestShuttles(geo, 6).filter(x => x.i !== heroU && !sv.includes('u:' + U.stops[x.i].id) && x.d <= 800).map(x => ({ ...x, u: true })) : [];
     const rows = [...rowsC, ...rowsU].sort((a, b) => a.mins - b.mins || a.d - b.d).slice(0, 3);
-    if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy === 'Nearest' ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d, u }) => u ? stopRowU(i, { dist: metres(d) }) : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
+    if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy.startsWith('Nearest') ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d, u }) => u ? stopRowU(i, { dist: metres(d) }) : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
   }
   // Where to: the box on the page whichever way it opened (a stop's rider got an icon in the header, the question
   // three of the list a tap harder to find). Beside a wide screen's map, the top bar's box is this one.

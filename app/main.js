@@ -333,10 +333,12 @@ export function locate(onDone) {
   let precise = false, answered = false;
   const take = (p, fine) => {
     // The fix's own time, not when it came: a phone without Google's location service (GrapheneOS, in Vanadium) can
-    // answer with its last GPS fix, hours old, as if it were now, and indoors the GPS then times out: the morning's
-    // place, all day. One older than asked for (10 min rough, 2 the GPS's) is no answer.
-    if (Date.now() - p.timestamp > (fine ? 120000 : 600000)) return false;
-    const g = { lat: p.coords.latitude, lon: p.coords.longitude, at: p.timestamp, acc: p.coords.accuracy };
+    // answer with its last GPS fix, hours old, and indoors find no newer one. It's still the best there is, so it's
+    // used, but marked (stale, over 10 min), and said where it's shown: 'Nearest as of 8:14 AM'. Throwing it away left
+    // no location at all. A time that can't be right (none, or ahead of the clock) is taken as now.
+    const t = p.timestamp > 1.5e12 && p.timestamp < Date.now() + 60000 ? p.timestamp : Date.now();
+    if (app.geo && !app.geo.stale && t < app.geo.at) return true;   // older than the one we have: keep ours
+    const g = { lat: p.coords.latitude, lon: p.coords.longitude, at: t, acc: p.coords.accuracy, stale: Date.now() - t > 600000 };
     const moved = !app.geo || distance(app.geo.lat, app.geo.lon, g.lat, g.lon) > 30;
     app.geo = g;
     pref('near', 'on');
@@ -351,7 +353,7 @@ export function locate(onDone) {
     if (answered) return;   // the rough fix stands
     const denied = err.code === err.PERMISSION_DENIED;
     if (denied) { pref('near', 'blocked'); app.geo = null; }
-    else if (app.geo && Date.now() - app.geo.at > 600000) { app.geo = null; render(); }
+    else if (app.geo && Date.now() - app.geo.at > 600000 && !app.geo.stale) { app.geo = { ...app.geo, stale: true }; render(); }   // kept, said as old
     onDone && onDone(denied ? null : app.geo);
     if (denied) askLocation(onDone);
   };
@@ -359,7 +361,7 @@ export function locate(onDone) {
   // them show now, not after the GPS has warmed up (seconds, on a phone opened after a while). Only for the page's own
   // sorting: a way asked for from here (onDone) waits for the GPS.
   if (!onDone) navigator.geolocation.getCurrentPosition(p => { if (!precise) take(p, false); }, () => { /* the GPS's, then */ }, { enableHighAccuracy: false, maximumAge: 600000, timeout: 4000 });
-  navigator.geolocation.getCurrentPosition(p => { precise = true; if (!take(p, true)) fail({ code: 3, PERMISSION_DENIED: 1 }); }, fail, { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });   // a stale 'GPS fix' is a timeout
+  navigator.geolocation.getCurrentPosition(p => { precise = true; take(p, true); }, fail, { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
 }
 
 /** Near me: silent when the browser already allows it, the explaining sheet only when the browser is about to ask. */
