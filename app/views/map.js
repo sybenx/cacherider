@@ -1176,6 +1176,8 @@ function nearControl() {
       b.onclick = () => nearMe(geo => {
         if (!geo) return;
         placeMe(geo);
+        // At the Center (the map too, its board up): leave it for the stretch view, as the Map tab leaves it for the map.
+        if (/^#\/hub/.test(location.hash)) { locTaps = 0; resetDue = true; location.hash = '#/map'; return; }
         const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700;
         if (locTaps++ || !movedSinceHome()) { const [t, f] = closeView(geo); frame(t, { ...f, duration }); }
         else toStretch(geo, duration);
