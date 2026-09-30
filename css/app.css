@@ -529,7 +529,14 @@ a.twinline { text-decoration: none; }
 .mapcard.open { transform: none; visibility: visible; pointer-events: auto; }
 /* swiped down once: the head alone, the map showing through; the card's rows and buttons wait under it */
 .mapcard.peek { max-height: var(--peek, 110px); overflow: hidden; }
-.mapcard.peek:has(> .hubsheet) { overflow-y: auto; overscroll-behavior: contain; }   /* the Center's board scrolls at its size */
+/* the Center's board on a phone: the map's height, an empty band over the bays (the map's to touch) and the board
+   under it, all one scroll, so down slides the board up over the map and back at the top it rests where it was */
+.mapcard.open:has(> .hubsheet) { top: var(--hub-top, 0px); max-height: none; padding-top: var(--hub-room, 0px); background: transparent; border-top: 0; box-shadow: none; pointer-events: none; scrollbar-width: none; }
+.mapcard.open:has(> .hubsheet)::-webkit-scrollbar { display: none; }
+.mapcard.open:has(> .hubsheet) > * { pointer-events: auto; display: flow-root; }   /* margins kept inside, no gap that's the map's */
+/* the board's ground, from the band's end down, painted on the card's scrolled content so it moves with the board */
+.mapcard.open:has(> .hubsheet) { background: linear-gradient(transparent var(--hub-room, 0px), var(--color-bg) var(--hub-room, 0px)) local; }
+.mapcard.open:has(> .hubsheet) > .grip { border-radius: 0; border-top: 1px solid var(--cr-line); box-shadow: 0 -6px 18px rgba(0,0,0,.18); cursor: default; }
 /* the bar is 40 by 4; the handle around it is the whole width and tall enough for a thumb, and the browser never gets the drag */
 .mapcard .grip { display: block; width: 100%; height: 24px; padding: 10px calc(50% - 20px); box-sizing: border-box; background: var(--cr-line); background-clip: content-box; border-radius: 2px; touch-action: none; cursor: grab; }
 .mapcard .head { padding: 6px 16px 12px; gap: 6px; }

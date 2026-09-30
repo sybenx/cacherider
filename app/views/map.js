@@ -927,13 +927,6 @@ function fitPeek(card) {
   // The directions: down to the way drawn, the rows above it with it, so the map keeps half the screen at least.
   const pk = card.querySelector('.gohead .jrow.picked');
   if (pk) { card.style.setProperty('--peek', Math.min(pk.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.5 * map.getContainer().clientHeight) + 'px'); return; }
-  // The Center's board: the map keeps the bays' own height (the arc across the screen's width) and the board has the
-  // rest, down to the countdown at the least; a short screen's board scrolls, a tall one's shows the next buses too.
-  if (card.querySelector(':scope > .hubsheet')) {
-    const h = card.querySelector('.head'), headH = h ? h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2 : 120;
-    const room = map.getContainer().clientHeight - hubRoom();
-    card.style.setProperty('--peek', Math.round(Math.max(headH, Math.min(room, card.scrollHeight))) + 'px'); return;
-  }
   // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it).
   const h = card.querySelector('.head');
   if (h) card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2) + 'px');
@@ -958,8 +951,8 @@ function wireGrip(app) {
   // Swiped down, the card shrinks to its head (the stop's name and routes) and the map shows through; swiped down
   // again it goes. Up, or a tap on the head, opens it out. The size chosen stays for the next stop tapped.
   const peeked = () => card.classList.contains('peek');
-  // The Center's board keeps its size, down to the loops, and scrolls in place: the bays above it are the page too,
-  // and opened out it covered them. Nor is it put away: gone, only leaving the Center brought it back.
+  // The Center's board scrolls as one page over the map (hubPlace), none of this: nor is it put away, as gone, only
+  // leaving the Center brought it back.
   const board = () => !!card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash);
   // Between its two sizes the card only ever slides: its height changes in one go, before or after the slide, with
   // the transform holding its top edge where it was, so nothing bounces. A short transition for the settle only,
@@ -1018,6 +1011,7 @@ function wireGrip(app) {
   }, { passive: true });
   card.addEventListener('touchmove', e => {
     if (y0 === null || e.touches.length !== 1) return;
+    if (board()) { y0 = null; return; }   // its own scroll
     const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
     if (!claimed) {
       const down = dy > 0 && card.scrollTop <= 0;
@@ -1057,7 +1051,7 @@ function wireGrip(app) {
   // a mouse drags the grip
   let my0 = null;
   card.addEventListener('pointerdown', e => {
-    if (e.pointerType === 'touch' || !e.target.closest('.grip')) return;
+    if (e.pointerType === 'touch' || !e.target.closest('.grip') || board()) return;
     my0 = e.clientY; t0 = e.timeStamp; claimed = 'down'; card.setPointerCapture(e.pointerId); card.style.transition = 'none'; e.preventDefault();
   });
   card.addEventListener('pointermove', e => { if (my0 === null) return; card.style.transform = `translateY(${Math.max(0, e.clientY - my0)}px)`; });
@@ -1350,11 +1344,23 @@ function hubCard(clockNow) {
   // The same board redrawn in place only while it's up: closed (the Map tab, a swipe), it opens afresh, at the countdown.
   const again = hubKey === (s.pick || '') && !!card.querySelector(':scope > .hubsheet') && card.classList.contains('open');
   if (again) morph(card, markup);
-  else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); hubKey = s.pick || ''; }
+  else { card.innerHTML = markup; card.classList.remove('peek'); hubKey = s.pick || ''; }
   card.classList.remove('hidden');
   card.classList.add('open');
-  if (!again) { fitPeek(card); card.classList.add('peek'); }   // down to the loops; a route picked, its own card
+  if (!again) { hubPlace(card); card.scrollTop = 0; }
   hubMount(card);
+}
+/** The board on a phone rests where the bays' own room ends (hubRoom), the countdown at the least, and scrolls as one
+ *  page over the map: down, it slides up over the bays and on through the departures; back at its top, it's where
+ *  it rested. The card is the map's height, the room above the board an empty band that lets the map have the finger.
+ *  It had two sizes, snapped between, and a scroll that opened it out covered the bays with no way back but the grip. */
+let hubRest = 0;   // the board's top, from the map's
+function hubPlace(card) {
+  const H = map.getContainer().clientHeight, top = topCover();
+  const g = card.querySelector(':scope > .grip'), h = card.querySelector(':scope > .head');
+  const headH = (g ? g.offsetHeight : 24) + (h ? h.offsetHeight : 100) + 1;
+  hubRest = Math.max(top, Math.min(hubRoom(), H - headH));
+  card.style.setProperty('--hub-top', top + 'px'); card.style.setProperty('--hub-room', (hubRest - top) + 'px');
 }
 /** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
 /** The map's height the bays need on a phone: the arc across the width, south up, its badges and their tags clear of
@@ -1376,7 +1382,7 @@ function fitHub(arriving = false) {
   for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
   const card = col.querySelector('#mapcard'), h = map.getContainer().clientHeight, p = { top: 60 + topCover(), bottom: 60, left: 50, right: 50 };   // the panel's room is the map's own padding already
   // A phone's: the room above the board is the bays' own (hubRoom), so they fill its width.
-  if (!wide() && card.classList.contains('open')) Object.assign(p, { top: HUB_ROW + topCover(), bottom: HUB_ROW + card.offsetHeight, left: HUB_SIDE, right: HUB_SIDE });
+  if (!wide() && card.classList.contains('open')) Object.assign(p, { top: HUB_ROW + topCover(), bottom: HUB_ROW + (card.querySelector(':scope > .hubsheet') && hubRest ? h - hubRest : card.offsetHeight), left: HUB_SIDE, right: HUB_SIDE });
   p.bottom = Math.min(p.bottom, Math.max(60, h - p.top - 160));   // the bays always get some room
   settlePad();
   // South up, as a rider stands at the Center facing the hall from 500 North: part of the framing, not a turn of its own.
