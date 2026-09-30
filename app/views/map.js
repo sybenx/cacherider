@@ -1474,7 +1474,7 @@ function hubFold(on) {
 /** The bays, and how the Center frames them: south up, as a rider stands at the Center facing the hall from 500
  *  North; in to the bays' own zoom at the least, whatever covers the map. */
 function hubBounds() { const bb = new maplibregl.LngLatBounds(); for (const b of D.hub.bays) bb.extend([b.lon, b.lat]); return bb; }
-const hubFit = () => ({ margin: wide() ? 50 : HUB_M, bearing: 180, minZoom: HUB_Z + 0.2, maxZoom: 18.4 });
+const hubFit = () => ({ margin: wide() ? 80 : HUB_M, bearing: 180, minZoom: HUB_Z + 0.2, maxZoom: wide() ? 19 : 18.4 });   // beside a wide panel, the bays fill the map (it was a third of it)
 
 /** The tiles of the views a tab will ask for, built ahead while the map sits idle: the Center's bays, and the town as
  *  the Map tab shows it. Built only when first shown, each was gray a beat after its tab was tapped, seconds after

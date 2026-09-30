@@ -1048,3 +1048,21 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
   #body:has(> #runsheet) #mapcard { visibility: hidden; }
 }
 /* the wide About: the alerts and the data on the right */
+
+/* The Transit Center beside a wide screen's map: the header has the clock; the group card and the loops slimmer, so
+   the next hour's departures (what a desk comes for) start above the fold. The loops as a row each, not two cards. */
+@media (min-width: 840px) {
+  .tc-clock { display: none; }
+  .tc-together { padding: 10px 14px; }
+  .tc-together .col .t { font-size: 2.75rem; }
+  .tc-together .bars { margin-top: 10px; padding-top: 10px; }
+  .tc-loops { margin-top: 14px; }
+  .tc-loops .grid { grid-template-columns: 1fr; }
+  .tc-loop { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 12px; padding: 8px 14px; }
+  .tc-loop + .tc-loop { border-left: 0; border-top: 1px solid var(--cr-line); }
+  .tc-loop .who { flex: 1; min-width: 0; }
+  .tc-loop .when { flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; column-gap: 8px; row-gap: 0; }
+  .tc-loop .when .wasline { flex-basis: 100%; text-align: right; }
+  .tc-loop .when .t-36 { font-size: 1.625rem; }
+  .tc-loop .where, .tc-loop .lastrun { flex-basis: 100%; }
+}
