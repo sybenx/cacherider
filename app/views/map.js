@@ -1317,7 +1317,14 @@ function hubCard(clockNow) {
   else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); hubKey = s.pick || ''; }
   card.classList.remove('hidden');
   card.classList.add('open');
-  if (!again) { fitPeek(card); card.classList.add('peek'); }
+  if (!again) {
+    fitPeek(card);
+    // The board opens down to the loops, the countdown and the Green and Blue's next buses together, the bays framed in
+    // what's left above: a route picked opens at its own card.
+    const lp = !s.pick && card.querySelector('.tc-loops');
+    if (lp) card.style.setProperty('--peek', Math.round(Math.min(lp.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2, 0.55 * map.getContainer().clientHeight)) + 'px');
+    card.classList.add('peek');
+  }
   hubMount(card);
 }
 /** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
