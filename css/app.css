@@ -714,11 +714,12 @@ a.twinline { text-decoration: none; }
 .tc-count { font-size: 2.625rem; color: var(--color-accent-700); }
 .tc-together .bars { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--cr-line); display: flex; flex-direction: column; gap: 8px; }
 .tc-together .segs { display: grid; gap: 3px; }
-.tc-together .seg { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.tc-together .seg i { width: 100%; height: 8px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 30%, transparent); }
-.tc-together .seg.in i { box-shadow: inset 0 0 0 1px rgba(0,0,0,.14); }
-.tc-together .seg b { font-family: var(--font-heading); font-weight: 600; font-size: 0.75rem; line-height: 1; color: var(--cr-muted); }
-.tc-together .seg.in b { color: var(--color-text); }
+/* not .seg: that's the settings' two-button switch, whose border and corners boxed each bar */
+.tc-together .tc-seg { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.tc-together .tc-seg i { width: 100%; height: 8px; box-shadow: inset 0 0 0 1.5px var(--rc); }
+.tc-together .tc-seg.in i { background: var(--rc); box-shadow: inset 0 0 0 1px rgba(0,0,0,.14); }
+.tc-together .tc-seg b { font-family: var(--font-heading); font-weight: 600; font-size: 0.75rem; line-height: 1; color: var(--cr-muted); }
+.tc-together .tc-seg.in b { color: var(--color-text); }
 .tc-note { font-size: 0.8125rem; color: var(--cr-muted); }
 .tc-note b { font-weight: 600; color: var(--color-text); }
 .tc-loops { margin: 22px 16px 0; }

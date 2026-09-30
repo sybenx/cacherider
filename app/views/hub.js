@@ -128,7 +128,8 @@ function satShape(p) {
   // Not the same routes each time: a Saturday alternates two groups, on the hour and at half past.
   return ` · a group ${g === 60 ? 'hourly' : 'every ' + g + ' min'} until ${clockText(mins[mins.length - 1])}`;
 }
-/** The numbered routes leave together: when, the countdown, and one bar a route, filled when its bus is in. */
+/** The numbered routes leave together: when, the countdown, and one bar a route, its colour's outline until its bus
+ *  is in, then filled with it. */
 function together(st, clockNow) {
   const p = nextPulse(1, clockNow)[0];
   if (!p) return html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${D.agency.brand} doesn't run on ${dayName(clockNow.ymd)}s.</div></div></div>`;
@@ -144,7 +145,7 @@ function together(st, clockNow) {
   const livenow = p.day === 0 && !rtStale();
   const segs = leaving.map(k => {
     const s = st[k], r = D.routes[s.ris[0]], full = livenow && s.eta === 0;
-    return `<span class="seg${full ? ' in' : ''}"><i style="${full ? `background:#${r.color}` : ''}"></i><b>${k}</b></span>`;
+    return `<span class="tc-seg${full ? ' in' : ''}" style="--rc:#${r.color}"><i></i><b>${k}</b></span>`;
   }).join('');
   let note = '';
   if (livenow && leaving.length) {
@@ -155,7 +156,7 @@ function together(st, clockNow) {
     note = html`<span class="tc-note"><b>${inN} of ${n} in.</b>${rest ? ' ' + rest.replace(/^./, c => c.toUpperCase()) + '.' : ''}</span>`;
   } else if (p.day === 0 && rtStale()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
   return html`<div class="tc-together blueprint">${corners()}
-    <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}${p.day === 1 ? ' · tomorrow' : ''}</span></div><div class="end">${end}</div></div>
+    <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}</span></div><div class="end">${end}</div></div>
     ${leaving.length ? html`<div class="bars"><div class="segs" style="grid-template-columns:repeat(${leaving.length},minmax(0,1fr))">${html.raw(segs)}</div>${note}</div>` : ''}</div>`;
 }
 
