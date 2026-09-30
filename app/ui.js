@@ -225,18 +225,6 @@ export function side(si) {
 }
 
 
-/** The stop across the road, the stop for the other way and the commonest wrong one to stand at: one pill wherever
- *  it's offered, with that side's next bus. `dest` adds where that bus is going ('to Transit Center'), which anyone
- *  can use where a compass word can't; it's the first thing cut when the pill runs short. A link to that stop's page;
- *  on the map's card, a button that swaps the card to it. */
-export function acrossPill(si, clockNow, { button = false, dest = false, bare = false } = {}) {
-  const [ti, td] = stop(si).twin, t = stop(ti), n = bare ? null : nextAt(ti, 1, clockNow)[0], sd = side(ti);   // bare: the map's, no time
-  dest = dest && n && tellsApart(n);
-  const title = esc(`${t.name}${sd ? ' · ' + sd : ''} · ${metres(td)}`);
-  const inner = `${icon('swap', 14).s}<span class="tw-way">Across the road</span>${n ? `<span class="tw-t">· ${esc(clockText(n.min))}</span>` : ''}${dest ? `<span class="tw-d">· ${esc(headsign(n))}</span>` : ''}`;
-  return raw(button ? `<button class="twinline" type="button" data-twin="${esc(t.id)}" title="${title}">${inner}</button>` : `<a class="twinline" href="#/stop/${esc(t.id)}" title="${title}">${inner}</a>`);
-}
-
 /** The stop page's own: a row, not a pill. Which way it serves and how far, its name, and its next bus at the
  *  right the size of the departures beneath, live when the feed knows; where the destination tells the sides
  *  apart, that too. It answers the question a rider at the wrong stop has: is it this side, or that one? */

@@ -2,9 +2,9 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, timed, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
+import { D, BASE, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
-import { routeName, routeNames, html, icon, timedMark, badge, badges, time, sched, corners, depRow, stopRow, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
+import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -1525,62 +1525,21 @@ function select(id, app, fly = false, zoomIn = false) {
   if (!id) { card.classList.remove('open', 'peek'); return; }
   if (si === undefined) return;
   const s = stop(si);
-  // Beside the panel a tap opens the stop page there, wherever the tap came from; a phone, or the Map tab, gets the card.
-  // A tap on the map centres the stop, coming in to the streets from far out; an arrival from elsewhere zooms in further.
-  const zoom = zoomIn === 'closer' ? Math.min(18, Math.max(16, map.getZoom() + 1.5)) : zoomIn ? (wide() && app.route.name !== 'map' ? 16 : 15.5) : Math.max(map.getZoom(), 15);
-  if (wide() && fly && app.route.name !== 'map') {
-    map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom, duration: 700 });
-    if (location.hash !== '#/stop/' + id) location.hash = '#/stop/' + id;
-    card.classList.remove('open'); return;
+  // A stop is its page, wherever it's tapped: a phone's is the map with the page as its sheet, opening down to the
+  // next buses; beside the panel, the panel's. There was a card first, the page's first lines again with an Open
+  // button under them, a tap more for what was already there.
+  if (new RegExp('^#/stop/' + id + '(?:[/?]|$)').test(location.hash)) {
+    // Tapped again on the map: closer in.
+    if (zoomIn === 'closer') map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.min(18, Math.max(16, map.getZoom() + 1.5)), duration: 650 });
+    return;
   }
-  card.innerHTML = stopCard(si, now(), true);
-  wireStopCard(card, app);
-  afterPaint(() => { if (selected === id && card.querySelector(`:scope > .head[data-stop="${id}"]`)) { morph(card, stopCard(si, now())); wireStopCard(card, app); } });
-  if (card.classList.contains('peek')) fitPeek(card);   // a new head, its own height
-  card.classList.remove('hidden');
-  requestAnimationFrame(() => {
-    card.classList.add('open');
-    if (!fly || !map) return;
-    // Ease the stop into the middle of the map: on a phone the middle of what's left above the card, on a wide screen,
-    // where the card sits in a corner, the middle. A tap from far out comes in to the streets; closer in it keeps the zoom.
-    map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom, offset: cardOffset(card), duration: 650, essential: true });
-  });
+  // From one stop to the next on the map, the address replaced: Back is the map, not each stop tapped on the way.
+  const to = '#/stop/' + id;
+  if (/^#\/(stop\/|map\/\d)/.test(location.hash)) location.replace(to); else location.hash = to;
 }
 /** What can wait a frame: a card drawn and on screen first, the tap answered at once; its times worked out and put in
  *  just after, the first chance the phone has once that frame is painted. */
 const afterPaint = f => requestAnimationFrame(() => setTimeout(f, 0));
-/** A stop's card: its name and routes, its next three buses, the way to its page and to directions. `bare`: without
- *  the times, for the tap's own frame (they follow, afterPaint). */
-function stopCard(si, clockNow, bare = false) {
-  const s = stop(si);
-  const next = bare ? null : nextAt(si, 3, clockNow);
-  const fromHub = metres(distance(s.lat, s.lon, D.hub.lat, D.hub.lon));
-  const closed = closedRoutes(si, clockNow.ymd), al = stopAlerts(si, clockNow.ymd);
-  const end = al.length ? alertsUntil(al) : null, until = end ? (end === clockNow.ymd ? ' today' : ' until ' + fmtDay(end)) : '';
-  const alertLine = al.length ? html`<span class="eyebrow alert${closed.size ? ' warnmark' : ''}">${icon('ban', 14)}${closed.size ? routeNames([...closed]) + (closed.size > 1 ? ' skip' : ' skips') + ' this stop' + until : al[0].title}</span>` : '';
-  // The twin across the road, the stop for the other way: a pill at the right of the eyebrow, with its next bus, so
-  // the card grows by nothing for it; a tap swaps the card to it without leaving the map.
-  const twinLine = s.twin ? acrossPill(si, clockNow, { button: true, bare }) : '';
-  // The shuttle stop at the same pole, drawn as this one dot: its routes, and a way to its buses.
-  const sh = U && U.sharedByCvtd[si], us = sh ? U.stops[sh.i] : null;
-  const shuttleLine = us ? html`<a class="shuttleline" href="#/usu/${us.id}"><span class="eyebrow">${icon('hub', 14)}Also the USU shuttle · ${us.name}</span>${chips(us.routes, 20)}</a>` : '';
-  const poolLine = poolAt(si) ? html`<span class="eyebrow poolline">${icon('info', 14)}Also a POOL pickup · on-demand ride, <a href="tel:${POOL.phone}">${POOL.phone}</a></span>` : '';
-  return html`<div class="grip"></div><div class="head" data-stop="${s.id}"><div class="eyerow"><span class="eyebrow">${s.town} · Stop ${s.code || s.id}${s.by ? ` · ${s.by}` : twinLine ? '' : ` · ${fromHub} from the ${D.hub.name}`}</span>${twinLine}</div><div class="name"><span>${s.name}</span>${routeLinks(si)}</div>${shuttleLine}${poolLine}${alertLine}</div>
-    ${!next ? '' : next.length ? next.map(t => depRow(t, clockNow, { warn: t.day > 0 && closed.has(t.r) })) : html`<div class="empty"><p>Nothing scheduled here in the next week.</p></div>`}
-    <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/stop/${s.id}">${corners()}Open stop</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${s.id}">Get here</a></div>`.s;
-}
-function wireStopCard(card, app) {
-  const tw = card.querySelector('[data-twin]');
-  if (tw) tw.onclick = () => { card.scrollTop = 0; select(tw.dataset.twin, app, true); };
-}
-/** The stop's card as the minute turns and the feed comes in: its times redrawn where they are, the map left be. */
-function freshStopCard(app, clockNow) {
-  const card = col.querySelector('#mapcard'), si = selected ? D.stopById[selected] : undefined;
-  if (si === undefined || !card.classList.contains('open') || !card.querySelector(`:scope > .head[data-stop="${selected}"]`)) return;
-  morph(card, stopCard(si, clockNow));
-  wireStopCard(card, app);
-}
-
 /** The pointer over a route, a shuttle loop or a stop, on a desktop: drawn up on the map, and their badges in the panel
  *  ringed. From the panel (a badge, a stop's row) or the map (its lines) alike; nothing, everything back. */
 let hoverKey = '';
@@ -1617,22 +1576,6 @@ export function selectPool(id, app) {
   requestAnimationFrame(() => {
     card.classList.add('open');
     map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), offset: cardOffset(card), duration: 650, essential: true });
-  });
-}
-
-/** A stop's card over the map, from a page beside it, framed with where the rider is looking from (a shuttle stop):
- *  both in view, or the stop centred when they're close. */
-export function showStopFrom(id, lat, lon, app) {
-  const si = D.stopById[id];
-  if (!map || si === undefined) return;
-  const s = stop(si);
-  selectedBus = null; selectedU = null;
-  select(id, app);
-  const card = col.querySelector('#mapcard');
-  requestAnimationFrame(() => {
-    const b = new maplibregl.LngLatBounds([s.lon, s.lat], [s.lon, s.lat]).extend([lon, lat]);
-    const side = wide() ? card.offsetWidth + 48 : 60;
-    settlePad(), map.fitBounds(b, { padding: { top: 110, bottom: wide() ? 110 : card.offsetHeight + 40, left: 110, right: side }, maxZoom: 17, duration: 700 });
   });
 }
 
@@ -2081,7 +2024,6 @@ export async function show(o, app, clockNow) {
   if (map && ready) searchMarks(wantMarks);
   // The minute or the feed: a phone's route sheet redrawn in place, its scroll kept.
   if (o.tick && o.routeArgs && app.route.name === 'map' && !wide() && col.querySelector('#mapcard.open > .routesheet')) sheetCard(o.routeArgs, clockNow);
-  if (o.tick && app.route.name === 'map') freshStopCard(app, clockNow);   // a stop's next buses, counting down
   // The board is a phone's card whenever the Transit Center is up: redrawn for the minute, and put back when the
   // layout turned phone under it (a tablet turned upright) with the address unchanged.
   if (o.hub && app.route.name === 'map' && !wide() && (o.tick ? !!col.querySelector('#mapcard.open > .hubsheet') : !col.querySelector('#mapcard.open > .hubsheet'))) hubCard(clockNow);
@@ -2235,7 +2177,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
       // On the Map tab the card decides the framing, so the stop sits above it; beside the
       // stop list there is no card, and a fresh arrival eases to the stop itself.
       if (page) { select(stopId, app, false); pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
-      else if (app.route.name === 'map') select(stopId, app, changed, changed && map.getZoom() < 15);
+      else if (app.route.name === 'map') { lastFocused = null; select(stopId, app); }   // an old #/map/<stop> link: its page, framed as it comes
       else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
     }
   } else if (ustopId && U) {

@@ -4,7 +4,7 @@ import { D, nextAt, nearest, isSaved, toggleSaved } from '../data.js';
 import { dayName, metres } from '../time.js';
 import { html, icon, badges, depRow, stopRow, routeLinkItems } from '../ui.js';
 import { U, board, liveRow, chips, notice, isStale, hasData, noBuses, lastSeen, live, offNote, hoursWords } from '../usu.js';
-import { afterSave, app, isDesktop } from '../main.js';
+import { afterSave } from '../main.js';
 import { spotKey, atPath } from '../geo.js';
 
 export function render({ id }, clockNow) {
@@ -44,21 +44,12 @@ export function render({ id }, clockNow) {
     parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${cs.id}">Connect stop page</a></div>`);
   } else if (hasData() && noBuses()) {
     const near = nearest(s.lat, s.lon, 1)[0];
-    if (near) parts.push(html`<div class="section">Nearest Connect stop</div><div class="list" id="nearconnect" data-lat="${s.lat}" data-lon="${s.lon}">${stopRow(near.i, nextAt(near.i, 1, clockNow)[0], clockNow, { dist: metres(near.d) })}</div>`);
+    if (near) parts.push(html`<div class="section">Nearest Connect stop</div><div class="list">${stopRow(near.i, nextAt(near.i, 1, clockNow)[0], clockNow, { dist: metres(near.d) })}</div>`);
   }
   return { html: parts.join(''), mount, title: s.name, live: true, keepScroll: true };
 }
 
 function mount(el) {
-  // On a wide screen the map is beside this page: the nearest Connect stop is shown there, with its card, rather
-  // than a page of its own that would cover the map. Where it is from here is the question.
-  const nc = el.querySelector('#nearconnect a');
-  if (nc) nc.onclick = e => {
-    if (!isDesktop() || !app.mapMod) return;
-    e.preventDefault();
-    const box = nc.closest('#nearconnect');
-    app.mapMod.showStopFrom(nc.getAttribute('href').split('/').pop(), +box.dataset.lat, +box.dataset.lon, app);
-  };
   const b = el.querySelector('#save');
   if (!b) return;
   b.onclick = () => {
