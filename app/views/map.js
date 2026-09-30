@@ -2275,10 +2275,19 @@ function runPath(fc, ri, seq) {
   }
   return out;
 }
-function runBounds(R) {
-  const b = new maplibregl.LngLatBounds();
-  for (const p of R.points) b.extend([D.stops[p.si].lon, D.stops[p.si].lat]);
-  return b;
+/** What a run frames: this ride, from the rider's stop on (the bus's later runs, drawn lighter, may run off the
+ *  edges), as far along as fits at the zoom floor. It framed every run the bus makes, the middle of them all: the 12's
+ *  5:30 from the Center to Hyrum and back sat somewhere in Nibley, neither the rider's stop nor Hyrum in view. */
+function runBounds(R, o) {
+  const pts = R.points.filter(p => !p.leg).map(p => [D.stops[p.si].lon, D.stops[p.si].lat]);
+  let b = null;
+  for (const p of pts) {
+    const nb = b ? new maplibregl.LngLatBounds(b.getSouthWest(), b.getNorthEast()).extend(p) : new maplibregl.LngLatBounds(p, p);
+    const c = b && frameCam(nb, { ...o, minZoom: 0 });
+    if (c && c.zoom < o.minZoom) break;   // the rest runs off the edge, the start kept
+    b = nb;
+  }
+  return b || new maplibregl.LngLatBounds();
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60 };
@@ -2338,7 +2347,8 @@ async function drawRun(T) {
   // Clear of the search bar and notice, and on a phone of the run's sheet: the whole run in the map above it, with a
   // little room round it, never further out than zoom 11.25: a loop about town fits (the Green Loop at 11.4 on a
   // phone); a long route out of town (12 to Hyrum) is centred and runs off the edges rather than shrink to a thread.
-  frame(runBounds(R), { margin: wide() ? T.pad : 24, minZoom: 11.25, maxZoom: 16, bearing: 0 });
+  const fit = { margin: wide() ? T.pad : 24, minZoom: 11.25, maxZoom: 16, bearing: 0 };
+  frame(runBounds(R, fit), fit);
 }
 /** The run's times, each to the right of its bus's way, as the map is turned now: the screen's right, left, above or
  *  below, whichever is nearest the road's right-hand side. Placed again when the map turns. */
