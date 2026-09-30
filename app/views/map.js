@@ -1469,6 +1469,12 @@ function warmViews() {
     if (bornCam) cams.push(bornCam);
     if (beforeHub) cams.push(beforeHub);
     for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: 180 });
+    // The zooms between, along the flight from the town to the bays (fitHub): its middle drawn toward the Center and
+    // its turn half made as it comes in, so none is built mid-flight, gray till it is.
+    if (home) for (const z of [14, 15, 16, 17]) {
+      const k = Math.max(0, Math.min(1, (z - home.zoom) / Math.max(0.1, hz - home.zoom))), c = bb.getCenter(), h = maplibregl.LngLat.convert(home.center);
+      cams.push({ center: [h.lng + (c.lng - h.lng) * k, h.lat + (c.lat - h.lat) * k], zoom: z, bearing: 180 * k });
+    }
     const want = new Map();
     for (const c of cams) for (const id of tilesFor(T, c)) if (!T._inViewTiles.getTileById(id.key) && !T._outOfViewCache.has(id)) want.set(id.key, id);
     if (!want.size) return;
@@ -1511,13 +1517,16 @@ function hubRoom() {
   const z = Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * spanX))));
   return Math.round(topCover() + 2 * HUB_M + spanY * 512 * 2 ** z);
 }
-function fitHub(arriving = false, duration = 700) {
+function fitHub(arriving = false, duration = 700, fly = false) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
   if (arriving && !hubOn) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
-  // Arriving from another tab, it's there at once: a flight from the town down to the bays, turning half round on the
-  // way, loaded the streets at every zoom between and re-placed every label, frame by frame, 700 ms of a phone's work
-  // that no finger asked for. Framed again from the Center itself (its tab tapped again), it moves.
-  if (!frame(hubBounds(), { ...hubFit(), duration: arriving ? 0 : duration })) return;
+  // Arriving from another tab it was there at once: the flight from the town down to the bays, turning half round on
+  // the way, loaded the streets at every zoom between and re-placed every label, frame by frame, 700 ms of a phone's
+  // work. With the zooms between built ahead (warmViews) and the map lighter to draw, it flies again, briefly, where
+  // the map was already on screen (the Map tab, a wide screen), and the half turn is seen rather than sprung: not with
+  // less motion asked for, nor on a weak device. Framed again from the Center itself (its tab tapped again), it moves.
+  const flies = fly && !WEAK && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!frame(hubBounds(), { ...hubFit(), duration: arriving ? (flies ? 550 : 0) : duration })) return;
   hubTurned = true; northDue = false;
 }
 
@@ -2256,7 +2265,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     // On a phone the board is the map's card; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide()) hubCard(clockNow); else col.querySelector('#mapcard').classList.remove('open');
     // Framed whenever the tab opens; from one of its routes to another, the rider's zoom and turn are kept.
-    if (!cameFrom.startsWith('#/hub') || !hubOn) fitHub(!cameFrom.startsWith('#/hub'));
+    if (!cameFrom.startsWith('#/hub') || !hubOn) fitHub(!cameFrom.startsWith('#/hub'), 700, wide() || /^#\/map(\/|$)/.test(cameFrom));
     lastFocused = 'hub';
     hubBadges();
     return;
