@@ -596,8 +596,10 @@ async function made(app) {
     else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now()); }
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
     else if (app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) location.hash = '#/map';
-    // At the Center, a route picked from its badge: put away as well, the board back as it was.
+    // At the Center, a route picked from its badge: put away as well, the board back as it was. Nothing picked there,
+    // the board is put away for the map itself: the Map tab, the map where it is, turned north (as its north button).
     else if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub');
+    else if (/^#\/hub(\?|$)/.test(location.hash)) { stayOff = true; location.hash = '#/map'; }
   };
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
@@ -2145,7 +2147,10 @@ export async function show(o, app, clockNow) {
   // North alone left a desktop's map on the bays, turned: Transit Center, Stops, then Map never came out again.
   if (!o.hub && hubTurned && !o.tick) {
     const own = stayOff || o.stopId || o.routeShort || o.ustopId || o.uRoute || o.alertId || o.at || o.journey || o.run || o.busId || o.page || o.from || o.to;
-    if (own) { northDue = true; if (!map.isMoving()) northAgain(!stayOff); } else backDue = true;
+    // Left by its north button or a tap off the board: the bays north up in the whole map, not turned about a middle
+    // that was set above the board (they came to rest low on the screen).
+    if (stayOff) { hubTurned = false; northDue = false; requestAnimationFrame(() => frame(hubBounds(), { margin: wide() ? 50 : HUB_M, maxZoom: 18.4, bearing: 0, duration: 500 })); }
+    else if (own) { northDue = true; if (!map.isMoving()) northAgain(true); } else backDue = true;
   }
   stayOff = false;
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
