@@ -2,11 +2,11 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
+import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
-import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
+import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
@@ -147,6 +147,9 @@ function style(sat = true) {
   st.layers.splice(under >= 0 ? under : st.layers.findIndex(l => l.id === 'spot-fill'), 0, placeLabels);
   const all = st.layers.find(l => l.id === 'stops'), { minzoom, ...lit } = all;
   st.layers.splice(st.layers.indexOf(all) + 1, 0, { ...lit, id: 'stops-lit', maxzoom: 12, filter: ['in', ['get', 'id'], ['literal', []]] });
+  // The rider's nearest stops, out in the valley, where the stretch view is wider than stops are drawn: dot and name.
+  st.layers.splice(st.layers.indexOf(all) + 2, 0, { ...lit, id: 'stops-near', maxzoom: 12, filter: ['in', ['get', 'id'], ['literal', []]] },
+    { ...st.layers.find(l => l.id === 'stop-labels'), id: 'stops-near-labels', minzoom: 0, maxzoom: 15, filter: ['in', ['get', 'id'], ['literal', []]] });
   // A lit route's timed stops (its timepoints, where an early bus waits): a ring round the dot in the map's ink.
   st.layers.splice(st.layers.indexOf(all) + 2, 0, { id: 'stops-tp', type: 'circle', source: 'stops', filter: ['in', ['get', 'id'], ['literal', []]],
     paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 5, 14, 9, 17, 12.5, 19, 16], 'circle-opacity': 0, 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.2, 15, 2], 'circle-stroke-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20' } });
@@ -524,7 +527,7 @@ async function made(app) {
   });
   const pick = e => {
     const r = coarse() ? 22 : 8;
-    const all = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'usu-stops', 'pool-stops', 'place-labels'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
+    const all = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'stops-near', 'usu-stops', 'pool-stops', 'place-labels'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
     const hits = all.filter(f => f.layer.id !== 'place-labels');
     // Beside the directions page, a click is the other end: a stop that stop, a place's name that place, anywhere else
     // that spot, a way drawn or not. A stop of the way drawn is still that stop, though: its page, as on a phone.
@@ -532,7 +535,7 @@ async function made(app) {
     if (pickNow && (pickFor || pickTo) && !ofWay) {
       const near = f => { const q = map.project(f.geometry.coordinates); return Math.hypot(q.x - e.point.x, q.y - e.point.y); };
       const st = hits.filter(f => f.layer.id.startsWith('stops')).sort((a, b) => near(a) - near(b))[0];
-      const pl = !st && all.filter(f => f.layer.id !== 'stops' && f.layer.id !== 'stops-lit' && f.layer.id !== 'pool-stops').sort((a, b) => near(a) - near(b))[0];
+      const pl = !st && all.filter(f => !f.layer.id.startsWith('stops') && f.layer.id !== 'pool-stops').sort((a, b) => near(a) - near(b))[0];
       const at = pl ? { lat: pl.geometry.coordinates[1], lon: pl.geometry.coordinates[0], label: pl.properties.name } : { lat: e.lngLat.lat, lon: e.lngLat.lng, label: whereabouts(e.lngLat.lat, e.lngLat.lng) };
       location.hash = pickFor ? `#/go/${pickFor}/${st ? st.properties.id : atPath(at)}` : `#/go/${st ? st.properties.id : spotKey(at.lat, at.lon, at.label)}/${atPath(spotOf(pickTo))}`;
       return;
@@ -601,7 +604,7 @@ async function made(app) {
     else if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub');
     else if (/^#\/hub(\?|$)/.test(location.hash)) leaveHubKept();
   };
-  for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
+  for (const id of ['stops', 'stops-lit', 'stops-near']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
   window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; runsKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
@@ -1173,7 +1176,8 @@ function nearControl() {
       b.onclick = () => nearMe(geo => {
         if (!geo) return;
         placeMe(geo);
-        const [t, f] = locTaps || !movedSinceHome() ? closeView(geo) : homeView(geo);
+        const [t, f, ids] = locTaps || !movedSinceHome() ? closeView(geo) : homeView(geo);
+        if (ids) markNear(ids);
         locTaps++;
         frame(t, { ...f, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700 });
       });
@@ -1861,14 +1865,18 @@ function homeView(geo) {
   if (!b || !geo || b.contains([geo.lon, geo.lat])) return [b, fit];
   const edge = distance(geo.lat, geo.lon, Math.min(Math.max(geo.lat, b.getSouth()), b.getNorth()), Math.min(Math.max(geo.lon, b.getWest()), b.getEast()));
   if (edge < 2000) return [roomRound(new maplibregl.LngLatBounds(b.getSouthWest(), b.getNorthEast()), geo), fit];
-  let ymd = now().ymd;
-  if (!servicesOn(ymd).size) ymd = nextServiceDay(now()) || ymd;
-  const served = D.stops.map((s, i) => ({ s, i, d: distance(geo.lat, geo.lon, s.lat, s.lon) })).filter(x => x.d < 20000 && !x.s.hub).sort((x, y) => x.d - y.d)
-    .filter(x => timesOn(x.i, ymd).length).slice(0, 3);
-  if (!served.length) return [b, fit];
+  const four = nearFour(geo).filter(x => x.d < 20000);
+  if (!four.length) return [b, fit];
   const out = roomRound(new maplibregl.LngLatBounds([geo.lon, geo.lat], [geo.lon, geo.lat]), geo);
-  for (const x of served) out.extend([x.s.lon, x.s.lat]);
-  return [out, { ...fit, maxZoom: 15 }];
+  for (const x of four) out.extend([D.stops[x.i].lon, D.stops[x.i].lat]);
+  return [out, { ...fit, maxZoom: 15, margin: wide() ? 80 : 56 }, four.map(x => D.stops[x.i].id)];   // room for their names
+}
+/** The rider's four nearest stops, as the home page lists them (its big one and the three beneath): by the walk. */
+const nearFour = g => byWalk(nearest(g.lat, g.lon, 24).filter(x => !D.stops[x.i].hub), g.lat, g.lon).slice(0, 4);
+/** Marked at any zoom, with their names: out in the valley the stretch view is wider than stops are drawn. */
+function markNear(ids = []) {
+  if (!map || !map.getLayer('stops-near')) return;
+  for (const id of ['stops-near', 'stops-near-labels']) map.setFilter(id, ['in', ['get', 'id'], ['literal', ids]]);
 }
 /** The rider close up: the locate button's second tap, and every one after while the map's on screen. */
 const closeView = g => [[g.lon, g.lat], { bearing: 0, zoom: 15.5, maxZoom: 15.5 }];
@@ -1878,8 +1886,9 @@ const closeView = g => [[g.lon, g.lat], { bearing: 0, zoom: 15.5, maxZoom: 15.5 
 let townTap = false;
 function frameHome(app, duration, again = false) {
   const town = !!app.geo && again && (townTap || !movedSinceHome());
-  if (town) { townTap = true; frame(homeBounds(), { ...HOME_FIT, duration }); return; }
-  const [t, f] = homeView(app.geo);
+  if (town) { townTap = true; markNear(); frame(homeBounds(), { ...HOME_FIT, duration }); return; }
+  const [t, f, ids] = homeView(app.geo);
+  markNear(ids);
   const rest = () => { const c = map.getCenter(); homeRest = { zoom: map.getZoom(), lat: c.lat, lon: c.lng }; };
   map.once('moveend', rest);
   if (!frame(t, { ...f, duration })) { map.off('moveend', rest); rest(); }
@@ -2217,7 +2226,7 @@ function searchMarks(m) {
 /** Called by the router whenever the map is on screen. */
 let shownHash = null, lastMeasured = '';
 export async function show(o, app, clockNow) {
-  if (!/^#\/map/.test(location.hash)) { locTaps = 0; townTap = false; }   // the map left: both buttons start again at the stretch view
+  if (!/^#\/map/.test(location.hash)) { locTaps = 0; townTap = false; markNear(); }   // the map left: both buttons start again at the stretch view
   await showPage(o, app, clockNow);
   // Marked once the map's ready: a reload straight onto a search gets there before its style does.
   wantMarks = wide() && o.searchMarks || null;
