@@ -57,8 +57,8 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html { height: 100%; }
-/* Window sizes, as app/wide.js: compact under 600px, medium 600-839px, expanded 840px up.
-   Type a step larger on a big touch screen (a tablet, medium or expanded), everything with it: every size is in rem */
+/* Window sizes, as app/wide.js: a phone's layout under 840px, expanded 840px up.
+   Type a step larger on a big touch screen (a tablet, 600px or wider), everything with it: every size is in rem */
 @media (min-width: 600px) and (pointer: coarse) { html { font-size: 18px; } }
 body {
   margin: 0; height: 100%; background: var(--color-bg); color: var(--color-text);
@@ -972,13 +972,3 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
   #body:has(> #runsheet) #mapcard { visibility: hidden; }
 }
 /* the wide About: the alerts and the data on the right */
-
-/* Medium (a portrait tablet): the phone's layout, its page a column of at most 600px in the middle, the tab bar and
-   the map the whole width, and the map's sheet the column's width */
-@media (min-width: 600px) and (max-width: 839px) {
-  #side { padding-inline: max(0px, calc(50vw - 300px)); }
-  .land-top { margin-inline: calc(-1 * max(0px, calc(50vw - 300px))); }   /* the header the whole width */
-  .mapcard { max-width: 600px; margin-inline: auto; border-inline: 1px solid var(--cr-line); }
-  .mapbar, .mapresults { max-width: 600px; margin-inline: auto; }
-  #runsheet { left: max(0px, calc(50% - 300px)); right: max(0px, calc(50% - 300px)); }
-}
