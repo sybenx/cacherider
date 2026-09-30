@@ -239,93 +239,69 @@ function segmentGrid(lines) {
   }
   return grid;
 }
-/** Preview: every route, Connect's and the shuttle's, snapped to a grid of half blocks, Logan's own address grid (50 of
- *  its units, about 101 m; the streets on the even lines), stepping straight or diagonally from node to node. Each grid
- *  edge then knows every route that uses it, either way, and each route takes its lane there in one order for the
- *  whole valley: a shared street is one edge, so its stripes line up by construction. */
-const SG = { lat0: 41.731952, lon0: -111.834053, dlat: 1.826e-05 * 50, dlon: 2.444e-05 * 50 };
+/** Preview: routes that touch snapped to each other, and striped there. Routes are taken in turn (Connect's in order,
+ *  then the shuttle's), each walked in STEP-metre steps: a step with a piece already laid within TOL metres, running the
+ *  same way or the opposite, is on that piece; one with none lays its own. So routes along one street end up on the
+ *  same pieces (both ways of it too), each piece knows every route on it, and each route takes its lane there in one
+ *  order for the whole valley. A route on its own keeps its own line. */
 function schematic(lines) {
-  const ll = ([x, y]) => [SG.lon0 + x * SG.dlon, SG.lat0 + y * SG.dlat];
-  // A node for a point, held on the last one's row or column unless the point is well off it: a road between two grid
-  // lines doesn't zigzag from one to the other.
-  const snap = coords => {
-    const out = [];
-    let px = null, py = null;
-    const at = (lon, lat) => {
-      const fx = (lon - SG.lon0) / SG.dlon, fy = (lat - SG.lat0) / SG.dlat;
-      const x = px !== null && Math.abs(fx - px) <= 0.75 ? px : Math.round(fx), y = py !== null && Math.abs(fy - py) <= 0.75 ? py : Math.round(fy);
-      if (px === x && py === y) return;
-      if (px !== null) {   // across a gap, straight or diagonal steps, the longer way first
-        let cx = px, cy = py;
-        while (Math.max(Math.abs(x - cx), Math.abs(y - cy)) > 1) {
-          const dx = x - cx, dy = y - cy, ax = Math.abs(dx), ay = Math.abs(dy);
-          if (ax > 2 * ay) cx += Math.sign(dx); else if (ay > 2 * ax) cy += Math.sign(dy); else { cx += Math.sign(dx); cy += Math.sign(dy); }
-          out.push([cx, cy]);
-        }
-      }
-      out.push([x, y]); px = x; py = y;
-      while (out.length >= 3) {   // there and back again (a hook into a stop): gone
-        const a = out[out.length - 3], c = out[out.length - 1];
-        if (a[0] !== c[0] || a[1] !== c[1]) break;
-        out.splice(out.length - 2, 2);
-      }
-      [px, py] = out[out.length - 1];
-    };
-    for (let k = 0; k < coords.length; k++) {
-      const [lon, lat] = coords[k];
-      if (k) { const [a, b] = coords[k - 1], n = Math.ceil(Math.hypot((lon - a) * KX, (lat - b) * KY) / 25); for (let j = 1; j < n; j++) at(a + (lon - a) * j / n, b + (lat - b) * j / n); }
-      at(lon, lat);
-    }
-    return out;
+  const STEP = 15, TOL = 22, CELL = 40;
+  const segs = [], grid = new Map();   // pieces laid: { a, b, dx, dy, len }; by cell, the pieces within TOL of it
+  const cells = (a, b, fn) => {
+    const x0 = Math.floor((Math.min(a[0], b[0]) * KX - TOL) / CELL), x1 = Math.floor((Math.max(a[0], b[0]) * KX + TOL) / CELL);
+    const y0 = Math.floor((Math.min(a[1], b[1]) * KY - TOL) / CELL), y1 = Math.floor((Math.max(a[1], b[1]) * KY + TOL) / CELL);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) fn(x + ',' + y);
   };
-  // Only what runs along the grid goes on it: a stretch heading within about 15° of north-south or east-west for 120 m
-  // or more. Anything else (Canyon Road, the highway's curves, a campus drive)
-  // keeps its own shape, joined to the grid either side; a hook into a stop inside a grid stretch stays on the grid.
-  const SAMPLE = 20, MIN_ON = 6, MIN_OFF = 4;
-  const runsOf = coords => {
+  const lay = (a, b) => { const dx = (b[0] - a[0]) * KX, dy = (b[1] - a[1]) * KY, sg = { a, b, dx, dy, len: Math.hypot(dx, dy) }, id = segs.push(sg) - 1; cells(a, b, k => { const l = grid.get(k); if (l) l.push(id); else grid.set(k, [id]); }); return id; };
+  const find = (a, b) => {   // the nearest piece laid along this step, or none
+    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = (b[0] - a[0]) * KX, dy = (b[1] - a[1]) * KY, len = Math.hypot(dx, dy) || 1;
+    let best = -1, bd = TOL;
+    for (const id of grid.get(Math.floor(mx * KX / CELL) + ',' + Math.floor(my * KY / CELL)) || []) {
+      const sg = segs[id];
+      if (Math.abs(sg.dx * dx + sg.dy * dy) < 0.9 * sg.len * len) continue;   // crossing, not running along
+      const px = (mx - sg.a[0]) * KX, py = (my - sg.a[1]) * KY, t = Math.max(0, Math.min(1, (px * sg.dx + py * sg.dy) / (sg.len * sg.len || 1)));
+      const d = Math.hypot(px - t * sg.dx, py - t * sg.dy);
+      if (d < bd) { bd = d; best = id; }
+    }
+    return best;
+  };
+  const walk = coords => {   // the route as pieces: [id, forwards]
     const pts = [];
     for (let k = 0; k < coords.length; k++) {
       const [lon, lat] = coords[k];
-      if (k) { const [a, b] = coords[k - 1], n = Math.ceil(Math.hypot((lon - a) * KX, (lat - b) * KY) / SAMPLE); for (let j = 1; j < n; j++) pts.push([a + (lon - a) * j / n, b + (lat - b) * j / n]); }
+      if (k) { const [a, b] = coords[k - 1], n = Math.ceil(Math.hypot((lon - a) * KX, (lat - b) * KY) / STEP); for (let j = 1; j < n; j++) pts.push([a + (lon - a) * j / n, b + (lat - b) * j / n]); }
       pts.push([lon, lat]);
     }
-    if (pts.length < 2) return [];
-    const on = pts.map((p, k) => {
-      const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)], dx = (b[0] - a[0]) * KX, dy = (b[1] - a[1]) * KY;
-      // the heading alone: the address grid is only good to 50 or 80 m in places, so a street needn't sit on its line;
-      // every route on it is snapped to the same nearest one all the same
-      return Math.abs(dx) >= Math.abs(dy) ? Math.abs(dy) <= 0.27 * Math.abs(dx) : Math.abs(dx) <= 0.27 * Math.abs(dy);
-    });
-    const spans = () => { const out = []; let k = 0; while (k < on.length) { let e = k; while (e + 1 < on.length && on[e + 1] === on[k]) e++; out.push([k, e]); k = e + 1; } return out; };
-    for (const [a, e] of spans()) if (on[a] && e - a + 1 < MIN_ON) for (let k = a; k <= e; k++) on[k] = false;   // a curve's straight bit: its own shape
-    for (const [a, e] of spans()) if (!on[a] && a > 0 && e < on.length - 1 && e - a + 1 < MIN_OFF) for (let k = a; k <= e; k++) on[k] = true;   // a hook: the grid
-    return spans().map(([a, e]) => ({ grid: on[a], pts: pts.slice(Math.max(0, a - (on[a] ? 0 : 1)), e + 1) }));
+    const out = [];
+    for (let k = 1; k < pts.length; k++) {
+      const a = pts[k - 1], b = pts[k];
+      let id = find(a, b);
+      if (id < 0) id = lay(a, b);
+      const sg = segs[id], fwd = sg.dx * (b[0] - a[0]) * KX + sg.dy * (b[1] - a[1]) * KY >= 0;
+      const last = out[out.length - 1];
+      if (!last || last[0] !== id) out.push([id, fwd]);
+    }
+    return out;
   };
-  const paths = lines.features.map(f => ({ key: 'c' + f.properties.route, props: f.properties, runs: runsOf(f.geometry.coordinates) }));
-  if (U) U.routes.forEach((r, i) => { if (!r.shape.length) return; const c = r.color; paths.push({ key: 'u' + i, props: { route: 100 + i, color: c, dcolor: lift(c), usu: true }, runs: runsOf(r.shape) }); });
-  for (const p of paths) for (const r of p.runs) if (r.grid) r.nodes = snap(r.pts);
-  const ek = (a, b) => (a[0] < b[0] || (a[0] === b[0] && a[1] < b[1])) ? a + '|' + b : b + '|' + a;
-  const on = new Map();   // edge → the routes on it
-  for (const p of paths) for (const r of p.runs) if (r.grid) for (let k = 1; k < r.nodes.length; k++) { const e = ek(r.nodes[k - 1], r.nodes[k]); if (!on.has(e)) on.set(e, new Set()); on.get(e).add(p.key); }
+  const paths = lines.features.map(f => ({ key: 'c' + f.properties.route, props: f.properties, pcs: walk(f.geometry.coordinates) }));
+  if (U) U.routes.forEach((r, i) => { if (!r.shape.length) return; const c = r.color; paths.push({ key: 'u' + i, props: { route: 100 + i, color: c, dcolor: lift(c), usu: true }, pcs: walk(r.shape) }); });
+  const on = new Map();   // piece → the routes on it
+  for (const p of paths) for (const [id] of p.pcs) { if (!on.has(id)) on.set(id, new Set()); on.get(id).add(p.key); }
   const rank = new Map([...new Set(paths.map(p => p.key))].map((k, i) => [k, i]));
   const features = [];
   for (const p of paths) {
-    const feat = (coords, lane) => { if (coords.length > 1) features.push({ type: 'Feature', properties: { ...p.props, lane }, geometry: { type: 'LineString', coordinates: coords } }); };
-    p.runs.forEach((r, ri) => {
-      if (!r.grid) {   // its own shape, from the grid's end before it to the grid's start after
-        const before = ri > 0 && p.runs[ri - 1].nodes && p.runs[ri - 1].nodes.length ? [ll(p.runs[ri - 1].nodes[p.runs[ri - 1].nodes.length - 1])] : [];
-        const after = p.runs[ri + 1] && p.runs[ri + 1].nodes && p.runs[ri + 1].nodes.length ? [ll(p.runs[ri + 1].nodes[0])] : [];
-        return feat([...before, ...r.pts, ...after], 0);
-      }
-      let cur = null;
-      for (let k = 1; k < r.nodes.length; k++) {
-        const a = r.nodes[k - 1], b = r.nodes[k], members = [...on.get(ek(a, b))].sort((x, y) => rank.get(x) - rank.get(y));
-        const lane0 = members.indexOf(p.key) - (members.length - 1) / 2, fwd = a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]), lane = fwd ? lane0 : -lane0;
-        if (!cur || cur.lane !== lane) { if (cur) feat(cur.coords, cur.lane); cur = { lane, coords: [ll(a)] }; }
-        cur.coords.push(ll(b));
-      }
-      if (cur) feat(cur.coords, cur.lane);
-    });
+    let cur = null;
+    const flush = () => { if (cur && cur.coords.length > 1) features.push({ type: 'Feature', properties: { ...p.props, lane: cur.lane }, geometry: { type: 'LineString', coordinates: cur.coords } }); };
+    for (const [id, fwd] of p.pcs) {
+      const sg = segs[id], members = [...on.get(id)].sort((x, y) => rank.get(x) - rank.get(y));
+      const lane0 = members.indexOf(p.key) - (members.length - 1) / 2, lane = fwd ? lane0 : -lane0;
+      const [a, b] = fwd ? [sg.a, sg.b] : [sg.b, sg.a];
+      if (!cur || cur.lane !== lane) { flush(); cur = { lane, coords: [a] }; }
+      const last = cur.coords[cur.coords.length - 1];
+      if (last[0] !== a[0] || last[1] !== a[1]) cur.coords.push(a);
+      cur.coords.push(b);
+    }
+    flush();
   }
   return { type: 'FeatureCollection', features };
 }
