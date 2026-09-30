@@ -16,6 +16,8 @@ export function load() {
     D.stopById = Object.fromEntries(D.stops.map((s, i) => [s.id, i]));
     apart(D.routes);
     for (const r of D.routes) r.tpSet = new Set(r.tp || []);
+    // The feed's long names pad the number ('Route 03'): said as riders say it, 'Route 3'.
+    for (const r of D.routes) if (r.long) r.long = r.long.replace(/^(Route\s+)0+(?=\d)/i, '$1');
     return D;
   })().catch(e => { loading = null; throw e; });
 }

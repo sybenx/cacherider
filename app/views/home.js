@@ -2,9 +2,9 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
+import { D, nextAt, nextPulse, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live } from '../usu.js';
@@ -36,12 +36,14 @@ function landing(clockNow, app) {
   const [dow, date, mon] = fmtDay(clockNow.ymd).split(' ');
   const parts = [html`<div class="land-top m-only"><span class="wordmark">Cache Rider</span><span class="land-right"><span class="land-date">${dow} <span class="muted">${mon} ${date}</span></span>
     <button class="btn btn-ghost btn-icon" id="near" type="button" aria-label="${geo ? 'Location on · turn off' : 'Sort stops by distance'}" aria-pressed="${geo ? 'true' : 'false'}" title="${geo ? 'Location on' : 'Near me'}">${icon('near', 22)}</button>
-    ${stopHero || geo ? html`<a class="btn btn-ghost btn-icon" href="#/search" aria-label="Search">${icon('search', 22)}</a>` : ''}</span></div>`];   // the wide box below is the way in when it's there: one search, not two
+</span></div>`];   // the page's own box is the way in to search, always there: one search, not two
   for (const a of systemAlerts(clockNow.ymd)) parts.push(html`<div class="callout alert land-alert">${icon('info', 20)}<div><b>${a.title}</b><div class="sub">${a.text}</div></div></div>`);
 
-  parts.push(stopHero ? stopHeroBlock(heroSi, heroWhy, clockNow) : pulseHeroBlock(clockNow));
-  parts.push(html`<div class="spacer"></div>`);
-  if (stopHero) parts.push(hubLine(clockNow));
+  // What the page answers, in the order a rider asks it (the question list): the next bus from their stop (nearest, or
+  // saved), and the stops beside it; then where to (search, directions); then the Center, whose own tab has the rest;
+  // then what's broken today. Without a stop yet, the ways to one come first, and the Center is a line, not the page:
+  // its big countdown was the Transit Center tab's answer twice, to a first visitor who's seldom there.
+  if (stopHero) parts.push(stopHeroBlock(heroSi, heroWhy, clockNow));
 
   const heroId = stopHero ? stop(heroSi).id : null;
   const others = sv.filter(id => id !== heroId);
@@ -56,12 +58,14 @@ function landing(clockNow, app) {
     const rows = byWalk(nearest(geo.lat, geo.lon, 24).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)), geo.lat, geo.lon).slice(0, 3);
     if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy === 'Nearest' ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
   }
-  if (!stopHero && !geo) {
-    parts.push(html`<div class="ask">
-      <form class="search" id="search" role="search"><input class="input" type="search" placeholder="Street, place or route, e.g. 500 North" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
-      <button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
-      <span class="ask-note">Location stays on this device, used only to sort stops.</span></div>`);
-  }
+  // Where to: the box on the page whichever way it opened (a stop's rider got an icon in the header, the question
+  // three of the list a tap harder to find). Beside a wide screen's map, the top bar's box is this one.
+  const first = !stopHero && !geo;
+  parts.push(html`<div class="ask${first ? '' : ' land-where'}">
+    <form class="search" id="search" role="search"><input class="input" type="search" placeholder="${first ? 'Street, place or route' : 'Where to?'}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
+    ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
+      <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : ''}</div>`);
+  parts.push(hubLine(clockNow));
   if (isWide()) parts.push(chips());   // beside the map, every route a tap away: the page has the room, and the map lights it
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
@@ -110,7 +114,7 @@ function stopHeroBlock(si, why, clockNow) {
     : giant(first.min, !!first.live);
   // Moved by the feed, the timetable's time stands crossed out, labelled, above the estimate's side.
   const val = arrival ? '' : countdown ? time(first.min, 34, !!first.live) : first.day === 0 ? html`<span class="rt">${relative(first, clockNow)}</span>` : '';
-  const sideVal = val && first.live && first.live.delay ? html`<span class="side">${wasLine(first)}${val}</span>` : val;
+  const sideVal = val && moved(first) ? html`<span class="side">${wasLine(first)}${val}</span>` : val;
   const quiet = first.day > 1 ? quietWords(clockNow.ymd, first.ymd) : '';   // 'Monday · no buses Sunday'
   const dayWord = first.day === 0 ? '' : first.day === 1 ? 'Tomorrow' : dayName(first.ymd) + (quiet ? ' · ' + quiet : '');
   const then = next.slice(1, 2);   // one, so a moved time and its estimate have room
@@ -120,29 +124,14 @@ function stopHeroBlock(si, why, clockNow) {
     ${then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${when(t, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : ''}</a></div>`;
 }
 
-function pulseHeroBlock(clockNow) {
-  const p = nextPulse(1, clockNow)[0];
-  const eye = html`<div class="eye"><span class="eyebrow">${D.agency.brand} · ${D.hub.name}</span>${sched()}</div>`;
-  if (!p) {
-    const resume = nextServiceDay(clockNow);
-    return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${D.hub.name}</span><div class="hero-none">No buses today${resume ? html`<span class="sub">Service resumes ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
-  }
-  const loops = (D.hub.loops || []).map(ri => { const n = nextFromHub(ri, 1, clockNow)[0]; return n ? html`<div class="loop">${badge(ri, 28)}<div class="col"><span class="whent">${when(n, 22)}</span><span class="sub">${D.routes[ri].long}</span></div></div>` : ''; });
-  const rel = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
-  return html`<div class="hero">${eye}<a class="hero-main" href="#/hub"><span class="stopname">${(D.hub.pulseName || 'Every route').replace(/\s+leave$/, '')}</span>${giant(p.min)}
-    <div class="who"><span class="dest">${D.routes.length} routes from the ${D.hub.name}</span><span class="rt">${rel}</span></div>
-    ${loops.some(Boolean) ? html`<div class="loops">${loops}</div>` : ''}</a></div>`;
-}
-
-/** The Transit Center as one line in a blueprint frame, under a stop hero. */
+/** The Transit Center as a line: when the next group leaves and how soon, its tab a tap away. It was a framed card
+ *  with a 42 px time, between the rider's stop and the stops beside it. */
 function hubLine(clockNow) {
   const p = nextPulse(1, clockNow)[0];
   if (!p) return '';
-  const when = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
-  return html`<a class="land-pulse blueprint" href="#/hub">${corners()}<div class="col"><span class="eyebrow">${D.hub.name} · ${(D.hub.pulseName || 'all routes').replace(/\s+leave$/, '')}</span><div class="line">${time(p.min, 42)}<span class="sub">${when}</span></div></div><span class="muted">${icon('fwd', 20)}</span></a>`;
+  const soon = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
+  return html`<a class="land-hub" href="#/hub">${icon('hub', 18)}<span class="col"><span>${D.hub.name}</span><span class="sub">${(D.hub.pulseName || 'All routes').replace(/\s+leave$/, '')} leave at <b>${clockText(p.min)}</b> · ${soon}</span></span>${icon('fwd', 18)}</a>`;
 }
-
-
 
 // ---- search, on its own page
 let searchFull = null, fillLaterFor = null;   // the search last shown with its next buses; the one waiting for them

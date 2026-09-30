@@ -14,7 +14,7 @@ const IN_RADIUS = 110;   // metres from the hall: a bus this close is in
 
 /** A badge's key: the route's short name, 16 AM and 16 PM as one '16' (they share a bay and a rider). */
 /** The scheduled time crossed out, for a time the feed has moved off it: placed before the estimate. */
-const was = (sched, est) => html.raw(sched !== est ? `<s class="was">${clock(sched).h}</s>` : '');
+const was = (sched, est) => html.raw(Math.abs(est - sched) >= 2 ? `<s class="was">${clock(sched).h}</s>` : '');   // moved enough to say so, as ui's moved()
 
 const keyOf = ri => D.routes[ri].short.replace(/\s+(AM|PM)$/, '');
 function keys() {

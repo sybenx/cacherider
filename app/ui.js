@@ -113,6 +113,9 @@ export function lively(t) {
 }
 /** The timetable's minute for a departure, live or not. The big time is always this one. */
 export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
+/** Moved by the feed enough to say so: two minutes or more, as lateWords says 'late' from. A minute's drift was
+ *  crossed out beside 'on time', the two saying different things. */
+export const moved = t => !!(t && t.live && Math.abs(t.live.delay || 0) >= 2);
 export { isLoop };
 /** A route as riders say it: 'Route 12', or a loop by its name, 'the Blue Loop'. Never 'Route B'. */
 export const routeName = (ri, the = true) => isLoop(ri) ? (the ? 'the ' : '') + D.routes[ri].long : 'Route ' + D.routes[ri].short;
@@ -143,12 +146,12 @@ export function when(t, size = 26) {
 function whenRaw(t, size) {
   if (loopArrival(t)) return minsOut(t, size);
   if (!t.live) return time(t.min, size);
-  if (!t.live.delay) return time(t.min, size, true);
+  if (!moved(t)) return time(t.min, size, true);
   return raw(`<span class="whent"><s class="was" style="font-size:${Math.max(12, Math.round(size * .55)) / 16}rem">${esc(clock(schedOf(t)).h)}</s>${time(t.min, size, true).s}</span>`);
 }
 /** For the big displays, a line above the estimate saying what the crossed-out time is: 'Scheduled ~~3:15 PM~~'. */
 export function wasLine(t) {
-  if (!t.live || !t.live.delay || loopArrival(t)) return raw('');
+  if (!moved(t) || loopArrival(t)) return raw('');
   return raw(`<span class="wasline">Scheduled <s>${esc(clockText(schedOf(t)))}</s></span>`);
 }
 /** The night's-end word on a departure, when it's a route's last full run or its partial last run from here. */

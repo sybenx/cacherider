@@ -647,7 +647,6 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 
 /* ---- the landing: the watchface on the phone ---- */
 .land { min-height: 100%; display: flex; flex-direction: column; }
-.land .spacer { flex: 1; min-height: 12px; }
 .land-top { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px 0 16px; min-height: 56px; }
 .land-top .wordmark { font-family: var(--font-heading); font-weight: 600; font-size: 1.375rem; letter-spacing: -.01em; }
 .land-right { display: flex; align-items: center; gap: 4px; }
@@ -656,6 +655,13 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .land-top .btn-icon[aria-pressed="true"] { color: var(--color-accent-700); background: var(--color-accent-100); }
 .land-alert { margin-top: 10px; }
 /* the hero: the right-hand rule from the watchface, one answer set large */
+.land-hub { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 12px 16px; border-top: 1px solid var(--cr-line); border-bottom: 1px solid var(--cr-line); color: inherit; text-decoration: none; }
+.land-hub > svg:first-child { color: var(--color-accent-700); flex: none; }
+.land-hub > svg:last-child { color: var(--cr-muted); flex: none; }
+.land-hub .col { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; font-weight: 500; }
+.land-hub .sub { font-size: 0.8438rem; font-weight: 400; color: var(--cr-muted); }
+.land-hub .sub b { color: var(--color-text); font-weight: 600; }
+.land > .ask { padding-top: 14px; }   /* where to: first on a first visit, under the rider's stop and the stops beside it after */
 .hero { display: flex; flex-direction: column; gap: 14px; margin: 18px 12px 0 16px; padding-right: 16px; border-right: 2px solid var(--color-text); color: inherit; text-decoration: none; }
 .hero .eye { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .hero .eye .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -683,10 +689,6 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .hero-none { font-family: var(--font-heading); font-weight: 600; font-size: 2.75rem; line-height: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px; }
 .hero-none .sub { font-family: var(--font-body); font-weight: 400; font-size: 0.875rem; }
 /* beneath: the pulse as one line, then the rows */
-.land-pulse { margin: 0 16px 14px; padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; color: inherit; text-decoration: none; }
-.land-pulse .col { display: flex; flex-direction: column; gap: 8px; }
-.land-pulse .line { display: flex; align-items: baseline; gap: 10px; }
-.land-pulse .sub { font-size: 1rem; color: var(--cr-muted); }
 .land-eye { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; min-height: 28px; font-size: 0.7188rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); border-top: 1px solid var(--cr-line); }
 .routes { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; padding: 2px 16px 14px; }
 .routes a { height: 54px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--cr-line); cursor: pointer; text-decoration: none; }
