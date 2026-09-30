@@ -2196,6 +2196,9 @@ function busIn(id, app) {
 }
 async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
+  // A spot's disc and pin go with its card: gone to another page (the Center, a stop, Stops) the card was replaced and
+  // the dashed disc stayed on the map. Kept for a spot's own address and for picking one; not by the minute's redraw.
+  if (!tick && spotUp && !at && !goPick && !from && !to) clearSpot();
   // Built out of sight before the rider's fix came: first shown, it opens where they are, as a map made then would
   // (a stop, a route or the Center then frames itself over this).
   if (!shownYet) { shownYet = true; if (bornAtHome && app.geo) map.jumpTo({ center: [app.geo.lon, app.geo.lat], zoom: 15 }); }
