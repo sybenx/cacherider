@@ -1605,7 +1605,10 @@ function busScale() {
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
+/** A way drawn for another day: no bus out now is one of its. */
+const wayLater = () => !!(JR && JR.plan && JR.plan.ymd !== now().ymd);
 function dimBus(m) {
+  if (wayLater()) return true;
   if (JR && JR.appBus) return m.id !== JR.appBus;   // a way drawn with its bus coming: that bus alone, the rest dim
   const on = hiLines.length ? hiLines : runRoutes;
   if (m.kind === 'c') return (on.length > 0 && !on.includes(m.ri)) || hiLoops.length > 0;
@@ -1613,6 +1616,7 @@ function dimBus(m) {
 }
 /** A bus on a lit route or loop: drawn at full size and tappable however far out the map is zoomed. */
 function litBus(m) {
+  if (wayLater()) return false;
   if (JR && JR.appBus) return m.id === JR.appBus;
   return m.kind === 'c' ? hiLines.includes(m.ri) || runRoutes.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
 }
@@ -2705,7 +2709,9 @@ function rideBus(l) {
  *  takes over there), round the turn of an out-and-back if that's how it comes. None for a bus not yet out. */
 function approach(clockNow) {
   const p = JR && JR.plan;
-  if (!p || p.day) return null;
+  // Today's only, by its date: a way worked out for a time picked is day 0 of that day, and tomorrow's 9:11 took the
+  // bus running that trip today for its own.
+  if (!p || p.ymd !== clockNow.ymd) return null;
   const rides = p.legs.filter(l => l.kind === 'ride');
   const l = rides.length > 1 && clockNow.min > rides[0].on ? rides[1] : rides[0], b = l && rideBus(l);
   const stops = b ? approachPath(b, l.t.trip, l.from, clockNow) : null;
