@@ -2337,7 +2337,11 @@ async function drawRun(T) {
       let k = from, best = Infinity;
       for (let i = from; i < l.path.length; i++) { const d = distance(s.lat, s.lon, l.path[i][1], l.path[i][0]); if (d < best) { best = d; k = i; } if (best < 15 && d > 400) break; }
       from = k;
-      const a = l.path[Math.max(0, k - 2)], b = l.path[Math.min(l.path.length - 1, k + 2)];
+      // Its way over the next 300 m, not the next few points: leaving the Center the 12 heads west for a block and
+      // turns south, and a label put by that block sat across the line it turns onto.
+      let j = k, run = 0;
+      while (j < l.path.length - 1 && run < 300) { run += distance(l.path[j][1], l.path[j][0], l.path[j + 1][1], l.path[j + 1][0]); j++; }
+      const a = l.path[Math.max(0, k - 1)], b = l.path[j];
       if (a && b && (a[0] !== b[0] || a[1] !== b[1])) way.set(si, Math.atan2((b[0] - a[0]) * Math.cos(s.lat * Math.PI / 180), b[1] - a[1]) * 180 / Math.PI);
     }
   }

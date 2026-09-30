@@ -2,7 +2,7 @@
 // map beside the page where there is one, else on a small map of the sheet's own.
 import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest, timed } from '../data.js';
 import { clock, clockText, clockShort, fmtDay } from '../time.js';
-import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, timedMark } from '../ui.js';
+import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark } from '../ui.js';
 import { isWide } from '../wide.js';
 
 // The run last laid out, for its map.
@@ -59,6 +59,8 @@ function runParts(t, si, ymd) {
       return `<div class="run-div"><span class="run-t">${x.inMin !== null ? esc(clock(x.inMin).h) : ''}<small>${x.inMin !== null ? esc(clock(x.inMin).ap) : ''}</small></span><span class="run-n"><b>${esc(name)}</b><em>${x.inMin !== null ? 'in ' + esc(clockText(x.inMin)) + ' · ' : ''}out ${esc(clockText(x.outMin))} · ${what}</em></span></div>`;
     }
     const end = x === lastStop && ended;
+    // A stop the detour skips: one quiet line in its place, the landmark alone, not a stop's row with a dash for a time.
+    if (x.skip) return `<a class="run-stop skipped" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t"></span><span class="run-n">${esc(heardName(x.s).name)} <em>skipped · detour</em></span></a>`;
     const name = heard(x.s).s;   // the landmark the bus announces, the address under it
     return `<a class="run-stop${x.skip ? ' skipped' : ''}${x.leg ? ' later' : ''}" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t${x.est ? ' est' : ''}">${x.skip ? '–' : `${esc(clock(x.m).h)}<small>${esc(clock(x.m).ap)}</small>`}</span><span class="run-n">${name}${x.skip ? '<em class="warnmark">Skipped · detour</em>' : end ? '<em>ends here · drop-off only</em>' : x.req ? '<em>on request</em>' : timed(x.s, x.r) ? timedMark().s : ''}</span></a>`;
   }).join('');
