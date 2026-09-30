@@ -178,10 +178,10 @@ function closedSegments(fc) {
   // again. Two routes both closed on a road vouch for neither. A road merely crossed isn't shared.
   const gaps1 = {};
   for (const c of cuts) (gaps1[c.shape] ||= []).push([c.s0, c.s1]);
-  const open = openLines(fc, gaps1).features.map(f => ({ r: f.properties.route, c: f.geometry.coordinates, bb: boxOf(f.geometry.coordinates) }));
+  const grid = cuts.length ? segmentGrid(openLines(fc, gaps1)) : null;
   const out = [], gaps = {};
   for (const c of cuts) {
-    for (const [d0, d1] of unvouched(c, open.filter(o => o.r !== c.ri))) {
+    for (const [d0, d1] of unvouched(c, grid)) {
       out.push({ type: 'Feature', properties: { color: '#' + c.r.color, dcolor: lift('#' + c.r.color), route: c.ri }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
       (gaps[c.shape] ||= []).push([(c.base + d0) % c.total, (c.base + d1) % c.total]);
     }
@@ -190,29 +190,47 @@ function closedSegments(fc) {
 }
 /** The parts of a closed stretch no other route's solid line runs along: [from, to] along its walk. Sampled every
  *  10 m; a sample within 15 m of another line is on a shared road, and a shared run of 50 m or more is vouched for
- *  (a crossing street is shorter); what's left under 40 m between two vouched runs goes too. */
-function unvouched(c, others) {
-  const STEP = 10, NEAR = 15, SHARE = 50, SCRAP = 40;
-  const kx = Math.cos(41.74 * Math.PI / 180) * 111320, ky = 110540;
-  const pad = 0.0005, [x0, y0, x1, y1] = boxOf(c.coords);
-  const near = others.filter(o => o.bb && o.bb[0] <= x1 + pad && o.bb[2] >= x0 - pad && o.bb[1] <= y1 + pad && o.bb[3] >= y0 - pad);
-  if (!near.length) return [[c.start, c.end]];
-  const at = d => slice(c.walk, d, d)[0];
-  const shared = p => near.some(o => { for (let k = 1; k < o.c.length; k++) {
-    const [ax, ay] = o.c[k - 1], [bx, by] = o.c[k], vx = (bx - ax) * kx, vy = (by - ay) * ky, px = (p[0] - ax) * kx, py = (p[1] - ay) * ky, L2 = vx * vx + vy * vy;
+ *  (a crossing street is shorter); what's left under 40 m between two vouched runs goes too. `grid` holds the solid
+ *  lines' segments by where they are (segmentGrid), so a sample is checked against the few segments near it, not
+ *  every point of every line in the valley. */
+const VOUCH = { STEP: 10, NEAR: 15, SHARE: 50, SCRAP: 40, CELL: 50 };
+function unvouched(c, grid) {
+  const { STEP, NEAR, SHARE, SCRAP, CELL } = VOUCH;
+  const shared = p => (grid.get(Math.floor(p[0] * KX / CELL) + ',' + Math.floor(p[1] * KY / CELL)) || []).some(([r, ax, ay, bx, by]) => {
+    if (r === c.ri) return false;
+    const vx = (bx - ax) * KX, vy = (by - ay) * KY, px = (p[0] - ax) * KX, py = (p[1] - ay) * KY, L2 = vx * vx + vy * vy;
     const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0;
-    if (Math.hypot(px - t * vx, py - t * vy) <= NEAR) return true;
-  } return false; });
-  // runs of the same verdict along the walk
-  const runs = [];
+    return Math.hypot(px - t * vx, py - t * vy) <= NEAR;
+  });
+  // runs of the same verdict along the walk, its points found in one pass along it
+  const runs = [], w = c.walk;
+  let i = 1;
   for (let d = c.start; d <= c.end; d += STEP) {
-    const v = shared(at(d)), last = runs[runs.length - 1];
+    while (i < w.length && w[i][0] < d) i++;
+    let p;
+    if (i < w.length) { const [a, pa] = w[i - 1], [b, pb] = w[i], t = b === a ? 0 : (d - a) / (b - a); p = [pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t]; }
+    else p = w[w.length - 1][1];
+    const v = shared(p), last = runs[runs.length - 1];
     if (last && last.v === v) last.d1 = Math.min(d + STEP, c.end); else runs.push({ v, d0: d, d1: Math.min(d + STEP, c.end) });
   }
   for (const r of runs) if (r.v && r.d1 - r.d0 < SHARE) r.v = false;   // a crossing, not a shared road
   const keep = [];
   for (const r of runs) { const last = keep[keep.length - 1]; if (!r.v) { if (last && last[1] >= r.d0 - 0.01) last[1] = r.d1; else keep.push([r.d0, r.d1]); } }
   return keep.filter(([a, b], i) => b - a >= SCRAP || keep.length === 1 && runs.every(r => !r.v));
+}
+/** Every segment of the solid lines, filed under each grid cell it passes within NEAR of: [route, ax, ay, bx, by]. */
+function segmentGrid(lines) {
+  const { NEAR, CELL } = VOUCH, grid = new Map();
+  for (const f of lines.features) {
+    const r = f.properties.route, c = f.geometry.coordinates;
+    for (let k = 1; k < c.length; k++) {
+      const [ax, ay] = c[k - 1], [bx, by] = c[k], seg = [r, ax, ay, bx, by];
+      const x0 = Math.floor((Math.min(ax, bx) * KX - NEAR) / CELL), x1 = Math.floor((Math.max(ax, bx) * KX + NEAR) / CELL);
+      const y0 = Math.floor((Math.min(ay, by) * KY - NEAR) / CELL), y1 = Math.floor((Math.max(ay, by) * KY + NEAR) / CELL);
+      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const key = x + ',' + y; const list = grid.get(key); if (list) list.push(seg); else grid.set(key, [seg]); }
+    }
+  }
+  return grid;
 }
 /** The solid lines with each shape's closed stretches left out. */
 function openLines(fc, gaps) {
@@ -353,19 +371,30 @@ function shapes() {
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
-const drawn = { lines: null, closed: null };
+const drawn = { lines: null, closed: null, key: null };
+/** What the closed stops and dotted stretches are drawn from: the day and the detours in force, not when the alerts
+ *  were fetched, so a refetch saying the same thing (every ten minutes, and the relay's just after launch) redraws
+ *  nothing, and a detour whose day's buses are done is dropped when it is. */
+function closedKeyOf(clockNow) {
+  return clockNow.ymd + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []]));
+}
 async function loadShapes(m = map) {
   const fc = await shapes();
   if (!fc || !m) return;
-  const { closed, gaps } = closedSegments(fc);
-  drawn.lines = openLines(fc, gaps); drawn.closed = closed;
+  // Worked out once for the detours as they stand: the map's first load, a restyle and the first page shown all ask.
+  const key = closedKeyOf(now());
+  if (drawn.key !== key) {
+    const { closed, gaps } = closedSegments(fc);
+    drawn.lines = openLines(fc, gaps); drawn.closed = closed; drawn.key = key;
+  }
+  closedKey = key;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
   if (m.getSource('lclosed')) m.getSource('lclosed').setData(drawn.closed);
 }
 /** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
 let closedKey = null;
 function refreshClosed(clockNow) {
-  const key = A.loadedAt + ':' + clockNow.ymd;
+  const key = closedKeyOf(clockNow);
   if (closedKey === key) return;
   closedKey = key;
   for (const m of [map]) if (m && m.getSource('stops')) { m.getSource('stops').setData(stopsGeo()); loadShapes(m); }
