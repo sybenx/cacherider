@@ -332,24 +332,34 @@ export function locate(onDone) {
   if (!navigator.geolocation) { pref('near', 'blocked'); onDone && onDone(null); return; }
   let precise = false, answered = false;
   const take = (p, fine) => {
-    const g = { lat: p.coords.latitude, lon: p.coords.longitude, at: Date.now() };
+    // The fix's own time, not when it came: a phone without Google's location service (GrapheneOS, in Vanadium) can
+    // answer with its last GPS fix, hours old, as if it were now, and indoors the GPS then times out: the morning's
+    // place, all day. One older than asked for (10 min rough, 2 the GPS's) is no answer.
+    if (Date.now() - p.timestamp > (fine ? 120000 : 600000)) return false;
+    const g = { lat: p.coords.latitude, lon: p.coords.longitude, at: p.timestamp, acc: p.coords.accuracy };
     const moved = !app.geo || distance(app.geo.lat, app.geo.lon, g.lat, g.lon) > 30;
     app.geo = g;
     pref('near', 'on');
     if (!answered) { answered = true; onDone && onDone(g); }
     if (moved || !fine) render();   // the GPS's fix redraws only where it moves the rider: a page doesn't reshuffle for nothing
+    return true;
+  };
+  // Refused: location off, and the sheet that says how to allow it. Not found (the GPS timing out indoors, or only a
+  // stale fix): location stays on, to be tried again, and a place more than 10 minutes old isn't shown as where they
+  // are. A timeout had turned it off, and it was never looked for again till a tap.
+  const fail = err => {
+    if (answered) return;   // the rough fix stands
+    const denied = err.code === err.PERMISSION_DENIED;
+    if (denied) { pref('near', 'blocked'); app.geo = null; }
+    else if (app.geo && Date.now() - app.geo.at > 600000) { app.geo = null; render(); }
+    onDone && onDone(denied ? null : app.geo);
+    if (denied) askLocation(onDone);
   };
   // Where the rider roughly is, at once: the phone's last fix or the network's, good to a block, so the stops near
   // them show now, not after the GPS has warmed up (seconds, on a phone opened after a while). Only for the page's own
   // sorting: a way asked for from here (onDone) waits for the GPS.
   if (!onDone) navigator.geolocation.getCurrentPosition(p => { if (!precise) take(p, false); }, () => { /* the GPS's, then */ }, { enableHighAccuracy: false, maximumAge: 600000, timeout: 4000 });
-  navigator.geolocation.getCurrentPosition(p => { precise = true; take(p, true); }, err => {
-    if (answered) return;   // the rough fix stands
-    pref('near', err.code === err.PERMISSION_DENIED ? 'blocked' : null);
-    app.geo = null;
-    onDone && onDone(null);
-    if (err.code === err.PERMISSION_DENIED) askLocation(onDone);
-  }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
+  navigator.geolocation.getCurrentPosition(p => { precise = true; if (!take(p, true)) fail({ code: 3, PERMISSION_DENIED: 1 }); }, fail, { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });   // a stale 'GPS fix' is a timeout
 }
 
 /** Near me: silent when the browser already allows it, the explaining sheet only when the browser is about to ask. */

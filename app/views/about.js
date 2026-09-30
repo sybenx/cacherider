@@ -1,6 +1,6 @@
 // What this is, where the times come from, and the offline map switch.
 import { D, BASE, pref, A, activeAlerts, alertRoutes } from '../data.js';
-import { fmtDay, is24, isKm } from '../time.js';
+import { fmtDay, is24, isKm, clockText, now, metres } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
 import { shareBlock, siteLink, fillQRs } from '../share.js';
 import { U } from '../usu.js';
@@ -20,7 +20,7 @@ export function render({ section }, clockNow) {
       <div class="setrow"><div class="col"><span class="t">Light or dark</span><span class="s">This device's setting, or always light or dark</span></div>${themeButton('theme')}</div>
       <div class="setrow"><div class="col"><span class="t">Clock</span><span class="s">3:10 PM or 15:10</span></div><div class="seg" role="group" aria-label="Clock"><button type="button" data-clock="12" aria-pressed="${is24() ? 'false' : 'true'}">12-hour</button><button type="button" data-clock="24" aria-pressed="${is24() ? 'true' : 'false'}">24-hour</button></div></div>
       <div class="setrow"><div class="col"><span class="t">Distance</span><span class="s">500 ft or 150 m</span></div><div class="seg" role="group" aria-label="Distance"><button type="button" data-units="mi" aria-pressed="${isKm() ? 'false' : 'true'}">Miles</button><button type="button" data-units="km" aria-pressed="${isKm() ? 'true' : 'false'}">Kilometers</button></div></div>
-      <div class="setrow"><div class="col"><span class="t">Location</span><span class="s">${app.geo ? 'On · sorts stops by distance' : 'Off · turn on to sort stops by distance'}</span></div><button class="btn btn-secondary" id="aboutnear" type="button">${app.geo ? 'Turn off' : 'Turn on'}</button></div>
+      <div class="setrow"><div class="col"><span class="t">Location</span><span class="s">${app.geo ? 'On · sorts stops by distance' : 'Off · turn on to sort stops by distance'}</span>${app.geo ? html`<span class="s">Last found ${clockText(now(new Date(app.geo.at)).min)}${app.geo.acc ? ' · ±' + metres(app.geo.acc) : ''}</span>` : ''}</div><button class="btn btn-secondary" id="aboutnear" type="button">${app.geo ? 'Turn off' : 'Turn on'}</button></div>
     </div>
     ${installState() === 'installed' ? '' : html`<div class="section">${icon('down', 16)}On your home screen</div>
     <div class="pad" id="install-about">${installBlock()}</div>`}
