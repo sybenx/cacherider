@@ -83,7 +83,7 @@ async function tick(force) {
         const sm = schedMin(D.stopById[last.sid], ti);
         if (sm !== null) lastDelay = toMin(last.time) - sm;
       }
-      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s, end, hub: hubAhead(ti, at, j.t) };
+      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s, end, hub: hubAhead(ti, at, j.t), cancelled: u.c === 1 };
     }
     const buses = [];
     for (const b of j.buses || []) {
@@ -216,7 +216,17 @@ function loopAtHub(t, u, sid, hit) {
 export function predict(t) {
   if (t.trip === undefined || t.day || rtStale() || !D.trips) return null;
   const u = rt.trips[D.trips[t.trip]];
-  if (!u) return t.min - now().min < 120 && dueOnRun(t) ? KEEPS : null;   // no word on it yet: on time if its bus, on the trip before, is due in (within two hours: later, the run before isn't under way)
+  // No word on it yet (within two hours: later, the run before isn't under way): its bus, on the trip before, due in
+  // by its start is on time; due in after it, from a Transit Center bay, it leaves when that bus is in, estimated. Late
+  // and unannounced, it had been a departure past its minute, and dropped: Route 5's 4:00, its bus 5 min late in.
+  if (!u) {
+    if (t.min - now().min >= 120) return null;
+    const a = runArrives(t);
+    if (a === null) return null;
+    if (a <= tripStops(t.trip)[0][0] + 1) return KEEPS;   // in within its minute: it leaves on it
+    return D.stops[t.si] && D.stops[t.si].hub && !(isLoop(t.r) && loopSpacing(t.r)) ? { min: Math.ceil(a), delay: Math.ceil(a) - t.min, est: true } : null;
+  }
+  if (u.cancelled) return { gone: true };   // a run the feed says is cancelled isn't coming (the relay passes it on: c 1)
   const p = feedSays(t, u);
   // From a Transit Center bay, a departure can't leave before the bus that runs it is in: that bus (the trip's own
   // vehicle) may still be finishing the trip before. Every screen reads this one rule.
@@ -255,17 +265,17 @@ function dueBy(b, u) {
   const prev = rt.trips[b.trip], at = prev && endAt(b, prev), start = Math.min(...u.stops.map(s => s[2]));
   return at != null && isFinite(start) && at <= start + 30;
 }
-/** A trip the feed says nothing of yet, whose bus is out on the run's trip before it: whether that trip's last stop is
- *  due by this one's first minute. The first trip of a run has no bus to go by. */
+/** A trip the feed says nothing of yet, whose bus is out on the run's trip before it: when that trip's last stop is
+ *  due, in minutes, or null (the first trip of a run has no bus to go by). */
 const runs = new Map();   // a trip's run, by day: the timetable's, so worked out once (it was, for every row, every redraw)
-function dueOnRun(t) {
+function runArrives(t) {
   const ymd = now().ymd, key = ymd + ':' + t.trip;
   if (!runs.has(key)) { if (runs.size > 4000) runs.clear(); runs.set(key, runOf(t.trip, ymd)); }
   const run = runs.get(key), i = run.indexOf(t.trip);
-  if (i <= 0) return false;
+  if (i <= 0) return null;
   const b = rt.buses.find(x => x.trip === D.trips[run[i - 1]]), prev = b && rt.trips[b.trip], first = tripStops(t.trip)[0];
   const at = prev && endAt(b, prev);
-  return at != null && !!first && toMin(at) <= first[0];
+  return at != null && first ? toMin(at) + (at % 60) / 60 : null;
 }
 /** When the bus that runs a trip gets to the Transit Center, if it's still on its way in on the trip before; else null. */
 function inbound(u, id) {
