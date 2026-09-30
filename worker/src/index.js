@@ -38,8 +38,12 @@ export default {
     try {
       const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
       let out = decode(vp, tu);
+      // Detoured buses aren't in the feed, so the tracker site fills them in for
+      // every answer. A few-stops answer asks it even when the feed has none at
+      // all: Headway counts buses out from its yard, and one deadheading home
+      // is only on the tracker, if anywhere.
+      try { await fillIn(out, !!only); } catch (e) { /* the feed's own buses still go out */ }
       if (only) out = atStops(out, only);
-      else try { await fillIn(out); } catch (e) { /* the feed's own buses still go out */ }
       const body = JSON.stringify(out);
       return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + TTL } });
     } catch (e) {
@@ -101,15 +105,16 @@ async function feed(name) {
 }
 
 // ---- the tracker site's API, for the routes GTFS-realtime has no bus on. Unofficial, so a fallback only:
-// asked about those routes alone, and never when the feed has no buses at all (nothing is running).
+// asked about those routes alone, and when the feed has no buses at all (nothing is running) only if
+// evenEmpty, for a few-stops answer.
 async function rtpi(path, ttl) {
   const r = await fetch(RTPI + encodeURIComponent(path), { headers: UA, cf: { cacheTtl: ttl, cacheEverything: true } });
   if (!r.ok) throw new Error('rtpi ' + r.status);
   return r.json();
 }
 const shortOf = trip => { const m = /^([A-Z]+|\d+)/.exec(trip || ''); return m ? m[1] : null; };   // 2_1400 → 2, B1_1329 → B
-async function fillIn(out) {
-  if (!out.buses.length) return;
+async function fillIn(out, evenEmpty) {
+  if (!out.buses.length && !evenEmpty) return;
   const covered = new Set(out.buses.map(b => shortOf(b.trip)));
   const labels = new Set(out.buses.map(b => b.label || b.id));
   const routes = (await rtpi('routes', 86400)).filter(r => r.shortName && !covered.has(r.shortName));
