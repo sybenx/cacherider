@@ -966,9 +966,11 @@ function wireGrip(app) {
     card.addEventListener('transitionend', finish, { once: true }); setTimeout(finish, 320);
   };
   // Down to the peek: the head slides to where it will rest, then the card is cut to it.
-  const toPeek = (dy = 0) => { const full = card.offsetHeight; fitPeek(card); const peekH = parseFloat(card.style.getPropertyValue('--peek')) || full; slide(dy, Math.max(0, full - peekH), () => { card.classList.add('peek'); card.scrollTop = 0; }); };
+  // A way's card at its new size: the way framed again in what it leaves (after the slide's settle).
+  const refitWay = () => { if (card.querySelector(':scope > .journeysheet')) setTimeout(() => frameWay(400), 340); };
+  const toPeek = (dy = 0) => { const full = card.offsetHeight; fitPeek(card); const peekH = parseFloat(card.style.getPropertyValue('--peek')) || full; slide(dy, Math.max(0, full - peekH), () => { card.classList.add('peek'); card.scrollTop = 0; }); refitWay(); };
   // Up to the whole card: it grows first, held down where the peek was, then slides up.
-  const toFull = (dy = 0) => { const peekH = card.offsetHeight; card.classList.remove('peek'); const full = card.offsetHeight; slide(full - peekH + dy, 0); };
+  const toFull = (dy = 0) => { const peekH = card.offsetHeight; card.classList.remove('peek'); const full = card.offsetHeight; slide(full - peekH + dy, 0); refitWay(); };
   // Off the map: the card's own transform (its closed state) with a transition on it.
   // The finger's offset goes with it: left on the card, the next card opened (a stop, the routes on a road) came up
   // that far short, its last rows under the tabs.
@@ -993,6 +995,7 @@ function wireGrip(app) {
       if (peeked()) { delete card.dataset.tall; card.classList.remove('peek'); }
       const legs = card.querySelector(':scope > .journeysheet');
       if (legs) card.scrollTop = legs.offsetTop - 8;
+      requestAnimationFrame(() => frameWay(400));   // the whole way again, in what the card leaves
       return;
     }
     if (e.target.closest('a, button, [data-go]')) return;
@@ -2425,7 +2428,9 @@ export function runFocus(si) {
 // along its loop), the walks dashed in the paper's ink as the crow flies, the change ringed, the start and the end
 // marked, and only the stops it calls at, each tappable as anywhere. On a phone its card is the way's own, the others
 // a swipe away; beside a wide screen's panel the directions page stays, the way picked marked there.
-let JR = null, jrKey = null, jrFramed = null;
+let JR = null, jrKey = null, jrFramed = null, jrBounds = null;
+/** The way drawn, framed in the room left: its ends' rings clear of the edges (a margin wider than theirs, 11 px). */
+const frameWay = (duration = 600) => { if (JR && jrBounds) frame(jrBounds, { margin: wide() ? 40 : 28, maxZoom: 16.5, bearing: 0, duration }); };
 const ink = () => dark() ? '#eef0f2' : '#1d1f20', paperInk = () => dark() ? '#101214' : '#f2f2f3';
 const jpt = x => typeof x === 'string' ? U.stops[+x.slice(1)] : D.stops[x];
 /** The layers a way adds, once (and again after a restyle, which drops them): its walks, its ring and its ends. */
@@ -2529,7 +2534,8 @@ async function mainJourney(J, app) {
   const b = new maplibregl.LngLatBounds();
   for (const f of [...lines, ...marks]) for (const c of f.geometry.type === 'Point' ? [f.geometry.coordinates] : f.geometry.coordinates) b.extend(c);
   sized();
-  frame(b, { maxZoom: 16.5, bearing: 0 });
+  jrBounds = b;
+  frameWay();
 }
 /** A phone's card for the directions: the page's own sheet (where to and from, the ways as rows, the drawn way told
  *  leg by leg), under the map with the way drawn. A row tapped draws that way; a swipe across, the next. */
