@@ -93,7 +93,7 @@ function atStops(out, only) {
   const trips = {};
   for (const [id, trip] of Object.entries(out.trips)) {
     const s = trip.s.filter(x => only.has(x[0]));
-    if (s.length) trips[id] = { v: trip.v, ts: trip.ts, s };
+    if (s.length || trip.c) trips[id] = trip.c ? { v: trip.v, ts: trip.ts, s, c: 1 } : { v: trip.v, ts: trip.ts, s };
   }
   return { t: out.t, trips, at: out.buses.map(b => [b.lat, b.lon, b.ts, b.trip]) };
 }
@@ -163,8 +163,11 @@ const all = (fs, n) => fs.filter(x => x[0] === n).map(x => x[1]);
 function decode(vp, tu) {
   const out = { t: 0, buses: [], trips: {} };
   const vmsg = fields(vp), tmsg = fields(tu);
-  const header = fields(get(vmsg, 1) || new Uint8Array());
-  out.t = get(header, 3) || Math.floor(Date.now() / 1000);
+  // The answer's time is the feeds' own: the older of their two headers, so a
+  // feed that has stopped moving shows its age to a client that checks. With
+  // neither, the freshest bus report; only with no clock at all, now.
+  const vpT = get(fields(get(vmsg, 1) || new Uint8Array()), 3), tuT = get(fields(get(tmsg, 1) || new Uint8Array()), 3);
+  out.t = vpT && tuT ? Math.min(vpT, tuT) : vpT || tuT || 0;
   for (const ent of all(vmsg, 2)) {
     const v = get(fields(ent), 4); if (!v) continue;
     const vf = fields(v);
@@ -189,16 +192,21 @@ function decode(vp, tu) {
     const trip = fields(get(uf, 1) || new Uint8Array()), veh = fields(get(uf, 3) || new Uint8Array());
     const id = get(trip, 1) !== undefined ? str(get(trip, 1)) : null;
     if (!id) continue;
+    const cancelled = get(trip, 4) === 3;   // the trip's schedule_relationship: CANCELED
     const stops = [];
     for (const s of all(uf, 2)) {
       const sf = fields(s);
       const arr = fields(get(sf, 2) || new Uint8Array()), dep = fields(get(sf, 3) || new Uint8Array());
       const time = get(dep, 2) || get(arr, 2);
       const sid = get(sf, 4) !== undefined ? str(get(sf, 4)) : null;
-      if (!time || !sid) continue;
-      stops.push([sid, get(sf, 1) ?? null, time, get(sf, 5) || 0]);   // stop id, sequence, predicted time, schedule relationship (1 = skipped)
+      const rel = get(sf, 5) || 0;
+      // A stop the bus will skip is news even without a time (0 then).
+      if (!sid || (!time && rel !== 1)) continue;
+      stops.push([sid, get(sf, 1) ?? null, time || 0, rel]);   // stop id, sequence, predicted time, schedule relationship (1 = skipped)
     }
     out.trips[id] = { v: get(veh, 1) !== undefined ? str(get(veh, 1)) : '', ts: get(uf, 4) || 0, s: stops };
+    if (cancelled) out.trips[id].c = 1;   // a run that isn't coming: no stops to cut it to
   }
+  if (!out.t) out.t = out.buses.reduce((m, b) => Math.max(m, b.ts || 0), 0) || Math.floor(Date.now() / 1000);
   return out;
 }
