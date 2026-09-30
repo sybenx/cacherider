@@ -1013,14 +1013,23 @@ function wireGrip(app) {
   // its head, the card opens out, as a swipe up does; it had nothing to scroll, so did nothing. Opened, it scrolls.
   // Opened and at its top, a fresh scroll up (not the tail of the one that brought it there) is down to its head again,
   // as a swipe down is: there was no way back but the grip.
-  let wheelAt = 0, wheelLast = -1e9;
+  let wheelAt = 0, wheelLast = -1e9, pullOn = false, pull = 0, pullAbs = 0;
   card.addEventListener('wheel', e => {
-    const fresh = e.timeStamp - wheelLast > 300; wheelLast = e.timeStamp;
+    const gap = e.timeStamp - wheelLast, fresh = gap > 300; wheelLast = e.timeStamp;
     if (e.ctrlKey) return;
     if (board()) {
-      // A fresh scroll up at its top folds it (not the tail of the one that brought it there); folded, down opens it.
-      if (!hubFolded && e.deltaY < 0 && card.scrollTop <= 0 && fresh) { e.preventDefault(); hubFold(true); }
-      else if (hubFolded && e.deltaY > 0) { e.preventDefault(); hubFold(false); }
+      // Folded, a scroll down opens it. At its top, a pull up folds it: a new one, not the tail of the scroll that
+      // brought it there. A trackpad's tail runs on for a second, dying away, and a rider's next pull began inside it:
+      // waiting for a quiet gap, only the first fold ever came. A pull after a pause, or one gathering speed, is new.
+      if (hubFolded) { if (e.deltaY > 0) { e.preventDefault(); hubFold(false); } return; }
+      const abs = Math.abs(e.deltaY);
+      if (e.deltaY >= 0 || card.scrollTop > 0) { pullOn = false; pull = 0; pullAbs = abs; return; }
+      if (gap > 250 || abs > pullAbs * 1.3 + 1) pullOn = true;
+      pullAbs = abs;
+      if (!pullOn) return;
+      e.preventDefault();
+      pull += abs;
+      if (pull > 40) { pullOn = false; pull = 0; hubFold(true); }
       return;
     }
     if (!peeked() && e.deltaY < 0 && card.scrollTop <= 0 && fresh && card.classList.contains('open') && !wide()) { e.preventDefault(); wheelAt = e.timeStamp; toPeek(); return; }
