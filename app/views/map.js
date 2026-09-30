@@ -1092,7 +1092,8 @@ function northControl() {
       const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group northctl';
       const b = document.createElement('button'); b.type = 'button'; b.className = 'northbtn'; b.title = 'Point north'; b.setAttribute('aria-label', 'Point north');
       b.innerHTML = icon('compass', 20).s;
-      b.onclick = () => m.resetNorth({ duration: 400 });
+      // On the Center, turning the map is using it as a map: the Map tab, the bays where they are, turned north.
+      b.onclick = () => { if (/^#\/hub/.test(location.hash)) { stayOff = true; location.hash = '#/map'; } else m.resetNorth({ duration: 400 }); };
       const sync = () => { const a = m.getBearing(); el.classList.toggle('on', Math.abs(a) > 0.5); b.querySelector('svg').style.transform = `rotate(${-a}deg)`; };
       m.on('rotate', sync); m.on('rotateend', sync); sync();
       this.off = () => { m.off('rotate', sync); m.off('rotateend', sync); };
@@ -1672,7 +1673,7 @@ export function resetView(app, once = false, to = null, jump = false) {
 /** The Map tab from the Transit Center: the map as it was before the Center framed itself, north up, nothing picked
  *  (a tab keeps its place; a second tap is the reset). The whole of Logan when the app opened at the Center. Done
  *  once the Map tab is drawn, as the reset is. */
-let beforeHub = null, backDue = false;
+let beforeHub = null, backDue = false, stayOff = false;   // stayOff: the Center left by its north button, the map kept
 export function leaveHub() { backDue = true; }
 /** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
  *  out or panned off), and on a phone its board back up if it was put away. */
@@ -2003,9 +2004,10 @@ export async function show(o, app, clockNow) {
   // frames it; any other (Stops, search, About, the Map tab) gets the map back as it was before the Center, at once.
   // North alone left a desktop's map on the bays, turned: Transit Center, Stops, then Map never came out again.
   if (!o.hub && hubTurned && !o.tick) {
-    const own = o.stopId || o.routeShort || o.ustopId || o.uRoute || o.alertId || o.at || o.journey || o.run || o.busId || o.page || o.from || o.to;
-    if (own) { northDue = true; if (!map.isMoving()) northAgain(true); } else backDue = true;
+    const own = stayOff || o.stopId || o.routeShort || o.ustopId || o.uRoute || o.alertId || o.at || o.journey || o.run || o.busId || o.page || o.from || o.to;
+    if (own) { northDue = true; if (!map.isMoving()) northAgain(!stayOff); } else backDue = true;
   }
+  stayOff = false;
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   mainJourney(o.journey || null, app);   // a way from the directions page
   if (((resetDue && app.route.name === 'map') || backDue) && !o.hub) { const back = backDue, to = back ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to, back); }   // back from the Center: there at once, as the Center came
