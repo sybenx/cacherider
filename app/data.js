@@ -195,7 +195,7 @@ let ymdFmt = null;
 const ymdOf = epoch => (ymdFmt ||= new Intl.DateTimeFormat('en-CA', { timeZone: D.agency.tz, year: 'numeric', month: '2-digit', day: '2-digit' })).format(new Date(epoch * 1000)).replace(/-/g, '');
 /** Connect sometimes runs a notice for a day's change up to the day before it and no further ("USU Homecoming
  *  Parade Saturday 9/26/2026", shown until the Friday). An alert naming a date in its title stays up through it. */
-/** When the last of some alerts ends, as ymd, for 'skips this stop until Tue 29 Sep'; null when none says. An
+/** When the last of some alerts ends, as ymd, for 'the detour ends Tue 29 Sep'; null when none says. An
  *  alert naming a day in its title ends that day. */
 export function alertsUntil(alerts) {
   let last = null;

@@ -55,9 +55,13 @@ export function render({ id, full, run, on }, clockNow) {
   if (poolAt(si)) parts.push(html`<div class="notice">${icon('info', 16)}<span>Also a <b>POOL</b> pickup: ${D.agency.brand}'s on-demand ride around ${POOL.towns.slice(0, 3).join(', ')}, zero fare, booked in the On-Demand app or on <a href="tel:${POOL.phone}">${POOL.phone}</a>. <a href="${POOL.url}" target="_blank" rel="noopener">How it works</a></span></div>`);
   if (alerts.length) {
     const who = routeNames([...closed]);
-    // Through when: the alert's end date, in the agency's words ('until Tue 29 Sep'), or today's when it ends tonight.
-    const end = alertsUntil(alerts), until = end ? (end === clockNow.ymd ? ' today' : end === dayFrom(clockNow.ymd, 1).ymd ? ' until tomorrow' : ' until ' + fmtDay(end)) : '';
-    const head = allClosed ? `No buses stop here${until ? ' ' + until.trim() : ' during the detour'}` : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${until || ' right now'}` : 'Service alert for this stop';
+    // When it ends: the alert's day, and no hour (an alert 'ending Wednesday' ends some time that day, the feed's end
+    // its last minute). 'Until Tue 29 Sep' read as back that morning, and 'today' on the day as closed all of it.
+    // On the day it stays closed here (a walk to a stop that's served, not a wait at one that may be skipped).
+    const end = alertsUntil(alerts), onEnd = end === clockNow.ymd;
+    const ends = end && !onEnd ? ' · the detour ends ' + (end === dayFrom(clockNow.ymd, 1).ymd ? 'tomorrow' : fmtDay(end)) : '';
+    const head = allClosed ? (onEnd ? 'No buses stop here until the detour ends, later today' : `No buses stop here${ends || ' during the detour'}`)
+      : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}` : 'Service alert for this stop';
     parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
   }
 
