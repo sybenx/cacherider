@@ -1510,7 +1510,9 @@ function litLines(m, lines, loops, soft = false) {
   m.setPaintProperty('usu-lines', 'line-opacity', any ? 0.25 : ['case', ['get', 'approx'], 0.35, 0.9]);
 }
 
-function select(id, app, fly = false, zoomIn = false) {
+/** `go`: to the stop's page (a tap); false, the stop picked on the map alone (a page already up, a shuttle stop's at
+ *  the same pole). */
+function select(id, app, fly = false, zoomIn = false, go = true) {
   clearSpot();
   const si = id ? D.stopById[id] : undefined;
   // A route in view (its page, or the Map tab's route) stays in view for a stop of its own, or none: its times stay.
@@ -1525,6 +1527,7 @@ function select(id, app, fly = false, zoomIn = false) {
   if (!id) { card.classList.remove('open', 'peek'); return; }
   if (si === undefined) return;
   const s = stop(si);
+  if (!go) return;
   // A stop is its page, wherever it's tapped: a phone's is the map with the page as its sheet, opening down to the
   // next buses; beside the panel, the panel's. There was a card first, the page's first lines again with an Open
   // button under them, a tap more for what was already there.
@@ -2167,7 +2170,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
       selected = stopId; uHilite = ''; hiLines = s.hub ? [...s.routes] : []; hiLoops = []; applySelection();
       // On the Map tab the card decides the framing, so the stop sits above it; beside the
       // stop list there is no card, and a fresh arrival eases to the stop itself.
-      if (page) { select(stopId, app, false); pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
+      if (page) { select(stopId, app, false, false, false); pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
       else if (app.route.name === 'map') { lastFocused = null; select(stopId, app); }   // an old #/map/<stop> link: its page, framed as it comes
       else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15), duration: 700 });
     }
@@ -2179,7 +2182,7 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
     lastFocused = 'u:' + ustopId;
     const pole = U.shared[si];   // at a Connect stop's pole: that dot is this stop on the map
     selected = pole ? D.stops[pole.j].id : null; uHilite = pole ? '' : ustopId; hiLines = []; hiLoops = s.routes.map(ri => U.routes[ri].id); applySelection();
-    if (page) { if (pole) select(D.stops[pole.j].id, app, false); else { selectedU = null; applySelection(); } pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
+    if (page) { if (pole) select(D.stops[pole.j].id, app, false, false, false); else { selectedU = null; applySelection(); } pageSheet(page, app, true); if (changed || resized) frameStop([s.lon, s.lat]); }
     else if (app.route.name === 'map') { lastFocused = null; selectU(ustopId, app); }   // an old #/map/usu/<stop> link: its page
     else if (focus && changed && (!map.isMoving() || Date.now() < padUntil)) map.easeTo({ padding: pad(), center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 15.5), duration: 700 });
   } else if (journey) {
