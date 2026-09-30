@@ -51,7 +51,7 @@ function headOf(to, e, at) {
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
   // Where from, the trip's first setting, as when (whenControl) is its second: a button alike, the pin for 'from', the
   // name whole, and tapped, the ways to change it under it. It was 'From 1111 N…' and three buttons on a line.
-  const from = origin ? { btn: html`<button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t">${fromName}</span></button>`,
+  const from = origin ? { btn: html`<button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t">${gridShort(fromName)}</span></button>`,
     acts: html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div>` } : null;
   return { parts, key, hubBay, from };
 }
@@ -105,6 +105,9 @@ function whenControl(c, clockNow) {
     pick: html`<div class="gowhen-pick"${pickOpen ? '' : ' hidden'}><div class="seg" role="group" aria-label="Leave or arrive"><button type="button" data-by="0" aria-pressed="${by ? 'false' : 'true'}">Leave at</button><button type="button" data-by="1" aria-pressed="${by ? 'true' : 'false'}">Arrive by</button></div><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
     <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div>` };
 }
+/** A grid address the short way, in the button's room: '1111 N 1200 E', '55 N Main'. A direction only after a number,
+ *  so North Logan and West Stadium stay as they are. */
+const gridShort = n => String(n).replace(/(\d+)\s+(North|South|East|West)\b/g, (_, d, w) => d + ' ' + w[0]);
 /** Where from and when, the trip's two settings: side by side where both fit (when drops under where from where they
  *  don't, the start's name kept whole), each one's choices opening under them the whole width. No arrow on either:
  *  a bordered button says it's one, and the two arrows kept 'from here' and 'leave now' from sharing a phone's line. */
