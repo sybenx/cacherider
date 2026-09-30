@@ -66,7 +66,8 @@ function style(sat = true) {
   // The basemap, less what draws nothing in the valley (no tunnels, piers, beaches, zoo, airfield worth a layer; no
   // borders, country or ocean names) and what only clutters it (one-way arrows, house numbers, shops and churches):
   // the map is the buses', and a street's name is all a rider reads off it. Buildings come in half a zoom later.
-  const base = layers('protomaps', f, { lang: 'en' }).filter(l => !QUIET.test(l.id)).map(l => l.id === 'buildings' ? { ...l, minzoom: 12.5 } : l);
+  const base = layers('protomaps', f, { lang: 'en' }).filter(l => !QUIET.test(l.id)).map(l => l.id === 'buildings' ? { ...l, minzoom: 12.5 } : l)
+    .flatMap(l => [l, ...with500(l)]);
   const st = {
     version: 8,
     glyphs: BASE + 'vendor/basemaps-assets/fonts/{fontstack}/{range}.pbf',
@@ -435,7 +436,13 @@ async function made(app) {
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = app.geo ? [app.geo.lon, app.geo.lat] : HOME;
   bornAtHome = !app.geo;
-  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false });
+  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false,
+    // Drawn at twice the screen's resolution at most: a phone's three times filled half again the pixels on every frame
+    // of a zoom (15 frames a second to 25, at a quarter speed), for sharpness no one sees at arm's length.
+    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    // Tiles already built kept for coming back to (the Map tab and the Center, a zoom out and in again): a tile not
+    // kept is built again, gray until it is.
+    maxTileCacheSize: 120 });
   // Its box watched here, not by MapLibre: hidden (the Stops tab on a phone), the box is nothing, and MapLibre
   // shrank the canvas to nothing and grew it back on every tab tapped, reallocating its whole drawing buffer each
   // way, the costliest thing a tab did on a phone. A box of nothing is left be; a real change (turned, the update bar)
@@ -1223,16 +1230,28 @@ function northAgain(jump) {
  *  and 500 North (its band and its name) as they are; every other street, the parks, water, labels and all washed
  *  toward the paper. Each layer's own paint kept aside and put back on leaving. */
 const PAPER_KEEP = /^(background|earth|buildings|roads_minor_service(_casing)?|roads_other)$/;
-const is500 = ['==', ['coalesce', ['get', 'name:en'], ['get', 'name'], ''], '500 North'];
+/** 500 North's own copy of each road layer (its band, its name), always in the style and unseen until the Center
+ *  washes the rest: a wash that picked 500 North out by name was a rule on each road's data, and changing such a rule
+ *  rebuilds every street tile on screen, on the way in and on the way out, the phone's worker busy with that while
+ *  the Center's own tiles waited, gray. Plain opacities, these copies' and the rest's, rebuild nothing. */
+const IS500 = ['any', ['==', 'name:en', '500 North'], ['==', 'name', '500 North']];   // the basemap's filters' own syntax
+function with500(l) {
+  const lines = /^roads_/.test(l.id) && l.type === 'line' && !PAPER_KEEP.test(l.id), names = /^roads_labels_/.test(l.id) && l.type === 'symbol';
+  if (!lines && !names) return [];
+  const filter = l.filter ? ['all', l.filter, IS500] : IS500;
+  return [lines ? { ...l, id: l.id + '-500n', filter, paint: { ...l.paint, 'line-opacity': 0 } }
+    : { ...l, id: l.id + '-500n', filter, layout: { ...l.layout, 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { ...l.paint, 'text-opacity': 0 } }];
+}
 let paperKept = null;
 function paper(on) {
   if (on && !paperKept) {
     paperKept = [];
     for (const l of map.getStyle().layers) {
       if (l.source !== 'protomaps' || PAPER_KEEP.test(l.id)) continue;
-      const road = /^roads_/.test(l.id);
-      const props = l.type === 'fill' ? [['fill-opacity', 0.2]] : l.type === 'line' ? [['line-opacity', road ? ['case', is500, 1, 0.2] : 0.2]]
-        : l.type === 'symbol' ? [['text-opacity', road ? ['case', is500, 1, 0.12] : 0.12], ['icon-opacity', 0.12]] : [];
+      const own = /-500n$/.test(l.id);   // 500 North's copies come up; everything else steps back
+      const props = own ? [[l.type === 'line' ? 'line-opacity' : 'text-opacity', 1]]
+        : l.type === 'fill' ? [['fill-opacity', 0.2]] : l.type === 'line' ? [['line-opacity', 0.2]]
+        : l.type === 'symbol' ? [['text-opacity', 0.12], ['icon-opacity', 0.12]] : [];
       for (const [prop, v] of props) { paperKept.push([l.id, prop, map.getPaintProperty(l.id, prop)]); map.setPaintProperty(l.id, prop, v); }
     }
   } else if (!on && paperKept) {
