@@ -65,7 +65,7 @@ function leaveAt(t, clockNow) {
   return c.ymd < clockNow.ymd || (c.ymd === clockNow.ymd && c.min <= clockNow.min) ? null : c;
 }
 /** The ways for a time picked, or for now: arriving by, the latest leaving that get there in time, from now on if it's
- *  today (from the day's start if later); none, the first way there after all, said so (lateBy). */
+ *  today (from the day's start if later); none, the first way there, said so (lateBy). */
 function waysFor(origin, dest, fixed, clockNow) {
   const c = fixed || clockNow, live = liveFor(fixed, clockNow), sh = live ? planNet(clockNow) : null;
   if (!fixed || !fixed.by) return { found: journeys(origin, dest, c, 8, live ? planNet(c) : null, live), c, live };
@@ -76,7 +76,7 @@ function waysFor(origin, dest, fixed, clockNow) {
 }
 /** The feed's word counts for now and the next hour and a half today; a time further off is the timetable's alone
  *  (and the shuttle, whose times are its buses' whereabouts, only then). */
-const tooLate = c => html`<div class="callout">${icon('info', 20)}<div><b>No bus gets there by ${clockText(c.min)}</b><div class="sub">The first way there after all:</div></div></div>`;
+const tooLate = c => html`<div class="callout">${icon('info', 20)}<div><b>No bus gets there by ${clockText(c.min)}</b><div class="sub">The first way there:</div></div></div>`;
 const liveFor = (c, clockNow) => !c || (c.ymd === clockNow.ymd && c.min - clockNow.min <= 90);
 const hashWith = t => location.hash.split('?')[0] + (t ? '?t=' + t : '');
 const dayWord = ymd => { const today = now().ymd; return ymd === today ? 'today' : ymd === dayFrom(today, 1).ymd ? 'tomorrow' : dayName(ymd); };
