@@ -93,8 +93,8 @@ function style(sat = true) {
       { id: 'pool-zone', type: 'fill', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'fill-color': '#007AB8', 'fill-opacity': flavor === 'dark' ? 0.1 : 0.08 } },
       { id: 'pool-edge', type: 'line', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'line-color': '#007AB8', 'line-width': 1.2, 'line-dasharray': [3, 2], 'line-opacity': 0.55 } },
       { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': '#007AB8', 'circle-opacity': 0.15, 'circle-stroke-color': '#007AB8', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
-      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
-      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
+      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.9, 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', ['coalesce', ['get', 'lane'], 0], 1.5], 14, ['*', ['coalesce', ['get', 'lane'], 0], 3.5], 17, ['*', ['coalesce', ['get', 'lane'], 0], 6]] } },
+      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1, 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', ['coalesce', ['get', 'lane'], 0], 1.5], 14, ['*', ['coalesce', ['get', 'lane'], 0], 3.5], 17, ['*', ['coalesce', ['get', 'lane'], 0], 6]] } },
       // The way on from a picked bus or stop: bright there, fading smoothly as it goes, one line a strand with its own
       // gradient (a layer holds one gradient, so a strand a layer; a stop with three routes lights three). It was up to
       // 48 pieces a strand, each a step fainter: bands, and a seam at every bend where two pieces met. Several ways from
@@ -233,6 +233,39 @@ function segmentGrid(lines) {
     }
   }
   return grid;
+}
+/** Routes sharing a road side by side, as a metro map draws them: each stretch of a line (cut every STEP metres) finds
+ *  the other routes running along it, a line within NEAR heading the same way or the opposite (not one crossing it),
+ *  and takes its lane among them, in route order, on the same side of the road whichever way it runs. The lane is the
+ *  line's offset in widths, so a road with three routes is three touching stripes. */
+function rainbow(lines) {
+  const NEAR = 14, STEP = 20, grid = segmentGrid(lines), out = [];
+  for (const f of lines.features) {
+    const r = f.properties.route, c = f.geometry.coordinates;
+    let cur = null;
+    const flush = () => { if (cur && cur.coords.length > 1) out.push({ type: 'Feature', properties: { ...f.properties, lane: cur.lane }, geometry: { type: 'LineString', coordinates: cur.coords } }); };
+    for (let k = 1; k < c.length; k++) {
+      const [ax, ay] = c[k - 1], [bx, by] = c[k], dx = (bx - ax) * KX, dy = (by - ay) * KY, len = Math.hypot(dx, dy);
+      if (!len) continue;
+      const n = Math.max(1, Math.ceil(len / STEP)), rev = dx + dy < 0;   // the road's own frame: east and north ahead
+      for (let j = 0; j < n; j++) {
+        const p0 = [ax + (bx - ax) * j / n, ay + (by - ay) * j / n], p1 = [ax + (bx - ax) * (j + 1) / n, ay + (by - ay) * (j + 1) / n];
+        const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, with_ = new Set([r]);
+        for (const [r2, sx, sy, ex, ey] of grid.get(Math.floor(mx * KX / VOUCH.CELL) + ',' + Math.floor(my * KY / VOUCH.CELL)) || []) {
+          if (with_.has(r2)) continue;
+          const vx = (ex - sx) * KX, vy = (ey - sy) * KY, L2 = vx * vx + vy * vy, px = (mx - sx) * KX, py = (my - sy) * KY;
+          const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0;
+          if (Math.hypot(px - t * vx, py - t * vy) > NEAR || Math.abs(vx * dx + vy * dy) < 0.9 * Math.sqrt(L2) * len) continue;
+          with_.add(r2);
+        }
+        const order = [...with_].sort((a, b) => a - b), lane0 = order.indexOf(r) - (order.length - 1) / 2, lane = rev ? -lane0 : lane0;
+        if (!cur || cur.lane !== lane) { flush(); cur = { lane, coords: [p0] }; }
+        cur.coords.push(p1);
+      }
+    }
+    flush();
+  }
+  return { type: 'FeatureCollection', features: out };
 }
 /** The solid lines with each shape's closed stretches left out. */
 function openLines(fc, gaps) {
@@ -402,7 +435,7 @@ async function loadShapes(m = map) {
   const key = closedKeyOf(now());
   if (drawn.key !== key) {
     const { closed, gaps } = closedSegments(fc);
-    drawn.lines = openLines(fc, gaps); drawn.closed = closed; drawn.key = key;
+    drawn.lines = rainbow(openLines(fc, gaps)); drawn.closed = closed; drawn.key = key;
   }
   closedKey = key;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
