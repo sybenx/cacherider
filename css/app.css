@@ -591,13 +591,16 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .nobus-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .nobus-maps { padding: 4px 16px 16px; font-size: 0.9375rem; }
 .nobus-maps a { color: var(--color-accent-700); }
-/* where from, whole: the ways to change it drop to a line of their own where both don't fit ('From 1111 N…' before) */
-.fromline { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 0; padding: 6px 16px 10px; font-size: 0.9062rem; color: var(--cr-muted); border-bottom: 1px solid var(--cr-line); }
-.fromline > svg { color: var(--color-accent-700); flex: none; }
-.fromline > span:not(.fromacts) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fromline b { color: var(--color-text); font-weight: 600; }
-.fromline .fromacts { margin-left: auto; display: flex; gap: 2px; flex: none; }
-.fromline .btn-ghost { font-size: 0.875rem; min-height: 36px; }
+/* where from, under where to, whole; tapped, the ways to change it under the head */
+.fromname { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 4px; padding: 4px 0; font-size: 0.9062rem; color: var(--cr-muted); cursor: pointer; }
+.fromname > svg { color: var(--color-accent-700); flex: none; }
+.fromname > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fromname b { color: var(--color-text); font-weight: 600; }
+.fromname[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.fromname:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.fromacts { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 12px 8px; }
+.fromacts[hidden] { display: none; }
+.fromacts .btn-ghost { font-size: 0.875rem; min-height: 36px; }
 /* the directions' ways as rows: leave → arrive, when, and the legs a badge and a word each; the one drawn marked */
 .jrows { border-top: 1px solid var(--cr-line); }
 .jrow { display: flex; flex-direction: column; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--cr-line); cursor: pointer; }
@@ -620,12 +623,11 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 /* in the card, the head in one line: Back as its arrow beside where to; the page's eyebrow and town left out */
 .mapcard .gohead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
 .mapcard .gohead > :not(.backbar):not(.head) { grid-column: 1 / -1; }
-.mapcard .gohead .backbar { padding: 0 0 0 4px; }
+.mapcard .gohead .backbar { padding: 0 0 0 4px; align-self: start; }   /* beside the title, not between it and where from */
 .mapcard .gohead .backbar .btn { font-size: 0; gap: 0; min-width: 40px; padding-inline: 8px; }
 .mapcard .gohead .head.tight { padding: 2px 16px 8px 0; }
 .mapcard .gohead .head .eyebrow, .mapcard .gohead .head .muted { display: none; }
 .mapcard .gohead .head.tight h1 { font-size: 1.375rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mapcard .gohead .fromline { padding-top: 2px; }
 .journeysheet { padding: 8px 16px 8px; }
 .legs { display: flex; flex-direction: column; position: relative; }
 .legs::before { content: ''; position: absolute; left: 17px; top: 20px; bottom: 20px; width: 2px; background: var(--cr-line); }

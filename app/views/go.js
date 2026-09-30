@@ -44,15 +44,15 @@ function headOf(to, e, at) {
   const geo = app.geo;
   const back = spot ? `#/map/at/${d.lat.toFixed(5)},${d.lon.toFixed(5)}/${encodeURIComponent(d.label)}` : `#/stop/${d.id}`;
   const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a></div>`];
-  parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
-
   // None chosen yet, and no location: the choice.
   const chosen = !!at || fromSi !== undefined;
   const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'where you are';
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
-  // The start's line, with its ways to change it, once there is one; before that the ask is the whole choice.
-  if (origin) parts.push(html`<div class="fromline">${icon(at ? 'pin' : 'near', 16)}<span>From <b>${fromName}</b></span>
-    <span class="fromacts">${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></span></div>`);
+  // Where from, under where to, whole: tapped, the ways to change it open under the head. They were a line of their
+  // own beside the name, on a phone 'From 1111 N…' and three buttons, for a start that's seldom changed.
+  const fromBtn = origin ? html`<button type="button" class="fromname" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}">${icon(at ? 'pin' : 'near', 14)}<span>from <b>${fromName}</b></span>${icon('down', 14)}</button>` : '';
+  parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}${fromBtn}</div>`);
+  if (origin) parts.push(html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div>`);
   return { parts, key, hubBay };
 }
 
@@ -90,7 +90,7 @@ const tooLate = c => html`<div class="callout">${icon('info', 20)}<div><b>No bus
 const liveFor = (c, clockNow) => !c || (c.ymd === clockNow.ymd && c.min - clockNow.min <= 90);
 const hashWith = t => location.hash.split('?')[0] + (t ? '?t=' + t : '');
 const dayWord = ymd => { const today = now().ymd; return ymd === today ? 'today' : ymd === dayFrom(today, 1).ymd ? 'tomorrow' : dayName(ymd); };
-let pickBy = false, pickOpen = false, pickFor = null;
+let pickBy = false, pickOpen = false, pickFor = null, fromOpen = false;   // the pickers and the start's choices, open through redraws
 /** Leave now, at a time picked, or arrive by one: the button says which; tapped, Leave or Arrive and the phone's own
  *  date and time pickers, a week ahead. */
 function whenControl(c, clockNow) {
@@ -321,6 +321,8 @@ function mount(el, _app, inCard = false) {
   if (h) h.onclick = () => nearMe(g => { if (g) location.hash = `#/go/${spotKey(g.lat, g.lon, 'where you are')}/${h.dataset.from}`; });
   // Leave now, at a time, or arrive by one: the button opens the pickers; Set puts the time in the address (the ways
   // worked out afresh from it), Now takes it out. A way picked before goes: it was a way from another time.
+  const fb = el.querySelector('#go-from'), fa = el.querySelector('.fromacts');
+  if (fb && fa) fb.onclick = () => { fromOpen = fa.hidden; fa.hidden = !fromOpen; fb.setAttribute('aria-expanded', String(fromOpen)); };
   const w = el.querySelector('#go-when'), pick = el.querySelector('.gowhen-pick');
   if (w && pick) w.onclick = () => { pickOpen = pick.hidden; pick.hidden = !pickOpen; w.setAttribute('aria-expanded', String(pickOpen)); };
   for (const b of el.querySelectorAll('.gowhen-pick [data-by]')) b.onclick = () => { pickBy = b.dataset.by === '1'; for (const x of el.querySelectorAll('.gowhen-pick [data-by]')) x.setAttribute('aria-pressed', String(x === b)); };
