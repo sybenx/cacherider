@@ -619,10 +619,10 @@ function pickRoute(ri, app) {
   stayRoute = true; location.hash = h;
 }
 /** Room round a route fitted to the map: on a phone, above its sheet. */
-const routePad = () => {
-  const card = col.querySelector('#mapcard'), p = fitPad(40), h = map.getContainer().clientHeight;
+const routePad = (n = 40) => {
+  const card = col.querySelector('#mapcard'), p = fitPad(n), h = map.getContainer().clientHeight;
   if (!wide() && card.classList.contains('open')) p.bottom += card.offsetHeight;
-  p.bottom = Math.min(p.bottom, Math.max(40, h - p.top - 120));   // a route always gets some room, the map just shown or not
+  p.bottom = Math.min(p.bottom, Math.max(n, h - p.top - 120));   // a route always gets some room, the map just shown or not
   return p;
 };
 // ---- a route: the map with the route lit and its times, and its stops in order as the map's card (a phone's) or
@@ -930,9 +930,10 @@ document.addEventListener('click', e => {
  *  also drags with a mouse. The browser's pull-to-refresh never sees any of it. */
 /** The peek's height: the grip and the head, whatever the stop's name and routes take. */
 function fitPeek(card) {
-  // The directions: down to the way drawn, the rows above it with it, so the map keeps half the screen at least.
-  const pk = card.querySelector('.gohead .jrow.picked');
-  if (pk) { card.style.setProperty('--peek', Math.min(pk.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.5 * map.getContainer().clientHeight) + 'px'); return; }
+  // The directions: down to the last way, every one there to tap between, the way picked drawn in the map above;
+  // never more than 60% of it. (Down to the way picked, the ways after it were a swipe up away each time.)
+  const rows = card.querySelectorAll('.gohead .jrow'), last = rows[rows.length - 1];
+  if (last) { card.style.setProperty('--peek', Math.min(last.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.6 * map.getContainer().clientHeight) + 'px'); return; }
   // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it).
   const h = card.querySelector('.head');
   if (h) card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2) + 'px');
@@ -994,8 +995,7 @@ function wireGrip(app) {
   card.addEventListener('click', e => {
     // A way's row is a tap on that way, not on the card: it opened the card out, and the way picked was framed in the
     // sliver of map left above it.
-    if (e.target.closest('[data-go]')) { card.dataset.picking = '1'; return; }   // brought down to it (journeyCard)
-    if (e.target.closest('a, button')) return;
+    if (e.target.closest('a, button, [data-go]')) return;
     if (board()) return;
     if (peeked()) { delete card.dataset.tall; toFull(); }
     else if (e.target.closest('.grip')) toPeek();
@@ -2487,7 +2487,8 @@ async function mainJourney(J, app) {
   const b = new maplibregl.LngLatBounds();
   for (const f of [...lines, ...marks]) for (const c of f.geometry.type === 'Point' ? [f.geometry.coordinates] : f.geometry.coordinates) b.extend(c);
   sized(); settlePad();
-  map.fitBounds(b, { padding: routePad(), duration: 600, maxZoom: 16.5, bearing: 0 });
+  // A narrow margin: above a sheet with every way in it the map is a strip, and a long way was drawn small in it.
+  map.fitBounds(b, { padding: routePad(16), duration: 600, maxZoom: 16.5, bearing: 0 });
 }
 /** A phone's card for the directions: the page's own sheet (where to and from, the ways as rows, the drawn way told
  *  leg by leg), under the map with the way drawn. A row tapped draws that way; a swipe across, the next. */
@@ -2499,10 +2500,6 @@ function journeyCard(J, app) {
   if (again) { if (!card.classList.contains('peek')) card.style.setProperty('--jh', card.offsetHeight + 'px'); morph(card, markup); }
   else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
   J.mount(card);
-  // A way picked from the card opened out: down to its row again, the rows above it with it, so it's drawn and framed
-  // in the map above rather than in the sliver the whole card left.
-  if (again && card.dataset.picking) { card.scrollTop = 0; fitPeek(card); card.classList.add('peek'); }
-  delete card.dataset.picking;
   card.dataset.way = J.base;
   card.classList.remove('hidden');
   card.classList.add('open');

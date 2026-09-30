@@ -3,7 +3,7 @@
 // The phone answers from what it keeps, never waiting on the network: the app
 // as this version installed it (a deploy is a new version, and the page offers
 // a reload), the data files as last fetched, each checked behind the page.
-const VERSION = 'cr-v199';
+const VERSION = 'cr-v200';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js',
