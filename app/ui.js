@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName } from './data.js';
+import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { clock, clockText, relative, now, metres } from './time.js';
@@ -155,6 +155,14 @@ export function wasLine(t) {
   return raw(`<span class="wasline">Scheduled <s>${esc(clockText(schedOf(t)))}</s></span>`);
 }
 /** The night's-end word on a departure, when it's a route's last full run or its partial last run from here. */
+/** Today's detours as one line, with the page that has them: 'Routes 2 and 5 · 2 detours · details'. The home page's
+ *  and the Transit Center's (a route on a detour may not come to its bay as it should). '' when there are none. */
+export function detourNotice(clockNow) {
+  const detours = activeAlerts(clockNow.ymd).filter(a => (a.stops || []).length || (a.routes || []).length);
+  if (!detours.length) return '';
+  const rs = [...new Set(detours.flatMap(a => a.ri || []))];
+  return raw(`<div class="notice">${icon('ban', 16).s}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on ' + esc(routeNames(rs).replace(/^Route/, 'route')) : ''} · <a href="#/about/alerts">details</a></span></div>`);
+}
 export function lastTag(t) {
   const w = lastRun(t);
   return raw(w ? `<span class="lastrun">${esc(w)}</span>` : '');

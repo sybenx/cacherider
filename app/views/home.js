@@ -4,7 +4,7 @@
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
@@ -86,11 +86,7 @@ function landing(clockNow, app) {
   if (isWide()) parts.push(chips());   // beside the map, every route a tap away: the page has the room, and the map lights it
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
-  const detours = activeAlerts(clockNow.ymd).filter(a => (a.stops || []).length || (a.routes || []).length);
-  if (detours.length) {
-    const rs = [...new Set(detours.flatMap(a => a.ri || []))];
-    parts.push(html`<div class="notice">${icon('ban', 16)}<span><b>${detours.length} ${detours.length === 1 ? 'detour' : 'detours'}</b>${rs.length ? ' on ' + routeNames(rs).replace(/^Route/, 'route') : ''} · <a href="#/about/alerts">details</a></span></div>`);
-  }
+  parts.push(detourNotice(clockNow));
   if (sv.length) parts.push(installCard());   // the offer waits until a rider has saved a stop: proof it's their app
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
   return { html: html`<div class="land">${html.raw(parts.join(''))}</div>`.s, mount, title: '' };

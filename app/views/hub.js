@@ -3,7 +3,7 @@
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
-import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine } from '../ui.js';
+import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice } from '../ui.js';
 import { rt, rtStale, isLoop, endAt } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
@@ -85,7 +85,7 @@ export function render({ bay }, clockNow) {
 
   const parts = [];
   parts.push(html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1></div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`);
-  parts.push(together(st, clockNow));
+  parts.push(together(st, clockNow), detourNotice(clockNow));
   parts.push(loops(st, pick, clockNow));
   if (pick) parts.push(picked(st[pick], clockNow), dayTimes(st[pick], clockNow));
   parts.push(nextHour(st, pick, clockNow));
@@ -116,7 +116,7 @@ function nextHour(st, pick, clockNow) {
     const tag = !first || !tags || s.off ? '' : s.eta === 0 ? 'IN' : s.eta > 0 ? s.eta + ' MIN' : '';
     return html`<a class="tcb-row${pick === s.k ? ' on' : ''}" href="${first ? cardHref(s, pick) : '#/hub' + (pick === s.k ? '' : '/' + s.k)}">
       <span class="tcb-t">${was(schedOf(t), t.min)}<span class="t${t.live ? ' est' : ''}">${clock(t.min).h}</span></span>
-      ${badge(t.r, 26)}<span class="tcb-mid"><span class="dest">${headsign(t)}</span><span class="sub${t.live ? ' live' : ''}">${t.live ? liveWord(t) : t.onTime ? 'Scheduled · on time' : 'Scheduled'}</span></span>
+      ${badge(t.r, 26)}<span class="tcb-mid"><span class="dest">${headsign(t)}</span><span class="sub${t.live ? ' live' : ''}">${t.live ? liveWord(t) : t.onTime ? 'Scheduled · on time' : 'Scheduled'}</span>${lastTag(t)}</span>
       <span class="tcb-tag">${tag ? html.raw(`<span class="tag${tag === 'IN' ? ' in' : ''}">${tag}</span>`) : ''}</span></a>`;
   });
   return html`<div class="tcb"><div class="section between"><span>${title}</span>${rows.some(r => r.t.live) ? html`<span class="note">struck is the timetable</span>` : ''}</div>
@@ -196,8 +196,8 @@ function loops(st, pick, clockNow) {
 export function hubSheet({ bay }, clockNow) {
   const { st, pick } = board(bay, clockNow);
   return pick
-    ? { pick, head: picked(st[pick], clockNow), body: html`${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
-    : { pick, head: together(st, clockNow), body: html`${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` };
+    ? { pick, head: picked(st[pick], clockNow), body: html`${detourNotice(clockNow)}${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
+    : { pick, head: together(st, clockNow), body: html`${detourNotice(clockNow)}${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` };
 }
 
 /** The bays for the map, one badge a route (16 AM and PM as one), at its bay's stop as the timetable places it: the
