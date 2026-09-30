@@ -1472,7 +1472,7 @@ export function hover({ rs = [], us = [], stop = '' } = {}) {
   // Only on the home page with nothing picked: anywhere else, or with a stop, bus, route or way up, the map is already
   // saying something, and a line lit under the pointer would talk over it.
   const quietHome = ['', '#', '#/'].includes(location.hash) && selected === null && selectedBus === null && selectedU === null && !uHilite
-    && focusRoute === undefined && !hiLines.length && !hiLoops.length && !JR && !MT.R && !hubOn;
+    && focusRoute === undefined && !hiLines.length && !hiLoops.length && !JR && !MT.R && !hubOn && !spotUp;
   if (!quietHome) rs = [], us = [], stop = '';
   const key = rs.join(',') + '|' + us.join(',') + '|' + stop;
   if (key === hoverKey || !map || !ready) return;
@@ -1828,7 +1828,10 @@ function clearSpot() {
   if (map) setSpot(null);
   if (location.hash.startsWith('#/map/at/')) { history.replaceState(null, '', '#/map'); shownHash = '#/map'; }
 }
+let spotUp = false;   // a spot tapped or found is on the map (its disc and its card)
 function setSpot(at) {
+  spotUp = !!at;
+  if (at) hover();   // a spot tapped: nothing lit under the pointer over it
   const apply = () => map.getSource('spot') && map.getSource('spot').setData(at ? circle(at.lat, at.lon) : { type: 'FeatureCollection', features: [] });
   if (ready) apply(); else map.once('load', apply);
 }
