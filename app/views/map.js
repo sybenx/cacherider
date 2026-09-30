@@ -1843,7 +1843,10 @@ export function resetView(app, once = false, to = null, jump = false) {
   selectedBus = null; selectedU = null; lastFocused = null; hubTurned = false; northDue = false;
   focusRoute = undefined; ringed = null; wantRing = null;   // a route up goes too: select() alone would keep it lit
   select(null, app);
-  const duration = jump || matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600;
+  // Back from the Center (jump 'hub'): the flight there in reverse, the half turn unwound, as briefly; at once where
+  // the flight in was (less motion asked for, a weak device).
+  const still = jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches || jump === 'hub' && WEAK;
+  const duration = still ? 0 : jump === 'hub' ? 550 : 600;
   if (to) map.easeTo({ padding: pad(), center: to.center, zoom: to.zoom, bearing: 0, duration });
   else { const [t, f] = homeView(app.geo); frame(t, { ...f, duration }); }
 }
@@ -2195,7 +2198,7 @@ export async function show(o, app, clockNow) {
   stayOff = false;
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   mainJourney(o.journey || null, app);   // a way from the directions page
-  if (((resetDue && app.route.name === 'map') || backDue) && !o.hub) { const back = backDue && !resetDue, to = back ? beforeHub : null, jump = backDue; resetDue = backDue = false; resetView(app, false, to, jump); }   // back from the Center: there at once, as the Center came
+  if (((resetDue && app.route.name === 'map') || backDue) && !o.hub) { const back = backDue && !resetDue, to = back ? beforeHub : null, jump = backDue ? 'hub' : false; resetDue = backDue = false; resetView(app, false, to, jump); }   // back from the Center: flown back, as the Center was flown to
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   // A page's picture is a picture: no times on it. A route's page keeps its route's, a picked bus its own, and a road
   // tapped with one route on it that route's: the feed's redraw every few seconds took those away again.
@@ -2231,8 +2234,9 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // opens where it was left, and a route's own map link, a new address, frames that route then.
   if (!(box.clientWidth && box.clientHeight)) return;
   // Made before it had a size: the home view, now there's a screen to fit it to (a stop, a route or the Center then
-  // frames itself over this).
-  if (homePending) { homePending = false; const [t, f] = homeView(app.geo); frame(t, { ...f, duration: 0 }); }
+  // frames itself over this). The canvas brought to the box first: made hidden, it's MapLibre's 400 by 300 until the
+  // resize watcher's next frame, and the town fitted into that opened two zoom levels out.
+  if (homePending) { homePending = false; sized(); const [t, f] = homeView(app.geo); frame(t, { ...f, duration: 0 }); }
   // Measured again when it may have changed; not on every minute and feed redraw, when a resize's move events would
   // cut short a tap waiting out its double-tap beat.
   const measured = box.clientWidth + 'x' + box.clientHeight;
