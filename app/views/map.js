@@ -1201,10 +1201,12 @@ function hubCheck() {
 }
 /** Back to north-up, once the move that left the Center is over (a turn in the middle of a pinch would fight the
  *  fingers): the south-up was the Center's framing, as the lines' absence was its view. */
-function northAgain() {
+function northAgain(jump) {
   if (!northDue) return;
   northDue = false; hubTurned = false;
-  if (map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 500 });   // turned back, not snapped
+  // After the rider's own move off the Center, turned back, not snapped; for another tab, at once (out of sight on a
+  // phone, a turn is frames drawn for no one).
+  if (map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 500 });
 }
 /** The basemap stepped back at the Center, so the bays read like a plan: the hall's footprint, the drives and paths,
  *  and 500 North (its band and its name) as they are; every other street, the parks, water, labels and all washed
@@ -1303,7 +1305,10 @@ function fitHub(arriving = false) {
   if (!cam) return;
   // The bays' own middle, set in the middle of the room left for them: right at whatever zoom the floor gives (the
   // fit's centre is only right at the fit's zoom).
-  map.easeTo({ center: bb.getCenter(), zoom: Math.max(HUB_Z + 0.2, cam.zoom), bearing: 180, offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2], duration: 700 });
+  // Arriving from another tab, it's there at once: a flight from the town down to the bays, turning half round on the
+  // way, loaded the streets at every zoom between and re-placed every label, frame by frame, 700 ms of a phone's work
+  // that no finger asked for. Framed again from the Center itself (its tab tapped again), it moves.
+  map.easeTo({ center: bb.getCenter(), zoom: Math.max(HUB_Z + 0.2, cam.zoom), bearing: 180, offset: [(p.left - p.right) / 2, (p.top - p.bottom) / 2], duration: arriving ? 0 : 700 });
   hubTurned = true; northDue = false;
 }
 
@@ -1547,13 +1552,13 @@ function panelPad(app) {
 /** The Map tab tapped again: the whole of Logan, north up, nothing picked. */
 const HOME = [-111.8300, 41.7330];
 let resetDue = false;   // asked for as the Map tab opens: done once it's drawn (the panel's room going would stop it)
-export function resetView(app, once = false, to = null) {
+export function resetView(app, once = false, to = null, jump = false) {
   if (once) { resetDue = true; return; }
   if (!map) return;
   selectedBus = null; selectedU = null; lastFocused = null; hubTurned = false; northDue = false;
   focusRoute = undefined; ringed = null; wantRing = null;   // a route up goes too: select() alone would keep it lit
   select(null, app);
-  map.easeTo({ padding: pad(), center: to ? to.center : HOME, zoom: to ? to.zoom : 13, bearing: 0, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
+  map.easeTo({ padding: pad(), center: to ? to.center : HOME, zoom: to ? to.zoom : 13, bearing: 0, duration: jump || matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
 }
 /** The Map tab from the Transit Center: the map as it was before the Center framed itself, north up, nothing picked
  *  (a tab keeps its place; a second tap is the reset). The whole of Logan when the app opened at the Center. Done
@@ -1874,10 +1879,10 @@ export async function show(o, app, clockNow) {
   if (o.hub && app.route.name === 'map' && !wide() && (o.tick ? !!col.querySelector('#mapcard.open > .hubsheet') : !col.querySelector('#mapcard.open > .hubsheet'))) hubCard(clockNow);
   if (o.tick) hubBadges();
   if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
-  if (!o.hub && hubTurned && !o.tick) { northDue = true; if (!map.isMoving()) northAgain(); }   // another tab: north up again
+  if (!o.hub && hubTurned && !o.tick) { northDue = true; if (!map.isMoving()) northAgain(true); }   // another tab: north up again
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   mainJourney(o.journey || null, app);   // a way from the directions page
-  if ((resetDue || backDue) && app.route.name === 'map' && !o.hub) { const to = backDue ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to); }
+  if ((resetDue || backDue) && app.route.name === 'map' && !o.hub) { const back = backDue, to = back ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to, back); }   // back from the Center: there at once, as the Center came
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   routeTimes(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
