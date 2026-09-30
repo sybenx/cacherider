@@ -993,8 +993,14 @@ function wireGrip(app) {
     // The way already picked, tapped again: its legs, the card opened out and brought to them.
     if (e.target.closest('.jrow.picked')) {
       if (peeked()) { delete card.dataset.tall; card.classList.remove('peek'); }
-      const legs = card.querySelector(':scope > .journeysheet');
-      if (legs) card.scrollTop = legs.offsetTop - 8;
+      // Up to its legs, as far as the card scrolls; where that stops part way down the way's own row, at its top.
+      const legs = card.querySelector(':scope > .journeysheet'), row = card.querySelector('.jrow.picked');
+      if (legs) {
+        let top = Math.min(legs.offsetTop - 8, card.scrollHeight - card.clientHeight);
+        const rt = row ? row.offsetTop : -1;
+        if (row && top > rt && top < rt + row.offsetHeight) top = rt;
+        card.scrollTop = top;
+      }
       requestAnimationFrame(() => frameWay(400));   // the whole way again, in what the card leaves
       return;
     }
@@ -1213,7 +1219,7 @@ function applySelection() {
   quiet();
   drawRunsSoon();
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
-  for (const [id, m] of busMarkers) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); m.el.classList.toggle('on', id === selectedBus || id === ringed); }
+  for (const [id, m] of busMarkers) { paintBus(m); m.el.classList.toggle('on', id === selectedBus || id === ringed); }
   dressJourney();
   if (MT.R && map.getLayer('run-hot')) dressForRun(map, MT.R);   // a run up keeps its own dress over all the above
 }
@@ -1633,6 +1639,14 @@ function dimBus(m) {
   if (m.kind === 'c') return (on.length > 0 && !on.includes(m.ri)) || hiLoops.length > 0;
   return hiLoops.length > 0 && !hiLoops.includes(U.routes[m.ri].id);
 }
+/** A bus's marker as the map is now: dimmed, lit, or on a way drawn not its own, not there at all (the buses parked
+ *  at the Center, dimmed, lay over the way's end ring there, five deep). */
+function paintBus(m) {
+  const dim = dimBus(m);
+  m.el.classList.toggle('dim', dim);
+  m.el.classList.toggle('lit', litBus(m));
+  m.el.classList.toggle('away', !!JR && dim);
+}
 /** A bus on a lit route or loop: drawn at full size and tappable however far out the map is zoomed. */
 function litBus(m) {
   if (wayLater()) return false;
@@ -1777,8 +1791,7 @@ export function liveUpdate(app) {
     m.marker.setRotation(b.course);
     m.ri = b.ri;
     m.el.classList.toggle('on', selectedBus === b.id || ringed === b.id);
-    m.el.classList.toggle('dim', dimBus(m));
-    m.el.classList.toggle('lit', litBus(m));
+    paintBus(m);
   };
   if (U) for (const b of live.buses) place(b, 'u', U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
   if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label);
@@ -2888,7 +2901,7 @@ async function drawRuns() {
   const sb = selectedBus || ringed, c = sb ? findBus(sb) : null, si = !sb && selected ? D.stopById[selected] : undefined, ris = routesInPlay();
   let wants = [];
   const ap = JR ? approach(clockNow) : null;
-  if (JR) { const was = JR.appBus; JR.appBus = ap ? ap.bus.id : null; if (was !== JR.appBus) for (const m of busMarkers.values()) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); } }
+  if (JR) { const was = JR.appBus; JR.appBus = ap ? ap.bus.id : null; if (was !== JR.appBus) for (const m of busMarkers.values()) paintBus(m); }
   if (ap) wants = [{ ri: ap.bus.ri, stops: ap.stops, from: [ap.bus.lon, ap.bus.lat], open: true }];
   else if (JR) wants = [];
   else if (c) wants = [{ ri: c.ri, stops: busPath(c, clockNow), from: [c.lon, c.lat] }];
