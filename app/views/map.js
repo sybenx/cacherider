@@ -1212,7 +1212,7 @@ function quiet() {
   // its buses to arrows with its lines put away, and a zoom further in than its lines: at the lines' first zoom its
   // squared markers crowded the campus streets
   map.getContainer().classList.toggle('u-small', !(asked || near(campusBox, 14.5)));
-  show(POOL_LAYERS, near(poolBox));
+  show(POOL_LAYERS, near(poolBox, 12));   // from the zoom Connect's stops come in at, 12: the two sets of stops together
   hubCheck();
 }
 
