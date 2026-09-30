@@ -1886,14 +1886,31 @@ let meGeo = null;   // the rider's last fix, as the map has it
  *  fix, or out of the valley, the town's own view. (It was the town stretched to take them in, and them close up.) */
 function homeView(geo) {
   const b = homeBounds(), fit = { ...HOME_FIT };
+  // At the Transit Center: the Center and the first stop each route makes on its way out (within 700 m, a walk): every
+  // way out in view, Main Street and 500 North, Route 9 west, marked with their names. Its nearest street stops were a
+  // ring two blocks off, Main just out of the picture.
+  if (b && geo && D.hub && distance(geo.lat, geo.lon, D.hub.lat, D.hub.lon) <= 150) {
+    const outs = firstStopsOut().filter(si => distance(D.hub.lat, D.hub.lon, D.stops[si].lat, D.stops[si].lon) <= 700);
+    if (outs.length) {
+      const box = new maplibregl.LngLatBounds([geo.lon, geo.lat], [geo.lon, geo.lat]).extend([D.hub.lon, D.hub.lat]);
+      for (const si of outs) box.extend([D.stops[si].lon, D.stops[si].lat]);
+      return [box, { ...fit, maxZoom: 16, margin: wide() ? 80 : 56 }, outs.map(si => D.stops[si].id)];
+    }
+  }
   const four = geo ? nearFour(geo).filter(x => x.d < 20000) : [];
   if (!b || !four.length) return [b, fit];
   const out = new maplibregl.LngLatBounds([geo.lon - 0.0015, geo.lat - 0.001], [geo.lon + 0.0015, geo.lat + 0.001]);   // a little round them: not on the edge
   for (const x of four) out.extend([D.stops[x.i].lon, D.stops[x.i].lat]);
-  // At the Transit Center, the blocks round it (about 15.2, as it opened there before): its nearest street stops are
-  // close, and framed alone they came in at 16, the Center's own street and little else.
-  const atHub = D.hub && distance(geo.lat, geo.lon, D.hub.lat, D.hub.lon) <= 150;
-  return [out, { ...fit, maxZoom: atHub ? 15.2 : 16, margin: wide() ? 80 : 56 }, four.map(x => D.stops[x.i].id)];   // room for their names
+  return [out, { ...fit, maxZoom: 16, margin: wide() ? 80 : 56 }, four.map(x => D.stops[x.i].id)];   // room for their names
+}
+/** The first stop each route makes after the Transit Center, from the timetable's stop orders: where each way out
+ *  goes. Worked out once. */
+let outsOf = null;
+function firstStopsOut() {
+  if (outsOf) return outsOf;
+  const set = new Set();
+  for (const r of D.routes) for (const seq of Object.values(r.stops || {})) for (let k = 0; k < seq.length - 1; k++) if (D.stops[seq[k]].hub && !D.stops[seq[k + 1]].hub) set.add(seq[k + 1]);
+  return (outsOf = [...set]);
 }
 /** The rider's four nearest stops, as the home page lists them (its big one and the three beneath): by the walk. */
 const nearFour = g => byWalk(nearest(g.lat, g.lon, 24).filter(x => !D.stops[x.i].hub), g.lat, g.lon).slice(0, 4);
