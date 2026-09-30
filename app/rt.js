@@ -257,8 +257,11 @@ function dueBy(b, u) {
 }
 /** A trip the feed says nothing of yet, whose bus is out on the run's trip before it: whether that trip's last stop is
  *  due by this one's first minute. The first trip of a run has no bus to go by. */
+const runs = new Map();   // a trip's run, by day: the timetable's, so worked out once (it was, for every row, every redraw)
 function dueOnRun(t) {
-  const run = runOf(t.trip, now().ymd), i = run.indexOf(t.trip);
+  const ymd = now().ymd, key = ymd + ':' + t.trip;
+  if (!runs.has(key)) { if (runs.size > 4000) runs.clear(); runs.set(key, runOf(t.trip, ymd)); }
+  const run = runs.get(key), i = run.indexOf(t.trip);
   if (i <= 0) return false;
   const b = rt.buses.find(x => x.trip === D.trips[run[i - 1]]), prev = b && rt.trips[b.trip], first = tripStops(t.trip)[0];
   const at = prev && endAt(b, prev);
