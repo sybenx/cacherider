@@ -443,13 +443,13 @@ function squaresOnDemand(m) {
 export function warm(app) { shapes(); init(app).catch(() => { /* made when it's asked for, then */ }); }
 
 // Made once: a first page and the feed's first redraw both asked for it at once, and each made a map.
-let initP = null, bornAtHome = false, shownYet = false, bornCam = null;   // made before the rider's fix came: at it when first shown
+let initP = null, bornAtHome = false, shownYet = false, bornCam = null, homePending = true;   // made before the rider's fix came: at it when first shown
 function init(app) { return initP ??= made(app).catch(e => { initP = null; throw e; }); }
 async function made(app) {
   if (map) return;
   await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
-  const center = app.geo ? [app.geo.lon, app.geo.lat] : HOME;
+  const center = app.geo ? [app.geo.lon, app.geo.lat] : homeCentre();
   bornAtHome = !app.geo;
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false,
     // Drawn at twice the screen's resolution at most: a phone's three times filled half again the pixels on every frame
@@ -1461,7 +1461,7 @@ function warmViews() {
       };
       T._warmed = true;
     }
-    const bb = hubBounds(), fit = frameCam(bb, hubFit()), hz = fit ? fit.zoom : 18, cams = [{ center: HOME, zoom: 13 }];
+    const bb = hubBounds(), fit = frameCam(bb, hubFit()), hz = fit ? fit.zoom : 18, home = homeBounds() && frameCam(homeBounds(), HOME_FIT), cams = home ? [{ center: home.center, zoom: home.zoom }] : [];
     if (bornCam) cams.push(bornCam);
     if (beforeHub) cams.push(beforeHub);
     for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: 180 });
@@ -1784,7 +1784,32 @@ function panelPad(app) {
 }
 
 /** The Map tab tapped again: the whole of Logan, north up, nothing picked. */
-const HOME = [-111.8300, 41.7330];
+/** The Map tab's own view: where the service is, from the timetable, not a point picked by hand. Each stop weighed by
+ *  its departures in a day (today's, or the next day with buses), the middle 80% of them north to south and east to
+ *  west, and the Transit Center; framed to the screen as anything else is. Logan, North Logan, Hyde Park, Providence,
+ *  River Heights; the long arms (Smithfield, Richmond, Hyrum, Wellsville) run off its edges. It was a point 800 m
+ *  south of the Center at zoom 13 on every screen: downtown alone on a phone, the north end cut off on a desktop. */
+let homeB = null;
+function homeBounds() {
+  if (homeB) return homeB;
+  let ymd = now().ymd;
+  if (!servicesOn(ymd).size) ymd = nextServiceDay(now()) || ymd;
+  const pts = [];
+  D.stops.forEach((s, i) => { const n = timesOn(i, ymd).length; if (n) pts.push([s.lon, s.lat, n]); });
+  if (!pts.length) return null;
+  const at = (k, p) => {
+    const xs = pts.map(x => [x[k], x[2]]).sort((a, b) => a[0] - b[0]), total = xs.reduce((t, x) => t + x[1], 0);
+    let acc = 0;
+    for (const [v, w] of xs) { acc += w; if (acc >= p * total) return v; }
+    return xs[xs.length - 1][0];
+  };
+  const b = new maplibregl.LngLatBounds([at(0, 0.1), at(1, 0.1)], [at(0, 0.9), at(1, 0.9)]);
+  if (D.hub) b.extend([D.hub.lon, D.hub.lat]);
+  return (homeB = b);
+}
+const HOME_FIT = { bearing: 0, maxZoom: 14 };
+/** Where the map is first made (before it has a size to fit the home view to): the home view's middle. */
+const homeCentre = () => { const b = homeBounds(); return b ? b.getCenter().toArray() : [D.hub.lon, D.hub.lat]; };
 let resetDue = false;   // asked for as the Map tab opens: done once it's drawn (the panel's room going would stop it)
 export function resetView(app, once = false, to = null, jump = false) {
   if (once) { resetDue = true; return; }
@@ -1792,7 +1817,9 @@ export function resetView(app, once = false, to = null, jump = false) {
   selectedBus = null; selectedU = null; lastFocused = null; hubTurned = false; northDue = false;
   focusRoute = undefined; ringed = null; wantRing = null;   // a route up goes too: select() alone would keep it lit
   select(null, app);
-  map.easeTo({ padding: pad(), center: to ? to.center : HOME, zoom: to ? to.zoom : 13, bearing: 0, duration: jump || matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
+  const duration = jump || matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600;
+  if (to) map.easeTo({ padding: pad(), center: to.center, zoom: to.zoom, bearing: 0, duration });
+  else frame(homeBounds(), { ...HOME_FIT, duration });
 }
 /** The Map tab from the Transit Center: the map as it was before the Center framed itself, north up, nothing picked
  *  (a tab keeps its place; a second tap is the reset). The whole of Logan when the app opened at the Center. Done
@@ -2156,6 +2183,8 @@ async function showPage({ stopId, ustopId, routeShort, routeArgs, uRoute, alertI
   // Still hidden (a phone's route page, its map behind it): nothing to frame, and nothing is framed, so the Map tab
   // opens where it was left, and a route's own map link, a new address, frames that route then.
   if (!(box.clientWidth && box.clientHeight)) return;
+  // Made before it had a size, with no fix from the rider: the home view, now there's a screen to fit it to.
+  if (homePending) { homePending = false; if (!app.geo) frame(homeBounds(), { ...HOME_FIT, duration: 0 }); }
   // Measured again when it may have changed; not on every minute and feed redraw, when a resize's move events would
   // cut short a tap waiting out its double-tap beat.
   const measured = box.clientWidth + 'x' + box.clientHeight;
