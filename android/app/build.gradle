@@ -37,6 +37,4 @@ android {
 
 dependencies {
   implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
-  // Location delegation: the browser asks this app for the rider's location, with this app's permission (DelegationService).
-  implementation 'com.google.androidbrowserhelper:locationdelegation:1.1.2'
 }
