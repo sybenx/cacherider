@@ -443,15 +443,14 @@ function squaresOnDemand(m) {
 export function warm(app) { shapes(); init(app).catch(() => { /* made when it's asked for, then */ }); }
 
 // Made once: a first page and the feed's first redraw both asked for it at once, and each made a map.
-let initP = null, bornAtHome = false, shownYet = false, bornCam = null, homePending = true;   // made before the rider's fix came: at it when first shown
+let initP = null, bornCam = null, homePending = true;
 function init(app) { return initP ??= made(app).catch(e => { initP = null; throw e; }); }
 async function made(app) {
   if (map) return;
   await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
-  const center = app.geo ? [app.geo.lon, app.geo.lat] : homeCentre();
-  bornAtHome = !app.geo;
-  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: app.geo ? 15 : 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false,
+  const center = homeCentre();
+  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false,
     // Drawn at twice the screen's resolution at most: a phone's three times filled half again the pixels on every frame
     // of a zoom (15 frames a second to 25, at a quarter speed), for sharpness no one sees at arm's length.
     pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
@@ -459,7 +458,7 @@ async function made(app) {
     // kept is built again, gray until it is. MapLibre keeps five screens' worth at most whatever the size says, some
     // 30 tiles on a phone, and the Center and the town at once overflowed it: twenty screens, up to the 120.
     maxTileCacheSize: 120, maxTileCacheZoomLevels: 20 });
-  bornCam = { center, zoom: app.geo ? 15 : 13 };
+  bornCam = { center, zoom: 13 };
   // Its box watched here, not by MapLibre: hidden (the Stops tab on a phone), the box is nothing, and MapLibre
   // shrank the canvas to nothing and grew it back on every tab tapped, reallocating its whole drawing buffer each
   // way, the costliest thing a tab did on a phone. A box of nothing is left be; a real change (turned, the update bar)
@@ -1205,6 +1204,7 @@ function wireChrome(app) {
 }
 
 function placeMe(geo) {
+  meGeo = geo;
   if (!map) return;
   if (!meMarker) { const el = document.createElement('div'); el.className = 'me-marker'; meMarker = new maplibregl.Marker({ element: el }); }
   meMarker.setLngLat([geo.lon, geo.lat]).addTo(map);
@@ -1465,7 +1465,7 @@ function warmViews() {
       };
       T._warmed = true;
     }
-    const bb = hubBounds(), fit = frameCam(bb, hubFit()), hz = fit ? fit.zoom : 18, home = homeBounds() && frameCam(homeBounds(), HOME_FIT), cams = home ? [{ center: home.center, zoom: home.zoom }] : [];
+    const bb = hubBounds(), fit = frameCam(bb, hubFit()), hz = fit ? fit.zoom : 18, home = homeBounds() && frameCam(...homeView(meGeo)), cams = home ? [{ center: home.center, zoom: home.zoom }] : [];
     if (bornCam) cams.push(bornCam);
     if (beforeHub) cams.push(beforeHub);
     for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: 180 });
@@ -1821,6 +1821,19 @@ function homeBounds() {
   return (homeB = b);
 }
 const HOME_FIT = { bearing: 0, maxZoom: 14 };
+/** The Map tab's view with the rider in it, when they're where the buses are (400 m from a stop): the town, not their
+ *  street at 15, and they're in it. It was one or the other: their street with a fix, the town (maybe without them) on
+ *  the tab's second tap. Stretched a zoom level at most: out along an arm (Preston, Hyrum) the whole valley is no view
+ *  of anything, and the map opens on them. Out of the valley, the town alone. */
+let meGeo = null;
+function homeView(geo) {
+  const b = homeBounds(), fit = { ...HOME_FIT };
+  if (!b || !geo || b.contains([geo.lon, geo.lat]) || !D.stops.some(s => distance(geo.lat, geo.lon, s.lat, s.lon) < 400)) return [b, fit];
+  const wide = new maplibregl.LngLatBounds(b.getSouthWest(), b.getNorthEast()).extend([geo.lon - 0.004, geo.lat - 0.003]).extend([geo.lon + 0.004, geo.lat + 0.003]);   // room round them: not on the edge
+  const was = frameCam(b, fit), now = frameCam(wide, fit);
+  if (was && now && was.zoom - now.zoom <= 1) return [wide, fit];
+  return [[geo.lon, geo.lat], { ...fit, zoom: 14 }];
+}
 /** Where the map is first made (before it has a size to fit the home view to): the home view's middle. */
 const homeCentre = () => { const b = homeBounds(); return b ? b.getCenter().toArray() : [D.hub.lon, D.hub.lat]; };
 let resetDue = false;   // asked for as the Map tab opens: done once it's drawn (the panel's room going would stop it)
@@ -1832,7 +1845,7 @@ export function resetView(app, once = false, to = null, jump = false) {
   select(null, app);
   const duration = jump || matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600;
   if (to) map.easeTo({ padding: pad(), center: to.center, zoom: to.zoom, bearing: 0, duration });
-  else frame(homeBounds(), { ...HOME_FIT, duration });
+  else { const [t, f] = homeView(app.geo); frame(t, { ...f, duration }); }
 }
 /** The Map tab from the Transit Center: the map as it was before the Center framed itself, north up, nothing picked
  *  (a tab keeps its place; a second tap is the reset). The whole of Logan when the app opened at the Center. Done
@@ -2182,7 +2195,7 @@ export async function show(o, app, clockNow) {
   stayOff = false;
   mainRun(o.run || null);   // a run open in a narrower stop page's sheet, drawn here beside it
   mainJourney(o.journey || null, app);   // a way from the directions page
-  if (((resetDue && app.route.name === 'map') || backDue) && !o.hub) { const back = backDue, to = back ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to, back); }   // back from the Center: there at once, as the Center came
+  if (((resetDue && app.route.name === 'map') || backDue) && !o.hub) { const back = backDue && !resetDue, to = back ? beforeHub : null, jump = backDue; resetDue = backDue = false; resetView(app, false, to, jump); }   // back from the Center: there at once, as the Center came
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
   // A page's picture is a picture: no times on it. A route's page keeps its route's, a picked bus its own, and a road
   // tapped with one route on it that route's: the feed's redraw every few seconds took those away again.
@@ -2208,9 +2221,6 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // A spot's disc and pin go with its card: gone to another page (the Center, a stop, Stops) the card was replaced and
   // the dashed disc stayed on the map. Kept for a spot's own address and for picking one; not by the minute's redraw.
   if (!tick && spotUp && !at && !goPick && !from && !to) clearSpot();
-  // Built out of sight before the rider's fix came: first shown, it opens where they are, as a map made then would
-  // (a stop, a route or the Center then frames itself over this).
-  if (!shownYet) { shownYet = true; if (bornAtHome && app.geo) map.jumpTo({ center: [app.geo.lon, app.geo.lat], zoom: 15 }); }
   // A map still hidden (the Map tab not on screen yet, the page behind it just gone) has no size to fit anything to:
   // a route fitted to nothing is the whole valley and further. Waited for, a few frames at most; if the address
   // moves on meanwhile, the newer call does the work.
@@ -2220,8 +2230,9 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // Still hidden (a phone's route page, its map behind it): nothing to frame, and nothing is framed, so the Map tab
   // opens where it was left, and a route's own map link, a new address, frames that route then.
   if (!(box.clientWidth && box.clientHeight)) return;
-  // Made before it had a size, with no fix from the rider: the home view, now there's a screen to fit it to.
-  if (homePending) { homePending = false; if (!app.geo) frame(homeBounds(), { ...HOME_FIT, duration: 0 }); }
+  // Made before it had a size: the home view, now there's a screen to fit it to (a stop, a route or the Center then
+  // frames itself over this).
+  if (homePending) { homePending = false; const [t, f] = homeView(app.geo); frame(t, { ...f, duration: 0 }); }
   // Measured again when it may have changed; not on every minute and feed redraw, when a resize's move events would
   // cut short a tap waiting out its double-tap beat.
   const measured = box.clientWidth + 'x' + box.clientHeight;

@@ -41,6 +41,9 @@ function renderTabs() {
     // the Center's close-up and its turn put away, a tab's place kept. A second tap is the reset.
     const again = e => {
       const a = e.target.closest('a[href="#/map"]'), h = location.hash || '';
+      // With a fix, every tap on it is the town with the rider in it (the reset), not the place the tab was left:
+      // from another tab it's done once the Map tab is drawn.
+      if (a && app.geo && app.mapMod && !h.startsWith('#/map')) { app.mapMod.resetView(app, true); if (h.startsWith('#/hub')) { e.preventDefault(); location.hash = '#/map'; } return; }
       if (!a || !(h.startsWith('#/map') || h.startsWith('#/hub')) || !app.mapMod) return;
       e.preventDefault();
       if (h.startsWith('#/hub')) { app.mapMod.leaveHub(); location.hash = '#/map'; return; }   // once the Map tab is drawn
