@@ -55,7 +55,7 @@ export function badge(ri, size = 36) {
   const r = route(ri);
   const m = /^(\S+)\s+(\S+)$/.exec(r.short);
   const label = m ? esc(m[1]) + '<small>' + esc(m[2]) + '</small>' : esc(r.short);
-  return raw(`<span class="badge badge-${size}" style="background:#${r.color};color:#${r.text}" title="${esc(r.long)}">${label}</span>`);
+  return raw(`<span class="badge badge-${size}" data-r="${ri}" style="background:#${r.color};color:#${r.text}" title="${esc(r.long)}">${label}</span>`);
 }
 export function badges(ris, size = 24, wide = false) {
   return raw(`<div class="badges${wide ? ' wide' : ''}">${ris.map(ri => badge(ri, size).s).join('')}</div>`);

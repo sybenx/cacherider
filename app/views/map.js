@@ -93,8 +93,10 @@ function style(sat = true) {
       { id: 'pool-zone', type: 'fill', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'fill-color': '#007AB8', 'fill-opacity': flavor === 'dark' ? 0.1 : 0.08 } },
       { id: 'pool-edge', type: 'line', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'line-color': '#007AB8', 'line-width': 1.2, 'line-dasharray': [3, 2], 'line-opacity': 0.55 } },
       { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': '#007AB8', 'circle-opacity': 0.15, 'circle-stroke-color': '#007AB8', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
-      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.9, 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', ['coalesce', ['get', 'lane'], 0], 1.5], 14, ['*', ['coalesce', ['get', 'lane'], 0], 3.5], 17, ['*', ['coalesce', ['get', 'lane'], 0], 6]] } },
-      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1, 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', ['coalesce', ['get', 'lane'], 0], 1.5], 14, ['*', ['coalesce', ['get', 'lane'], 0], 3.5], 17, ['*', ['coalesce', ['get', 'lane'], 0], 6]] } },
+      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
+      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
+      // A route under the pointer on a desktop (on the map, or its badge in the panel): drawn up, over the rest.
+      { id: 'route-hover', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 14, 7, 17, 11], 'line-opacity': 1 } },
       // The way on from a picked bus or stop: bright there, fading smoothly as it goes, one line a strand with its own
       // gradient (a layer holds one gradient, so a strand a layer; a stop with three routes lights three). It was up to
       // 48 pieces a strand, each a step fainter: bands, and a seam at every bend where two pieces met. Several ways from
@@ -116,6 +118,7 @@ function style(sat = true) {
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 0.8, 1.2], 15, ['case', ['get', 'approx'], 1.4, 2.5], 17, ['case', ['get', 'approx'], 2, 4]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.9], 'line-dasharray': [3, 1.5] } },
       { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
+      { id: 'usu-hover', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 6.5, 17, 10], 'line-opacity': 1 } },
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
@@ -126,6 +129,8 @@ function style(sat = true) {
         'circle-stroke-color': ['case', ['get', 'closed'], ['get', col], flavor === 'dark' ? '#101214' : '#ffffff'],
         'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, ['case', ['get', 'closed'], 2.5, 1.5], 17, ['case', ['get', 'closed'], 3.5, 1.5]],
         'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
+      // A stop under the pointer in the panel (a row of the home page's lists): ringed, as a picked stop is, lighter.
+      { id: 'stop-hover', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 10, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 2.5 } },
       { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', col], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
       { id: 'stop-labels', type: 'symbol', source: 'stops', minzoom: 15, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
     ],
@@ -233,39 +238,6 @@ function segmentGrid(lines) {
     }
   }
   return grid;
-}
-/** Routes sharing a road side by side, as a metro map draws them: each stretch of a line (cut every STEP metres) finds
- *  the other routes running along it, a line within NEAR heading the same way or the opposite (not one crossing it),
- *  and takes its lane among them, in route order, on the same side of the road whichever way it runs. The lane is the
- *  line's offset in widths, so a road with three routes is three touching stripes. */
-function rainbow(lines) {
-  const NEAR = 14, STEP = 20, grid = segmentGrid(lines), out = [];
-  for (const f of lines.features) {
-    const r = f.properties.route, c = f.geometry.coordinates;
-    let cur = null;
-    const flush = () => { if (cur && cur.coords.length > 1) out.push({ type: 'Feature', properties: { ...f.properties, lane: cur.lane }, geometry: { type: 'LineString', coordinates: cur.coords } }); };
-    for (let k = 1; k < c.length; k++) {
-      const [ax, ay] = c[k - 1], [bx, by] = c[k], dx = (bx - ax) * KX, dy = (by - ay) * KY, len = Math.hypot(dx, dy);
-      if (!len) continue;
-      const n = Math.max(1, Math.ceil(len / STEP)), rev = dx + dy < 0;   // the road's own frame: east and north ahead
-      for (let j = 0; j < n; j++) {
-        const p0 = [ax + (bx - ax) * j / n, ay + (by - ay) * j / n], p1 = [ax + (bx - ax) * (j + 1) / n, ay + (by - ay) * (j + 1) / n];
-        const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, with_ = new Set([r]);
-        for (const [r2, sx, sy, ex, ey] of grid.get(Math.floor(mx * KX / VOUCH.CELL) + ',' + Math.floor(my * KY / VOUCH.CELL)) || []) {
-          if (with_.has(r2)) continue;
-          const vx = (ex - sx) * KX, vy = (ey - sy) * KY, L2 = vx * vx + vy * vy, px = (mx - sx) * KX, py = (my - sy) * KY;
-          const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0;
-          if (Math.hypot(px - t * vx, py - t * vy) > NEAR || Math.abs(vx * dx + vy * dy) < 0.9 * Math.sqrt(L2) * len) continue;
-          with_.add(r2);
-        }
-        const order = [...with_].sort((a, b) => a - b), lane0 = order.indexOf(r) - (order.length - 1) / 2, lane = rev ? -lane0 : lane0;
-        if (!cur || cur.lane !== lane) { flush(); cur = { lane, coords: [p0] }; }
-        cur.coords.push(p1);
-      }
-    }
-    flush();
-  }
-  return { type: 'FeatureCollection', features: out };
 }
 /** The solid lines with each shape's closed stretches left out. */
 function openLines(fc, gaps) {
@@ -435,7 +407,7 @@ async function loadShapes(m = map) {
   const key = closedKeyOf(now());
   if (drawn.key !== key) {
     const { closed, gaps } = closedSegments(fc);
-    drawn.lines = rainbow(openLines(fc, gaps)); drawn.closed = closed; drawn.key = key;
+    drawn.lines = openLines(fc, gaps); drawn.closed = closed; drawn.key = key;
   }
   closedKey = key;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
@@ -496,6 +468,14 @@ async function made(app) {
   map.on('move', quiet);
   map.on('moveend', northAgain);
   map.on('rotatestart', e => { if (e.originalEvent) { hubTurned = false; northDue = false; } });   // turned by the rider: theirs to keep
+  // A desktop's pointer over a line: that route drawn up, its badges in the panel ringed. Looked up once a frame at most.
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    let at = null;
+    map.on('mousemove', e => { if (!at) requestAnimationFrame(() => { const p = at; at = null; if (!p || !ready) return;
+      const f = map.queryRenderedFeatures([[p.x - 4, p.y - 4], [p.x + 4, p.y + 4]], { layers: ['route-hover', 'route-on', 'route-lines', 'usu-line-on', 'usu-lines'].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none') })[0];
+      hover(!f ? {} : f.source === 'ulines' ? { us: [f.properties.id] } : { rs: [f.properties.route] }); }); at = e.point; });
+    map.getCanvas().addEventListener('mouseleave', () => hover());
+  }
   map.on('mouseenter', 'usu-stops', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'usu-stops', () => map.getCanvas().style.cursor = '');
   map.on('mouseenter', 'pool-stops', () => map.getCanvas().style.cursor = 'pointer');
@@ -1232,7 +1212,7 @@ function quiet() {
   // its buses to arrows with its lines put away, and a zoom further in than its lines: at the lines' first zoom its
   // squared markers crowded the campus streets
   map.getContainer().classList.toggle('u-small', !(asked || near(campusBox, 14.5)));
-  show(POOL_LAYERS, near(poolBox));
+  show(POOL_LAYERS, near(poolBox, 12));   // from the zoom Connect's stops come in at, 12: the two sets of stops together
   hubCheck();
 }
 
@@ -1241,7 +1221,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (a
 // badge's IN says so). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5, HUB_IN = 110;   // metres from the hall: a bus this close is in
-const HUB_HIDE = ['stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -1485,6 +1465,25 @@ function freshStopCard(app, clockNow) {
   wireStopCard(card, app);
 }
 
+/** The pointer over a route, a shuttle loop or a stop, on a desktop: drawn up on the map, and their badges in the panel
+ *  ringed. From the panel (a badge, a stop's row) or the map (its lines) alike; nothing, everything back. */
+let hoverKey = '';
+export function hover({ rs = [], us = [], stop = '' } = {}) {
+  // Only on the home page with nothing picked: anywhere else, or with a stop, bus, route or way up, the map is already
+  // saying something, and a line lit under the pointer would talk over it.
+  const quietHome = ['', '#', '#/'].includes(location.hash) && selected === null && selectedBus === null && selectedU === null && !uHilite
+    && focusRoute === undefined && !hiLines.length && !hiLoops.length && !JR && !MT.R && !hubOn;
+  if (!quietHome) rs = [], us = [], stop = '';
+  const key = rs.join(',') + '|' + us.join(',') + '|' + stop;
+  if (key === hoverKey || !map || !ready) return;
+  hoverKey = key;
+  map.setFilter('route-hover', ['in', ['get', 'route'], ['literal', rs]]);
+  if (map.getLayer('usu-hover')) map.setFilter('usu-hover', ['in', ['get', 'id'], ['literal', us]]);
+  map.setFilter('stop-hover', ['==', ['get', 'id'], stop]);
+  for (const el of document.querySelectorAll('.hov')) el.classList.remove('hov');
+  for (const ri of rs) for (const el of document.querySelectorAll(`[data-r="${ri}"]`)) el.classList.add('hov');
+  for (const id of us) for (const el of document.querySelectorAll(`[data-u="${CSS.escape(id)}"]`)) el.classList.add('hov');
+}
 /** A POOL pickup point's card: what it is, when it runs, how to book. Nothing to time: the ride comes when booked. */
 export function selectPool(id, app) {
   const s = POOL && POOL.byId.get(id);

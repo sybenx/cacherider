@@ -1,6 +1,6 @@
 // Boot, the hash router, and the pieces every screen shares: the tab bar, the
 // desktop header, the location sheet, the minute tick.
-import { load, BASE, pref, loadAlerts, loadPlaces, loadPool, A, distance } from './data.js';
+import { D, load, BASE, pref, loadAlerts, loadPlaces, loadPool, A, distance } from './data.js';
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
 import { html, icon } from './ui.js';
 import { loadGrid , loadElevation, spotKey } from './geo.js';
@@ -531,6 +531,26 @@ function lightFirst() {
   return ['#', '#/'].includes(h) || isDesktop() && /^#\/(stop\/|hub(\/|$))/.test(h);
 }
 
+/** On a desktop, the panel's badges and stop rows under the pointer lit on the map beside it: a route's badge its line, a
+ *  shuttle's chip its loop, a stop's row the stop and its routes. The map's own lines light their badges back (map.js). */
+function wireHover() {
+  if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  let last = null;
+  const over = e => {
+    if (!isDesktop() || !app.mapMod) return;
+    const b = e.target.closest('[data-r], [data-u], a.stoprow[href^="#/stop/"]');
+    if (b === last) return;
+    last = b;
+    if (!b) return app.mapMod.hover();
+    if (b.dataset.r !== undefined) return app.mapMod.hover({ rs: [+b.dataset.r] });
+    if (b.dataset.u !== undefined) return app.mapMod.hover({ us: [b.dataset.u] });
+    const id = decodeURIComponent((b.getAttribute('href') || '').replace(/^#\/stop\//, '').split(/[/?]/)[0]), si = D.stopById[id];
+    app.mapMod.hover(si === undefined ? {} : { stop: id, rs: D.stops[si].routes });
+  };
+  side.addEventListener('mouseover', over);
+  side.addEventListener('mouseleave', () => { last = null; if (app.mapMod) app.mapMod.hover(); });
+}
+
 async function boot() {
   // The first page asks only for the timetable and the alerts file, both kept on the phone: never the relay, never the
   // files for search, the shuttle, POOL and walks, which follow it.
@@ -546,6 +566,7 @@ async function boot() {
   setupInstall();
   wireSheet();
   wireSwipeBack();
+  wireHover();
   // Not `render` itself: the event would arrive as the tick flag and the map would sit still.
   window.addEventListener('hashchange', () => render());
   matchMedia(WIDE_MQ).addEventListener('change', () => render());
