@@ -1,6 +1,6 @@
 // Boot, the hash router, and the pieces every screen shares: the tab bar, the
 // desktop header, the location sheet, the minute tick.
-import { load, BASE, pref, loadAlerts, loadPlaces, loadPool, A } from './data.js';
+import { load, BASE, pref, loadAlerts, loadPlaces, loadPool, A, distance } from './data.js';
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
 import { html, icon } from './ui.js';
 import { loadGrid , loadElevation, spotKey } from './geo.js';
@@ -326,12 +326,21 @@ export function askLocation(onDone) {
 
 export function locate(onDone) {
   if (!navigator.geolocation) { pref('near', 'blocked'); onDone && onDone(null); return; }
-  navigator.geolocation.getCurrentPosition(p => {
-    app.geo = { lat: p.coords.latitude, lon: p.coords.longitude, at: Date.now() };
+  let precise = false, answered = false;
+  const take = (p, fine) => {
+    const g = { lat: p.coords.latitude, lon: p.coords.longitude, at: Date.now() };
+    const moved = !app.geo || distance(app.geo.lat, app.geo.lon, g.lat, g.lon) > 30;
+    app.geo = g;
     pref('near', 'on');
-    onDone && onDone(app.geo);
-    render();
-  }, err => {
+    if (!answered) { answered = true; onDone && onDone(g); }
+    if (moved || !fine) render();   // the GPS's fix redraws only where it moves the rider: a page doesn't reshuffle for nothing
+  };
+  // Where the rider roughly is, at once: the phone's last fix or the network's, good to a block, so the stops near
+  // them show now, not after the GPS has warmed up (seconds, on a phone opened after a while). Only for the page's own
+  // sorting: a way asked for from here (onDone) waits for the GPS.
+  if (!onDone) navigator.geolocation.getCurrentPosition(p => { if (!precise) take(p, false); }, () => { /* the GPS's, then */ }, { enableHighAccuracy: false, maximumAge: 600000, timeout: 4000 });
+  navigator.geolocation.getCurrentPosition(p => { precise = true; take(p, true); }, err => {
+    if (answered) return;   // the rough fix stands
     pref('near', err.code === err.PERMISSION_DENIED ? 'blocked' : null);
     app.geo = null;
     onDone && onDone(null);

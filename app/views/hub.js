@@ -1,7 +1,7 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, nextPulse, nextFromHub, servicesOn, distance, timesOn } from '../data.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord } from '../ui.js';
 import { rt, rtStale, isLoop } from '../rt.js';
@@ -62,8 +62,13 @@ function status(k, clockNow) {
 const cardHref = (s, pick) => s.bus && pick !== s.k ? '#/map/bus/' + encodeURIComponent(s.bus) : '#/hub' + (pick === s.k ? '' : '/' + s.k);
 
 /** Every key's status, and the picked one: a key, or (from older links) a bay's stop id. */
+let stKey = null, stKept = null, stAlerts = null;   // the alerts by the object: a reload is a new one
 function board(bay, clockNow) {
-  const st = Object.fromEntries(keys().map(k => [k, status(k, clockNow)]));
+  // Worked out once a minute and once a feed, not on every redraw that asks (the board, its badges on the map, the
+  // card, all at once): the minute, the feed, the alerts and whether the feed's gone quiet are all it hangs on.
+  const key = clockNow.ymd + ':' + clockNow.min + ':' + rt.at + ':' + rtStale();
+  if (key !== stKey || A !== stAlerts) { stKey = key; stAlerts = A; stKept = Object.fromEntries(keys().map(k => [k, status(k, clockNow)])); }
+  const st = stKept;
   let pick = bay && st[bay] ? bay : null;
   if (bay && !pick) { const b = D.hub.bays.find(x => D.stops[x.stop].id === bay); if (b) pick = keyOf(b.routes[0]); }
   return { st, pick };

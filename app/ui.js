@@ -166,13 +166,21 @@ export function depRow(t0, clockNow, opts = {}) {
 }
 
 /** A stop row for the home and search lists, with its next bus on the right. */
+function stopEnd(next, clockNow, opts = {}) {
+  return next
+    ? `<div class="end"><div class="when">${badge(next.r, 20).s}${when(next, 22).s}</div>${loopArrival(next) ? '' : `<span class="rel">${esc(relative(next, clockNow))}</span>`}${next.live ? liveTag(next).s : sched(next).s}</div>`
+    : `<div class="end"><span class="rel${opts.warn ? ' warnmark' : ''}">${esc(opts.none || 'No service today')}</span></div>`;
+}
+/** The next buses a list's rows were drawn without (stopRow's `later`), put in now. */
+export function fillLater(el) {
+  const c = now();
+  for (const e of el.querySelectorAll('.end[data-later]')) { const n = nextAt(+e.dataset.later, 1, c)[0]; e.outerHTML = stopEnd(n ? lively(n) : n, c); }
+}
 export function stopRow(si, next0, clockNow, opts = {}) {
   const s = stop(si);
   const next = next0 ? lively(next0) : next0;
-  // bare: a stop as the map lists it, no time at all (its times are its page's)
-  const end = opts.bare ? '' : next
-    ? `<div class="end"><div class="when">${badge(next.r, 20).s}${when(next, 22).s}</div>${loopArrival(next) ? '' : `<span class="rel">${esc(relative(next, clockNow))}</span>`}${next.live ? liveTag(next).s : sched(next).s}</div>`
-    : `<div class="end"><span class="rel${opts.warn ? ' warnmark' : ''}">${esc(opts.none || 'No service today')}</span></div>`;
+  // bare: no time at all; later: its place kept, the next bus put in after the list is on screen (fillLater)
+  const end = opts.bare ? '' : opts.later ? `<div class="end" data-later="${si}"></div>` : stopEnd(next, clockNow, opts);
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';

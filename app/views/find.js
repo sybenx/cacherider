@@ -21,7 +21,9 @@ export function endHref(pick, id, sp) {
   return `#/go/${sp ? spotKey(sp.lat, sp.lon, sp.label) : id}/${atPath(spotOf(pick.from))}`;
 }
 export const endWord = pick => pick.to ? 'Start from here' : 'Go here';
-export function results(q, clockNow, pick = null) {
+/** `later`: the rows without their next buses, for the keystroke's own frame; fillLater puts them in just after. */
+export function results(q, clockNow, pick = null, later = false) {
+  const nx = i => later ? null : nextAt(i, 1, clockNow)[0];
   let hits = search(q);
   const addr = parseAddress(q);
   const places = addr ? geocode(addr, 4) : [];
@@ -30,9 +32,9 @@ export function results(q, clockNow, pick = null) {
   const addrHtml = places.map(pl => html`
     ${pick ? html`<a class="section between pick" href="${endHref(pick, null, { lat: pl.lat, lon: pl.lon, label: pl.label + ', ' + pl.town })}"><span>${pl.label} · ${pl.town}${townState(pl.town)}</span><span class="note">${endWord(pick)} ${icon('fwd', 16)}</span></a>`
     : html`<div class="section between"><span>${pl.label} · ${pl.town}${townState(pl.town)}${pl.near ? html.raw(`<span class="note"> · near ${esc(pl.near)}</span>`) : ''}</span><a class="note" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}">Show on map</a></div>`}
-    <div class="list">${pl.stops.length ? pl.stops.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' })) : html`<div class="empty"><p>No stops near there.</p></div>`}</div>`).join('');
+    <div class="list">${pl.stops.length ? pl.stops.map(({ i, d }) => stopRow(i, nx(i), clockNow, { dist: metres(d) + ' away', later })) : html`<div class="empty"><p>No stops near there.</p></div>`}</div>`).join('');
   const found = searchPlaces(q), spots = found.list;
-  const spotHtml = spots.map(p => placeBlock(p, clockNow, pick)).join('')
+  const spotHtml = spots.map(p => placeBlock(p, clockNow, pick, later)).join('')
     + (found.more ? html`<div class="fine">${found.more} more ${found.more === 1 ? 'place matches' : 'places match'}: add a word, a town say, to narrow it.</div>`.s : '');
   const us = searchUSU(q);
   const campusHtml = (us.stops.length || us.routes.length) ? html`
@@ -60,7 +62,7 @@ export function results(q, clockNow, pick = null) {
   // A street or a number is after stops: they come first, the places on that street after. A name is after a place.
   const street = streetish(q) || townish(q);
   const stopsHtml = html`<div class="${street && !places.length ? 'notice' : 'section'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}</span></div>
-    <div class="list">${hits.map(i => stop(i).hub ? hubRow() : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`.s;
+    <div class="list">${hits.map(i => stop(i).hub ? hubRow() : stopRow(i, nx(i), clockNow, { later }))}</div>`.s;
   const blocks = street ? [addrHtml, stopsHtml, campusHtml, spotHtml] : [spotHtml, campusHtml, addrHtml, stopsHtml];
   return html`${html.raw(routeHtml)}${html.raw(blocks.join(''))}
     <div class="fine">Matches street, number and town: “500 north”, “main st, hyrum” and “hyrum main” all work. So does any address in the valley, like “1400 N 500 E, Logan”, for the stops nearest it.</div>`;
@@ -76,7 +78,7 @@ const CATS = { schools: 'School', medical: 'Medical', grocery: 'Grocery', entert
 const POOL = 'https://rideconnectutah.gov/pool/';
 /** A place from the pamphlet: its nearest stops with their next buses; the Transit Center when it's a short walk from it;
  *  and Pool, where Connect's on-demand ride serves it. */
-function placeBlock(p, clockNow, pick = null) {
+function placeBlock(p, clockNow, pick = null, later = false) {
   const near = nearest(p.lat, p.lon, 8).filter(x => !stop(x.i).hub);
   const close = near.filter(x => x.d <= 600).slice(0, 3);
   const shown = close.length ? close : near.slice(0, 2);   // nothing close: the nearest two anyway, their distance says it
@@ -87,7 +89,7 @@ function placeBlock(p, clockNow, pick = null) {
   const head = pick ? html`<a class="section between pick" href="${endHref(pick, null, { lat: p.lat, lon: p.lon, label: p.name })}"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><span class="note">${endWord(pick)} ${icon('fwd', 16)}</span></a>`
     : html`<div class="section between"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><a class="note" href="#/map/at/${p.lat.toFixed(5)},${p.lon.toFixed(5)}/${encodeURIComponent(p.name)}">Show on map</a></div>`;
   return html`${head}
-    ${pool}<div class="list">${hub}${shown.map(({ i, d }) => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away' }))}</div>`.s;
+    ${pool}<div class="list">${hub}${shown.map(({ i, d }) => stopRow(i, later ? null : nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away', later }))}</div>`.s;
 }
 
 /** The results made the start or the end of a journey: each stop, the Transit Center and each place leads to it. */

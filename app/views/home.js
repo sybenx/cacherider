@@ -4,7 +4,7 @@
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, nextFromHub, nextServiceDay, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, activeAlerts, quietWords } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName } from '../time.js';
-import { routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag } from '../ui.js';
+import { routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live } from '../usu.js';
@@ -137,6 +137,7 @@ function hubLine(clockNow) {
 
 
 // ---- search, on its own page
+let searchFull = null, fillLaterFor = null;   // the search last shown with its next buses; the one waiting for them
 function searchPage(q, clockNow, app, pick = null) {
   const parts = [];
   // Picking one end for directions: every stop in the results leads to the journey from it (or to it), not its page.
@@ -148,7 +149,14 @@ function searchPage(q, clockNow, app, pick = null) {
     const key = k => { const sp = spotOf(k); return sp ? spotKey(sp.lat, sp.lon, sp.label) : k; };
     parts.push(html`<div class="pad pickmap"><a class="btn btn-secondary btn-lg btn-block" href="${pick.to ? '#/map/from/' + key(pick.to) : '#/map/to/' + key(pick.from)}">${icon('map', 20)}${pick.to ? 'Pick the start on the map' : 'Pick where to on the map'}</a></div>`);
   }
-  if (q) { parts.push(results(q, clockNow, pick)); return { html: parts.join(''), mount, title: 'Search' }; }
+  if (q) {
+    // A new search's matches at once, as it's typed; their next buses the moment after (and in full on any redraw after).
+    const later = q !== searchFull;
+    if (later) requestAnimationFrame(() => setTimeout(() => { const el = document.getElementById('side'); if (el && fillLaterFor === q) { searchFull = q; fillLater(el); } }, 0));
+    fillLaterFor = q;
+    parts.push(results(q, clockNow, pick, later));
+    return { html: parts.join(''), mount, title: 'Search' };
+  }
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
   if (rec.length) parts.push(html`<div class="section">${icon('history', 16)}Recent on this device</div><div class="list">${rec.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);

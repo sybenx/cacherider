@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, stop, route, nextAt, timed, alertsUntil, POOL, poolAt, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
-import { routeName, routeNames, html, icon, timedMark, badge, badges, time, sched, corners, depRow, stopRow, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, routeBadgeLink, heard } from '../ui.js';
+import { routeName, routeNames, html, icon, timedMark, badge, badges, time, sched, corners, depRow, stopRow, isLoop, routeLinks, when, loopArrival, liveMark, headsign, acrossPill, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath } from '../geo.js';
 import { U, live, busNext, board, stopRowU, nearestUSU, liveRow, chip, chips, meter, liveTag, heading, loadWords, hasData, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -347,13 +347,22 @@ const ARROWS = { 'symbol-placement': 'line', 'symbol-spacing': 120, 'icon-rotati
 function arrowImage(hex, darkPaper) {
   const k = 2, n = 12 * k, c = document.createElement('canvas');
   c.width = c.height = n;
-  const g = c.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true });   // read back at once: a canvas kept on the CPU, not the GPU's round trip
   g.scale(k, k); g.lineCap = 'round'; g.lineJoin = 'round';
   g.beginPath(); g.moveTo(4, 2.5); g.lineTo(8.5, 6); g.lineTo(4, 9.5);
   g.strokeStyle = darkPaper ? '#101214' : '#f2f2f3'; g.lineWidth = 4.6; g.stroke();
   g.strokeStyle = '#' + hex; g.lineWidth = 2; g.stroke();
   const im = g.getImageData(0, 0, n, n);
   return { width: n, height: n, data: im.data };
+}
+/** Every route's arrows made while the phone has a moment, not on the frame a route is first lit (a route page's first
+ *  draw spent a fifth of a second on them): the same names the layers ask for, in this map's flavour. */
+function makeArrows(m) {
+  const d = dark();
+  for (const r of D.routes) {
+    const hex = d ? lift('#' + r.color).slice(1) : r.color, id = 'arw-' + hex + '-' + (d ? 'd' : 'l');
+    if (!m.hasImage(id)) m.addImage(id, arrowImage(hex, d), { pixelRatio: 2 });
+  }
 }
 function addUsuImages() {
   if (!U) return;
@@ -435,7 +444,7 @@ async function made(app) {
   placeControls();
   WIDE.addEventListener('change', placeControls);
   squaresOnDemand(map);
-  map.on('load', () => { ready = true; addUsuImages(); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimes(focusRoute, now()); });
+  map.on('load', () => { ready = true; addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimesSoon(focusRoute, now()); });
   map.on('zoom', busScale);
   map.on('move', quiet);
   map.on('moveend', northAgain);
@@ -535,7 +544,7 @@ async function made(app) {
     // route lit; the next tap puts the route away.
     if (!ris.length && cardOpen && app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) {
       card.classList.remove('open', 'peek');
-      if (selectedBus) { selectedBus = null; hiLines = [focusRoute]; applySelection(); routeTimes(focusRoute, now()); }
+      if (selectedBus) { selectedBus = null; hiLines = [focusRoute]; applySelection(); routeTimesSoon(focusRoute, now()); }
       return;
     }
     // Another route's line tapped with one up on the Map tab: that one put away first; a tap on the line then picks it.
@@ -558,7 +567,7 @@ async function made(app) {
   for (const id of ['stops', 'stops-lit']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; paperKept = null; labelsHeard = false; searchKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -872,7 +881,7 @@ function ringBus(id) {
   if (!m) { wantRing = id; return; }
   wantRing = null; ringed = id;
   applySelection();   // its way on from where it is, the route stepped back behind it, as a bus picked on the map
-  if (focusRoute !== undefined) routeTimes(focusRoute, now());   // and the route's times, that bus's
+  if (focusRoute !== undefined) routeTimesSoon(focusRoute, now());   // and the route's times, that bus's
   const card = col.querySelector('#mapcard'), ll = m.marker.getLngLat();
   map.easeTo({ padding: pad(), center: [ll.lng, ll.lat], offset: wide() ? [0, 0] : cardOffset(card), duration: 500 });
 }
@@ -1092,12 +1101,14 @@ function wireChrome(app) {
   form.onsubmit = e => e.preventDefault();
   // On a wide screen the header's search box serves the map (its own bar is hidden): both boxes run this.
   const clear = () => { input.value = ''; const top = document.querySelector('#topsearch input'); if (top) top.value = ''; results.classList.add('hidden'); };
-  let t;
+  let t, searchTok = 0;
   // The one search, as the Stops tab's page has it: its results over the map, each shown here when tapped.
   mapSearch = v => { clearTimeout(t); t = setTimeout(() => {
     const q = v.trim();
     if (!q) { results.classList.add('hidden'); return; }
-    results.innerHTML = searchResults(q, now());
+    results.innerHTML = searchResults(q, now(), null, true);   // the matches at once, their next buses just after
+    const tok = ++searchTok;
+    afterPaint(() => { if (tok === searchTok && !results.classList.contains('hidden')) fillLater(results); });
     forMap(results);
     results.classList.remove('hidden');
     results.scrollTop = 0;
@@ -1150,7 +1161,7 @@ function applySelection() {
   const placeZ = asking ? 13 : 15;
   if (map.getLayer('place-labels') && map.getLayer('place-labels').minzoom !== placeZ) map.setLayerZoomRange('place-labels', placeZ, 24);
   quiet();
-  drawRuns();
+  drawRunsSoon();
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
   for (const [id, m] of busMarkers) { m.el.classList.toggle('dim', dimBus(m)); m.el.classList.toggle('lit', litBus(m)); m.el.classList.toggle('on', id === selectedBus || id === ringed); }
   dressJourney();
@@ -1347,7 +1358,7 @@ function select(id, app, fly = false, zoomIn = false) {
   selected = id; selectedBus = null; selectedU = null; uHilite = ''; hiLoops = []; ringed = null; wantRing = null; hiLines = keep ? [focusRoute] : si !== undefined && stop(si).hub ? [...stop(si).routes] : [];
   if (!keep) focusRoute = undefined;
   applySelection();
-  routeTimes(focusRoute !== undefined ? focusRoute : null, now());
+  routeTimesSoon(focusRoute !== undefined ? focusRoute : null, now());
   const card = col.querySelector('#mapcard');
   if (!id) { card.classList.remove('open', 'peek'); return; }
   if (si === undefined) return;
@@ -1611,7 +1622,7 @@ export function liveUpdate(app) {
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
   if (hubOn) { hubBadges(); hubBuses(); }
-  if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimes(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
+  if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimesSoon(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
   if (selectedU !== null) uCard(app);
 }
 // A cheap tablet (four cores or fewer, or 4 GB or less) spends its frames on the map: its buses jump to each fix.
@@ -1650,7 +1661,7 @@ function selectBus(id, app) {
   applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
   busCard(app, true);   // the bus at once; where it's headed next, with its minutes, the moment after
-  afterPaint(() => { if (selectedBus !== id) return; busCard(app); if (c) routeTimes(c.ri, now()); });   // its times along its route: the route's, if up, become this bus's; else its own appear
+  afterPaint(() => { if (selectedBus !== id) return; busCard(app); if (c) routeTimesSoon(c.ri, now()); });   // its times along its route: the route's, if up, become this bus's; else its own appear
 }
 /** A Connect bus: its route and headsign, where it's headed next with the feed's minutes. */
 function connectCard(b, app, bare = false) {
@@ -1789,7 +1800,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   afterPaint(() => {
     if (lastFocused !== spotKeyNow || selected !== null || selectedBus !== null) return;   // something else picked meanwhile
     morph(card, markup(false));
-    if (road && road.length === 1) routeTimes(road[0], now());
+    if (road && road.length === 1) routeTimesSoon(road[0], now());
   });
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));
@@ -1897,7 +1908,7 @@ export async function show(o, app, clockNow) {
   mainJourney(o.journey || null, app);   // a way from the directions page
   if ((resetDue || backDue) && app.route.name === 'map' && !o.hub) { const back = backDue, to = back ? beforeHub : null; resetDue = backDue = false; resetView(app, false, to, back); }   // back from the Center: there at once, as the Center came
   const pb = selectedBus && findBus(selectedBus);   // a bus picked on the map keeps its times through a redraw
-  routeTimes(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
+  routeTimesSoon(focusRoute !== undefined && !o.run ? focusRoute : pb ? pb.ri : null, clockNow);   // a page's picture is a picture: no times on it
 }
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
 let wantIn = null;
@@ -2397,6 +2408,15 @@ async function routeWays(ri) {
 }
 let rtShown = null, rtWired = false, rtBase = null, rtAt = '';
 const bear = (p, q) => Math.atan2((q.lon - p.lon) * Math.cos(p.lat * Math.PI / 180), q.lat - p.lat) * 180 / Math.PI;
+/** A route's times on the map just after the frame that asked for them: the page or card it comes with is on screen
+ *  first. Asked for again before then, the last word counts. */
+let rtWant = null, rtDue = false;
+function routeTimesSoon(ri) {
+  rtWant = ri;
+  if (rtDue) return;
+  rtDue = true;
+  afterPaint(() => { rtDue = false; routeTimes(rtWant, now()); });
+}
 async function routeTimes(ri, clockNow) {
   if (!map || !ready) return;
   if (!map.getSource('rtimes')) {
@@ -2676,6 +2696,9 @@ function arrowLines(path, hex, lane) {
 /** The way on from what's picked, drawn: a bus's from the bus, a stop's from the stop, each along its route's shape,
  *  bright there and fading round to where it comes back to itself. Nothing picked, or nothing to draw: cleared. */
 let runsKey = null;
+/** The ways the buses come (to a stop picked, a bus's own) drawn just after the frame that picked it: the card first. */
+let runsDue = false;
+function drawRunsSoon() { if (runsDue) return; runsDue = true; afterPaint(() => { runsDue = false; drawRuns(); }); }
 async function drawRuns() {
   if (!map || !ready || !map.getSource('runs')) return;
   const clockNow = now(), empty = { type: 'FeatureCollection', features: [] };
