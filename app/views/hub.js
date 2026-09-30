@@ -3,7 +3,7 @@
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
-import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord } from '../ui.js';
+import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine } from '../ui.js';
 import { rt, rtStale, isLoop, endAt } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
@@ -183,7 +183,7 @@ function loops(st, pick, clockNow) {
     const rel = waiting ? html`At its stop · leaves ${relative(t, clockNow)}` : here ? (thenTime ? html`Next bus ${thenTime}` : '') : t.day === 0 ? html`${relative(t, clockNow)}${thenTime ? html` · then ${thenTime}` : ''}` : dayName(t.ymd);
     return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="${cardHref(s, pick)}">
       <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
-      <span class="when">${here && !waiting ? html`<span class="t t-36 est">NOW</span>` : html`<span class="whent">${was(schedOf(t), t.min)}${time(t.min, 36, !!t.live)}</span>`}<span class="rel">${rel}</span></span>
+      <span class="when">${here && !waiting ? html`<span class="t t-36 est">NOW</span>` : html`${wasLine(t)}<span class="whent">${time(t.min, 36, !!t.live)}</span>`}<span class="rel">${rel}</span></span>
       ${lastTag(t)}<span class="where${s.out && !s.off ? ' live' : ''}"><i></i>${where}</span></a>`;
   });
   return html`<div class="tc-loops blueprint">${corners()}
