@@ -70,6 +70,9 @@ function style(sat = true) {
     .flatMap(l => [l, ...with500(l)]);
   const st = {
     version: 8,
+    // A paint change is there at once: MapLibre eased each over 300 ms, and the Center's washed streets coming back on
+    // the Map tab read as an empty map for its first frames.
+    transition: { duration: 0, delay: 0 },
     glyphs: BASE + 'vendor/basemaps-assets/fonts/{fontstack}/{range}.pbf',
     sprite: BASE + 'vendor/basemaps-assets/sprites/' + flavor,
     sources: {
@@ -440,7 +443,7 @@ function squaresOnDemand(m) {
 export function warm(app) { shapes(); init(app).catch(() => { /* made when it's asked for, then */ }); }
 
 // Made once: a first page and the feed's first redraw both asked for it at once, and each made a map.
-let initP = null, bornAtHome = false, shownYet = false;   // made before the rider's fix came: at it when first shown
+let initP = null, bornAtHome = false, shownYet = false, bornCam = null;   // made before the rider's fix came: at it when first shown
 function init(app) { return initP ??= made(app).catch(e => { initP = null; throw e; }); }
 async function made(app) {
   if (map) return;
@@ -453,8 +456,10 @@ async function made(app) {
     // of a zoom (15 frames a second to 25, at a quarter speed), for sharpness no one sees at arm's length.
     pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
     // Tiles already built kept for coming back to (the Map tab and the Center, a zoom out and in again): a tile not
-    // kept is built again, gray until it is.
-    maxTileCacheSize: 120 });
+    // kept is built again, gray until it is. MapLibre keeps five screens' worth at most whatever the size says, some
+    // 30 tiles on a phone, and the Center and the town at once overflowed it: twenty screens, up to the 120.
+    maxTileCacheSize: 120, maxTileCacheZoomLevels: 20 });
+  bornCam = { center, zoom: app.geo ? 15 : 13 };
   // Its box watched here, not by MapLibre: hidden (the Stops tab on a phone), the box is nothing, and MapLibre
   // shrank the canvas to nothing and grew it back on every tab tapped, reallocating its whole drawing buffer each
   // way, the costliest thing a tab did on a phone. A box of nothing is left be; a real change (turned, the update bar)
@@ -464,6 +469,7 @@ async function made(app) {
   WIDE.addEventListener('change', placeControls);
   squaresOnDemand(map);
   map.on('load', () => { ready = true; addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimesSoon(focusRoute, now()); });
+  map.on('idle', () => (window.requestIdleCallback || (f => setTimeout(f, 200)))(warmViews, { timeout: 2000 }));
   map.on('zoom', busScale);
   map.on('move', quiet);
   map.on('moveend', northAgain);
@@ -1364,6 +1370,87 @@ function hubPlace(card) {
   card.style.setProperty('--hub-top', top + 'px'); card.style.setProperty('--hub-room', (hubRest - top) + 'px');
 }
 /** The Center framed: every bay in view, south up, above a phone's card or beside a wide screen's panel. */
+/** The Center's zoom as fitHub frames it (near enough: a phone's card and a wide screen's panel as they'll be). */
+function hubZoom(bb) {
+  if (!wide()) return hubFitZoom();
+  const cam = map.cameraForBounds(bb, { padding: { top: 60 + topCover(), bottom: 60, left: 50, right: 50 }, maxZoom: 18.4, bearing: 180 });
+  return Math.max(HUB_Z + 0.2, cam ? cam.zoom : 18);
+}
+function hubFitZoom() {
+  let w = 180, e = -180;
+  for (const b of D.hub.bays) { w = Math.min(w, b.lon); e = Math.max(e, b.lon); }
+  const width = map.getContainer().clientWidth - 2 * HUB_SIDE;
+  return Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * (e - w) / 360))));
+}
+
+/** The tiles of the views a tab will ask for, built ahead while the map sits idle: the Center's bays, and the town as
+ *  the Map tab shows it. Built only when first shown, each was gray a beat after its tab was tapped, seconds after
+ *  the app had opened with nothing else to do: opened on the Center, the town's tiles waited for the Map tab, and
+ *  the other way round. MapLibre has no way to load a view it isn't showing, so this reaches into its tile manager
+ *  (the vendored build, pinned; anything not as expected and it does nothing): a view's tiles by its own covering,
+ *  loaded beside the ones on screen and kept out of the drawing, then let go to its cache once they're in. */
+let warmStyle = null, warmExtra = [], warmKeys = new Set();
+function warmViews() {
+  if (!map || !ready || !map.style || warmStyle === map.style || map.isMoving()) return;
+  const T = map.style.tileManagers && map.style.tileManagers.protomaps;
+  if (!T || typeof T.update !== 'function' || typeof T._updateRetainedTiles !== 'function' || typeof T._addTile !== 'function' || !T._inViewTiles || !T.transform || typeof T.transform.clone !== 'function') return;
+  warmStyle = map.style;
+  try {
+    if (!T._warmed) {
+      const retain = T._updateRetainedTiles, renderable = T.getRenderableIds;
+      let ideal = new Set();
+      T._updateRetainedTiles = function (ids, z) {
+        ideal = new Set(ids.map(i => i.key));
+        const kept = retain.call(this, ids, z);
+        for (const id of warmExtra) { this._addTile(id); kept[id.key] = id; }
+        return kept;
+      };
+      T.getRenderableIds = function (...a) { const ids = renderable.apply(this, a); return warmKeys.size ? ids.filter(k => !warmKeys.has(k) || ideal.has(k)) : ids; };
+      T._warmed = true;
+    }
+    const bb = new maplibregl.LngLatBounds();
+    for (const b of D.hub.bays) bb.extend([b.lon, b.lat]);
+    const hz = hubZoom(bb), cams = [{ center: HOME, zoom: 13 }];
+    if (bornCam) cams.push(bornCam);
+    if (beforeHub) cams.push(beforeHub);
+    for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: 180 });
+    const want = new Map();
+    for (const c of cams) for (const id of tilesFor(T, c)) if (!T._inViewTiles.getTileById(id.key)) want.set(id.key, id);
+    if (!want.size) return;
+    warmExtra = [...want.values()]; warmKeys = new Set(want.keys());
+    // Its tiles are fitted to the view only when the map moves (a repaint alone doesn't): asked here, at the view as it is.
+    const refit = () => T.update(T.transform, T.terrain);
+    refit(); map.triggerRepaint();
+    const t0 = Date.now();
+    const done = () => {
+      const left = warmExtra.filter(id => { const t = T._inViewTiles.getTileById(id.key); return t && !t.hasData() && t.state !== 'errored'; });
+      if (left.length && Date.now() - t0 < 8000) return setTimeout(done, 150);
+      // In: let go to the cache (a tile with labels is held a fade's length first, still kept out of the drawing).
+      warmExtra = []; if (!map.isMoving()) refit(); map.triggerRepaint();
+      setTimeout(() => { warmKeys = new Set(); }, 1500);
+    };
+    setTimeout(done, 150);
+  } catch { warmExtra = []; warmKeys = new Set(); }
+}
+/** The tiles MapLibre would want for a camera, a little past the screen's edges: its own covering, run on a copy of
+ *  the map's transform, with nothing added or let go. */
+function tilesFor(T, cam) {
+  const box = map.getContainer(), tr = T.transform.clone();   // the map's own, as the tiles were last fitted to it
+  tr.resize(Math.round((box.clientWidth || 400) * 1.3), Math.round((box.clientHeight || 300) * 1.3));
+  tr.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+  tr.setBearing(cam.bearing || 0); tr.setZoom(cam.zoom); tr.setCenter(maplibregl.LngLat.convert(cam.center));
+  const retain = T._updateRetainedTiles, was = T.transform;
+  let got = [];
+  T._updateRetainedTiles = function (ids) {
+    got = ids;
+    const keep = {};
+    for (const k of this._inViewTiles.getAllIds()) keep[k] = this._inViewTiles.getTileById(k).tileID;
+    return keep;
+  };
+  try { T.update(tr, T.terrain); } finally { T._updateRetainedTiles = retain; T.transform = was; if (was) T.updateCacheSize(was); }
+  return got;
+}
+
 /** The map's height the bays need on a phone: the arc across the width, south up, its badges and their tags clear of
  *  the search bar above it and the board below. */
 const HUB_SIDE = 34, HUB_ROW = 40;
