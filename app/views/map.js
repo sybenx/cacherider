@@ -992,6 +992,9 @@ function wireGrip(app) {
     else { slide(at, 0); const href = pageHref(); if (href) location.hash = href; }   // the page slides up over the map
   };
   card.addEventListener('click', e => {
+    // A way's row is a tap on that way, not on the card: it opened the card out, and the way picked was framed in the
+    // sliver of map left above it.
+    if (e.target.closest('[data-go]')) { card.dataset.picking = '1'; return; }   // brought down to it (journeyCard)
     if (e.target.closest('a, button')) return;
     if (board()) return;
     if (peeked()) { delete card.dataset.tall; toFull(); }
@@ -2496,6 +2499,10 @@ function journeyCard(J, app) {
   if (again) { if (!card.classList.contains('peek')) card.style.setProperty('--jh', card.offsetHeight + 'px'); morph(card, markup); }
   else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
   J.mount(card);
+  // A way picked from the card opened out: down to its row again, the rows above it with it, so it's drawn and framed
+  // in the map above rather than in the sliver the whole card left.
+  if (again && card.dataset.picking) { card.scrollTop = 0; fitPeek(card); card.classList.add('peek'); }
+  delete card.dataset.picking;
   card.dataset.way = J.base;
   card.classList.remove('hidden');
   card.classList.add('open');
