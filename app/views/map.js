@@ -2280,15 +2280,15 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
     if (focus && (changed || resized)) frame(uRouteBounds(uRoute), { maxZoom: 16, duration: 700 });
     return;
   }
-  // The shuttle as a whole, from the home page's line: campus framed, every loop drawn on top (at the zoom that fits
-  // them all they'd otherwise be put away).
+  // The shuttle as a whole, from the home page's line: every loop drawn on top (at a zoom that fits them all they'd
+  // otherwise be put away). Beside a wide screen's panel, all of it framed; on a phone, where its stops are (the middle
+  // 80% of them each way), not where its lines reach: a loop's run up the canyon to one stop had campus at zoom 13
+  // and off-centre. A rider on campus is kept in the frame.
   if (campus && U) {
     lastFocused = 'campus';
     selected = null; uHilite = ''; hiLines = []; hiLoops = U.routes.filter(r => r.stops.length).map(r => r.id); focusRoute = undefined; applySelection();
     col.querySelector('#mapcard').classList.remove('open');
-    const b = new maplibregl.LngLatBounds();
-    for (const r of U.routes) if (r.stops.length) b.extend(uRouteBounds(r.id));
-    frame(b, { maxZoom: 16, duration: 700 });
+    frame(campusBounds(app.geo), { maxZoom: 16, bearing: 0, duration: 700 });
     return;
   }
   // An alert from the About page: its route drawn on top, the stops it closes framed (marked already, as every
@@ -2363,6 +2363,17 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
 }
 
 /** The box around a route's stops, every direction. */
+function campusBounds(geo) {
+  const b = new maplibregl.LngLatBounds(), used = U.stops.filter(s => s.routes.length);
+  if (wide()) for (const r of U.routes) { if (r.stops.length) b.extend(uRouteBounds(r.id)); }
+  else {
+    const q = (a, p) => a[Math.round(p * (a.length - 1))];
+    const lats = used.map(s => s.lat).sort((x, y) => x - y), lons = used.map(s => s.lon).sort((x, y) => x - y);
+    b.extend([q(lons, 0.1), q(lats, 0.1)]).extend([q(lons, 0.9), q(lats, 0.9)]);
+  }
+  if (geo && used.some(s => distance(geo.lat, geo.lon, s.lat, s.lon) < 400)) b.extend([geo.lon, geo.lat]);   // on campus: 400 m from one of its stops
+  return b;
+}
 function uRouteBounds(id) {
   const r = U.routes[U.routeById[id]], b = new maplibregl.LngLatBounds();
   for (const p of r.shape || []) b.extend(p);
