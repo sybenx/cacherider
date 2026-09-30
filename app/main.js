@@ -41,7 +41,7 @@ function renderTabs() {
     // the Center's close-up and its turn put away, a tab's place kept. A second tap is the reset.
     const again = e => {
       const a = e.target.closest('a[href="#/map"]'), h = location.hash || '';
-      // With a fix, from another tab it's the stretch view (the reset), not the place the tab was left: done once the
+      // With a fix, from another tab it's the near view (the reset), not the place the tab was left: done once the
       // Map tab is drawn. Not from the Center, which is the map too: back to the map as it was before it.
       if (a && app.geo && app.mapMod && !h.startsWith('#/map') && !h.startsWith('#/hub')) { app.mapMod.resetView(app, true); return; }
       if (!a || !(h.startsWith('#/map') || h.startsWith('#/hub')) || !app.mapMod) return;

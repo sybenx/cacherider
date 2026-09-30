@@ -147,7 +147,7 @@ function style(sat = true) {
   st.layers.splice(under >= 0 ? under : st.layers.findIndex(l => l.id === 'spot-fill'), 0, placeLabels);
   const all = st.layers.find(l => l.id === 'stops'), { minzoom, ...lit } = all;
   st.layers.splice(st.layers.indexOf(all) + 1, 0, { ...lit, id: 'stops-lit', maxzoom: 12, filter: ['in', ['get', 'id'], ['literal', []]] });
-  // The rider's nearest stops, out in the valley, where the stretch view is wider than stops are drawn: dot and name.
+  // The rider's nearest stops, out in the valley, where the near view is wider than stops are drawn: dot and name.
   st.layers.splice(st.layers.indexOf(all) + 2, 0, { ...lit, id: 'stops-near', maxzoom: 12, filter: ['in', ['get', 'id'], ['literal', []]] },
     { ...st.layers.find(l => l.id === 'stop-labels'), id: 'stops-near-labels', minzoom: 0, maxzoom: 15, filter: ['in', ['get', 'id'], ['literal', []]] });
   // A lit route's timed stops (its timepoints, where an early bus waits): a ring round the dot in the map's ink.
@@ -1160,8 +1160,8 @@ function shareHere() {
   const lat = Math.round(meGeo.lat / 0.0005) * 0.0005, lon = Math.round(meGeo.lon / 0.0005) * 0.0005, label = whereabouts(lat, lon) || 'where I am';
   openShare({ url: siteLink('go/' + spotKey(lat, lon, label)), title: 'Share where you are', lines: [`Directions to ${label}`, 'Rounded to the street, from wherever they open it'] });
 }
-/** Taps on the locate button this visit to the map, and where the map rested after the stretch view was last framed. */
-let locTaps = 0, homeRest = null;
+/** Where the map rested after the near view was last framed: the Map tab, tapped with the map still there, goes on out. */
+let homeRest = null;
 const movedSinceHome = () => { if (!homeRest) return true; const c = map.getCenter(); return Math.abs(map.getZoom() - homeRest.zoom) > 0.05 || distance(c.lat, c.lng, homeRest.lat, homeRest.lon) > 30; };
 /** Near me: the map to where you are, with your dot on it. */
 function nearControl() {
@@ -1170,17 +1170,14 @@ function nearControl() {
       const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
       const b = document.createElement('button'); b.type = 'button'; b.className = 'nearbtn'; b.title = 'Near me'; b.setAttribute('aria-label', 'Near me');
       b.innerHTML = icon('near', 20).s;
-      // The stretch view (the rider and what they'd ride from), unless the map's on it already; then, and every tap
-      // after, them close up, until the map is left and come back to, or the Map tab's tapped. The Map tab the same the
-      // other way: the stretch view, unless on it, then the town's. It never turns location off.
+      // Near me, every tap: the rider and their four nearest stops. It never turns location off. (Tried from 2026-09-30,
+      // for a week: three buttons, three places. It was the stretch view, then them close up.)
       b.onclick = () => nearMe(geo => {
         if (!geo) return;
         placeMe(geo);
-        // At the Center (the map too, its board up): leave it for the stretch view, as the Map tab leaves it for the map.
-        if (/^#\/hub/.test(location.hash)) { locTaps = 0; resetDue = true; location.hash = '#/map'; return; }
-        const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700;
-        if (locTaps++ || !movedSinceHome()) { const [t, f] = closeView(geo); frame(t, { ...f, duration }); }
-        else toStretch(geo, duration);
+        // At the Center (the map too, its board up): leave it for the near view, as the Map tab leaves it for the map.
+        if (/^#\/hub/.test(location.hash)) { resetDue = true; location.hash = '#/map'; return; }
+        toNear(geo, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700);
       });
       el.appendChild(b); this.el = el; return el;
     },
@@ -1557,7 +1554,7 @@ function fitHub(arriving = false, duration = 700, fly = false) {
   // work. With the zooms between built ahead (warmViews) and the map lighter to draw, it flies again, briefly, where
   // the map was already on screen (the Map tab, a wide screen), and the half turn is seen rather than sprung: not with
   // less motion asked for, nor on a weak device. Framed again from the Center itself (its tab tapped again), it moves.
-  // Only from where the Center's on screen: from Fairview's stretch view, 30 km and six zoom levels off, the flight
+  // Only from where the Center's on screen: from Fairview's near view, 30 km and six zoom levels off, the flight
   // crossed the valley in half a second with nothing built ahead of it (warmViews builds the town's way down), and
   // stuttered. From further out it's there at once, as it was.
   const flies = fly && !WEAK && !matchMedia('(prefers-reduced-motion: reduce)').matches && map.getBounds().contains([D.hub.lon, D.hub.lat]);
@@ -1858,46 +1855,39 @@ function homeBounds() {
 }
 const HOME_FIT = { bearing: 0, maxZoom: 14 };
 let meGeo = null;   // the rider's last fix, as the map has it
-/** The stretch view: where the rider is, with what they'd ride from. In town or at its edge (2 km from the home view's
- *  box), the town with them in it; out in the valley (20 km of a stop: Fairview, Preston), them and the four stops the
- *  home page lists as nearest, marked, not the whole valley with them a dot at one end; out of it, the town alone. */
-const roomRound = (b, g) => b.extend([g.lon - 0.004, g.lat - 0.003]).extend([g.lon + 0.004, g.lat + 0.003]);   // not on the edge
+/** The near view: the rider and the four stops the home page lists as nearest, marked with their names, wherever they
+ *  are in the valley (20 km of a stop: downtown it's their block, from Fairview Lewiston's and Franklin's). Without a
+ *  fix, or out of the valley, the town's own view. (It was the town stretched to take them in, and them close up.) */
 function homeView(geo) {
   const b = homeBounds(), fit = { ...HOME_FIT };
-  if (!b || !geo || b.contains([geo.lon, geo.lat])) return [b, fit];
-  const edge = distance(geo.lat, geo.lon, Math.min(Math.max(geo.lat, b.getSouth()), b.getNorth()), Math.min(Math.max(geo.lon, b.getWest()), b.getEast()));
-  if (edge < 2000) return [roomRound(new maplibregl.LngLatBounds(b.getSouthWest(), b.getNorthEast()), geo), fit];
-  const four = nearFour(geo).filter(x => x.d < 20000);
-  if (!four.length) return [b, fit];
-  const out = roomRound(new maplibregl.LngLatBounds([geo.lon, geo.lat], [geo.lon, geo.lat]), geo);
+  const four = geo ? nearFour(geo).filter(x => x.d < 20000) : [];
+  if (!b || !four.length) return [b, fit];
+  const out = new maplibregl.LngLatBounds([geo.lon - 0.0015, geo.lat - 0.001], [geo.lon + 0.0015, geo.lat + 0.001]);   // a little round them: not on the edge
   for (const x of four) out.extend([D.stops[x.i].lon, D.stops[x.i].lat]);
-  return [out, { ...fit, maxZoom: 15, margin: wide() ? 80 : 56 }, four.map(x => D.stops[x.i].id)];   // room for their names
+  return [out, { ...fit, maxZoom: 16, margin: wide() ? 80 : 56 }, four.map(x => D.stops[x.i].id)];   // room for their names
 }
 /** The rider's four nearest stops, as the home page lists them (its big one and the three beneath): by the walk. */
 const nearFour = g => byWalk(nearest(g.lat, g.lon, 24).filter(x => !D.stops[x.i].hub), g.lat, g.lon).slice(0, 4);
-let nearBy = null, nearIds = [];   // whose marks they are (the stretch view's, 'home', or a no-way map's, 'none'), and which
-/** Marked at any zoom, with their names: out in the valley the stretch view is wider than stops are drawn. Kept, and put
- *  on the map once its style is in (a first open straight onto the stretch view marks them before it is), or again. */
+let nearBy = null, nearIds = [];   // whose marks they are (the near view's, 'home', or a no-way map's, 'none'), and which
+/** Marked at any zoom, with their names: out in the valley the near view is wider than stops are drawn. Kept, and put
+ *  on the map once its style is in (a first open straight onto the near view marks them before it is), or again. */
 function markNear(ids = [], by = null) {
   nearBy = ids.length ? by : null; nearIds = ids;
   if (!map || !map.getLayer('stops-near')) return;
   for (const id of ['stops-near', 'stops-near-labels']) map.setFilter(id, ['in', ['get', 'id'], ['literal', ids]]);
 }
-/** The rider close up: the locate button's far end. */
-const closeView = g => [[g.lon, g.lat], { bearing: 0, zoom: 15.5, maxZoom: 15.5 }];
-/** The Map tab's view: the stretch view on arriving, and the town's (the default, without the rider) when it's tapped
- *  again on the map with a fix, from the stretch view untouched or from the town's already: one way, out, as the
- *  locate button's is one way, in. Moved off the stretch view first, a tap brings it back. */
+/** The Map tab's view: the near view on arriving, and the town's (without the rider) when it's tapped again on the map
+ *  with a fix, from the near view untouched or from the town's already: one way, out. Moved off the near view first,
+ *  a tap brings it back. */
 let townTap = false;
 function frameHome(app, duration, again = false) {
   const town = !!app.geo && again && (townTap || !movedSinceHome());
-  if (town) { townTap = true; locTaps = 0; homeRest = null; markNear(); frame(homeBounds(), { ...HOME_FIT, duration }); return; }   // the locate button then starts at the stretch view again
-  toStretch(app.geo, duration);
-  locTaps = 0; townTap = false;
+  if (town) { townTap = true; homeRest = null; markNear(); frame(homeBounds(), { ...HOME_FIT, duration }); return; }
+  toNear(app.geo, duration);
+  townTap = false;
 }
-/** The stretch view framed (by either button), and where the map comes to rest noted: tapped again with the map still
- *  there, a button goes on to its far end instead of framing the same view again. */
-function toStretch(geo, duration) {
+/** The near view framed (by either button), and where the map comes to rest noted, for the Map tab's next step. */
+function toNear(geo, duration) {
   const [t, f, ids] = homeView(geo);
   markNear(/^#\/map/.test(location.hash) ? ids : [], 'home');   // the map made under another page (a stop, directions): theirs, not these
   const rest = () => { const c = map.getCenter(); homeRest = { zoom: map.getZoom(), lat: c.lat, lon: c.lng }; };
@@ -1915,7 +1905,7 @@ export function resetView(app, once = false, to = null, jump = false, due = fals
   select(null, app);
   // Back from the Center (jump 'hub'): the flight there in reverse, the half turn unwound, as briefly; at once where
   // the flight in was (less motion asked for, a weak device).
-  const backTo = !to && jump === 'hub' && homeView(app.geo)[0];   // back from the Center to the stretch view: flown only if the Center's in it
+  const backTo = !to && jump === 'hub' && homeView(app.geo)[0];   // back from the Center to the near view: flown only if the Center's in it
   const still = jump === true || matchMedia('(prefers-reduced-motion: reduce)').matches || jump === 'hub' && (WEAK || !hubFlew || (backTo && !backTo.contains([D.hub.lon, D.hub.lat])));
   const duration = still ? 0 : jump === 'hub' ? 550 : 600;
   if (to) map.easeTo({ padding: pad(), center: to.center, zoom: to.zoom, bearing: 0, duration });
@@ -2237,7 +2227,7 @@ function searchMarks(m) {
 /** Called by the router whenever the map is on screen. */
 let shownHash = null, lastMeasured = '';
 export async function show(o, app, clockNow) {
-  if (!/^#\/(map|hub)/.test(location.hash)) { locTaps = 0; townTap = false; markNear(); }   // the map left (the Center is the map too): both buttons start again at the stretch view
+  if (!/^#\/(map|hub)/.test(location.hash)) { townTap = false; markNear(); }   // the map left (the Center is the map too): the Map tab starts again at the near view
   await showPage(o, app, clockNow);
   // Marked once the map's ready: a reload straight onto a search gets there before its style does.
   wantMarks = wide() && o.searchMarks || null;
@@ -2703,7 +2693,7 @@ async function mainJourney(J, app) {
   if (!map) return;
   if (!ready) { if (J) map.once('load', () => mainJourney(J, app)); return; }
   if (!(J && J.none) && jrNone) {
-    jrNone = null; if (nearBy === 'none') markNear();   // its own marks only: the stretch view may have just made its own
+    jrNone = null; if (nearBy === 'none') markNear();   // its own marks only: the near view may have just made its own
     if (map.getSource('jr')) map.getSource('jr').setData({ type: 'FeatureCollection', features: [] });
     const card = col.querySelector('#mapcard');
     if (!J && card.querySelector(':scope > .gonone')) card.classList.remove('open', 'peek');
@@ -2712,7 +2702,7 @@ async function mainJourney(J, app) {
     if (JR) mainJourney(null, app);
     addJourneyLayers(map);
     map.getSource('jr').setData({ type: 'FeatureCollection', features: [['start', J.from], ['end', J.to]].map(([k, p]) => ({ type: 'Feature', properties: { k }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
-    // As the stretch view has them: the start's four nearest stops, marked with their names, where a bus could be met.
+    // As the near view has them: the start's four nearest stops, marked with their names, where a bus could be met.
     const four = nearFour(J.from).filter(x => x.d < 20000);
     markNear(four.map(x => D.stops[x.i].id), 'none');
     if (app.route.name === 'map' && !wide()) journeyCard(J, app);
