@@ -955,6 +955,9 @@ function wireGrip(app) {
   // Swiped down, the card shrinks to its head (the stop's name and routes) and the map shows through; swiped down
   // again it goes. Up, or a tap on the head, opens it out. The size chosen stays for the next stop tapped.
   const peeked = () => card.classList.contains('peek');
+  // The Center's board keeps its size, down to the loops, and scrolls in place: the bays above it are the page too,
+  // and opened out it covered them. Nor is it put away: gone, only leaving the Center brought it back.
+  const board = () => !!card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash);
   // Between its two sizes the card only ever slides: its height changes in one go, before or after the slide, with
   // the transform holding its top edge where it was, so nothing bounces. A short transition for the settle only,
   // then none, so a tap elsewhere still shows its card at once.
@@ -982,15 +985,13 @@ function wireGrip(app) {
     // A stop's sheet opens part way (down to its next two buses): a swipe down from there is down to its head, the map
     // to the finger; the next one puts it away.
     const tall = !!card.dataset.tall && !!card.querySelector(':scope > .pagesheet');
-    // The Center's board isn't put away: gone, there was nothing to bring it back but leaving the Center and coming back,
-    // and a finger scrolling up to its top and on down put it there.
-    const board = !!card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash);
-    if (claimed === 'down') { if (peeked() && board) slide(at, 0); else if (peeked() && !tall) away(); else { delete card.dataset.tall; toPeek(at); } }
+    if (claimed === 'down') { if (peeked() && board()) slide(at, 0); else if (peeked() && !tall) away(); else { delete card.dataset.tall; toPeek(at); } }
     else if (peeked()) { delete card.dataset.tall; toFull(at); }
     else { slide(at, 0); const href = pageHref(); if (href) location.hash = href; }   // the page slides up over the map
   };
   card.addEventListener('click', e => {
     if (e.target.closest('a, button')) return;
+    if (board()) return;
     if (peeked()) { delete card.dataset.tall; toFull(); }
     else if (e.target.closest('.grip')) toPeek();
   });
@@ -1001,7 +1002,7 @@ function wireGrip(app) {
   let wheelAt = 0, wheelLast = -1e9;
   card.addEventListener('wheel', e => {
     const fresh = e.timeStamp - wheelLast > 300; wheelLast = e.timeStamp;
-    if (e.ctrlKey) return;
+    if (e.ctrlKey || board()) return;
     if (!peeked() && e.deltaY < 0 && card.scrollTop <= 0 && fresh && card.classList.contains('open') && !wide()) { e.preventDefault(); wheelAt = e.timeStamp; toPeek(); return; }
     if (!peeked() || e.deltaY <= 0) return;
     e.preventDefault();
@@ -1017,7 +1018,7 @@ function wireGrip(app) {
     const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
     if (!claimed) {
       const down = dy > 0 && card.scrollTop <= 0;
-      const up = dy < 0 && (peeked() || (card.scrollTop + card.clientHeight >= card.scrollHeight - 1 && !!pageHref()));
+      const up = dy < 0 && ((peeked() && !board()) || (card.scrollTop + card.clientHeight >= card.scrollHeight - 1 && !!pageHref()));
       if ((!down && !up) || Math.abs(dx) > Math.abs(dy)) { y0 = null; return; }   // the browser's: a scroll, or a tap
       claimed = down ? 'down' : 'up'; card.style.transition = 'none';
     }
