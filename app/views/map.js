@@ -93,8 +93,8 @@ function style(sat = true) {
       { id: 'pool-zone', type: 'fill', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'fill-color': '#007AB8', 'fill-opacity': flavor === 'dark' ? 0.1 : 0.08 } },
       { id: 'pool-edge', type: 'line', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'line-color': '#007AB8', 'line-width': 1.2, 'line-dasharray': [3, 2], 'line-opacity': 0.55 } },
       { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': '#007AB8', 'circle-opacity': 0.15, 'circle-stroke-color': '#007AB8', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
-      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
-      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
+      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 1, 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', ['coalesce', ['get', 'lane'], 0], 1.5], 14, ['*', ['coalesce', ['get', 'lane'], 0], 3.5], 17, ['*', ['coalesce', ['get', 'lane'], 0], 6]] } },
+      { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1, 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, ['*', ['coalesce', ['get', 'lane'], 0], 1.5], 14, ['*', ['coalesce', ['get', 'lane'], 0], 3.5], 17, ['*', ['coalesce', ['get', 'lane'], 0], 6]] } },
       // A route under the pointer on a desktop (on the map, or its badge in the panel): drawn up, over the rest.
       { id: 'route-hover', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 14, 7, 17, 11], 'line-opacity': 1 } },
       // The way on from a picked bus or stop: bright there, fading smoothly as it goes, one line a strand with its own
@@ -116,7 +116,7 @@ function style(sat = true) {
       { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
       { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
-      { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 0.8, 1.2], 15, ['case', ['get', 'approx'], 1.4, 2.5], 17, ['case', ['get', 'approx'], 2, 4]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.9], 'line-dasharray': [3, 1.5] } },
+      { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-opacity': 0, 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 0.8, 1.2], 15, ['case', ['get', 'approx'], 1.4, 2.5], 17, ['case', ['get', 'approx'], 2, 4]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.9], 'line-dasharray': [3, 1.5] } },
       { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
       { id: 'usu-hover', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 6.5, 17, 10], 'line-opacity': 1 } },
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
@@ -238,6 +238,96 @@ function segmentGrid(lines) {
     }
   }
   return grid;
+}
+/** Preview: every route, Connect's and the shuttle's, snapped to a grid of half blocks, Logan's own address grid (50 of
+ *  its units, about 101 m; the streets on the even lines), stepping straight or diagonally from node to node. Each grid
+ *  edge then knows every route that uses it, either way, and each route takes its lane there in one order for the
+ *  whole valley: a shared street is one edge, so its stripes line up by construction. */
+const SG = { lat0: 41.731952, lon0: -111.834053, dlat: 1.826e-05 * 50, dlon: 2.444e-05 * 50 };
+function schematic(lines) {
+  const ll = ([x, y]) => [SG.lon0 + x * SG.dlon, SG.lat0 + y * SG.dlat];
+  // A node for a point, held on the last one's row or column unless the point is well off it: a road between two grid
+  // lines doesn't zigzag from one to the other.
+  const snap = coords => {
+    const out = [];
+    let px = null, py = null;
+    const at = (lon, lat) => {
+      const fx = (lon - SG.lon0) / SG.dlon, fy = (lat - SG.lat0) / SG.dlat;
+      const x = px !== null && Math.abs(fx - px) <= 0.75 ? px : Math.round(fx), y = py !== null && Math.abs(fy - py) <= 0.75 ? py : Math.round(fy);
+      if (px === x && py === y) return;
+      if (px !== null) {   // across a gap, straight or diagonal steps, the longer way first
+        let cx = px, cy = py;
+        while (Math.max(Math.abs(x - cx), Math.abs(y - cy)) > 1) {
+          const dx = x - cx, dy = y - cy, ax = Math.abs(dx), ay = Math.abs(dy);
+          if (ax > 2 * ay) cx += Math.sign(dx); else if (ay > 2 * ax) cy += Math.sign(dy); else { cx += Math.sign(dx); cy += Math.sign(dy); }
+          out.push([cx, cy]);
+        }
+      }
+      out.push([x, y]); px = x; py = y;
+      while (out.length >= 3) {   // there and back again (a hook into a stop): gone
+        const a = out[out.length - 3], c = out[out.length - 1];
+        if (a[0] !== c[0] || a[1] !== c[1]) break;
+        out.splice(out.length - 2, 2);
+      }
+      [px, py] = out[out.length - 1];
+    };
+    for (let k = 0; k < coords.length; k++) {
+      const [lon, lat] = coords[k];
+      if (k) { const [a, b] = coords[k - 1], n = Math.ceil(Math.hypot((lon - a) * KX, (lat - b) * KY) / 25); for (let j = 1; j < n; j++) at(a + (lon - a) * j / n, b + (lat - b) * j / n); }
+      at(lon, lat);
+    }
+    return out;
+  };
+  // Only what runs along the grid goes on it: a stretch heading within about 15° of north-south or east-west for 120 m
+  // or more. Anything else (Canyon Road, the highway's curves, a campus drive)
+  // keeps its own shape, joined to the grid either side; a hook into a stop inside a grid stretch stays on the grid.
+  const SAMPLE = 20, MIN_ON = 6, MIN_OFF = 4;
+  const runsOf = coords => {
+    const pts = [];
+    for (let k = 0; k < coords.length; k++) {
+      const [lon, lat] = coords[k];
+      if (k) { const [a, b] = coords[k - 1], n = Math.ceil(Math.hypot((lon - a) * KX, (lat - b) * KY) / SAMPLE); for (let j = 1; j < n; j++) pts.push([a + (lon - a) * j / n, b + (lat - b) * j / n]); }
+      pts.push([lon, lat]);
+    }
+    if (pts.length < 2) return [];
+    const on = pts.map((p, k) => {
+      const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)], dx = (b[0] - a[0]) * KX, dy = (b[1] - a[1]) * KY;
+      // the heading alone: the address grid is only good to 50 or 80 m in places, so a street needn't sit on its line;
+      // every route on it is snapped to the same nearest one all the same
+      return Math.abs(dx) >= Math.abs(dy) ? Math.abs(dy) <= 0.27 * Math.abs(dx) : Math.abs(dx) <= 0.27 * Math.abs(dy);
+    });
+    const spans = () => { const out = []; let k = 0; while (k < on.length) { let e = k; while (e + 1 < on.length && on[e + 1] === on[k]) e++; out.push([k, e]); k = e + 1; } return out; };
+    for (const [a, e] of spans()) if (on[a] && e - a + 1 < MIN_ON) for (let k = a; k <= e; k++) on[k] = false;   // a curve's straight bit: its own shape
+    for (const [a, e] of spans()) if (!on[a] && a > 0 && e < on.length - 1 && e - a + 1 < MIN_OFF) for (let k = a; k <= e; k++) on[k] = true;   // a hook: the grid
+    return spans().map(([a, e]) => ({ grid: on[a], pts: pts.slice(Math.max(0, a - (on[a] ? 0 : 1)), e + 1) }));
+  };
+  const paths = lines.features.map(f => ({ key: 'c' + f.properties.route, props: f.properties, runs: runsOf(f.geometry.coordinates) }));
+  if (U) U.routes.forEach((r, i) => { if (!r.shape.length) return; const c = r.color; paths.push({ key: 'u' + i, props: { route: 100 + i, color: c, dcolor: lift(c), usu: true }, runs: runsOf(r.shape) }); });
+  for (const p of paths) for (const r of p.runs) if (r.grid) r.nodes = snap(r.pts);
+  const ek = (a, b) => (a[0] < b[0] || (a[0] === b[0] && a[1] < b[1])) ? a + '|' + b : b + '|' + a;
+  const on = new Map();   // edge → the routes on it
+  for (const p of paths) for (const r of p.runs) if (r.grid) for (let k = 1; k < r.nodes.length; k++) { const e = ek(r.nodes[k - 1], r.nodes[k]); if (!on.has(e)) on.set(e, new Set()); on.get(e).add(p.key); }
+  const rank = new Map([...new Set(paths.map(p => p.key))].map((k, i) => [k, i]));
+  const features = [];
+  for (const p of paths) {
+    const feat = (coords, lane) => { if (coords.length > 1) features.push({ type: 'Feature', properties: { ...p.props, lane }, geometry: { type: 'LineString', coordinates: coords } }); };
+    p.runs.forEach((r, ri) => {
+      if (!r.grid) {   // its own shape, from the grid's end before it to the grid's start after
+        const before = ri > 0 && p.runs[ri - 1].nodes && p.runs[ri - 1].nodes.length ? [ll(p.runs[ri - 1].nodes[p.runs[ri - 1].nodes.length - 1])] : [];
+        const after = p.runs[ri + 1] && p.runs[ri + 1].nodes && p.runs[ri + 1].nodes.length ? [ll(p.runs[ri + 1].nodes[0])] : [];
+        return feat([...before, ...r.pts, ...after], 0);
+      }
+      let cur = null;
+      for (let k = 1; k < r.nodes.length; k++) {
+        const a = r.nodes[k - 1], b = r.nodes[k], members = [...on.get(ek(a, b))].sort((x, y) => rank.get(x) - rank.get(y));
+        const lane0 = members.indexOf(p.key) - (members.length - 1) / 2, fwd = a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]), lane = fwd ? lane0 : -lane0;
+        if (!cur || cur.lane !== lane) { if (cur) feat(cur.coords, cur.lane); cur = { lane, coords: [ll(a)] }; }
+        cur.coords.push(ll(b));
+      }
+      if (cur) feat(cur.coords, cur.lane);
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
 /** The solid lines with each shape's closed stretches left out. */
 function openLines(fc, gaps) {
@@ -407,7 +497,7 @@ async function loadShapes(m = map) {
   const key = closedKeyOf(now());
   if (drawn.key !== key) {
     const { closed, gaps } = closedSegments(fc);
-    drawn.lines = openLines(fc, gaps); drawn.closed = closed; drawn.key = key;
+    drawn.lines = schematic(openLines(fc, gaps)); drawn.closed = closed; drawn.key = key;
   }
   closedKey = key;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
@@ -565,7 +655,7 @@ async function made(app) {
     // No stop there, but a route's line: that route lit up with its times, where the map is. Where several share the
     // road, the card asks which.
     // A route the timetable splits by time of day (16 AM and PM) is one route here: the half on the road now or next.
-    const ris = [...new Map(map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['route-lines'] }).map(f => f.properties.route).sort((a, b) => a - b).map(ri => [familyKey(ri), ri])).values()].map(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute) ? focusRoute : familyNow(ri, now()));   // the half up stays up
+    const ris = [...new Map(map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['route-lines'] }).map(f => f.properties.route).filter(ri => ri < D.routes.length).sort((a, b) => a - b).map(ri => [familyKey(ri), ri])).values()].map(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute) ? focusRoute : familyNow(ri, now()));   // the half up stays up
     const card = col.querySelector('#mapcard'), cardOpen = card.classList.contains('open');
     // A route up on the Map tab, its sheet (or a card over it) open: a tap on nothing puts the card away and leaves the
     // route lit; the next tap puts the route away.
