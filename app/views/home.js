@@ -68,9 +68,10 @@ function landing(clockNow, app) {
     ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
       <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : ''}</div>`);
   parts.push(hubLine(clockNow), shuttleLine(clockNow));
-  // And what the app does, shown rather than said: the busiest stops, by the day's departures, with their next buses.
+  // And what the app does, shown rather than said: the stops with the most buses today (by the timetable's departures,
+  // not by riders: there's no count of those, so not 'popular' or 'busiest'), with their next buses.
   // A newcomer may find their own there; either way the page isn't half empty on a first visit.
-  if (first) { const busy = busiest(clockNow); if (busy.length) parts.push(html`<div class="land-eye"><span>Busiest stops today</span></div><div class="list">${busy.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`); }
+  if (first) { const busy = busiest(clockNow); if (busy.length) parts.push(html`<div class="land-eye"><span>Most buses today</span></div><div class="list">${busy.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`); }
   if (isWide()) parts.push(chips());   // beside the map, every route a tap away: the page has the room, and the map lights it
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
