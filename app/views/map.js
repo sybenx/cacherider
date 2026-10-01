@@ -3080,6 +3080,10 @@ async function routeTimes(ri, clockNow) {
     map.addLayer({ id: 'route-times', type: 'symbol', source: 'rtimes', layout: { ...text, 'text-variable-anchor-offset': ['get', 'v'], 'symbol-sort-key': ['get', 'sk'] }, paint });   // a first run's 'starts here' placed before the rest
   }
   if (!rtWired) { rtWired = true; map.on('moveend', () => { const k = map.getZoom().toFixed(2) + '/' + map.getBearing().toFixed(1); if (k !== rtAt) placeTimes(); }); }
+  // A route's own page (its stops listed beside the map, or as the card) says each stop's next time already: the map
+  // keeps out of it. Its times come when they add something: a bus ringed or picked (that bus's, along its way on), or
+  // a route lit from a road, with no list beside it.
+  if (ri !== null && /^#\/map\/route\//.test(location.hash) && !ringed && !selectedBus) ri = null;
   rtShown = ri;
   if (ri === null) { rtBase = null; map.getSource('rtimes').setData({ type: 'FeatureCollection', features: [] }); return; }
   const [way, fc] = await Promise.all([routeWays(ri), shapes()]);
