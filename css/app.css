@@ -526,8 +526,10 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
    are dashed where Connect's are solid; close in, its marker is squared where Connect's is round. */
 #map.bus-small .bus-marker path { fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3.5; stroke-linejoin: round; }
 #map.bus-small .bus.on .bus-marker path { stroke: var(--color-accent); }
-.bus.shuttle .bus-marker { border-radius: 6px; }
-#map.bus-small .bus.shuttle .bus-marker path { stroke-width: 3; stroke-dasharray: 3 2.2; stroke-linecap: round; }
+.bus.shuttle .bus-marker { border-radius: 6px; --u-dash: 3 1.95 2.66 1.95 2.66 1.95 2.66 1.95 3 1.77 2.41 1.77 3 1.77 2.41 1.77 3 1.95 2.66 1.95 2.66 1.95 2.66 1.95; }
+/* its dashes laid along the arrow's own sides (map.js ARROW), a dash on each corner and the rest spaced evenly between:
+   a plain '3 2.2' fell anywhere, the tip broken and the way it heads soft, and on its own dashed line it was lost */
+#map.bus-small .bus.shuttle .bus-marker path { stroke-width: 3; stroke-dasharray: var(--u-dash); stroke-dashoffset: 1.5; stroke-linecap: round; }
 /* a bus on the lit route keeps its badge and its tap at any zoom, so tapping a stop finds its buses */
 #map.bus-small .bus.lit, #map.bus-small .bus.on { pointer-events: auto; }
 #map.bus-small .bus.lit .bus-marker, #map.bus-small .bus.on .bus-marker { transform: none; border-color: #fff; background: var(--bus-color); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); }
@@ -543,7 +545,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 #map.u-small .bus.shuttle { pointer-events: none; }
 #map.u-small .bus.shuttle .bus-marker { border-color: transparent; background: transparent; box-shadow: none; }
 #map.u-small .bus.shuttle .bus-marker svg { width: 26px; height: 26px; overflow: visible; filter: drop-shadow(0 0 1px var(--color-bg)); }
-#map.u-small .bus.shuttle .bus-marker path { fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3; stroke-dasharray: 3 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#map.u-small .bus.shuttle .bus-marker path { fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3; stroke-dasharray: var(--u-dash); stroke-dashoffset: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 /* thumbs: bigger buses, zoom buttons and satellite toggle on touch screens; the mouse keeps the small ones */
 @media (pointer: coarse) {
   .bus-marker { width: 30px; height: 30px; }

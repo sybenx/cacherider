@@ -1914,7 +1914,7 @@ function busScale() {
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
 // An Aggie shuttle's: the same arrow with an A's counter above its notch, the notch its legs and what's between its
 // crossbar. The counter a shape of its own in the marker's colour, not a hole, so the hollow arrow far off stays whole.
-const ARROW_A = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/><path class="a" d="M12 8.3 14.3 13.2H9.7z"/></svg>';
+const ARROW_A = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/><path class="a" d="M12 7.8 14.7 13.4H9.3z"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 /** A way drawn for another day: no bus out now is one of its. */
 const wayLater = () => !!(JR && JR.plan && JR.plan.ymd !== now().ymd);
