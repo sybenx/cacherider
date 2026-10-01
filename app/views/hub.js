@@ -305,6 +305,9 @@ function picked(s, clockNow) {
     : s.loose ? 'The bus is out but off its scheduled trips, so there’s no estimate for it.'
     : s.away ? 'The bus is out on a run that doesn’t come back through here soon.'
     : 'This route isn’t reporting its position.';
+  // Late, said first and large, under its name: 'is my bus on time, and if not when' is what a rider picks it for.
+  // It was the end of a muted sentence ('…from the Transit Center, 11 min late.'), and 'late' under the first time.
+  const lateLine = !s.loop && s.late && dep && dep.day === 0 ? html`<span class="tc-late">Leaves about ${clock(s.leave).h} · ${s.late} min late</span>` : '';
   // The badge opens the route, landing on its bay; each time opens that bay's stop page, the rest of its day.
   const ri = s.ris[s.ris.length - 1], bay = D.hub.bays.find(b => b.routes.includes(ri));
   const baySi = bay ? bay.stop : undefined;
@@ -312,13 +315,13 @@ function picked(s, clockNow) {
   const stopHref = t => { const si = t.si !== undefined ? t.si : baySi; return si === undefined ? '#/hub' : '#/stop/' + D.stops[si].id + (t.trip !== undefined ? `?run=${t.trip}&on=${t.ymd}` : ''); };
   const cells = s.deps.map((t, i) => {
     const m = i === 0 && t.day === 0 ? s.leave : t.min, c = clock(m);
-    const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ' · late' : '') : dayName(t.ymd);
+    const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ` · ${s.late} min late` : '') : dayName(t.ymd);
     if (i === 0 && t.live && t.live.here && t.live.spacing && !t.live.leaves) return html`<a class="cell first" href="${stopHref(t)}"><span class="t">Here</span></a>`;
     return html`<a class="cell${i === 0 ? ' first' : ''}" href="${stopHref(t)}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}<small>${c.ap}</small></span></span><span class="rel">${rel}</span>${lastTag(t)}</a>`;
   });
   return html`<div class="tc-pick blueprint">${corners()}
     <div class="top">${baySi !== undefined ? html.raw(routeBadgeLink(ri, baySi, 44, s.deps[0] && s.deps[0].dir)) : badge(ri, 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
-    <span class="words">${words}</span>
+    ${lateLine}<span class="words">${words}</span>
     ${cells.length ? html`<div class="cells">${cells}</div>` : ''}</div>`;
 }
 

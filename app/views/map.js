@@ -103,7 +103,7 @@ function style(sat = true) {
       ...base,
       { id: 'spot-fill', type: 'fill', source: 'spot', paint: { 'fill-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'fill-opacity': 0.18 } },
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
-      // POOL's pickup points, each a badge: a blue square with a P, as a route's is a coloured square with its number, so a
+      // POOL's pickup points, each a badge: a blue square with a van, as a route's is a coloured square with its number, so a
       // pickup is never read as a bus stop (round, and the Blue Loop's and Route 2's blue too). Grey when it's closed. One
       // at a Connect stop stands off its dot, up and right, the stop still seen and tapped. Its area isn't drawn: a wash
       // of the walk round the pickups read as a cloud the stops were in, not as which were POOL's.
@@ -415,14 +415,16 @@ function squareImage(hex) {
   }
   return { width: n, height: n, data: d };
 }
-/** POOL's pickup badge: a rounded square in its colour, edged white, a white P; drawn at twice the size for a sharp screen. */
+/** POOL's pickup badge: a rounded square in its colour, edged white, a white van (the ride that comes); drawn at twice
+ *  the size for a sharp screen. It was a P, and a white P on a blue square is a parking sign. */
 function poolImage(hex) {
   const n = 36, c = document.createElement('canvas'); c.width = c.height = n;
   const g = c.getContext('2d');
   g.fillStyle = '#fff'; g.beginPath(); g.roundRect(0, 0, n, n, 9); g.fill();
   g.fillStyle = hex; g.beginPath(); g.roundRect(3, 3, n - 6, n - 6, 7); g.fill();
-  g.fillStyle = '#fff'; g.font = '700 22px system-ui, -apple-system, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('P', n / 2, n / 2 + 1);
+  g.fillStyle = '#fff'; g.fill(new Path2D('M7 12.5a2 2 0 0 1 2-2h14.5l5.5 5.8V23a1.5 1.5 0 0 1-1.5 1.5H8.5A1.5 1.5 0 0 1 7 23z'));   // its body
+  g.fillStyle = hex; g.fill(new Path2D('M10 13.2h4.2v3.6H10zM16 13.2h4.2v3.6H16zM22 13.2h1.2l3 3.6H22z'));   // windows, the windscreen
+  for (const x of [12.5, 23.5]) { g.fillStyle = hex; g.beginPath(); g.arc(x, 24.5, 3, 0, 7); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(x, 24.5, 1.8, 0, 7); g.fill(); }   // wheels
   return g.getImageData(0, 0, n, n);
 }
 /** An arrow for a line, pointing along it (+x, as line placement lays an icon): a chevron in the line's colour edged
@@ -2731,13 +2733,20 @@ function routeBounds(ri) {
 /** The map's canvas fitted to its box, only when they differ: a resize reallocates the canvas's whole drawing buffer
  *  (at a phone's pixel density, megabytes), and it was done on every tab tapped, the size unchanged, the costliest
  *  thing a tab did. */
+// Drawn again at once, in the same frame as the new size: a canvas sized is a canvas cleared, and drawn on the next
+// frame it showed blank between (the map flashed all through a window's resize). Its resolution set once the size
+// rests: on a big window every step of a drag changed it, the canvas built anew each time.
+let ratioWait = 0;
 function sized(m = map) {
   const box = m.getContainer(), cv = m.getCanvas();
   if (!box.clientWidth || !box.clientHeight) return;   // hidden: fitted when it's shown
   const r = inkRatio(box);
-  if (Math.abs(r - m.getPixelRatio()) > 0.05) { m.setPixelRatio(r); return; }   // a size the budget draws differently: redrawn at its ratio
+  if (Math.abs(r - m.getPixelRatio()) > 0.05) {   // a size the budget draws differently: redrawn at its ratio, when it rests
+    clearTimeout(ratioWait);
+    ratioWait = setTimeout(() => { if (Math.abs(inkRatio(box) - m.getPixelRatio()) > 0.05) { m.setPixelRatio(inkRatio(box)); m.redraw(); } }, 300);
+  }
   if (cv.clientWidth === box.clientWidth && cv.clientHeight === box.clientHeight) return;
-  m.resize();
+  m.resize(); m.redraw();
 }
 /** The map's drawing resolution: the screen's, twice at most, and within PIXELS for the whole map. A phone or a laptop
  *  is under it at full sharpness; a big tablet (a 12.9-inch iPad, 5.6 million at twice) draws a little under twice,
