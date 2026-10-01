@@ -103,13 +103,11 @@ function style(sat = true) {
       ...base,
       { id: 'spot-fill', type: 'fill', source: 'spot', paint: { 'fill-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'fill-opacity': 0.18 } },
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
-      // POOL's zone, a faint wash under everything else; its pickup points are rings under the stops, so a bus stop
-      // that is one keeps its dot inside the ring.
-      // No outline: the walk fades out, it doesn't stop at a line. Zoomed in to the streets it steps back, for its pickups.
-      { id: 'pool-zone', type: 'fill', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'fill-color': '#007AB8', 'fill-antialias': false, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 14, flavor === 'dark' ? 0.08 : 0.065, 16.5, 0.025] } },
-      { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'], 'circle-opacity': 0.15, 'circle-stroke-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
-      // A P in each, from the streets' zoom: a POOL pickup, not a bus stop, at a glance (the Blue Loop is blue too).
-      { id: 'pool-p', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 14.5, layout: { 'text-field': 'P', 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 14.5, 8, 17, 12], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'] } },
+      // POOL's pickup points, each a badge: a blue square with a P, as a route's is a coloured square with its number, so a
+      // pickup is never read as a bus stop (round, and the Blue Loop's and Route 2's blue too). Grey when it's closed. One
+      // at a Connect stop stands off its dot, up and right, the stop still seen and tapped. Its area isn't drawn: a wash
+      // of the walk round the pickups read as a cloud the stops were in, not as which were POOL's.
+      { id: 'pool-stops', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, layout: { 'icon-image': ['case', ['get', 'closed'], 'poolp-off', 'poolp-on'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 15, 0.85, 17, 1], 'icon-offset': ['case', ['>=', ['get', 'stop'], 0], ['literal', [11, -11]], ['literal', [0, 0]]], 'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: {} },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
       // A route under the pointer on a desktop (on the map, or its badge in the panel): drawn up, over the rest.
@@ -417,6 +415,16 @@ function squareImage(hex) {
   }
   return { width: n, height: n, data: d };
 }
+/** POOL's pickup badge: a rounded square in its colour, edged white, a white P; drawn at twice the size for a sharp screen. */
+function poolImage(hex) {
+  const n = 36, c = document.createElement('canvas'); c.width = c.height = n;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.beginPath(); g.roundRect(0, 0, n, n, 9); g.fill();
+  g.fillStyle = hex; g.beginPath(); g.roundRect(3, 3, n - 6, n - 6, 7); g.fill();
+  g.fillStyle = '#fff'; g.font = '700 22px system-ui, -apple-system, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('P', n / 2, n / 2 + 1);
+  return g.getImageData(0, 0, n, n);
+}
 /** An arrow for a line, pointing along it (+x, as line placement lays an icon): a chevron in the line's colour edged
  *  in the paper's, drawn at twice the size for a sharp screen. Made on demand, one per colour and look. */
 /** The way-on strands' layers, one each; and a strand's fade, full strength at its start to a trace at its end. */
@@ -447,6 +455,12 @@ function makeArrows(m) {
   }
 }
 function addUsuImages() {
+  // POOL's badges first, whatever else is loaded: made when first asked for (styleimagemissing), the map's first
+  // layout of its pickups had none, and kept that, 6 of 27 drawn over the town until a zoom laid them out again.
+  // Its data is in the style from the start, so laid out once before this: laid out again with them.
+  let made = false;
+  for (const [id, hex] of [['poolp-on', '#007AB8'], ['poolp-off', '#8a8d91']]) if (!map.hasImage(id)) { map.addImage(id, poolImage(hex), { pixelRatio: 2 }); made = true; }
+  if (made && map.getSource('pool')) map.getSource('pool').setData(poolGeo());
   if (!U) return;
   for (const r of U.routes) { const name = 'usq-' + r.color.slice(1); if (!map.hasImage(name)) map.addImage(name, squareImage(r.color)); }
 }
@@ -536,6 +550,7 @@ function loadTiles() {
 function squaresOnDemand(m) {
   m.on('styleimagemissing', e => {
     if (e.id.startsWith('usq-') && !m.hasImage(e.id)) m.addImage(e.id, squareImage('#' + e.id.slice(4)));
+    if ((e.id === 'poolp-on' || e.id === 'poolp-off') && !m.hasImage(e.id)) m.addImage(e.id, poolImage(e.id === 'poolp-on' ? '#007AB8' : '#8a8d91'), { pixelRatio: 2 });
     const a = /^arw-([0-9a-f]{6})-([dl])$/i.exec(e.id);
     if (a && !m.hasImage(e.id)) m.addImage(e.id, arrowImage(a[1], a[2] === 'd'), { pixelRatio: 2 });
   });
@@ -1428,7 +1443,7 @@ function applySelection() {
 
 /** The shuttle and POOL drawn only where they run, or when asked for: near campus (the shuttle's stops) or POOL's zone,
  *  from the streets in, and a shuttle loop, stop or bus picked. Out over the valley they'd be noise over Connect's. */
-const U_LAYERS = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels'], POOL_LAYERS = ['pool-zone', 'pool-stops', 'pool-p'];
+const U_LAYERS = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels'], POOL_LAYERS = ['pool-stops'];
 let campusBox = null, poolBox = null;
 const boxOf = pts => pts.length ? pts.reduce((b, [lon, lat]) => [Math.min(b[0], lon), Math.min(b[1], lat), Math.max(b[2], lon), Math.max(b[3], lat)], [180, 90, -180, -90]) : null;
 function quiet() {
@@ -1454,7 +1469,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5;
-const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'pool-zone', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -2793,7 +2808,7 @@ function runBounds(R, o) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60 };
-const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-stops', 'pool-p'];
+const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
