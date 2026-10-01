@@ -339,15 +339,20 @@ function trimWalk(f, best, from, to, closed) {
 }
 /** The passed stretches (passedRuns) cut from their route's shapes as the detours' are: the lines left open there,
  *  and each stretch drawn as its own feature, done (faded at the town's zoom). */
+const stretchCuts = new Map();   // 'route:from:to' → its cuts
 function passedSegments(fc) {
   const done = [], gaps = {};
   for (const [ri, a, b] of passedRuns()) {
-    const shapes = fc.features.filter(f => f.properties.route === ri);
-    const from = D.stops[a], to = D.stops[b];
-    // between towns (16 to Preston) two stops can be kilometres apart: the walk allowed as long as their gap, thrice
-    for (const cut of cutShape(shapes, from, to, [from, to], Math.max(6000, 3 * distance(from.lat, from.lon, to.lat, to.lon)))) {
-      const props = shapes.find(f => f.properties.shape === cut.shape).properties;
-      done.push({ type: 'Feature', properties: { ...props, done: true }, geometry: { type: 'LineString', coordinates: cut.coords } });
+    const k = ri + ':' + a + ':' + b;
+    if (!stretchCuts.has(k)) {   // a stretch's shape never changes: cut once
+      const shapes = fc.features.filter(f => f.properties.route === ri);
+      const from = D.stops[a], to = D.stops[b];
+      // between towns (16 to Preston) two stops can be kilometres apart: the walk allowed as long as their gap, thrice
+      stretchCuts.set(k, cutShape(shapes, from, to, [from, to], Math.max(6000, 3 * distance(from.lat, from.lon, to.lat, to.lon)))
+        .map(cut => ({ props: { ...shapes.find(f => f.properties.shape === cut.shape).properties, done: true }, coords: cut.coords, shape: cut.shape, s0: cut.s0, s1: cut.s1 })));
+    }
+    for (const cut of stretchCuts.get(k)) {
+      done.push({ type: 'Feature', properties: cut.props, geometry: { type: 'LineString', coordinates: cut.coords } });
       (gaps[cut.shape] ||= []).push([cut.s0, cut.s1]);
     }
   }
@@ -498,7 +503,7 @@ const drawn = { lines: null, closed: null, key: null };
  *  were fetched, so a refetch saying the same thing (every ten minutes, and the relay's just after launch) redraws
  *  nothing, and a detour whose day's buses are done is dropped when it is. */
 function closedKeyOf(clockNow) {
-  return clockNow.ymd + JSON.stringify(passedRuns(clockNow)) + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced]));
+  return clockNow.ymd + JSON.stringify(passedRuns(clockNow)) + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
 }
 async function loadShapes(m = map) {
   const fc = await shapes();
@@ -1707,19 +1712,22 @@ function tintStops(m, ri) {
  *  the far one. Per stop, not per route: a last run that turns back partway (16, 12) leaves the rest to the run
  *  before it, and each part fades when its own last bus has gone. Each passed stretch, as [route, from, to] stop
  *  indices. None from midnight on: the next day's last calls are all to come. */
-let passedAt = '', passed = [];
+let passedAt = '', passed = [], lastDay = null, lastRows = [];
 function passedRuns(c = now()) {
   const key = c.ymd + ':' + c.min;   // once a minute: the live feed's word on the last buses with it
   if (key === passedAt) return passed;
   passedAt = key; passed = [];
-  for (let ri = 0; ri < D.routes.length; ri++) for (const [dir, seq] of Object.entries(D.routes[ri].stops || {})) {
-    const last = seq.map(si => {
+  // The timetable's last calls worked out once a day; only the feed's word on them each minute.
+  if (lastDay !== c.ymd) {
+    lastDay = c.ymd;
+    lastRows = [];
+    for (let ri = 0; ri < D.routes.length; ri++) for (const [dir, seq] of Object.entries(D.routes[ri].stops || {})) {
       // this way's calls only: the Center's stop is the end of one way and the start of the other
-      const rows = timesOn(si, c.ymd).filter(t => t.r === ri && !t.prov && String(t.dir) === dir);
-      if (!rows.length) return null;
-      const t = lively(rows.reduce((m, t) => t.min > m.min ? t : m));
-      return t.gone ? -1 : t.min;
-    });
+      lastRows.push([ri, seq, seq.map(si => timesOn(si, c.ymd).filter(t => t.r === ri && !t.prov && String(t.dir) === dir).reduce((m, t) => !m || t.min > m.min ? t : m, null))]);
+    }
+  }
+  for (const [ri, seq, rows] of lastRows) {
+    const last = rows.map(t => { if (!t) return null; const l = t.min < c.min - 120 ? t : lively(t); return l.gone ? -1 : l.min; });   // long gone: no need to ask the feed
     for (let i = last.length - 1; i >= 0 && last[i] === null; i--) last[i] = i ? last[i - 1] : null;   // the last stop, no call of its own: as the one before
     // stop to stop: a run passed end to end on a round trip starts and ends at the Center, a cut of nothing
     for (let i = 1; i < seq.length; i++) if (last[i] !== null && last[i - 1] !== null && c.min > last[i] && seq[i] !== seq[i - 1]) passed.push([ri, seq[i - 1], seq[i]]);

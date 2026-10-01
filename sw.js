@@ -3,7 +3,7 @@
 // The phone answers from what it keeps, never waiting on the network: the app
 // as this version installed it (a deploy is a new version, and the page offers
 // a reload), the data files as last fetched, each checked behind the page.
-const VERSION = 'cr-v301';
+const VERSION = 'cr-v302';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js',
@@ -11,16 +11,22 @@ const SHELL = [
   './vendor/qrcodegen.mjs', './vendor/maplibre-gl.mjs', './vendor/maplibre-gl-shared.mjs', './vendor/maplibre-gl-worker.mjs', './vendor/maplibre-gl.css', './vendor/basemaps.mjs',
   './fonts/barlow-400.woff2', './fonts/barlow-500.woff2', './fonts/barlow-700.woff2', './fonts/barlow-condensed-400.woff2', './fonts/barlow-condensed-600.woff2',
   './icons/icon.svg', './icons/icon-96.png', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './favicon.ico',
-  './data/cvtd.json', './data/cvtd-shapes.json', './data/crossings.json', './data/grid.json', './data/usu.json', './data/alerts.json', './data/places.json', './data/osm-places.json', './data/pool.json', './data/elevation.json',
 ];
+// The data, kept apart from the app, in a cache of its own that outlasts a version: a deploy brings new code, not
+// a megabyte of timetable the phone already has (each file's checked behind the page, as ever).
+const DATA = ['./data/cvtd.json', './data/cvtd-shapes.json', './data/crossings.json', './data/grid.json', './data/usu.json', './data/alerts.json', './data/places.json', './data/osm-places.json', './data/pool.json', './data/elevation.json'];
+const DATA_CACHE = 'cr-data';
 const scope = new URL('./', self.location).href;
 
 self.addEventListener('install', e => {
   // Straight from the server, never the HTTP cache: a fresh worker means a fresh shell.
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'no-cache' })))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'no-cache' }))))
+    // the data only where the phone hasn't it yet (a first install, or the old shared cache's from before)
+    .then(() => caches.open(DATA_CACHE)).then(async d => { for (const u of DATA) if (!await d.match(u, { ignoreSearch: true })) { const res = await fetch(new Request(u, { cache: 'no-cache' })); if (res.ok) await d.put(u, res); } })
+    .then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'cr-map' && k !== 'cr-assets').map(k => caches.delete(k))))
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'cr-map' && k !== 'cr-assets' && k !== DATA_CACHE).map(k => caches.delete(k))))
     // The index once kept among the tiles, where a map merely opened left it looking saved: the mark is its own now.
     .then(() => caches.open('cr-map')).then(c => c.delete(scope + 'tiles/tiles.json'))
     .then(() => self.clients.claim()));
@@ -48,9 +54,9 @@ async function shell(req) {
 
 /** A data file as last fetched, at once, and the network asked behind it; the network waited on only with nothing kept. */
 async function keptThenChecked(e) {
-  const c = await caches.open(VERSION);
+  const c = await caches.open(DATA_CACHE);
   const hit = await c.match(e.request, { ignoreSearch: true });
-  if (!hit) return networkFirst(e.request);
+  if (!hit) return networkFirst(e.request, DATA_CACHE);
   e.waitUntil(fetch(e.request, { cache: 'no-cache' }).then(res => res.ok ? c.put(e.request, res) : null).catch(() => {}));
   return hit;
 }
@@ -64,8 +70,8 @@ async function cacheFirst(req, name) {
   return res;
 }
 
-async function networkFirst(req) {
-  const c = await caches.open(VERSION);
+async function networkFirst(req, name = VERSION) {
+  const c = await caches.open(name);
   try {
     const res = await fetch(req, { cache: 'no-cache' });
     if (res.ok) c.put(req, res.clone());

@@ -622,6 +622,7 @@ async function boot() {
     lastMin = m;
     render(true);
   }, 5000);
+  window.addEventListener('seenchange', () => render());   // the detours seen from the buses, traced along the streets
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; autoLocate(); if (Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); else render(); });
   setInterval(() => { if (document.visibilityState === 'visible' && Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); }, 60e3);   // a notice posted while the app is open shows within minutes
   // Fresh bus positions redraw a live screen in place.
