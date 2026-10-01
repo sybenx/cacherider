@@ -343,6 +343,17 @@ export const stop = i => D.stops[i];
 export const stopIndex = id => D.stopById[id];
 
 /** Which services run on a day: the calendar's rows, then the exceptions. */
+/** When a day's buses run, from its timetable: [first departure, last] in that day's minutes (past 1440 after
+ *  midnight), or null when nothing runs. */
+const spans = new Map();
+export function serviceSpan(ymd) {
+  if (!spans.has(ymd)) {
+    const on = servicesOn(ymd); let lo = Infinity, hi = -Infinity;
+    for (const per of Object.values(D.times)) for (const sid in per) if (on.has(sid)) for (const t of per[sid]) { if (t[0] < lo) lo = t[0]; if (t[0] > hi) hi = t[0]; }
+    spans.set(ymd, lo <= hi ? [lo, hi] : null);
+  }
+  return spans.get(ymd);
+}
 export function servicesOn(ymd) {
   const d = dayFrom(ymd);
   const dow = (d.dow + 6) % 7;   // GTFS counts from Monday

@@ -42,6 +42,146 @@ for p in places:
     if p.get('ghost') or not inside(lon, lat, ZONE): continue
     name = ' '.join(p['name'].replace('(', ' (').split())   # '5 North Main(Providence City Hall)' reads as two words
     stops.append({'id': p['gtfsStopId'], 'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': fixed.get(p['gtfsStopId'])})
+# The Transit Center: the zone reaches up to it (a strip along 100 East) to serve it, but its pickup there stands at
+# the bays, just outside the strip, and the test above loses it. Where the zone comes within the Center's own radius
+# (as far out as its bays go), the pickup at the Center is kept: the one Remix names for the Center, else its nearest.
+import math
+def metres(a, b): return math.hypot((a[0] - b[0]) * 111320 * math.cos(math.radians(a[1])), (a[1] - b[1]) * 110540)
+hub = D['hub']; H = (hub['lon'], hub['lat'])
+reach = max([metres(H, (s['lon'], s['lat'])) for s in D['stops'] if s.get('hub')] or [150]) + 20
+if min(metres(H, v) for v in ZONE) <= reach and not any(metres(H, (s['lon'], s['lat'])) <= reach for s in stops):
+    near = [p for p in places if not p.get('ghost') and metres(H, p['geometry']['coordinates'][:2]) <= reach]
+    near.sort(key=lambda p: (hub['name'].lower() not in p['name'].lower(), metres(H, p['geometry']['coordinates'][:2])))
+    if near:
+        lon, lat = near[0]['geometry']['coordinates'][:2]
+        stops.append({'id': near[0]['gtfsStopId'], 'name': hub['name'], 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': None, 'hub': True})
 stops.sort(key=lambda s: s['name'])
-json.dump({'from': 'Connect, via Remix', **INFO, 'zone': ZONE, 'stops': stops}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+
+# The area as drawn: a soft blob round each pickup point, run together where points are near one another (metaballs:
+# each point's pull falling off over R, the outline where their sum is half a lone point's peak), so a point on its
+# own is its own small round, and a cluster one shape. The zone itself, Remix's outline, stays for asking whether a
+# place is inside; it's a planning boundary, not what a rider can walk to.
+# A point with no other within ALONE is a small round of its own (the Transit Center's); the rest are groups (points
+# within GROUP of one another), each a large blob, and the groups joined into one shape by a narrower neck along the
+# shortest link between them, each to its nearest (a spanning tree), so the area reads as one region, its clusters
+# still seen, rather than blobs grown till they touch and swallow the town between.
+R, R_SMALL, R_NECK, W_NECK, LEVEL, CELL, ALONE, GROUP = 420, 180, 250, 0.22, 0.5, 30, 900, 900
+lat0 = sum(s['lat'] for s in stops) / len(stops); kx, ky = 111320 * math.cos(math.radians(lat0)), 110540
+pts = [((s['lon']) * kx, s['lat'] * ky) for s in stops]
+dist = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
+# Places, not points: pickups within SAME of one another are one (two at the Tabernacle, one spot). A group is three
+# places or more within GROUP of one another; fewer, each is on its own (the Tabernacle, the Center, River Heights).
+SAME, MIN_GROUP, ON_WAY = 40, 3, 1.3
+places = []
+for p in pts:
+    if not any(dist(p, q) <= SAME for q in places): places.append(p)
+clusters = []
+for p in places:   # single-linkage: a place joins every cluster it's near, and those merge
+    near = [g for g in clusters if any(dist(p, q) <= GROUP for q in g)]
+    clusters = [g for g in clusters if g not in near] + [[p] + [q for g in near for q in g]]
+groups = [g for g in clusters if len(g) >= MIN_GROUP]
+alone = [p for g in clusters if len(g) < MIN_GROUP for p in g]
+grouped = [p for g in groups for p in g]
+bridges, joined = [], [groups[0]] if groups else []
+rest = groups[1:]
+while rest:   # Prim's: the nearest group to those joined, by its closest pair of places
+    a, b, g = min(((a, b, g) for g in rest for b in g for j in joined for a in j), key=lambda t: dist(t[0], t[1]))
+    # by way of a lone place that's on the way (River Heights, between the bench and Providence): the neck through it
+    via = min(alone, key=lambda c: dist(a, c) + dist(c, b), default=None)
+    if via is not None and dist(a, via) + dist(via, b) <= ON_WAY * dist(a, b): bridges += [(a, via), (via, b)]
+    else: bridges.append((a, b))
+    joined.append(g); rest.remove(g)
+balls = [(p, R, 1.0) for p in grouped] + [(p, R_SMALL, 1.0) for p in alone]
+# The necks apart: drawn as they are, over hill and bus stop alike, so the region stays one piece.
+necks = []
+for a, b in bridges:
+    n = max(1, int(dist(a, b) / 150))
+    necks += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(0, n + 1)]
+neck = lambda x, y: sum(W_NECK * math.exp(-((x - px) ** 2 + (y - py) ** 2) / R_NECK ** 2) for px, py in necks)
+x0, x1 = min(p[0] for p in pts) - 2 * R, max(p[0] for p in pts) + 2 * R
+y0, y1 = min(p[1] for p in pts) - 2 * R, max(p[1] for p in pts) + 2 * R
+nx, ny = int((x1 - x0) / CELL) + 1, int((y1 - y0) / CELL) + 1
+# The lie of the land (data/elevation.json, tools/elevation.py): a point's pull fades with the height between it and
+# the ground there, H metres taking it to a third, so a blob keeps to the floor or bench its stops stand on and
+# doesn't climb a canyon side or spill off a bench edge. No grid: flat, as before.
+H = 25
+try:
+    EL = json.load(open(os.path.join(ROOT, 'data', 'elevation.json')))
+    EL['z'] = [[sum(r[:k + 1]) for k in range(len(r))] for r in EL['d']]
+except Exception: EL = None
+def height(x, y):
+    if not EL: return None
+    lat, lon = y / ky, x / kx
+    r, c = (EL['lat0'] - lat) / EL['dlat'] - 0.5, (lon - EL['lon0']) / EL['dlon'] - 0.5
+    if r < 0 or c < 0 or r > EL['rows'] - 1 or c > EL['cols'] - 1: return None
+    r0, c0 = int(r), int(c); fr, fc = r - r0, c - c0; z = EL['z']; r1, c1 = min(r0 + 1, EL['rows'] - 1), min(c0 + 1, EL['cols'] - 1)
+    return z[r0][c0] * (1 - fc) * (1 - fr) + z[r0][c1] * fc * (1 - fr) + z[r1][c0] * (1 - fc) * fr + z[r1][c1] * fc * fr
+balls = [(p, r, w, height(*p)) for p, r, w in balls]
+def at(x, y):
+    h = height(x, y)
+    return sum(w * math.exp(-((x - px) ** 2 + (y - py) ** 2) / r ** 2) * (math.exp(-((h - hp) / H) ** 2) if h is not None and hp is not None else 1) for (px, py), r, w, hp in balls)
+# A bus stop that isn't a pickup (POOL doesn't stop there) is left out: a dent round it, just deep enough to put it
+# outside, or a small hole where it's well inside. Not the Transit Center's bays: its pickup is at them.
+R_OUT, KEEP = 90, 40   # metres: the dent's size; a bus stop this near a pickup is that pickup
+dents = []
+for b in D['stops']:
+    if b.get('hub'): continue
+    q = (b['lon'] * kx, b['lat'] * ky)
+    if any(dist(q, p) <= KEEP for p in pts): continue
+    f = at(*q)
+    if f >= LEVEL: dents.append((q, f - LEVEL + 0.15))
+def cell(x, y): return max(at(x, y) - sum(w * math.exp(-((x - qx) ** 2 + (y - qy) ** 2) / R_OUT ** 2) for (qx, qy), w in dents), neck(x, y))
+field = [[cell(x0 + i * CELL, y0 + j * CELL) for i in range(nx)] for j in range(ny)]
+# marching squares: each cell's crossings of the level, as segments, joined into rings
+def cross(a, b, fa, fb): t = (LEVEL - fa) / (fb - fa); return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+segs = []
+for j in range(ny - 1):
+    for i in range(nx - 1):
+        c = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+        v = [field[y][x] for x, y in c]
+        edges = []
+        for k in range(4):
+            (ax, ay), (bx, by), fa, fb = c[k], c[(k + 1) % 4], v[k], v[(k + 1) % 4]
+            if (fa >= LEVEL) != (fb >= LEVEL): edges.append(cross((ax, ay), (bx, by), fa, fb))
+        if len(edges) == 2: segs.append((edges[0], edges[1]))
+        elif len(edges) == 4:   # a saddle: joined as the middle's value says
+            mid = sum(v) / 4
+            segs += [(edges[0], edges[1]), (edges[2], edges[3])] if (mid >= LEVEL) == (v[0] >= LEVEL) else [(edges[0], edges[3]), (edges[1], edges[2])]
+key = lambda p: (round(p[0], 6), round(p[1], 6))
+ends = {}
+for a, b in segs: ends.setdefault(key(a), []).append(b); ends.setdefault(key(b), []).append(a)
+rings, used = [], set()
+for a, b in segs:
+    if (key(a), key(b)) in used: continue
+    ring, prev, cur = [a], a, b
+    used.add((key(a), key(b))); used.add((key(b), key(a)))
+    while key(cur) != key(a):
+        ring.append(cur)
+        nxt = next((n for n in ends[key(cur)] if key(n) != key(prev) and (key(cur), key(n)) not in used), None)
+        if nxt is None: break
+        used.add((key(cur), key(nxt))); used.add((key(nxt), key(cur)))
+        prev, cur = cur, nxt
+    if len(ring) > 3: rings.append(ring)
+def simplify(r, tol):   # Douglas-Peucker on grid units
+    if len(r) < 3: return r
+    (ax, ay), (bx, by) = r[0], r[-1]
+    d = [abs((by - ay) * (px - ax) - (bx - ax) * (py - ay)) / (math.hypot(bx - ax, by - ay) or 1) for px, py in r[1:-1]]
+    i = max(range(len(d)), key=d.__getitem__) + 1
+    return simplify(r[:i + 1], tol)[:-1] + simplify(r[i:], tol) if d[i - 1] > tol / CELL else [r[0], r[-1]]
+def lonlat(p): return [round((x0 + p[0] * CELL) / kx, 5), round((y0 + p[1] * CELL) / ky, 5)]
+def contains(ring, pt):
+    c = False
+    for i in range(len(ring)):
+        (x1_, y1_), (x2_, y2_) = ring[i], ring[i - 1]
+        if (y1_ > pt[1]) != (y2_ > pt[1]) and pt[0] < (x2_ - x1_) * (pt[1] - y1_) / (y2_ - y1_) + x1_: c = not c
+    return c
+def closed(r, tol):   # a loop simplified in two halves, from its first point to the point farthest from it and back
+    far = max(range(len(r)), key=lambda i: math.hypot(r[i][0] - r[0][0], r[i][1] - r[0][1]))
+    return simplify(r[:far + 1], tol)[:-1] + simplify(r[far:] + [r[0]], tol)
+rings = [closed(r, 6) for r in rings]
+outer = [r for r in rings if sum(contains(o, r[0]) for o in rings if o is not r) % 2 == 0]
+area = [[[lonlat(p) for p in o]] + [[lonlat(p) for p in h] for h in rings if h not in outer and contains(o, h[0])] for o in outer]
+json.dump({'from': 'Connect, via Remix', **INFO, 'zone': ZONE, 'area': area, 'stops': stops}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+print(f"{len(dents)} bus stops left out;", file=sys.stderr)
+print(f"{len(area)} blobs ({len(alone)} lone points, {len(groups)} groups joined by {len(bridges)} necks), {sum(len(p[0]) for p in area)} points;", file=sys.stderr)
 print(f"{len(stops)} POOL pickup points ({sum(1 for s in stops if s['stop'] is not None)} of them bus stops too), {os.path.getsize(OUT) // 1024} KB", file=sys.stderr)

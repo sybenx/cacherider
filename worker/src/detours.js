@@ -53,7 +53,7 @@ async function lines() {
     const span = h && h[DAYS.indexOf(p.weekday)], m = +p.hour * 60 + +p.minute;
     return !h || (!!span && m >= span[0] - 10 && m <= span[1]);   // no hours known: counted, as before
   };
-  L = { xy, off, inHours }; lAt = Date.now();
+  L = { xy, off, inHours, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
   return L;
 }
 const far = (L, p, lat, lon) => { const q = L.xy(lat, lon); return Math.hypot(p[0] - q[0], p[1] - q[1]); };

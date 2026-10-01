@@ -68,6 +68,8 @@ const SAMPLES = 3, EVERY = 20000, KEEP = 14 * 86400;
 async function track(env) {
   let W = null;
   try { W = await watchStart(env); } catch (e) { /* the samples still go in */ }
+  // Nothing running by the timetable (every route out of its hours): the feed not asked, nothing written.
+  if (W && !W.L.anyInHours(Date.now())) return;
   for (let i = 0; i < SAMPLES; i++) {
     if (i) await new Promise(r => setTimeout(r, EVERY));
     try {

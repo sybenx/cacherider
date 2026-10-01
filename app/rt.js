@@ -2,8 +2,8 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, LIVE_URL, tripStops, tripEnd, runOf, timesOn } from './data.js';
-import { now, dayDiff, clockText } from './time.js';
+import { D, setLive, distance, LIVE_URL, tripStops, tripEnd, runOf, timesOn, serviceSpan } from './data.js';
+import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
 const POLL = 5000, STALE = 90000;   // each bus reports every 3 to 8 seconds; the relay keeps the feed 5
@@ -54,10 +54,19 @@ function toMin(sec) {
 let todayAt = 0, todayYmd = '';
 function today() { const t = Date.now(); if (t - todayAt > 1000) { todayAt = t; todayYmd = now().ymd; } return todayYmd; }
 
+/** Whether buses should be out now, by the timetable: from 20 minutes before the day's first departure (buses pull
+ *  out ahead of it) to an hour after its last (a late one still coming in), yesterday's late night included. Outside
+ *  that the feed is asked every two minutes, not every five seconds: a bus out of hours is rare, and still shows. */
+const IDLE = 120000;
+function busesDue() {
+  const c = now(), today = serviceSpan(c.ymd), last = serviceSpan(dayFrom(c.ymd, -1).ymd);
+  return (!!today && c.min >= today[0] - 20 && c.min <= today[1] + 60) || (!!last && c.min + 1440 <= last[1] + 60);
+}
 let lastTry = 0;
 async function tick(force) {
   if (!rt.wanted || rt.fetching || !D) return;
   if (!force && document.visibilityState !== 'visible') return;
+  if (!force && Date.now() - lastTry < IDLE && !busesDue()) return;
   rt.fetching = true; lastTry = Date.now();
   try {
     const j = await (await fetch(RT_URL, { cache: 'no-store' })).json();

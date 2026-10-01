@@ -106,7 +106,7 @@ function style(sat = true) {
       // POOL's zone, a faint wash under everything else; its pickup points are rings under the stops, so a bus stop
       // that is one keeps its dot inside the ring.
       { id: 'pool-zone', type: 'fill', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'fill-color': '#007AB8', 'fill-opacity': flavor === 'dark' ? 0.1 : 0.08 } },
-      { id: 'pool-edge', type: 'line', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'line-color': '#007AB8', 'line-width': 1.2, 'line-dasharray': [3, 2], 'line-opacity': 0.55 } },
+      { id: 'pool-edge', type: 'line', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], layout: { 'line-join': 'round' }, paint: { 'line-color': '#007AB8', 'line-width': 1.2, 'line-opacity': 0.45 } },
       { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': '#007AB8', 'circle-opacity': 0.15, 'circle-stroke-color': '#007AB8', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
@@ -348,7 +348,8 @@ function placesGeo() {
 function poolGeo() {
   if (!POOL) return { type: 'FeatureCollection', features: [] };
   return { type: 'FeatureCollection', features: [
-    { type: 'Feature', properties: { kind: 'zone' }, geometry: { type: 'Polygon', coordinates: [POOL.zone] } },
+    // Drawn as the blobs round its pickup points (tools/pool.py), where it has them: Remix's outline is a planning line.
+    { type: 'Feature', properties: { kind: 'zone' }, geometry: POOL.area ? { type: 'MultiPolygon', coordinates: POOL.area } : { type: 'Polygon', coordinates: [POOL.zone] } },
     ...POOL.stops.map(s => ({ type: 'Feature', properties: { kind: 'stop', id: s.id, name: s.name, stop: s.stop === null || s.stop === undefined ? -1 : s.stop }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
   ] };
 }
@@ -1360,7 +1361,7 @@ const boxOf = pts => pts.length ? pts.reduce((b, [lon, lat]) => [Math.min(b[0], 
 function quiet() {
   if (!map || !ready || MT.R || JR) return;   // a run or a way dresses the map its own way
   if (!campusBox && U) campusBox = boxOf(U.stops.filter(s => s.routes.length).map(s => [s.lon, s.lat]));
-  if (!poolBox && POOL) poolBox = boxOf(POOL.zone);
+  if (!poolBox && POOL) poolBox = boxOf(POOL.area ? POOL.area.flatMap(p => p[0]) : POOL.zone);
   const z = map.getZoom(), v = map.getBounds(), m = 0.003;   // a few hundred metres round the box
   const near = (b, zmin = 13.5) => !!b && z >= zmin && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
   const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
