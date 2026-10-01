@@ -11,7 +11,7 @@ it. To refresh the outline: open https://rideconnectutah.gov/map/pool/'s iframe,
   window._mapboxInstance.getStyle().sources[Object.keys(...).find(k => k.startsWith('zones-'))].data.features[0].geometry.coordinates[0]
 Hours and the phone number are from https://rideconnectutah.gov/pool/. Nothing here is fetched while a rider uses the app.
 """
-import json, os, sys, urllib.parse, urllib.request
+import json, os, sys, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'pool.json')
@@ -52,18 +52,33 @@ reach = max([metres(H, (s['lon'], s['lat'])) for s in D['stops'] if s.get('hub')
 if min(metres(H, v) for v in ZONE) <= reach and not any(metres(H, (s['lon'], s['lat'])) <= reach for s in stops):
     near = [p for p in places if not p.get('ghost') and metres(H, p['geometry']['coordinates'][:2]) <= reach]
     near.sort(key=lambda p: (hub['name'].lower() not in p['name'].lower(), metres(H, p['geometry']['coordinates'][:2])))
-    # Where it stands, OpenStreetMap knows better than Remix (whose point is the middle of the bays): its stop named
-    # for POOL at the Center (node 12873238387 when written), asked of Overpass once; Remix's point if that fails.
+    # Where it stands, OpenStreetMap knows better than Remix (whose point is the middle of the bays), and the map's
+    # own tiles (tiles/, our copy of it) have it: a bus stop named for POOL within the Center's reach (OSM node
+    # 12873238387 when written). Read off disk, so it follows OpenStreetMap whenever the tiles are cut afresh;
+    # Remix's point only where the tiles have none.
     osm = None
     try:
-        q = f'[out:json][timeout:30];node(around:{reach:.0f},{hub["lat"]},{hub["lon"]})[highway=bus_stop][name~"^pool$",i];out;'
-        r = urllib.request.Request('https://overpass-api.de/api/interpreter', data=urllib.parse.urlencode({'data': q}).encode(), headers={'User-Agent': 'cacherider-pool/1.0 (+https://cacherider.com)'})
-        els = json.load(urllib.request.urlopen(r, timeout=60))['elements']
-        if els: osm = min(els, key=lambda e: metres(H, (e['lon'], e['lat'])))
-    except Exception as e: print('Overpass:', e, '(Remix\'s point kept)', file=sys.stderr)
+        import gzip
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import mapbox_vector_tile as mvt
+        from roads import tile_of, lonlat as tile_lonlat, TILES, Z
+        tx, ty = tile_of(hub['lon'], hub['lat'])
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                f = os.path.join(TILES, str(Z), str(tx + dx), str(ty + dy) + '.pbf')
+                if not os.path.exists(f): continue
+                b = open(f, 'rb').read()
+                if b[:2] == b'\x1f\x8b': b = gzip.decompress(b)
+                conv = tile_lonlat(tx + dx, ty + dy)
+                for ft in mvt.decode(b, default_options={'y_coord_down': True}).get('pois', {}).get('features', []):
+                    pr, g = ft['properties'], ft['geometry']
+                    if pr.get('kind') != 'bus_stop' or str(pr.get('name', '')).strip().lower() != 'pool' or g['type'] != 'Point': continue
+                    at = conv(*g['coordinates'])
+                    if metres(H, at) <= reach and (osm is None or metres(H, at) < metres(H, osm)): osm = at
+    except Exception as e: print("the Center's POOL stop not read from the tiles:", e, file=sys.stderr)
     if near or osm:
-        lon, lat = (osm['lon'], osm['lat']) if osm else near[0]['geometry']['coordinates'][:2]
-        stops.append({'id': near[0]['gtfsStopId'] if near else 'osm' + str(osm['id']), 'name': hub['name'], 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': None, 'hub': True})
+        lon, lat = osm if osm else near[0]['geometry']['coordinates'][:2]
+        stops.append({'id': near[0]['gtfsStopId'] if near else 'osm-pool', 'name': hub['name'], 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': None, 'hub': True})
 # A pickup at a bus stop carries that stop's own GTFS id (seven digits, as every stop in the timetable has; POOL's own
 # points have Remix's short numbers). One whose bus stop has left the timetable stands at a stop that's gone (36 W
 # 1200 S, South Walmart's Blue Loop stop, out during construction): marked gone, covering nothing, for as long as
