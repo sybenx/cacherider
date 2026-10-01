@@ -726,6 +726,8 @@ let stayRoute = false;
 function pickRoute(ri, app) {
   const h = '#/map/route/' + encodeURIComponent(D.routes[ri].short);
   if (location.hash === h || location.hash.startsWith(h + '/') || location.hash.startsWith(h + '?')) {
+    // A bus ringed on it (?bus=): the route itself now, the address too, and the bus let go.
+    if (location.hash.includes('?')) location.hash = location.hash.split('?')[0];
     frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
     const card = col.querySelector('#mapcard');
     if (!wide() && card.querySelector(':scope > .routesheet')) { card.classList.remove('peek'); card.classList.add('open'); }
@@ -1017,6 +1019,13 @@ export function routePage(o, clockNow) {
 /** A bus from a route's list, ringed on the map and the map eased to it; the sheet stays. One not placed yet is
  *  ringed when it appears. */
 let ringed = null, wantRing = null;
+/** The ringed bus let go: the route as it is, its times the route's, not that bus's. */
+function unring() {
+  ringed = null;
+  for (const m of busMarkers.values()) m.el.classList.toggle('on', selectedBus === m.id);
+  applySelection();
+  if (focusRoute !== undefined) routeTimesSoon(focusRoute, now());
+}
 function ringBus(id) {
   const m = busMarkers.get(id);
   if (!m) { wantRing = id; return; }
@@ -2608,7 +2617,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
     else col.querySelector('#mapcard').classList.remove('open');
     if (focus && (changed || resized || whole) && !stayRoute) frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
     stayRoute = false;
-    if (bus) ringBus(bus); else wantRing = null;
+    if (bus) ringBus(bus); else { wantRing = null; if (ringed) unring(); }
     return;
   }
   if (stopId) {
