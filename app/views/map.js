@@ -1912,10 +1912,9 @@ function busScale() {
   if (small !== busSmallAt) { busSmallAt = small; c.classList.toggle('bus-small', small); }
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
-// An Aggie shuttle's: the same arrow made an A, its notch the legs. Close in, a counter above the notch in the marker's
-// colour (not a hole, so the hollow arrow far off stays whole), what's between it and the notch the crossbar; far off,
-// the hollow arrow given a crossbar of its own. Each shown only on its own marker (app.css).
-const ARROW_A = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/><path class="a" d="M12 7.8 14.7 13.4H9.3z"/><path class="bar" d="M8.6 11.5H15.4"/></svg>';
+// An Aggie shuttle's: an A, its apex the way it heads. Close in solid (its counter a hole); far off in strokes, two legs
+// and a crossbar (app.css shows the one its marker wants).
+const ARROW_A = '<svg viewBox="0 0 24 24" fill="#fff"><path class="af" fill-rule="evenodd" d="M12 3 20 20H17L15.12 16H8.88L7 20H4ZM12 9.37 13.71 13H10.29Z"/><path class="as" d="M5 20.5 12 3.5l7 17M7.7 14H16.3"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 /** A way drawn for another day: no bus out now is one of its. */
 const wayLater = () => !!(JR && JR.plan && JR.plan.ymd !== now().ymd);
