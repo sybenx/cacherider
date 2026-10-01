@@ -592,6 +592,7 @@ async function made(app) {
   map.on('load', () => { ready = true; markNear(nearIds, nearBy); addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimesSoon(focusRoute, now()); });
   map.on('idle', () => (window.requestIdleCallback || (f => setTimeout(f, 200)))(warmViews, { timeout: 2000 }));
   map.on('zoom', busScale);
+  map.on('rotateend', keepHubTurn);
   map.on('move', quiet);
   map.on('moveend', northAgain);
   map.on('rotatestart', e => { if (e.originalEvent) { hubTurned = false; northDue = false; } });   // turned by the rider: theirs to keep
@@ -1289,13 +1290,16 @@ function northControl() {
       // On the Center, always there: the bays turned between south up (as its benches face, the way it opens) and north
       // up, and the turn kept for next time; a desktop has no turn of the fingers to find. Elsewhere, north again.
       const atHub = () => /^#\/hub/.test(location.hash);
+      // At the Center: north up, and from north up back to south (as its benches face); any other turn is the fingers'.
       b.onclick = () => {
         if (!atHub()) { m.resetNorth({ duration: 400 }); return; }
-        pref('hub-up', Math.abs(m.getBearing()) > 90 ? 'north' : null);
+        pref('hub-bearing', Math.abs(m.getBearing()) > 1 ? '0' : '180');
         frame(hubBounds(), { ...hubFit(), duration: 500 });
       };
+      const UP = { 0: 'North up', 90: 'East up', 180: 'South up, as the benches face', 270: 'West up' };
       const sync = () => {
-        const a = m.getBearing(), hub = atHub(), say = hub ? (Math.abs(a) > 90 ? 'North up' : 'South up, as the benches face') : 'Point north';
+        const a = m.getBearing(), hub = atHub(), q = (Math.round(a / 90) * 90 + 360) % 360;
+        const say = hub ? (Math.abs(((a - q + 540) % 360) - 180) < 2 ? UP[q] : 'Turned') : 'Point north';
         el.classList.toggle('on', hub || Math.abs(a) > 0.5); b.querySelector('svg').style.transform = `rotate(${-a}deg)`;
         if (b.title !== say) { b.title = say; b.setAttribute('aria-label', say); }
       };
@@ -1635,7 +1639,17 @@ function hubFold(on) {
  *  North; in to the bays' own zoom at the least, whatever covers the map. */
 function hubBounds() { const bb = new maplibregl.LngLatBounds(); for (const b of D.hub.bays) bb.extend([b.lon, b.lat]); return bb; }
 /** Which way the Center faces: south up, as its benches do, unless the rider turned it north (its compass button). */
-const hubBearing = () => pref('hub-up') === 'north' ? 0 : 180;
+/** Which way the Center faces: as the rider last turned it, kept on the phone (a coworker reads it east up); else
+ *  south up, as its benches face. The compass's old north-or-south choice stands until it's turned. */
+const hubBearing = () => { const b = parseFloat(pref('hub-bearing')); return Number.isFinite(b) ? b : pref('hub-up') === 'north' ? 0 : 180; };
+/** A turn of the fingers at the Center, kept: within 10° of north, east, south or west it settles on it. */
+function keepHubTurn(e) {
+  if (!hubOn || !e.originalEvent) return;   // the map's own turns (framing the Center) aren't the rider's
+  const a = ((map.getBearing() % 360) + 360) % 360, q = Math.round(a / 90) * 90 % 360, d = Math.abs(((a - q + 540) % 360) - 180);
+  const b = d <= 10 ? q : Math.round(a);
+  pref('hub-bearing', String(b > 180 ? b - 360 : b));
+  if (b !== Math.round(a)) map.easeTo({ bearing: b > 180 ? b - 360 : b, duration: 200 });
+}
 const hubFit = () => ({ margin: wide() ? 100 : HUB_M, bearing: hubBearing(), minZoom: HUB_Z + 0.2, maxZoom: wide() ? 19 : 18.4 });   // beside a wide panel, the bays fill the map (it was a third of it)
 
 /** The tiles of the views a tab will ask for, built ahead while the map sits idle: the Center's bays, and the town as
@@ -1728,10 +1742,17 @@ function tilesFor(T, cam) {
  *  the search bar above it and the board below. */
 const HUB_M = 52;   // the margin round the bays on a phone: room for a bus on a top badge, and 500 North below
 function hubRoom() {
-  let w = 180, n = 90, e = -180, so = -90;
-  for (const b of D.hub.bays) { w = Math.min(w, b.lon); e = Math.max(e, b.lon); so = Math.max(so, b.lat); n = Math.min(n, b.lat); }
+  // The bays' spread across and up the screen as the Center is turned: south or north up it's wide, east or west up
+  // tall (turned east up, its spread was reckoned wide still, and the bays at either end went under the bar and the board).
   const my = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
-  const spanX = (e - w) / 360, spanY = (my(so) - my(n)) / (2 * Math.PI);   // as fractions of the world
+  const t = hubBearing() * Math.PI / 180, c = Math.cos(t), sn = Math.sin(t);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const b of D.hub.bays) {
+    const X = b.lon / 360, Y = my(b.lat) / (2 * Math.PI);   // as fractions of the world
+    const x = X * c - Y * sn, y = X * sn + Y * c;
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  const spanX = x1 - x0, spanY = y1 - y0;
   const width = map.getContainer().clientWidth - 2 * HUB_M;
   const z = Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * spanX))));
   return Math.round(topCover() + 2 * HUB_M + spanY * 512 * 2 ** z);
