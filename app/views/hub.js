@@ -258,7 +258,9 @@ export function bays(bay, clockNow) {
     // and nobody takes a bus leaving for one sitting.
     const in_ = tags && !s.off && s.eta === 0, bus = in_ ? rt.buses.find(x => x.id === s.at) : null;
     const here = !!bus && distance(bus.lat, bus.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(bus.speed > PARKED);
-    const tag = !tags || s.off || in_ ? '' : s.eta > 0 ? s.eta + ' MIN' : '';
+    // In but not drawn on its badge (creeping into its bay or out of it, between standing here and leaving): HERE, as
+    // the board says. Without it the badge said nothing, its bus under it, and a rider read the bay as empty.
+    const tag = !tags || s.off ? '' : in_ ? (here ? '' : 'HERE') : s.eta > 0 ? s.eta + ' MIN' : '';
     const course = here ? bus.course ?? null : null;   // which way it faces in its bay
     return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, here, bus: here ? bus.id : null, course, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);
