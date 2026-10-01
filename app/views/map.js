@@ -1322,9 +1322,9 @@ function quiet() {
 
 // ---- the Transit Center close up. From the streets in (HUB_Z) with the Center on screen, the bays are the map:
 // each bay's stop wears its route's badge with where its bus is, as the timetable places it; the route lines, stop
-// dots and times, all converging on one block, are put away, and the buses standing in their bays with them (a
-// badge's IN says so). Badges that land on one another are eased apart on the screen, afresh at each zoom.
-const HUB_Z = 17.5, HUB_IN = 110;   // metres from the hall: a bus this close is in
+// dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
+// drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
+const HUB_Z = 17.5, HUB_IN = 110, HUB_STILL = 3;   // metres from the hall: a bus this close is in; metres a second: one slower stands
 const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
@@ -1378,6 +1378,9 @@ function paper(on) {
         : l.type === 'symbol' ? [['text-opacity', 0.12], ['icon-opacity', 0.12]] : [];
       for (const [prop, v] of props) { paperKept.push([l.id, prop, map.getPaintProperty(l.id, prop)]); map.setPaintProperty(l.id, prop, v); }
     }
+    // The paths drawn as paths, thin and broken, the drives the buses take wider and whole: alike in the basemap,
+    // where a path was the wider of the two.
+    for (const [prop, v] of [['line-width', ['interpolate', ['exponential', 1.6], ['zoom'], 14, 0.5, 20, 3]], ['line-dasharray', [2, 1.5]]]) if (map.getLayer('roads_other')) { paperKept.push(['roads_other', prop, map.getPaintProperty('roads_other', prop)]); map.setPaintProperty('roads_other', prop, v); }
   } else if (!on && paperKept) {
     for (const [id, prop, v] of paperKept) if (map.getLayer(id)) map.setPaintProperty(id, prop, v === undefined ? null : v);
     paperKept = null;
@@ -1397,11 +1400,13 @@ function hubBadges() {
       m = { el, marker: new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([b.lon, b.lat]).addTo(map), at: [b.lon, b.lat] };
       hubMarks.set(b.k, m);
     }
+    m.here = b.here;
     m.el.classList.add('hbay');   // toggled, not set: the marker's own classes place it
     for (const [c, on] of [['on', b.on], ['dim', b.dim], ['off', b.off]]) m.el.classList.toggle(c, on);
     m.el.href = b.on ? '#/hub' : '#/hub/' + b.k;
     m.el.title = b.title;
-    const inner = `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag${b.tag === 'HERE' ? ' in' : ''}">${b.tag.replace(' MIN', 'm')}</span>` : '');
+    // Its bus in, a bus's circle on the badge, where the map's buses are put away: the bus at its bay, as it stands.
+    const inner = (b.here ? `<span class="hbus" style="--bus-color:${dark() ? lift(b.color) : b.color}"></span>` : '') + `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag">${b.tag.replace(' MIN', 'm')}</span>` : '');
     if (m.el.innerHTML !== inner) m.el.innerHTML = inner;
   }
   easeBays();
@@ -1409,12 +1414,12 @@ function hubBadges() {
 /** Badges that would touch pushed apart on the screen, a little air between each pair, each still pointing from
  *  as near its own stop as the others let it. */
 function easeBays() {
-  const ms = [...hubMarks.values()], AIR_X = 34, AIR_Y = 38;
+  const ms = [...hubMarks.values()], AIR_X = 34, AIR_Y = 38, BUS_Y = 20;   // and room for a bus on the lower one's top
   const p = ms.map(m => { const q = map.project(m.at); return { x: q.x, y: q.y, x0: q.x, y0: q.y }; });
   for (let it = 0; it < 60; it++) {
     let moved = false;
     for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) {
-      const a = p[i], b = p[j], dx = b.x - a.x, dy = b.y - a.y, ox = AIR_X - Math.abs(dx), oy = AIR_Y - Math.abs(dy);
+      const a = p[i], b = p[j], dx = b.x - a.x, dy = b.y - a.y, ox = AIR_X - Math.abs(dx), oy = AIR_Y + (ms[dy >= 0 ? j : i].here ? BUS_Y : 0) - Math.abs(dy);
       if (ox <= 0 || oy <= 0) continue;
       moved = true;
       if (ox < oy) { const k = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= k; b.x += k; }
@@ -1424,9 +1429,10 @@ function easeBays() {
   }
   ms.forEach((m, i) => m.marker.setOffset([p[i].x - p[i].x0, p[i].y - p[i].y0]));
 }
-/** The buses standing at the Center out of the way of its badges while they're up. */
+/** The buses standing at the Center out of the way of its badges while they're up (each drawn on its badge); one
+ *  driving in or out stays, its arrow showing the way it goes. */
 function hubBuses() {
-  for (const m of busMarkers.values()) { const ll = m.marker.getLngLat(); m.el.classList.toggle('athub', hubOn && distance(ll.lat, ll.lng, D.hub.lat, D.hub.lon) <= HUB_IN); }
+  for (const m of busMarkers.values()) { const [lon, lat] = m.to; m.el.classList.toggle('athub', hubOn && !(m.speed > HUB_STILL) && distance(lat, lon, D.hub.lat, D.hub.lon) <= HUB_IN); }
 }
 /** The board as a phone's card: the countdown alone at first (the map's the thing), the loops and the next hour a
  *  swipe up; a route picked, its card alone, the badges still in view above it. Redrawn in place for the minute and
@@ -2006,7 +2012,7 @@ export function liveUpdate(app) {
     m.el.title = title;
     m.el.style.setProperty('--bus-color', color);
     m.marker.setRotation(b.course);
-    m.ri = b.ri;
+    m.ri = b.ri; m.speed = b.speed; m.to = [b.lon, b.lat];   // where it's gliding to: in or out by that, not by where it's got
     m.el.classList.toggle('on', selectedBus === b.id || ringed === b.id);
     paintBus(m);
   };

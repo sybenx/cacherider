@@ -10,6 +10,7 @@ import { rt, rtStale, isLoop, endAt, cancelledAt } from '../rt.js';
 const rtDown = () => rtStale() && (rt.at > 0 || !!rt.error);
 
 let countIv = 0;   // the pulse countdown's ticker
+const STILL = 3;   // metres a second: a bus slower than this is standing (or creeping into its bay)
 const IN_RADIUS = 110;   // metres from the hall: a bus this close is in
 
 /** A badge's key: the route's short name, 16 AM and 16 PM as one '16' (they share a bay and a rider). */
@@ -43,7 +44,8 @@ function status(k, clockNow) {
       if (!own && !ris.includes(b.ri)) continue;
       let e = null;
       const u = rt.trips[b.trip];
-      if (distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS) e = 0;
+      // In, and standing: one driving through the Center (in, or out on its way) is still coming, or gone.
+      if (distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(b.speed > STILL)) e = 0;
       else if (!u) loose = true;
       else {
         const next = u.stops.filter(([sid, , time, rel]) => rel !== 1 && time >= nowSec - 30 && D.stops[D.stopById[sid]]?.hub).sort((x, y) => x[1] - y[1])[0];
@@ -228,15 +230,16 @@ export function hubSheet({ bay }, clockNow) {
 }
 
 /** The bays for the map, one badge a route (16 AM and PM as one), at its bay's stop as the timetable places it: the
- *  route's colours, its tag (IN, minutes away, or nothing when it isn't out), whether it's quiet today, the one
+ *  route's colours, its bus when it's in, its tag (minutes away, or nothing when it isn't out), whether it's quiet today, the one
  *  picked. The map eases badges that land on one another apart; nothing is drawn by hand. */
 export function bays(bay, clockNow) {
   const { st, pick } = board(bay, clockNow), tags = !rtStale();
   return keys().map(k => {
     const s = st[k], ri = s.ris[s.ris.length - 1], r = D.routes[ri], b = D.hub.bays.find(x => x.routes.includes(ri));
     if (!b) return null;
-    const tag = !tags || s.off ? '' : s.eta === 0 ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : '';
-    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
+    // A bus at its bay is drawn there, on its badge, not said: here is where it is.
+    const here = tags && !s.off && s.eta === 0, tag = !tags || s.off || here ? '' : s.eta > 0 ? s.eta + ' MIN' : '';
+    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, here, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);
 }
 
