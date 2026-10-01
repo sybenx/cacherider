@@ -224,7 +224,7 @@ function loops(st, pick, clockNow) {
     return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="${cardHref(s, pick)}">
       <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
       <span class="when">${here && !waiting ? html`<span class="t t-36 est">NOW</span>` : html`${wasLine(t)}<span class="whent">${time(t.min, 36, !!t.live)}</span>`}<span class="rel">${rel}</span></span>
-      ${lastTag(t)}<span class="where${s.out && (!s.off || lastOut) ? ' live' : ''}"><i></i>${where}</span></a>`;
+      ${lastTag(t)}${waiting ? '' : html`<span class="where${s.out && (!s.off || lastOut) ? ' live' : ''}"><i></i>${where}</span>`}</a>`;   // waiting, its 'Here' says where it is
   });
   return html`<div class="tc-loops blueprint">${corners()}
     <div class="top"><span class="eyebrow">The loops</span>${every ? html`<span class="note">Every ${every} min, on their own timetable</span>` : ''}</div>
