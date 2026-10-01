@@ -11,7 +11,7 @@ const rtDown = () => rtStale() && (rt.at > 0 || !!rt.error);
 
 let countIv = 0;   // the pulse countdown's ticker
 const STILL = 3;   // metres a second: a bus slower than this is standing (or creeping into its bay)
-const IN_RADIUS = 110;   // metres from the hall: a bus this close is in
+const IN_RADIUS = 65;   // metres from the hall: a bus this close is in (its bays all within 51 m; out at the light on 500 North, it has left)
 const PARKED = 1;   // metres a second: slower than this, stopped (faster, it's pulling in or out)
 
 /** A badge's key: the route's short name, 16 AM and 16 PM as one '16' (they share a bay and a rider). */
