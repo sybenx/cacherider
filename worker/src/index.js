@@ -12,7 +12,7 @@
 // A bus off its scheduled trips (a detour) isn't in GTFS-realtime at all, so for
 // a route the feed has no bus on, the tracker site's own API fills in positions.
 
-import { watchStart, watchStep, watchEnd, detoursJSON } from './detours.js';
+import { watchStart, watchStep, watchEnd, detoursJSON, inService } from './detours.js';
 
 const UPSTREAM = 'https://mycvtdbus.org/gtfs-rt/';
 const RTPI = 'https://mycvtdbus.org/api/rtpi?path=';
@@ -76,7 +76,7 @@ async function track(env) {
       try { await fillIn(out, false); } catch (e) { /* the feed's own buses */ }
       if (!out.buses.length) continue;
       const t = Math.floor(Date.now() / 1000);
-      const rows = out.buses.map(b => [b.label || b.id, b.trip || '', b.route || shortOf(b.trip) || '', b.lat, b.lon, b.bearing, b.speed, b.ts]);
+      const rows = out.buses.map(b => { const key = b.route || shortOf(b.trip) || ''; return [b.label || b.id, b.trip || '', key, b.lat, b.lon, b.bearing, b.speed, b.ts, W ? +inService(W, out, b, key, t) : 1]; });
       await env.TRACKS.prepare('INSERT OR REPLACE INTO samples (t, buses) VALUES (?, ?)').bind(t, JSON.stringify(rows)).run();
       if (W) watchStep(W, t, rows);
     } catch (e) { /* a sample missed */ }

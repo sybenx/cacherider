@@ -266,7 +266,24 @@ for ri, ids in sorted(route_shapes.items()):
         # key: the route as a bus's trip id names it (16's AM and PM as one), for the relay, which reads only this file
         lines.append({'route': ri, 'key': routes[ri]['short'].split()[0], 'shape': sid, 'coords': dedup})
 p = os.path.join(a.out, a.tag + '-shapes.json')
-json.dump({'lines': lines, 'hub': {'lat': hub['lat'], 'lon': hub['lon']}}, open(p, 'w'), separators=(',', ':'))
+# hours: when each route's buses are in service, by weekday (Monday first, as GTFS counts), [first departure, last
+# departure + 45] in minutes, null on a day it doesn't run: the relay's detour watch counts only buses then, so a bus
+# driven out of service (to the yard, between runs) is never taken for a detour.
+spans = {}
+for per in out['times'].values():
+    for sid, rows in per.items():
+        for t in rows:
+            k = (routes[t[1]]['short'].split()[0], sid)
+            lo, hi = spans.get(k, (10 ** 9, -1))
+            spans[k] = (min(lo, t[0]), max(hi, t[0]))
+hours = {}
+for (key, sid), (lo, hi) in spans.items():
+    svc = next((x for x in out['services'] if x['id'] == sid), None)
+    if not svc: continue
+    h = hours.setdefault(key, [None] * 7)
+    for d in range(7):
+        if svc['days'][d]: h[d] = [min(lo, h[d][0]) if h[d] else lo, max(hi + 45, h[d][1]) if h[d] else hi + 45]
+json.dump({'lines': lines, 'hub': {'lat': hub['lat'], 'lon': hub['lon']}, 'hours': hours, 'tz': out['agency']['tz']}, open(p, 'w'), separators=(',', ':'))
 print('wrote', p, os.path.getsize(p), 'bytes:', len(lines), 'lines')
 for sid, ms in pulse.items():
     print('pulse', sid, len(ms), 'times', ms[:6], '...' if len(ms) > 6 else '')

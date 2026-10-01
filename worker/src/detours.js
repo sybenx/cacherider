@@ -45,7 +45,15 @@ async function lines() {
     }
     return true;
   };
-  L = { xy, off }; lAt = Date.now();
+  // In service: a route's hours that weekday, in the agency's own time (the timetable's, by tools/reduce.py).
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: j.tz || 'America/Denver', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const inHours = (key, ms) => {
+    const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(x => [x.type, x.value])), h = (j.hours || {})[key];
+    const span = h && h[DAYS.indexOf(p.weekday)], m = +p.hour * 60 + +p.minute;
+    return !h || (!!span && m >= span[0] - 10 && m <= span[1]);   // no hours known: counted, as before
+  };
+  L = { xy, off, inHours }; lAt = Date.now();
   return L;
 }
 const far = (L, p, lat, lon) => { const q = L.xy(lat, lon); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
@@ -60,11 +68,26 @@ export async function watchStart(env) {
   return { L: await lines(), buses: st.results[0] ? JSON.parse(st.results[0].v) : {}, sus: sus.results.map(r => ({ ...r, paths: pathsOf(r.path) })), changed: new Set(), gone: [] };
 }
 
-/** One sample: [label, trip, key, lat, lon, ...] a bus. */
+/** Whether a bus is in service now: its trip live in the feed (stops still to come, the first of them due within two
+ *  minutes: started, or about to), or with no trip to go by (a detoured bus, from the tracker site), its route's hours. */
+export function inService(W, out, b, key, nowSec) {
+  const u = b.trip && out.trips[b.trip];
+  if (u && !u.c) {
+    // The feed drops a trip's stops as they're passed: a first stop past the trip's second, it's started; else its first
+    // stop due within two minutes, about to. Nothing still to come, it's done.
+    const ahead = u.s.filter(x => x[2] > nowSec - 60);
+    if (u.s.some(x => x[2])) return ahead.length > 0 && (Math.min(...u.s.map(x => x[1] ?? 0)) >= 2 || Math.min(...ahead.map(x => x[2])) <= nowSec + 120);
+  }
+  return W.L.inHours(key, nowSec * 1000);
+}
+
+/** One sample: [label, trip, key, lat, lon, bearing, speed, ts, live] a bus. */
 export function watchStep(W, t, buses) {
   const { L } = W;
-  for (const [label, , key, lat, lon] of buses) {
+  for (const [label, , key, lat, lon, , , , live] of buses) {
     if (!key) continue;
+    // Out of service (to the yard, between runs, a trip not started or done): its track forgotten, nothing made of it.
+    if (live === 0) { delete W.buses[label]; continue; }
     let b = W.buses[label];
     if (!b || b.key !== key || t - b.t > GAP) b = W.buses[label] = { key, t, on: null, off: [], offEnd: 0, near: {} };
     b.t = t;
