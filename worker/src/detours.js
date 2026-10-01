@@ -13,6 +13,8 @@ const NEAR = 150;      // metres from where a way round leaves or rejoins the li
 const SAME = 200;      // metres apart two ways round can leave and rejoin and still be one
 const THROUGH = 1800;  // seconds from passing where a way round leaves to passing where it rejoins: one trip
 const CELL = 100;
+const END = 120;      // metres from a trip's last stop: got there (its reports twenty seconds apart, checked between them)
+const AWAY = 400;     // metres from it first, so a loop's trip, ending where it starts, isn't over as it sets out
 
 let L = null, lAt = 0;
 /** The route lines, in metres about the Transit Center, indexed by 100 m cells; fetched once an hour at most. */
@@ -53,7 +55,11 @@ async function lines() {
     const span = h && h[DAYS.indexOf(p.weekday)], m = +p.hour * 60 + +p.minute;
     return !h || (!!span && m >= span[0] - 10 && m <= span[1]);   // no hours known: counted, as before
   };
-  L = { xy, off, inHours, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
+  // Where each trip ends, by its id: a bus that has got there is done with that trip, and the rest of its time on it
+  // (driven to its next run's start, to the yard) is out of service, whatever the feed says.
+  const ends = new Map();
+  for (const [la, lo, ...ts] of j.ends || []) { const q = xy(la, lo); for (const t of ts) ends.set(t, q); }
+  L = { xy, off, inHours, ends, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
   return L;
 }
 const far = (L, p, lat, lon) => { const q = L.xy(lat, lon); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
@@ -84,15 +90,30 @@ export function inService(W, out, b, key, nowSec) {
 /** One sample: [label, trip, key, lat, lon, bearing, speed, ts, live] a bus. */
 export function watchStep(W, t, buses) {
   const { L } = W;
-  for (const [label, , key, lat, lon, , , , live] of buses) {
+  for (const [label, trip, key, lat, lon, , , , live] of buses) {
     if (!key) continue;
-    // Out of service (to the yard, between runs, a trip not started or done): its track forgotten, nothing made of it.
-    if (live === 0) { delete W.buses[label]; continue; }
+    // Out of service (to the yard, between runs, a trip not started or done): its track dropped, nothing made of it.
     let b = W.buses[label];
-    if (!b || b.key !== key || t - b.t > GAP) b = W.buses[label] = { key, t, on: null, off: [], offEnd: 0, near: {} };
+    if (live === 0) { if (b) { b.on = null; b.off = []; b.t = t; } continue; }
+    // A track begun again keeps what it knew of its trip (done with it, say), its trip unchanged.
+    if (!b || b.key !== key || t - b.t > GAP) b = W.buses[label] = { key, t, on: null, off: [], offEnd: 0, near: {}, trip: b?.trip, away: b?.away, done: b?.done };
     b.t = t;
-    const p = L.xy(lat, lon);
-    if (L.off(key, p)) { b.off.push([lat, lon]); continue; }
+    const p = L.xy(lat, lon), last = b.at;
+    b.at = p;
+    // Done with its trip (its last stop reached, below): nothing more made of it till the next.
+    if (b.trip !== trip) { b.trip = trip; b.away = false; b.done = false; }
+    if (b.done) continue;
+    const end = trip && L.ends.get(trip);
+    // Its trip's last stop reached, once away from it: this report taken as any other (a way round can rejoin right
+    // there), then the trip done, whatever the feed says, and what the bus does after on it (driven to its next run's
+    // start, to the yard) no detour.
+    const ended = () => {
+      if (!end) return false;
+      if (Math.hypot(p[0] - end[0], p[1] - end[1]) > AWAY) b.away = true;
+      else if (b.away && toSeg(end, last || p, p) <= END) { b.done = true; b.on = null; b.off = []; return true; }
+      return false;
+    };
+    if (L.off(key, p)) { b.off.push([lat, lon]); ended(); continue; }
     if (b.off.length) {
       // Off and back on, two reports or more off between: a way round. (Off and never back is a bus to the yard.)
       if (b.on && b.off.length >= 2) round(W, key, b.on, [lat, lon], b.off, t);
@@ -108,6 +129,7 @@ export function watchStep(W, t, buses) {
         delete b.near[s.id];
       }
     }
+    ended();
   }
   for (const [label, b] of Object.entries(W.buses)) if (t - b.t > 600) delete W.buses[label];
 }
@@ -148,4 +170,11 @@ export async function detoursJSON(env) {
     t: Math.floor(Date.now() / 1000),
     detours: r.results.map(s => ({ id: s.id, route: s.key, streak: s.streak, trips: s.trips, first: s.first, last: s.last, along: s.along, leaves: [s.olat, s.olon], rejoins: [s.blat, s.blon], paths: pathsOf(s.path), path: pathsOf(s.path)[0] })),
   };
+}
+
+/** Metres from a point to the way between two reports. */
+function toSeg([x, y], [ax, ay], [bx, by]) {
+  const dx = bx - ax, dy = by - ay, n = dx * dx + dy * dy;
+  const f = n ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / n)) : 0;
+  return Math.hypot(x - ax - f * dx, y - ay - f * dy);
 }

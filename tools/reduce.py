@@ -128,10 +128,12 @@ stop_routes = {}
 # Where each trip ends and when, which the departures leave out: [stop, arrival minute] by trip index, flat; -1 where
 # its last stop isn't one of ours. A run's page draws it to its end, and a route's day ends when its last bus gets in.
 ends = {}
+last_stop = {}   # trip id → its last stop (GTFS id), for the relay: a bus there is done with that trip
 for tid, rows in by_trip.items():
     t = trips[tid]
     rows.sort(key=lambda r: int(r['stop_sequence']))
     ri = route_idx[t['route_id']]; hi = head(t); di = int(t.get('direction_id') or 0)
+    last_stop[re.sub(r'-\d+$', '', tid)] = rows[-1]['stop_id']
     if rows[-1]['stop_id'] in stop_idx: ends[trip_index(tid)] = [stop_idx[rows[-1]['stop_id']], mins(rows[-1]['arrival_time'] or rows[-1]['departure_time'])]
     # Timepoints: the stops a route's timetable is kept to, where an early bus waits for its time. The same stops on
     # every trip of a route, so one list a route.
@@ -283,7 +285,14 @@ for (key, sid), (lo, hi) in spans.items():
     h = hours.setdefault(key, [None] * 7)
     for d in range(7):
         if svc['days'][d]: h[d] = [min(lo, h[d][0]) if h[d] else lo, max(hi + 45, h[d][1]) if h[d] else hi + 45]
-json.dump({'lines': lines, 'hub': {'lat': hub['lat'], 'lon': hub['lon']}, 'hours': hours, 'tz': out['agency']['tz']}, open(p, 'w'), separators=(',', ':'))
+# ends: where each trip ends, [lat, lon, trip ids...] by place: a bus that has got there is done with its trip, and
+# whatever it does on that trip id after (driven to its next run's start, to the yard) is no detour.
+where = {r['stop_id']: (round(float(r['stop_lat']), 5), round(float(r['stop_lon']), 5)) for r in table('stops.txt')}
+by_end = {}
+for tid, sid in sorted(last_stop.items()):
+    if sid in where: by_end.setdefault(where[sid], []).append(tid)
+trip_ends = [[la, lo, *ts] for (la, lo), ts in sorted(by_end.items())]
+json.dump({'lines': lines, 'hub': {'lat': hub['lat'], 'lon': hub['lon']}, 'hours': hours, 'tz': out['agency']['tz'], 'ends': trip_ends}, open(p, 'w'), separators=(',', ':'))
 print('wrote', p, os.path.getsize(p), 'bytes:', len(lines), 'lines')
 for sid, ms in pulse.items():
     print('pulse', sid, len(ms), 'times', ms[:6], '...' if len(ms) > 6 else '')
