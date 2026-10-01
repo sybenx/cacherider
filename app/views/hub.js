@@ -250,7 +250,7 @@ export function bays(bay, clockNow) {
     // A bus at its bay is drawn there, on its badge, not said: here is where it is.
     const here = tags && !s.off && s.eta === 0, tag = !tags || s.off || here ? '' : s.eta > 0 ? s.eta + ' MIN' : '';
     const course = here ? rt.buses.find(x => x.id === s.at)?.course ?? null : null;   // which way it faces in its bay
-    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, here, course, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
+    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, here, course, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);
 }
 

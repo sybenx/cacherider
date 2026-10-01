@@ -1516,7 +1516,7 @@ function hubBadges() {
     m.el.href = b.on ? '#/hub' : '#/hub/' + b.k;
     m.el.title = b.title;
     // Its bus in, the map's own bus on the badge (they're put away there), facing as it stands: the bus at its bay.
-    const inner = (b.here ? `<span class="bus hbus" style="--bus-color:${dark() ? lift(b.color) : b.color}"><span class="bus-marker"${b.course === null ? ' data-still' : ` style="--course:${b.course}deg"`}>${b.course === null ? '' : ARROW}</span></span>` : '') + `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag">${b.tag.replace(' MIN', 'm')}</span>` : '');
+    const inner = (b.here ? `<span class="bus hbus" style="--bus-color:${dark() ? lift(b.color) : b.color}"><span class="bus-marker"${b.course === null ? ' data-still' : ` style="--course:${b.course}deg"`}>${b.course === null ? '' : ARROW}</span></span>` : '') + `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag${b.late ? ' late' : ''}"${b.late ? ` title="${b.late} min late"` : ''}>${b.tag.replace(' MIN', 'm')}</span>` : '');
     if (m.el.innerHTML !== inner) m.el.innerHTML = inner;
   }
   easeBays();
