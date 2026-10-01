@@ -65,8 +65,8 @@ stops.sort(key=lambda s: s['name'])
 # or more within GROUP are a group, a large blob each; a place on its own between two groups (River Heights, between
 # the Cliffside bench and Providence) reaches out to both and joins them; the rest (the Tabernacle, the Center) are
 # small rounds. Large and smooth over carved: a bus stop it doesn't serve may sit inside at its edge.
-R_VIA = 950   # a lone place on the way between groups reaches out to both, the bridge
-R, R_SMALL, LEVEL, CELL, GROUP = 540, 180, 0.5, 30, 900
+R, R_SMALL, LEVEL, CELL, GROUP = 420, 180, 0.5, 30, 900   # R: a walk's reach, about five minutes on the flat
+R_BAND, W_BAND = 300, 0.22   # the band drawing groups together, through the place between them
 lat0 = sum(s['lat'] for s in stops) / len(stops); kx, ky = 111320 * math.cos(math.radians(lat0)), 110540
 pts = [((s['lon']) * kx, s['lat'] * ky) for s in stops]
 dist = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
@@ -93,13 +93,18 @@ while rest:   # Prim's: the nearest group to those joined, by its closest pair o
     else: bridges.append((a, b))
     joined.append(g); rest.remove(g)
 via_places = {c for a, b in bridges for c in (a, b) if c in alone}   # a lone place a bridge runs through: part of the region
-balls = [(p, R, 1.0) for p in grouped] + [(p, R_VIA, 1.0) for p in via_places] + [(p, R_SMALL, 1.0) for p in alone if p not in via_places]
+balls = [(p, R, 1.0) for p in grouped + list(via_places)]   # the region; the lone rounds apart, below
+band = []   # along each bridge, a point every 150 m: the groups drawn to one another (and to the place between)
+for a, b in bridges:
+    n = max(1, int(dist(a, b) / 150))
+    band += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(n + 1)]
 x0, x1 = min(p[0] for p in pts) - 2 * R, max(p[0] for p in pts) + 2 * R
 y0, y1 = min(p[1] for p in pts) - 2 * R, max(p[1] for p in pts) + 2 * R
 nx, ny = int((x1 - x0) / CELL) + 1, int((y1 - y0) / CELL) + 1
-# The lie of the land (data/elevation.json, tools/elevation.py): a point's pull fades with the height between it and
-# the ground there, H metres taking it to a third, so a blob doesn't climb the canyon sides. No grid: flat.
-H = 90
+# The lie of the land (data/elevation.json, tools/elevation.py): a blob's reach is a walk's, the height between a
+# point and its stop counted as CLIMB metres on the flat a metre (a hill as it feels on foot), so a blob keeps to the
+# bench or floor its stops stand on (Cliffside's, its bench) and never climbs a canyon side. No grid: flat.
+CLIMB = 8
 try:
     EL = json.load(open(os.path.join(ROOT, 'data', 'elevation.json')))
     EL['z'] = [[sum(r[:k + 1]) for k in range(len(r))] for r in EL['d']]
@@ -114,8 +119,19 @@ def height(x, y):
 balls = [(p, r, w, height(*p)) for p, r, w in balls]
 def at(x, y):
     h = height(x, y)
-    return sum(w * math.exp(-((x - px) ** 2 + (y - py) ** 2) / r ** 2) * (math.exp(-((h - hp) / H) ** 2) if h is not None and hp is not None else 1) for (px, py), r, w, hp in balls)
-field = [[at(x0 + i * CELL, y0 + j * CELL) for i in range(nx)] for j in range(ny)]
+    up = lambda hp: (CLIMB * (h - hp)) ** 2 if h is not None and hp is not None else 0
+    return sum(w * math.exp(-((x - px) ** 2 + (y - py) ** 2 + up(hp)) / r ** 2) for (px, py), r, w, hp in balls) \
+        + sum(W_BAND * math.exp(-((x - px) ** 2 + (y - py) ** 2) / R_BAND ** 2) for px, py in band if abs(x - px) < 3 * R_BAND and abs(y - py) < 3 * R_BAND)
+# Bus stops POOL doesn't serve push back: each an invisible blob of its own, subtracted, wide and soft, so a row of them
+# (Main Street) eases the edge off smoothly rather than notching it. Not the Center's bays (its pickup is at them), nor
+# a bus stop at a pickup, and only the region: a lone pickup's small round stays whole.
+R_PUSH, W_PUSH, KEEP = float(os.environ.get('R_PUSH', 300)), float(os.environ.get('W_PUSH', 0.4)), 40
+push = [(b['lon'] * kx, b['lat'] * ky) for b in D['stops'] if not b.get('hub')]
+push = [q for q in push if not any(dist(q, p) <= KEEP for p in pts)]
+lone = [(p, R_SMALL) for p in alone if p not in via_places]
+lone_at = lambda x, y: sum(math.exp(-((x - px) ** 2 + (y - py) ** 2) / r ** 2) for (px, py), r in lone)
+def cell(x, y): return max(lone_at(x, y), at(x, y) - sum(W_PUSH * math.exp(-((x - qx) ** 2 + (y - qy) ** 2) / R_PUSH ** 2) for qx, qy in push if abs(x - qx) < 3 * R_PUSH and abs(y - qy) < 3 * R_PUSH))
+field = [[cell(x0 + i * CELL, y0 + j * CELL) for i in range(nx)] for j in range(ny)]
 # marching squares: each cell's crossings of the level, as segments, joined into rings
 def cross(a, b, fa, fb): t = (LEVEL - fa) / (fb - fa); return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
 segs = []
