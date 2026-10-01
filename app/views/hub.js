@@ -213,14 +213,14 @@ function loops(st, pick, clockNow) {
     const s = st[k], r = D.routes[s.ris[0]], t = s.dep, then = s.deps[1];
     // Done leaving for the day, its last run may still be out, coming in to end there: said, not 'not running'.
     const last = s.off ? lastLeft(s.ris[0], clockNow) : null, lastOut = !!last && s.eta !== 0 && (s.out || clockNow.min < last.back) && clockNow.min < last.back + 30;   // the feed's bus, or the timetable's end
-    const where = s.off ? (lastOut ? (s.eta > 0 ? `Last run · back in ${s.eta} min` : `Last run left ${clockText(last.min)}`) : last ? 'Done for today' : 'Not running today') : s.eta === 0 ? 'Bus at its stop' : s.eta > 0 ? `Bus ${s.eta} min out` : s.away ? 'Bus on its run' : s.loose ? 'Out, no estimate' : 'Not reporting';
+    const where = s.off ? (lastOut ? (s.eta > 0 ? `Last run · back in ${s.eta} min` : `Last run left ${clockText(last.min)}`) : last ? 'Done for today' : 'Not running today') : s.eta === 0 ? 'Bus is here' : s.eta > 0 ? `Bus ${s.eta} min out` : s.away ? 'Bus on its run' : s.loose ? 'Out, no estimate' : 'Not reporting';
     // Its bus at its stop: board it now, and the line beneath is the bus after (a rider who misses this one wants
     // that, not when this one pulls out).
     // In and waiting for its minute (a bus in early holds for the timetable): that minute, with the wait. In and
     // due, or being spaced: NOW.
     const here = t.day === 0 && !s.off && s.eta === 0, waiting = here && t.min > clockNow.min;
     const thenTime = then && then.day === 0 ? html`${was(schedOf(then), then.min)}<span class="${then.live ? 'est' : ''}">${clock(then.min).h}</span>` : '';
-    const rel = waiting ? html`At its stop · leaves ${relative(t, clockNow)}` : here ? (thenTime ? html`Next bus ${thenTime}` : '') : t.day === 0 ? html`${relative(t, clockNow)}${thenTime ? html` · then ${thenTime}` : ''}` : dayName(t.ymd);
+    const rel = waiting ? html`Here · leaves ${relative(t, clockNow)}` : here ? (thenTime ? html`Next bus ${thenTime}` : '') : t.day === 0 ? html`${relative(t, clockNow)}${thenTime ? html` · then ${thenTime}` : ''}` : dayName(t.ymd);
     return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="${cardHref(s, pick)}">
       <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
       <span class="when">${here && !waiting ? html`<span class="t t-36 est">NOW</span>` : html`${wasLine(t)}<span class="whent">${time(t.min, 36, !!t.live)}</span>`}<span class="rel">${rel}</span></span>
@@ -268,7 +268,7 @@ function picked(s, clockNow) {
   const dep = s.dep;
   const words = !dep ? 'Nothing scheduled in the next week.'
     : s.off ? (dep.day === 0 ? `No bus out yet. The next leaves at ${clockText(dep.min)}.` : `No more buses today. The next leaves ${dayName(dep.ymd)} at ${clockText(dep.min)}.`)
-    : s.eta === 0 ? (s.loop ? 'The bus is at its stop.' : 'The bus is at its bay.')
+    : s.eta === 0 ? (s.loop ? 'The bus is here.' : 'The bus is at its bay.')
     : s.eta > 0 ? `The bus is ${s.eta} min from the Transit Center${s.loop ? '.' : s.late ? `, ${s.late} min late.` : ', on time.'}`
     : s.loose ? 'The bus is out but off its scheduled trips, so there’s no estimate for it.'
     : s.away ? 'The bus is out on a run that doesn’t come back through here soon.'
@@ -281,7 +281,7 @@ function picked(s, clockNow) {
   const cells = s.deps.map((t, i) => {
     const m = i === 0 && t.day === 0 ? s.leave : t.min, c = clock(m);
     const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ' · late' : '') : dayName(t.ymd);
-    if (i === 0 && t.live && t.live.here && t.live.spacing && !t.live.leaves) return html`<a class="cell first" href="${stopHref(t)}"><span class="t">At its stop</span></a>`;
+    if (i === 0 && t.live && t.live.here && t.live.spacing && !t.live.leaves) return html`<a class="cell first" href="${stopHref(t)}"><span class="t">Here</span></a>`;
     return html`<a class="cell${i === 0 ? ' first' : ''}" href="${stopHref(t)}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}<small>${c.ap}</small></span></span><span class="rel">${rel}</span>${lastTag(t)}</a>`;
   });
   return html`<div class="tc-pick blueprint">${corners()}
