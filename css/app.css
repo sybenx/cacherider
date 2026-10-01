@@ -1019,6 +1019,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .croute.here { background: var(--color-accent-100); box-shadow: inset 4px 0 0 var(--color-accent); }
 .croute .c-t { flex: none; width: 78px; display: flex; align-items: center; color: var(--cr-muted); }
 .croute .c-t .t, .croute .c-t .whent { color: var(--color-text); }
+.croute .c-t .t.est { color: var(--color-accent-700); }   /* a live time blue here too: the rule above had outranked .est */
 .croute .c-n { flex: 1; min-width: 0; font-size: 0.9375rem; line-height: 1.25; }
 .croute .c-n .town { color: var(--cr-muted); }
 /* a stop by its announced landmark, its street address under it, muted (ui.js heard()) */

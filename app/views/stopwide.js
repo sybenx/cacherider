@@ -62,7 +62,7 @@ function runParts(t, si, ymd) {
     // A stop the detour skips: one quiet line in its place, the landmark alone, not a stop's row with a dash for a time.
     if (x.skip) return `<a class="run-stop skipped" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t"></span><span class="run-n">${esc(heardName(x.s).name)} <em>skipped · detour</em></span></a>`;
     const name = heard(x.s).s;   // the landmark the bus announces, the address under it
-    return `<a class="run-stop${x.skip ? ' skipped' : ''}${x.leg ? ' later' : ''}" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t${x.est ? ' est' : ''}">${x.skip ? '–' : `${esc(clock(x.m).h)}<small>${esc(clock(x.m).ap)}</small>`}</span><span class="run-n">${name}${x.skip ? '<em class="warnmark">Skipped · detour</em>' : end ? '<em>ends here · drop-off only</em>' : x.req ? '<em>on request</em>' : timed(x.s, x.r) ? timedMark().s : ''}</span></a>`;
+    return `<a class="run-stop${x.leg ? ' later' : ''}" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t${x.est ? ' est' : ''}">${esc(clock(x.m).h)}<small>${esc(clock(x.m).ap)}</small></span><span class="run-n">${name}${end ? '<em>ends here · drop-off only</em>' : x.req ? '<em>on request</em>' : timed(x.s, x.r) ? timedMark().s : ''}</span></a>`;
   }).join('');
   // The map's labels: a time by each stop, a stop's once (the Transit Center between runs says in and out).
   const seen = new Set([si]);
