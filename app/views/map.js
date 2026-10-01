@@ -726,9 +726,10 @@ async function made(app) {
   wireGrip(app);
 }
 
-/** A route picked on the map itself: its address, so Back puts it away; lit where the map is, not fitted as a route
- *  opened from elsewhere is. Picked again: the map goes out to the whole of it, and a phone's sheet comes back up. */
-let stayRoute = false;
+/** A route picked on the map itself (its line, or a road card's row): its address, so Back puts it away, and the map
+ *  out to the whole of it, as a route opened from elsewhere is. It was lit where the map was: the route's overview
+ *  asked for, the rider was left zoomed in on the road they'd tapped. Picked again: the whole of it again, and a
+ *  phone's sheet comes back up. */
 function pickRoute(ri, app) {
   const h = '#/map/route/' + encodeURIComponent(D.routes[ri].short);
   if (location.hash === h || location.hash.startsWith(h + '/') || location.hash.startsWith(h + '?')) {
@@ -739,7 +740,7 @@ function pickRoute(ri, app) {
     if (!wide() && card.querySelector(':scope > .routesheet')) { card.classList.remove('peek'); card.classList.add('open'); }
     return;
   }
-  stayRoute = true; location.hash = h;
+  location.hash = h;
 }
 // ---- a route: the map with the route lit and its times, and its stops in order as the map's card (a phone's) or
 // beside it (a wide screen's panel), each with the route's next call there. Once the route page; now the map's.
@@ -2646,8 +2647,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
     // On a phone's Map tab its stops are the card, the map framed above it; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide() && routeArgs) sheetCard(routeArgs, clockNow);
     else col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized || whole) && !stayRoute) frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
-    stayRoute = false;
+    if (focus && (changed || resized || whole)) frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
     if (bus) ringBus(bus); else { wantRing = null; if (ringed) unring(); }
     return;
   }
