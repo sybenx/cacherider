@@ -266,6 +266,12 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 .callout.unann a { color: inherit; font-weight: 600; }
 .callout .fine { font-size: 0.75rem; color: var(--cr-muted); margin: 6px 0 0; padding: 0; }
 .qbadge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--rc); color: var(--rt, #fff); font-family: var(--font-heading); font-weight: 700; font-size: 0.8125rem; line-height: 1; flex: none; }
+.dname { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-family: var(--font-heading); font-size: 1.375rem; font-weight: 600; }
+.dname > :first-child { flex: none; }
+.detourcard { padding: 4px 16px 16px; font-size: 0.9375rem; display: flex; flex-direction: column; gap: 8px; }
+.detourcard p { margin: 0; }
+.detourcard a { color: inherit; font-weight: 600; }
+.detourcard .fine { font-size: 0.8125rem; color: var(--cr-muted); padding: 0; }
 .qnote { color: var(--cr-muted); }
 .qmark { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid currentColor; font-size: 0.625rem; font-weight: 700; line-height: 1; color: var(--cr-muted); vertical-align: 1px; margin-left: 4px; }
 /* yellow, and only for what changes a rider's trip: a route skipping a stop, a stop not served, a bus days off */

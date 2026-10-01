@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt } from '../data.js';
+import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -418,10 +418,39 @@ function shapes() {
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
+/** A way round on the map: its route lit, its card up, the way and its stops in view. */
+let wantSeen = null;
+function openSeen(u) {
+  wantSeen = null;
+  selected = null; uHilite = ''; hiLines = u.ri; hiLoops = []; focusRoute = u.ri.length === 1 ? u.ri[0] : undefined; applySelection();
+  detourCard(u);
+  const b = new maplibregl.LngLatBounds();
+  for (const [la, lo] of u.d.way) b.extend([lo, la]);
+  for (const id of [...u.gone, ...u.on]) { const t = D.stops[D.stopById[id]]; b.extend([t.lon, t.lat]); }
+  frame(b, { maxZoom: 16.5, duration: 700 });
+}
+/** A way round's card: whose, how many buses went that way and by which streets, the stops they skipped and those
+ *  they came past, and whether the agency has announced it; for an unannounced one, that it's ours. */
+function detourCard(u) {
+  const card = col.querySelector('#mapcard');
+  const links = ids => ids.map(id => D.stops[D.stopById[id]]).map(t => html`<a href="#/stop/${t.id}">${t.name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), []);
+  const theirs = u.announced ? activeAlerts(now().ymd).filter(a => a.ri.some(ri => u.ri.includes(ri)) && (a.stops || []).some(id => u.gone.includes(id))) : [];
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${u.announced ? 'Detour' : 'Unannounced detour'}</span><div class="dname">${badge(u.ri[0], 30)}<span>${u.who}</span></div></div>
+    <div class="detourcard">
+      <p><b>${lastBuses(u)} went this way</b>${u.by.length ? ', by ' + u.by.join(' and ') : ''}. The latest at ${u.last}.</p>
+      ${u.gone.length ? html`<p class="muted">Skipped: ${links(u.gone)}</p>` : ''}
+      ${u.on.length ? html`<p class="muted">Came past: ${links(u.on)}</p>` : ''}
+      ${u.announced ? html`<p>${D.agency.brand} has announced it${theirs.length ? html`: <a href="#/about/alerts">${theirs[0].title}</a>` : ''}. The line shows the way its buses have been taking.</p>`
+        : html`<p class="fine">Unannounced: seen from ${D.agency.brand}'s buses, not posted by ${D.agency.brand}. Times at skipped stops are kept until it is.</p>`}
+    </div>`.s;
+  card.scrollTop = 0;
+  card.classList.remove('hidden', 'peek');
+  card.classList.add('open');
+}
 /** The ways round the buses have been seen to take (data.js's A.seen, announced or not), along the streets, dashed
  *  in the route's colour, fainter while only two buses have gone that way. */
 function trackedPaths() {
-  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, stop: u.gone[0] || u.on[0] || '' }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
+  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
@@ -445,6 +474,7 @@ async function loadShapes(m = map) {
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
   if (m.getSource('lclosed')) m.getSource('lclosed').setData(drawn.closed);
   if (m.getSource('trk')) m.getSource('trk').setData(trackedPaths());
+  if (wantSeen && location.hash === '#/map/alert/' + wantSeen) { const u = (A.seen || []).find(x => x.id === wantSeen); if (u) openSeen(u); }
 }
 /** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
 let closedKey = null;
@@ -600,9 +630,9 @@ async function made(app) {
       else selectU(best.properties.id, app, best.properties.id === uHilite || U.stopById[best.properties.id] === selectedU);
       return;
     }
-    // A way round the buses have been taking (dashed): the stop it goes round, whose page says what's known.
-    const way = map.getLayer('trk-path') && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['trk-path'] }).find(f => f.properties.stop);
-    if (way) { select(way.properties.stop, app, true); return; }
+    // A way round the buses have been taking (dashed): its card, what's known of it.
+    const way = map.getLayer('trk-path') && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['trk-path'] })[0];
+    if (way) { location.hash = '#/map/alert/' + way.properties.id; return; }
     // No stop there, but a route's line: that route lit up with its times, where the map is. Where several share the
     // road, the card asks which.
     // A route the timetable splits by time of day (16 AM and PM) is one route here: the half on the road now or next.
@@ -2455,6 +2485,13 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   }
   // An alert from the About page: its route drawn on top, the stops it closes framed (marked already, as every
   // closed stop is), or the whole route when it names none.
+  if (alertId && /^seen/.test(alertId)) {
+    const u = (A.seen || []).find(x => x.id === alertId);
+    lastFocused = 'a:' + alertId;
+    // Opened before the relay's word is in (a link, a reload): opened when it comes (loadShapes).
+    if (u) openSeen(u); else wantSeen = alertId;
+    return;
+  }
   if (alertId) {
     const a = A.alerts.find(x => x.id === alertId);
     if (!a) return;

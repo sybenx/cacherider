@@ -74,9 +74,10 @@ export function render({ id, full, run, on }, clockNow) {
   // Unannounced detours, apart from the agency's notices and never in their red: a question, what it rests on, where
   // to wait instead, and that it's ours. Nothing dropped from the times.
   const fine = html`<div class="fine">Unannounced: seen from ${D.agency.brand}'s buses, not posted by ${D.agency.brand}.</div>`;
+  const onMap = u => html`<div class="sub"><a href="#/map/alert/${u.id}">The way they went, on the map</a></div>`;
   const qbadge = u => html`<span class="qbadge" style="--rc:#${D.routes[u.ri[0]].color};--rt:#${D.routes[u.ri[0]].text}">?</span>`;
   for (const u of skipsAt(s.id).filter(u => !u.ri.every(ri => closed.has(ri)))) {
-    parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} ${u.n >= 4 ? 'has' : 'have'} skipped this stop</b><div class="sub">${u.n >= 4 ? 'They have gone' : 'They went'} around it${u.by.length ? ' by ' + u.by.join(' and ') : ''}, the latest at ${u.last}.</div>${instead([u])}${fine}</div></div>`);
+    parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} ${u.n >= 4 ? 'has' : 'have'} skipped this stop</b><div class="sub">${u.n >= 4 ? 'They have gone' : 'They went'} around it${u.by.length ? ' by ' + u.by.join(' and ') : ''}, the latest at ${u.last}.</div>${instead([u])}${onMap(u)}${fine}</div></div>`);
   }
   for (const u of passesAt(s.id)) {
     const names = u.gone.map(id => D.stops[stopIndex(id)].name);

@@ -150,7 +150,7 @@ function unannouncedBlock() {
   if (!list.length) return '';
   const stopLinks = ids => ids.map(id => html`<a href="#/stop/${id}">${D.stops[D.stopById[id]].name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), []);
   return html`<div class="section">${icon('info', 16)}Unannounced</div>
-    <div class="list">${list.map(u => html`<div class="alertrow unann"><div class="alerthead">${badges(u.ri.slice(0, 1), 24)}<b>${lastBuses(u)} skipped ${u.gone.length === 1 ? 'a stop' : u.gone.length + ' stops'}</b></div>
+    <div class="list">${list.map(u => html`<div class="alertrow unann"><a class="alerthead" href="#/map/alert/${u.id}">${badges(u.ri.slice(0, 1), 24)}<b>${lastBuses(u)} skipped ${u.gone.length === 1 ? 'a stop' : u.gone.length + ' stops'}</b><span class="alertmap">${icon('map', 16)}Map</span></a>
       <p>They went around ${u.gone.length === 1 ? 'it' : 'them'}${u.by.length ? ' by ' + u.by.join(' and ') : ''}, the latest at ${u.last}.</p>
       <p class="muted">Skipped: ${stopLinks(u.gone)}</p>${u.on.length ? html`<p class="muted">Passed on the way round: ${stopLinks(u.on)}</p>` : ''}</div>`)}</div>
     <div class="fine">Seen from ${D.agency.brand}'s buses, not posted by ${D.agency.brand}: a stop is asked about, never taken off the timetable, until ${D.agency.brand} announces the detour.</div>`;
