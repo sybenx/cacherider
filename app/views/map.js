@@ -3,7 +3,7 @@
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses } from '../data.js';
-import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
+import { now, relative, fmtDay, dayName, clock, clockText, metres, dayFrom } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk } from '../geo.js';
@@ -143,12 +143,13 @@ function style(sat = true) {
       // Stops from the streets in (z14); further out only the lit route's, in the layer after, so a stop is there because it was asked for.
       { id: 'stops', type: 'circle', source: 'stops', minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
         // a closed stop is a hollow ring in its route's colour
-        'circle-color': ['case', ['get', 'closed'], flavor === 'dark' ? '#101214' : '#f2f2f3', ['get', col]],
-        'circle-stroke-color': ['case', ['get', 'closed'], ['get', col], flavor === 'dark' ? '#101214' : '#ffffff'],
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, ['case', ['get', 'closed'], 2.5, 1.5], 17, ['case', ['get', 'closed'], 3.5, 1.5]],
+        // an unannounced detour's stop: the same ring, a ? in it
+        'circle-color': ['case', ['any', ['get', 'closed'], ['get', 'maybe']], flavor === 'dark' ? '#101214' : '#f2f2f3', ['get', col]],
+        'circle-stroke-color': ['case', ['any', ['get', 'closed'], ['get', 'maybe']], ['get', col], flavor === 'dark' ? '#101214' : '#ffffff'],
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, ['case', ['any', ['get', 'closed'], ['get', 'maybe']], 2.5, 1.5], 17, ['case', ['any', ['get', 'closed'], ['get', 'maybe']], 3.5, 1.5]],
         'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
-      // A stop the buses have been going round, the detour not announced: a question mark on its dot, its times kept.
-      { id: 'stops-maybe', type: 'symbol', source: 'stops', minzoom: 13.5, filter: ['get', 'maybe'], layout: { 'text-field': '?', 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 13.5, 8, 17, 12, 19, 15], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(0,0,0,.35)', 'text-halo-width': 0.6 } },
+      // A stop the buses have been going round, the detour not announced: a question mark in its ring, its times kept.
+      { id: 'stops-maybe', type: 'symbol', source: 'stops', minzoom: 13.5, filter: ['get', 'maybe'], layout: { 'text-field': '?', 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 13.5, 9, 17, 14, 19, 18], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': ['get', col] } },
       // A stop under the pointer in the panel (a row of the home page's lists): ringed, as a picked stop is, lighter.
       { id: 'stop-hover', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 10, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 2.5 } },
       { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', col], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
@@ -345,6 +346,14 @@ function placesGeo() {
   const seen = PLACES.map(p => [p.name.toLowerCase(), p.lat, p.lon]);
   const dup = o => seen.some(([n, la, lo]) => n === o.name.toLowerCase() && distance(la, lo, o.lat, o.lon) < 200);
   return { type: 'FeatureCollection', features: [...PLACES, ...OSM_PLACES.filter(o => !dup(o))].map(p => ({ type: 'Feature', properties: { name: p.name }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) };
+}
+/** Whether POOL is running now: its hours that weekday (tools/pool.py, from Connect's POOL page), and only on a
+ *  day the buses run (a holiday off for one is off for both). Said on a pickup's card, not drawn: greyed out of
+ *  hours, the map would be no use for planning tomorrow's ride tonight. */
+function poolRunning(c = now()) {
+  if (!POOL || !POOL.week) return true;
+  const span = POOL.week[(dayFrom(c.ymd).dow + 6) % 7];
+  return !!span && c.min >= span[0] && c.min < span[1] && servicesOn(c.ymd).size > 0;
 }
 /** A pickup at the same place as a bus stop that's closed is closed too: the stop it is (Remix says), else a bus stop
  *  within 25 m, closed by a notice in force. */
@@ -1666,8 +1675,9 @@ function tintStops(m, ri) {
   const c = ri === undefined ? null : lineInk('#' + D.routes[ri].color);
   const fill = c ? ['case', ['in', ri, ['get', 'routes']], c, base] : base;
   for (const id of ['stops', 'stops-lit']) {
-    m.setPaintProperty(id, 'circle-color', ['case', ['get', 'closed'], dk ? '#101214' : '#f2f2f3', fill]);
-    m.setPaintProperty(id, 'circle-stroke-color', ['case', ['get', 'closed'], fill, dk ? '#101214' : '#ffffff']);
+    const ring = ['any', ['get', 'closed'], ['get', 'maybe']];   // closed, or an unannounced detour's (its ? in the ring)
+    m.setPaintProperty(id, 'circle-color', ['case', ring, dk ? '#101214' : '#f2f2f3', fill]);
+    m.setPaintProperty(id, 'circle-stroke-color', ['case', ring, fill, dk ? '#101214' : '#ffffff']);
   }
   m.setPaintProperty('stop-selected', 'circle-color', fill);
 }
@@ -1757,7 +1767,7 @@ export function selectPool(id, app) {
   // Its bus stop out of the timetable (tools/pool.py marks it gone each night it's missing, and not once it's back):
   // not served for now, as during construction.
   const shut = s.gone ? html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">Not served right now</b><div class="sub">The bus stop here is out of service right now.</div></div></div>`
-    : poolClosed(s) ? html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">Closed with the bus stop here</b><div class="sub">A notice closes the stop at this spot, and the pickup with it. Book from the nearest open pickup instead.</div></div></div>` : '';
+    : poolClosed(s) ? html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">Closed with the bus stop here</b><div class="sub">A notice closes the stop at this spot, and the pickup with it. Book from the nearest open pickup instead.</div></div></div>` : !poolRunning() ? html`<div class="callout">${icon('moon', 20)}<div><b>POOL isn't running right now</b><div class="sub">${POOL.hours}.</div></div></div>` : '';
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">POOL pickup · on demand · zero fare</span><div class="name"><span>${s.name}</span></div>${shut}
       <div class="muted">${D.agency.brand}'s on-demand ride around ${POOL.towns.slice(0, 4).join(', ')}: book it and a van comes to this point. Same-day bookings twenty minutes ahead or more.</div>
       <div class="muted">${POOL.hours}.</div></div>

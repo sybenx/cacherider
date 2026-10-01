@@ -255,7 +255,23 @@ EASY = 250
 TIERS = [EASY, (EASY + WALK) // 2, WALK]
 areas = [{'walk': w, 'area': shape(w)} for w in TIERS]
 area = areas[-1]['area']
-json.dump({'from': 'Connect, via Remix', **INFO, 'zone': ZONE, 'area': area, 'tiers': areas, 'stops': stops}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+# Its hours as minutes a weekday (Monday first; null, not running), read from the sentence on Connect's POOL page
+# ('Monday to Friday 6:15 AM to 8:45 PM, Saturday 9:45 AM to 6:30 PM, no Sunday service'), for greying its pickups
+# out of hours.
+import re
+DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+def mins(t):
+    m = re.match(r'(\d{1,2})(?::(\d\d))?\s*([ap])\.?m', t.strip(), re.I)
+    h = int(m.group(1)) % 12 + (12 if m.group(3).lower() == 'p' else 0)
+    return h * 60 + int(m.group(2) or 0)
+week = [None] * 7
+for part in INFO['hours'].split(','):
+    m = re.search(r'(\w+day)(?:\s+(?:to|-|–)\s+(\w+day))?\s+(\d[\d:]*\s*[ap]\.?m\.?)\s+(?:to|-|–)\s+(\d[\d:]*\s*[ap]\.?m\.?)', part, re.I)
+    if not m: continue
+    a_, b_ = DAYS.index(m.group(1).lower()), DAYS.index((m.group(2) or m.group(1)).lower())
+    for d in range(a_, b_ + 1): week[d] = [mins(m.group(3)), mins(m.group(4))]
+print('POOL hours by weekday:', week, file=sys.stderr)
+json.dump({'from': 'Connect, via Remix', **INFO, 'week': week, 'zone': ZONE, 'area': area, 'tiers': areas, 'stops': stops}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(f"covered on foot, {len(picks)} pickups against {len(buses)} bus stops: " + ', '.join(f"{a['walk']} m: {len(a['area'])} areas, {sum(len(r) for poly in a['area'] for r in poly)} points" for a in areas), file=sys.stderr)
 print(f"gone (their bus stop left the timetable): {[s_['name'] for s_ in stops if s_.get('gone')]}; no area (among bus stops): {[s_['name'] for s_ in stops if s_.get('alone')]}", file=sys.stderr)
 print(f"{len(stops)} POOL pickup points ({sum(1 for s in stops if s['stop'] is not None)} of them bus stops too), {os.path.getsize(OUT) // 1024} KB", file=sys.stderr)
