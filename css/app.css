@@ -534,6 +534,10 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 #map.bus-small .bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
 #map.bus-small .bus.lit .bus-marker svg, #map.bus-small .bus.on .bus-marker svg { width: 14px; height: 14px; }
 #map.bus-small .bus.lit .bus-marker path, #map.bus-small .bus.on .bus-marker path { fill: #fff; stroke: none; }
+/* the Aggie Shuttle's A (map.js ARROW_A): its counter in the marker's colour, on the full marker only, not the hollow arrow */
+.bus-marker path.a { fill: var(--bus-color); stroke: none; }
+#map.bus-small .bus-marker path.a, #map.u-small .bus.shuttle .bus-marker path.a { display: none; }
+#map.bus-small:not(.u-small) .bus.lit .bus-marker path.a, #map.bus-small:not(.u-small) .bus.on .bus-marker path.a { display: inline; fill: var(--bus-color); }
 /* the Aggie Shuttle's buses go to their arrows with its lines, wherever those are put away (off campus, or out past
    the streets), not only at Connect's zoom: a full marker with no line under it read as a bus off its route */
 #map.u-small .bus.shuttle { pointer-events: none; }
