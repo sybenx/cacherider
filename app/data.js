@@ -175,8 +175,60 @@ export async function loadAlerts({ relay = true } = {}) {
       for (const id of a.stops || []) (byStop[id] ||= []).push(a);
       for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
     }
-    A = { ...j, byStop, byRoute, loadedAt: relay ? Date.now() : A.loadedAt };   // the file alone is no check of the relay
+    let tracked = [];
+    if (relay && pref('detours') === 'on') try { const r = await fetch(LIVE_URL + 'detours', { cache: 'no-store' }); if (r.ok) tracked = trackedAlerts((await r.json()).detours || [], byStop); } catch { /* the agency's alone */ }
+    for (const a of tracked) {
+      for (const id of [...a.stops, ...a.maybe]) (byStop[id] ||= []).push(a);
+      for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
+    }
+    A = { ...j, alerts: [...j.alerts, ...tracked], byStop, byRoute, tracked, loadedAt: relay ? Date.now() : A.loadedAt };   // the file alone is no check of the relay
   } catch { /* the app is fine without alerts */ }
+}
+/** Detours seen from the buses themselves (the relay's watch, worker/src/detours.js), as alerts of their own: the
+ *  stops of a route's line between where its buses left it and where they came back, less any they passed on the way
+ *  round (a stop a detour passes is served). Three buses in a row the same way round closes them, as an alert would;
+ *  two only says they may be (a.maybe: nothing dropped from the times). A way round the agency already has every stop
+ *  of in a notice in force adds nothing. For now only with the switch on (?detours in the address). */
+const TRACK_ON = 45;   // metres from a way round a stop is on it
+function trackedAlerts(list, byStop) {
+  const ymd = now().ymd, out = [];
+  for (const d of list) {
+    if (d.streak < 2) continue;
+    const ris = D.routes.map((r, i) => i).filter(i => D.routes[i].short.split(' ')[0] === d.route);
+    const [lat0, lon0] = d.leaves, [lat1, lon1] = d.rejoins;
+    const gone = new Set();
+    for (const ri of ris) for (const seq of Object.values(D.routes[ri].stops || {})) {
+      // The stops near where the buses left the line and near where they came back, the closest pair in order: a line
+      // that passes the same corner twice (out and back) would otherwise take in the whole run between.
+      const near = (lat, lon) => seq.map((si, k) => distance(lat, lon, D.stops[si].lat, D.stops[si].lon) < 300 ? k : -1).filter(k => k >= 0);
+      let i = -1, j = -1;
+      for (const a of near(lat0, lon0)) for (const b of near(lat1, lon1)) if (b > a && (i < 0 || b - a < j - i)) { i = a; j = b; }
+      if (i < 0) continue;
+      for (const si of seq.slice(i, j + 1)) { const s = D.stops[si]; if (!s.hub && pathDistance(s.lat, s.lon, d.path) > TRACK_ON) gone.add(s.id); }
+    }
+    const ids = [...gone];
+    if (!ids.length) continue;
+    const posted = ids.every(id => (byStop[id] || []).some(a => alertOn(a, ymd) && ris.some(ri => a.ri.includes(ri))));
+    if (posted) continue;
+    const n = d.streak, who = ris.length ? routeWord(ris[0]) : 'Route ' + d.route, since = clockText(now(new Date(d.first * 1000)).min);
+    const how = n >= 4 ? `every ${who} bus since ${since}, ${n} in a row, has gone another way` : `the last ${n} ${who} buses went another way`;
+    const word = n >= 4 ? 'are closed' : n === 3 ? 'are likely closed' : 'may be closed';
+    out.push({ id: 'trk' + d.id, tracked: d, title: `${who} is going another way`, text: ` ${D.agency.brand} hasn't posted this, but ${how}, so ${ids.length === 1 ? 'a stop' : ids.length + ' stops'} on its usual way ${word}.`,
+      url: '', start: d.first, end: null, routes: [], ri: ris, stops: n >= 3 ? ids : [], maybe: n >= 3 ? [] : ids, names: null });
+  }
+  return out;
+}
+const routeWord = ri => { const r = D.routes[ri]; return /^[A-Z]$/.test(r.short) ? r.long : 'Route ' + r.short.split(' ')[0]; };
+/** Metres from a point to a path of [lat, lon] points. */
+function pathDistance(lat, lon, path) {
+  const k = 111320 * Math.cos(lat * Math.PI / 180), xy = ([a, b]) => [(b - lon) * k, (a - lat) * 110540];
+  let best = Infinity;
+  for (let i = 0; i + 1 < path.length; i++) {
+    const [ax, ay] = xy(path[i]), [bx, by] = xy(path[i + 1]), dx = bx - ax, dy = by - ay, n = dx * dx + dy * dy;
+    const f = n ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / n)) : 0;
+    best = Math.min(best, Math.hypot(ax + f * dx, ay + f * dy));
+  }
+  return path.length === 1 ? distance(lat, lon, path[0][0], path[0][1]) : best;
 }
 // A notice that closes a stop but assigns none ('Due to construction, the stop at 355 North Main St. in Logan is
 // closed', put on its routes alone): the stops whose names read in its words, up to where it offers alternatives,
@@ -266,7 +318,7 @@ export function activeAlerts(ymd) { return A.alerts.filter(a => alertOn(a, ymd))
 /** Routes that skip a stop on a day: an alert naming both the route and the stop. */
 export function closedRoutes(si, ymd) {
   const out = new Set();
-  for (const a of stopAlerts(si, ymd)) for (const ri of a.ri) out.add(ri);
+  for (const a of stopAlerts(si, ymd)) if (!(a.maybe || []).includes(D.stops[si].id)) for (const ri of a.ri) out.add(ri);
   return out;
 }
 

@@ -90,7 +90,8 @@ function style(sat = true) {
       protomaps: { type: 'vector', tiles: [BASE + 'tiles/{z}/{x}/{y}.pbf'], minzoom: TILES.minzoom, maxzoom: TILES.maxzoom, bounds: TILES.bounds, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
       stops: { type: 'geojson', data: stopsGeo() },
       lines: { type: 'geojson', data: drawn.lines || { type: 'FeatureCollection', features: [] } },
-      lclosed: { type: 'geojson', data: drawn.closed || { type: 'FeatureCollection', features: [] } },   // the stretches of route we can't vouch for
+      lclosed: { type: 'geojson', data: drawn.closed || { type: 'FeatureCollection', features: [] } },
+      trk: { type: 'geojson', data: trackedPaths() },   // the ways round the buses have been seen to take   // the stretches of route we can't vouch for
       spot: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       runs: { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features: [] } },   // the way on from a picked bus or stop, fading along itself
       ustops: { type: 'geojson', data: usuStopsGeo() },
@@ -127,6 +128,7 @@ function style(sat = true) {
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
+      { id: 'trk-path', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3, 17, 5], 'line-dasharray': [1.6, 1.2], 'line-opacity': ['get', 'sure'] } },
       { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
       { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
@@ -408,6 +410,11 @@ function shapes() {
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
+/** The ways round the buses have been seen to take (data.js's tracked alerts), dashed in the route's colour,
+ *  fainter while only two buses have gone that way. */
+function trackedPaths() {
+  return { type: 'FeatureCollection', features: (A.tracked || []).flatMap(a => a.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), sure: a.tracked.streak >= 3 ? 0.95 : 0.6 }, geometry: { type: 'LineString', coordinates: a.tracked.path.map(([la, lo]) => [lo, la]) } }))) };
+}
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
 const drawn = { lines: null, closed: null, key: null };
@@ -415,7 +422,7 @@ const drawn = { lines: null, closed: null, key: null };
  *  were fetched, so a refetch saying the same thing (every ten minutes, and the relay's just after launch) redraws
  *  nothing, and a detour whose day's buses are done is dropped when it is. */
 function closedKeyOf(clockNow) {
-  return clockNow.ymd + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []]));
+  return clockNow.ymd + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.tracked || []).map(a => [a.tracked.id, a.tracked.streak, a.tracked.last]));
 }
 async function loadShapes(m = map) {
   const fc = await shapes();
@@ -429,6 +436,7 @@ async function loadShapes(m = map) {
   closedKey = key;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
   if (m.getSource('lclosed')) m.getSource('lclosed').setData(drawn.closed);
+  if (m.getSource('trk')) m.getSource('trk').setData(trackedPaths());
 }
 /** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
 let closedKey = null;
@@ -1329,7 +1337,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5, HUB_IN = 110, HUB_STILL = 3;   // metres from the hall: a bus this close is in; metres a second: one slower stands
-const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {

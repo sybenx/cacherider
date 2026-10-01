@@ -48,6 +48,8 @@ export function render({ id, full, run, on }, clockNow) {
   const alerts = stopAlerts(si, clockNow.ymd);
   const closed = closedRoutes(si, clockNow.ymd);
   const allClosed = closed.size && s.routes.every(ri => closed.has(ri));
+  // Two buses in a row gone round it (a detour seen from the buses, not yet sure): said, nothing dropped.
+  const maybe = [...new Set(alerts.filter(a => (a.maybe || []).includes(s.id)).flatMap(a => a.ri))].filter(ri => !closed.has(ri));
   // A way the bus calls here only when asked (16 northbound at Pepperidge Farms): said once, with the number to ask.
   const req = nextAt(si, 60, clockNow).find(t => t.req);
   if (req) parts.push(html`<div class="notice">${icon('info', 16)}<span>${headsign(req)}, the bus stops here only on request: pull the cord to get off, or call <a href="tel:${D.agency.phone}">${D.agency.phone}</a> ahead to be picked up.</span></div>`);
@@ -62,7 +64,8 @@ export function render({ id, full, run, on }, clockNow) {
     const end = alertsUntil(alerts), onEnd = end === clockNow.ymd;
     const ends = end && !onEnd ? ' · the detour ends ' + (end === dayFrom(clockNow.ymd, 1).ymd ? 'tomorrow' : fmtDay(end)) : '';
     const head = allClosed ? (onEnd ? 'No buses stop here until the detour ends, later today' : `No buses stop here${ends || ' during the detour'}`)
-      : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}` : 'Service alert for this stop';
+      : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}`
+      : maybe.length ? `${routeNames(maybe)} may be skipping this stop` : 'Service alert for this stop';
     parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
   }
 

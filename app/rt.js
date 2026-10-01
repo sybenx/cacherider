@@ -6,7 +6,7 @@ import { D, setLive, distance, LIVE_URL, tripStops, tripEnd, runOf, timesOn } fr
 import { now, dayDiff, clockText } from './time.js';
 
 export const RT_URL = LIVE_URL;
-const POLL = 15000, STALE = 90000;
+const POLL = 5000, STALE = 90000;   // each bus reports every 3 to 8 seconds; the relay keeps the feed 5
 
 export const rt = { at: 0, t: 0, buses: [], trips: {}, loopMode: {}, wanted: false, fetching: false, error: null };
 let timer = null;
