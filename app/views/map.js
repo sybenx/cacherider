@@ -335,6 +335,21 @@ function trimWalk(f, best, from, to, closed) {
   let end = [...xs].reverse().find(w => w > lastClosed + 5); end = end === undefined ? toAt : end;
   return { coords: slice(walk, start, end), shape: f.properties.shape, s0: (f._cum[a] + start) % total, s1: (f._cum[a] + end) % total, walk, start, end, base: f._cum[a], total };
 }
+/** The passed stretches (passedRuns) cut from their route's shapes as the detours' are: the lines left open there,
+ *  and each stretch drawn as its own feature, done (faded at the town's zoom). */
+function passedSegments(fc) {
+  const done = [], gaps = {};
+  for (const [ri, a, b] of passedRuns()) {
+    const shapes = fc.features.filter(f => f.properties.route === ri);
+    const from = D.stops[a], to = D.stops[b];
+    for (const cut of cutShape(shapes, from, to, [from, to])) {
+      const props = shapes.find(f => f.properties.shape === cut.shape).properties;
+      done.push({ type: 'Feature', properties: { ...props, done: true }, geometry: { type: 'LineString', coordinates: cut.coords } });
+      (gaps[cut.shape] ||= []).push([cut.s0, cut.s1]);
+    }
+  }
+  return { done, gaps };
+}
 /** The part of a walk between two distances along it, ends interpolated. */
 function slice(walk, d0, d1) {
   const at = d => { for (let i = 1; i < walk.length; i++) if (walk[i][0] >= d) { const [a, pa] = walk[i - 1], [b, pb] = walk[i], t = b === a ? 0 : (d - a) / (b - a); return [pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t]; } return walk[walk.length - 1][1]; };
@@ -435,7 +450,7 @@ function shapes() {
   if (!shapesFC) shapesFC = Promise.all([
     fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json()),
     fetch(BASE + 'data/crossings.json').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => { const raw = '#' + route(l.route).color, c = sinkLine(raw), dc = lift(raw); return { type: 'Feature', properties: { color: c, dcolor: dc, fade: mix(c, '#f2f2f3', 0.3), dfade: mix(dc, '#101214', 0.3), soft: mix(c, '#f2f2f3', 0.35), dsoft: mix(dc, '#101214', 0.35), route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }; }) }; })
+  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => { const raw = '#' + route(l.route).color, c = sinkLine(raw), dc = lift(raw); return { type: 'Feature', properties: { color: c, dcolor: dc, fade: mix(c, '#f2f2f3', 0.3), dfade: mix(dc, '#101214', 0.3), soft: mix(c, '#f2f2f3', 0.35), dsoft: mix(dc, '#101214', 0.35), gone: mix(c, '#f2f2f3', 0.3), dgone: mix(dc, '#101214', 0.3), route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }; }) }; })
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
@@ -480,7 +495,7 @@ const drawn = { lines: null, closed: null, key: null };
  *  were fetched, so a refetch saying the same thing (every ten minutes, and the relay's just after launch) redraws
  *  nothing, and a detour whose day's buses are done is dropped when it is. */
 function closedKeyOf(clockNow) {
-  return clockNow.ymd + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced]));
+  return clockNow.ymd + JSON.stringify(passedRuns(clockNow)) + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced]));
 }
 async function loadShapes(m = map) {
   const fc = await shapes();
@@ -489,7 +504,9 @@ async function loadShapes(m = map) {
   const key = closedKeyOf(now());
   if (drawn.key !== key) {
     const { closed, gaps } = closedSegments(fc);
-    drawn.lines = openLines(fc, gaps); drawn.closed = closed; drawn.key = key;
+    const { done, gaps: by } = passedSegments(fc);
+    for (const [sh, g] of Object.entries(by)) (gaps[sh] ||= []).push(...g);
+    drawn.lines = openLines(fc, gaps); drawn.lines.features.push(...done); drawn.closed = closed; drawn.key = key;
   }
   closedKey = key;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
@@ -499,11 +516,8 @@ async function loadShapes(m = map) {
 }
 /** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
 let closedKey = null;
-let doneKey = '';
 function refreshClosed(clockNow) {
-  const dk = doneRoutes(clockNow).join();
-  if (dk !== doneKey) { doneKey = dk; if (map && map.getLayer('route-lines')) applySelection(); }   // a route's day ended: its line steps back
-  const key = closedKeyOf(clockNow);
+  const key = closedKeyOf(clockNow);   // the last buses moving on fade the stretches behind them
   if (closedKey === key) return;
   closedKey = key;
   for (const m of [map]) if (m && m.getSource('stops')) { m.getSource('stops').setData(stopsGeo()); if (m.getSource('pool')) m.getSource('pool').setData(poolGeo()); loadShapes(m); }
@@ -1685,12 +1699,28 @@ function tintStops(m, ri) {
   m.setPaintProperty('stop-selected', 'circle-color', fill);
 }
 
-/** The routes whose last run of the day has ended (ten minutes on, a late one in), by the timetable: none from
- *  midnight till the next evening, so the map never reads as shut while tomorrow's ride is planned. */
-let doneDay = null, doneEnds = null;
-function doneRoutes(c = now()) {
-  if (doneDay !== c.ymd) { doneDay = c.ymd; doneEnds = D.routes.map((r, ri) => { const t = lastTripOn(ri, c.ymd); return t && t.end ? t.end[0] : null; }); }
-  return doneEnds.map((e, ri) => e !== null && c.min > e + 10 ? ri : -1).filter(ri => ri >= 0);
+/** The stretches of each route the day's last bus has been by: for each way, each stop's last call today (the
+ *  timetable's, the feed's where its bus is out), and a stretch between two stops passed once that last bus has left
+ *  the far one. Per stop, not per route: a last run that turns back partway (16, 12) leaves the rest to the run
+ *  before it, and each part fades when its own last bus has gone. Each passed stretch, as [route, from, to] stop
+ *  indices. None from midnight on: the next day's last calls are all to come. */
+let passedAt = '', passed = [];
+function passedRuns(c = now()) {
+  const key = c.ymd + ':' + c.min;   // once a minute: the live feed's word on the last buses with it
+  if (key === passedAt) return passed;
+  passedAt = key; passed = [];
+  for (let ri = 0; ri < D.routes.length; ri++) for (const seq of Object.values(D.routes[ri].stops || {})) {
+    const last = seq.map(si => {
+      const rows = timesOn(si, c.ymd).filter(t => t.r === ri && !t.prov);
+      if (!rows.length) return null;
+      const t = lively(rows.reduce((m, t) => t.min > m.min ? t : m));
+      return t.gone ? -1 : t.min;
+    });
+    for (let i = last.length - 1; i >= 0 && last[i] === null; i--) last[i] = i ? last[i - 1] : null;   // the last stop, no call of its own: as the one before
+    // stop to stop: a run passed end to end on a round trip starts and ends at the Center, a cut of nothing
+    for (let i = 1; i < seq.length; i++) if (last[i] !== null && last[i - 1] !== null && c.min > last[i] && seq[i] !== seq[i - 1]) passed.push([ri, seq[i - 1], seq[i]]);
+  }
+  return passed;
 }
 /** A picked route, or a bus's loop, drawn on top at full strength; every other line faded back. With a way on drawn
  *  from a bus or stop (`soft`), everything fades back, the lit route too, so the way stands out from the road. */
@@ -1700,11 +1730,11 @@ function litLines(m, lines, loops, soft = false) {
   m.setFilter('usu-line-on', ['in', ['get', 'id'], ['literal', loops]]);
   const any = lines.length > 0 || loops.length > 0 || soft, dk = dark();
   m.setPaintProperty('route-on', 'line-color', ['get', soft ? (dk ? 'dsoft' : 'soft') : dk ? 'dcolor' : 'color']);
-  m.setPaintProperty('route-lines', 'line-color', ['get', any ? (dk ? 'dfade' : 'fade') : dk ? 'dcolor' : 'color']);
-  // Nothing picked: a route whose day is done steps back at the town's zoom, what's still running tonight standing
-  // out; in at the streets, every line as ever. Nothing shut for planning: a stop or route opened is all there.
-  const done = doneRoutes();
-  m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : done.length ? ['interpolate', ['linear'], ['zoom'], 13, ['case', ['in', ['get', 'route'], ['literal', done]], 0.3, 0.75], 15, 0.75] : 0.75);
+  // Nothing picked: the stretches the day's last bus has been by (passedRuns) drawn faded at the town's zoom, what's
+  // still to be run tonight standing out; in at the streets, every line as ever.
+  const own = dk ? 'dcolor' : 'color', gone = dk ? 'dgone' : 'gone';
+  m.setPaintProperty('route-lines', 'line-color', any ? ['get', dk ? 'dfade' : 'fade'] : ['interpolate', ['linear'], ['zoom'], 13, ['case', ['==', ['get', 'done'], true], ['get', gone], ['get', own]], 15, ['get', own]]);
+  m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : 0.75);
   m.setPaintProperty('usu-lines', 'line-opacity', any ? 0.25 : ['case', ['get', 'approx'], 0.35, 0.9]);
 }
 
