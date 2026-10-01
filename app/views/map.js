@@ -1456,6 +1456,7 @@ function hubCheck() {
   if (on !== hubOn) {
     hubOn = on;
     paper(on);
+    map.getContainer().classList.toggle('hubon', on);   // its buses over its badges: one moving at its bay was hidden under it
     // Zoomed or panned off the Center, the turn stays: the rider's hands moved the map, not the page. North comes back
     // with the page (the Map tab, another tab).
     if (on) hubBadges(); else { for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); }
