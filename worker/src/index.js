@@ -4,6 +4,7 @@
 //     cut to those stops, and where the feed's buses are, for small clients
 //     (Headway's phone side, which tells a bus waiting at its bay by it). Open
 //     to any origin: it is the public feed.
+//   GET /detours → { t, detours: [...] }: the ways round the buses have been seen to take (src/detours.js).
 //   GET /alerts → { fetched, source, alerts: [...] }: the agency's service notices as the tracker site shows
 //     them, minutes after they're posted (the GTFS-realtime alerts feed lags them, and misses some).
 // Decoded here with a plain protobuf reader (the schema is small and fixed),
@@ -11,19 +12,21 @@
 // A bus off its scheduled trips (a detour) isn't in GTFS-realtime at all, so for
 // a route the feed has no bus on, the tracker site's own API fills in positions.
 
+import { watchStart, watchStep, watchEnd, detoursJSON } from './detours.js';
+
 const UPSTREAM = 'https://mycvtdbus.org/gtfs-rt/';
 const RTPI = 'https://mycvtdbus.org/api/rtpi?path=';
 const UA = { 'User-Agent': 'cacherider-live/1.0 (+https://cacherider.com)' };
 const ORIGINS = ['https://cacherider.com', 'https://sybenx.github.io', 'http://localhost:8794'];
 const PREVIEW = /^https:\/\/[a-z0-9-]+\.cacherider\.pages\.dev$/;   // Cloudflare's preview of each push
-const TTL = 15;   // seconds at the edge, the agency's feed asked no oftener than this; they update every few seconds
+const TTL = 5;   // seconds at the edge, the agency's feed asked no oftener than this; each bus reports every 3 to 8 seconds
 const ALERT_TTL = 300;   // a notice posted at the agency reaches riders within five minutes
 const ANNOUNCEMENTS = 'https://mycvtdbus.org/announcements.data';
 
 export default {
   // Every minute: where the buses are, for spotting detours from the tracks (tools/detours.py reads them).
   async scheduled(ev, env, ctx) { ctx.waitUntil(track(env)); },
-  async fetch(req) {
+  async fetch(req, env) {
     const origin = req.headers.get('Origin') || '';
     const cors = {
       'Access-Control-Allow-Origin': ORIGINS.includes(origin) || PREVIEW.test(origin) ? origin : ORIGINS[0],
@@ -34,6 +37,10 @@ export default {
     if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: cors });
     const url = new URL(req.url), path = url.pathname;
     if (path === '/alerts') return alerts(cors);
+    if (path === '/detours') {
+      try { return new Response(JSON.stringify(await detoursJSON(env)), { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' } }); }
+      catch (e) { return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }); }
+    }
     if (path !== '/' && path !== '/live') return new Response('Not found', { status: 404, headers: cors });
     const only = url.searchParams.has('stops') ? new Set(url.searchParams.get('stops').split(',').filter(Boolean).slice(0, 32)) : null;
     if (only) { cors['Access-Control-Allow-Origin'] = '*'; delete cors['Vary']; }
@@ -59,6 +66,8 @@ export default {
 // written while no bus is out; rows older than fourteen days put away once an hour.
 const SAMPLES = 3, EVERY = 20000, KEEP = 14 * 86400;
 async function track(env) {
+  let W = null;
+  try { W = await watchStart(env); } catch (e) { /* the samples still go in */ }
   for (let i = 0; i < SAMPLES; i++) {
     if (i) await new Promise(r => setTimeout(r, EVERY));
     try {
@@ -69,8 +78,10 @@ async function track(env) {
       const t = Math.floor(Date.now() / 1000);
       const rows = out.buses.map(b => [b.label || b.id, b.trip || '', b.route || shortOf(b.trip) || '', b.lat, b.lon, b.bearing, b.speed, b.ts]);
       await env.TRACKS.prepare('INSERT OR REPLACE INTO samples (t, buses) VALUES (?, ?)').bind(t, JSON.stringify(rows)).run();
+      if (W) watchStep(W, t, rows);
     } catch (e) { /* a sample missed */ }
   }
+  if (W) await watchEnd(env, W, Math.floor(Date.now() / 1000));
   if (new Date().getUTCMinutes() === 0) await env.TRACKS.prepare('DELETE FROM samples WHERE t < ?').bind(Math.floor(Date.now() / 1000) - KEEP).run();
 }
 
@@ -159,9 +170,9 @@ async function fillIn(out, evenEmpty) {
 }
 
 // ---- protobuf, just enough: fields as [number, value] pairs, nested messages as byte slices
-function varint(b, i) {
-  let r = 0n, s = 0n, c;
-  do { c = b[i++]; r |= BigInt(c & 0x7f) << s; s += 7n; } while (c & 0x80);
+function varint(b, i) {   // in plain numbers: every value here is well under 2^53, and BigInt was most of the decode's time
+  let r = 0, m = 1, c;
+  do { c = b[i++]; r += (c & 0x7f) * m; m *= 128; } while (c & 0x80);
   return [r, i];
 }
 function fields(b) {
@@ -169,7 +180,7 @@ function fields(b) {
   let i = 0;
   while (i < b.length) {
     let key; [key, i] = varint(b, i);
-    const f = Number(key >> 3n), wt = Number(key & 7n);
+    const f = Math.floor(key / 8), wt = key % 8;
     if (wt === 0) { let v; [v, i] = varint(b, i); out.push([f, Number(v)]); }
     else if (wt === 1) { out.push([f, new DataView(b.buffer, b.byteOffset + i, 8).getFloat64(0, true)]); i += 8; }
     else if (wt === 5) { out.push([f, new DataView(b.buffer, b.byteOffset + i, 4).getFloat32(0, true)]); i += 4; }
