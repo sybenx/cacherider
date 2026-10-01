@@ -33,7 +33,7 @@ function status(k, clockNow) {
   const ris = routesOf(k), loop = isLoop(ris[0]);
   const deps = ris.flatMap(ri => nextFromHub(ri, 3, clockNow)).sort((a, b) => (a.day - b.day) || (a.min - b.min)).slice(0, 3);
   const dep = deps[0];
-  let eta = null, loose = false, away = false, bus = null;
+  let eta = null, loose = false, away = false, bus = null, doubt = false;
   if (!rtStale()) {
     const nowSec = Date.now() / 1000;
     // Buses swap between routes all day (2 and 5, 3 and 8): the bus that runs this route's next departure is the
@@ -47,7 +47,7 @@ function status(k, clockNow) {
       const u = rt.trips[b.trip];
       // In, and standing: one driving through the Center (in, or out on its way) is still coming, or gone.
       if (distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(b.speed > STILL)) e = 0;
-      else if (!u) loose = true;
+      else if (!u) { loose = true; if (rt.doubt.has(b.trip)) doubt = true; }   // no trip to time it by, or its times dropped (rt.js agrees())
       else {
         const next = u.stops.filter(([sid, , time, rel]) => rel !== 1 && time >= nowSec - 30 && D.stops[D.stopById[sid]]?.hub).sort((x, y) => x[1] - y[1])[0];
         // Its trip's end: the feed's time, or, where the feed has lost the trip, from where the bus is (in, when it's there).
@@ -63,7 +63,7 @@ function status(k, clockNow) {
   const off = !today || (!out && dep.min - clockNow.min > 90);
   const leave = dep ? dep.min : null;   // the feed's word, with its bus's arrival, from predict(): every screen agrees
   const late = today && !loop ? Math.max(0, leave - schedOf(dep)) : 0;
-  return { k, ris, loop, deps, dep, eta, at: eta === 0 ? bus : null, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
+  return { k, ris, loop, deps, dep, eta, at: eta === 0 ? bus : null, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, doubt: eta === null && loose && doubt, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
 }
 /** Where a route's card on the board goes: to its bus on the map while it's on its way in or still on the run before
  *  (where is it, and how it comes), else the route picked on the board, or put back. */
@@ -270,6 +270,7 @@ function picked(s, clockNow) {
     : s.off ? (dep.day === 0 ? `No bus out yet. The next leaves at ${clockText(dep.min)}.` : `No more buses today. The next leaves ${dayName(dep.ymd)} at ${clockText(dep.min)}.`)
     : s.eta === 0 ? (s.loop ? 'The bus is here.' : 'The bus is at its bay.')
     : s.eta > 0 ? `The bus is ${s.eta} min from the Transit Center${s.loop ? '.' : s.late ? `, ${s.late} min late.` : ', on time.'}`
+    : s.doubt ? 'The bus is out, but Connect’s estimate for it doesn’t match where it is, so there’s none here.'
     : s.loose ? 'The bus is out but off its scheduled trips, so there’s no estimate for it.'
     : s.away ? 'The bus is out on a run that doesn’t come back through here soon.'
     : 'This route isn’t reporting its position.';
@@ -315,9 +316,10 @@ function footnote(st) {
   const name = s => s.loop ? D.routes[s.ris[0]].long : 'Route ' + s.k;
   const list = (xs, one, many) => xs.length ? ' ' + (xs.length === 1 ? xs[0] + one : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1] + many) : '';
   const live = Object.values(st).filter(s => !s.off && s.eta === null);
-  const loose = list(live.filter(s => s.loose).map(name), ' is out but off its scheduled trips, so it has no estimate.', ' are out but off their scheduled trips, so they have no estimates.');
+  const doubt = list(live.filter(s => s.doubt).map(name), ' is out, but Connect’s estimate for it doesn’t match where it is, so it has none here.', ' are out, but Connect’s estimates for them don’t match where they are, so they have none here.');
+  const loose = list(live.filter(s => s.loose && !s.doubt).map(name), ' is out but off its scheduled trips, so it has no estimate.', ' are out but off their scheduled trips, so they have no estimates.');
   const quiet = list(live.filter(s => !s.out).map(name), ' isn’t reporting.', ' aren’t reporting.');
-  return html`<p class="tc-foot">Bus positions from ${D.agency.brand}’s live feed. A late bus leaves when it’s ready: a crossed-out time is the scheduled one, beside the estimate.${loose}${quiet}</p>`;
+  return html`<p class="tc-foot">Bus positions from ${D.agency.brand}’s live feed. A late bus leaves when it’s ready: a crossed-out time is the scheduled one, beside the estimate.${doubt}${loose}${quiet}</p>`;
 }
 
 let shownPick = null;

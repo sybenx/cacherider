@@ -8,7 +8,7 @@ import { now, dayDiff, clockText, dayFrom } from './time.js';
 export const RT_URL = LIVE_URL;
 const POLL = 5000, STALE = 90000;   // each bus reports every 3 to 8 seconds; the relay keeps the feed 5
 
-export const rt = { at: 0, t: 0, buses: [], trips: {}, loopMode: {}, wanted: false, fetching: false, error: null };
+export const rt = { at: 0, t: 0, buses: [], trips: {}, doubt: new Set(), loopMode: {}, wanted: false, fetching: false, error: null };
 let timer = null;
 /** 'trip:stop' → when the feed first stopped predicting that Transit Center bay for that trip: the bus pulled out. */
 const left = new Map();
@@ -111,7 +111,13 @@ async function tick(force) {
     // A detoured route's buses report where they are, but the tracker predicts nothing for them (off the route it
     // knows, it gives up): their times are worked out here from the bus's place along its trip, the timetable's
     // minute there set against the clock and carried to every stop ahead. Marked `est`, as a carried delay is.
-    for (const b of buses) if (!trips[b.trip] && tripIdx.has(b.trip) && j.t - b.ts < 180) { const u = fromPlace(b, tripIdx.get(b.trip), j.t); if (u) trips[b.trip] = u; }
+    // The feed's word on a bus held against where the bus is (agrees()): where they don't agree, its trip's times
+    // are dropped, not guessed at, and every screen keeps to the timetable for it (the bus still on the map): right,
+    // or not said. A feed waiting at a stop its bus went round had a Route 2 back and on time 'late, 3:14'.
+    const doubt = new Set();
+    for (const b of buses) if (trips[b.trip] && !trips[b.trip].est && tripIdx.has(b.trip) && !agrees(b, trips[b.trip], tripIdx.get(b.trip), j.t)) { delete trips[b.trip]; doubt.add(b.trip); }
+    for (const b of buses) if (!trips[b.trip] && !doubt.has(b.trip) && tripIdx.has(b.trip) && j.t - b.ts < 180) { const u = fromPlace(b, tripIdx.get(b.trip), j.t); if (u) trips[b.trip] = u; }
+    rt.doubt = doubt;
     const t0 = Date.now();
     for (const [id, old] of Object.entries(rt.trips)) for (const [sid, x] of old.at) {
       const k = id + ':' + sid;
@@ -165,6 +171,33 @@ function fromPlace(b, ti, nowS) {
     last = { sid, seq: i, time };
   }
   return { v: b.id.slice(2), ts: b.ts, at, first, last, lastDelay: delay, ti, stops, end, est: true };
+}
+/** Whether the feed's word on a bus and the bus's place agree. The feed has it so many minutes late (its next
+ *  stop's minute against the timetable's), so it should be about where the timetable had it that many minutes ago:
+ *  it's looked for there, four minutes either way, on the legs between its trip's stops (as the crow flies, a
+ *  corner cut allowed for), headed along them when it's moving (a street run out and back has its stops in pairs).
+ *  There, they agree. On its trip's line somewhere else, they don't: the feed is wrong about it (a Route 2 back on
+ *  its line and on time, the feed still waiting at a stop it went round). Off its line altogether (a detour the feed
+ *  knows of, its stops skipped), there's nothing to hold against the feed's word, and it stands; so too with no word,
+ *  or the bus's place minutes old. */
+function agrees(b, u, ti, nowS) {
+  if (!u.first || nowS - b.ts > 120) return true;
+  const pts = tripStops(ti).slice(), te = tripEnd(ti);
+  if (te) pts.push([te.min, te.si]);
+  const k0 = pts.findIndex(([, si]) => D.stops[si].id === u.first.sid);
+  if (k0 < 0 || pts.length < 2) return true;
+  const late = toMin(Math.max(u.first.time, nowS)) - pts[k0][0];
+  const T = Math.min(Math.max(toMin(nowS) - late, pts[0][0]), pts[pts.length - 1][0]);
+  let elsewhere = false;
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const [ma, sa] = pts[k], [mb, sb] = pts[k + 1];
+    const A = D.stops[sa], C = D.stops[sb], p = along(b.lat, b.lon, A, C), len = distance(A.lat, A.lon, C.lat, C.lon);
+    if (p.d > Math.max(80, len * 0.35)) continue;
+    if (b.speed > 2 && len > 30 && Math.abs(((bearing(A.lat, A.lon, C.lat, C.lon) - b.course) % 360 + 540) % 360 - 180) > 75) continue;
+    if (mb >= T - 4 && ma <= T + 4) return true;
+    elsewhere = true;
+  }
+  return !elsewhere;
 }
 /** A point against the leg between two stops: the distance to the leg in metres, and the fraction along it. */
 function along(lat, lon, a, c) {
@@ -301,41 +334,9 @@ function inbound(u, id) {
  *  whole trip again from now: a Route 5 bus 116 m from the Center, in for its 8:00, was 'back at 8:22' (2026-09-30),
  *  its 7:30 trip done but never marked off. The bus's place is the word then, not the feed's. */
 function lost(b, u) {
-  if (stuck(b, u)) return true;
   if (!u.stops.length || u.stops[0][1] > 1) return false;
   const ts = tripStops(D.trips.indexOf(b.trip));
   return ts.length > 0 && toMin(Date.now() / 1000) > ts[ts.length - 1][0] + 2;
-}
-/** Whether the feed is stuck on a stop its bus went round: the same stop next for five minutes and more, its time
- *  slipping five minutes and more, while the bus drove on 800 m and more. The feed waits for a stop passed by before
- *  it moves on, and times the rest of the trip from it: a Route 2 on its unannounced detour, up 400 East past its
- *  first stops on 200 East, was all the way round and on time, and its 3:00 out of the Center 'late, 3:14'
- *  (2026-10-01). Traffic slips a stop's time with the bus standing; a long way between stops moves the bus, not
- *  the time. */
-const stuckOn = new Map();   // trip → { seq, t, time, lat, lon }: its next stop when first seen next
-function stuck(b, u) {
-  const first = u.stops[0];
-  if (!first) return false;
-  const nowS = Date.now() / 1000;
-  let s = stuckOn.get(b.trip);
-  if (!s || s.seq !== first[1]) {
-    if (stuckOn.size > 200) stuckOn.clear();
-    stuckOn.set(b.trip, s = { seq: first[1], t: nowS, time: first[2], lat: b.lat, lon: b.lon });
-  }
-  if (nowS - s.t >= 300 && first[2] - s.time >= 300 && distance(b.lat, b.lon, s.lat, s.lon) > 800) return true;
-  // Or seen at once: the bus at a stop further on, on time there and headed the trip's way from it, while the feed
-  // has it 8 min and more behind at the stop it waits for. Headed its way: a route out and back along one street has
-  // its stops in pairs a few metres apart (1206 and 1201 North 200 East), and a bus late at one is at the other's time.
-  const ts = tripStops(D.trips.indexOf(b.trip)), i0 = ts.findIndex(([, si]) => D.stops[si].id === first[0]);
-  if (i0 < 0 || toMin(first[2]) - ts[i0][0] < 8) return false;
-  const nowM = toMin(nowS);
-  for (let j = i0 + 4; j + 1 < ts.length; j++) {
-    const [m, si] = ts[j], st = D.stops[si], nx = D.stops[ts[j + 1][1]];
-    if (Math.abs(m - nowM) > 6 || distance(b.lat, b.lon, st.lat, st.lon) > 150) continue;
-    const way = Math.abs(((bearing(st.lat, st.lon, nx.lat, nx.lon) - b.course) % 360 + 540) % 360 - 180);
-    if (way < 70) return true;
-  }
-  return false;
 }
 /** When a bus gets to its trip's last stop, in seconds: the feed's time; where the feed has lost the trip, from where
  *  the bus is (there, within 150 m; else the way at a town bus's pace, 6 m/s, a road 1.4 times the straight line). */
