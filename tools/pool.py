@@ -57,54 +57,22 @@ if min(metres(H, v) for v in ZONE) <= reach and not any(metres(H, (s['lon'], s['
         stops.append({'id': near[0]['gtfsStopId'], 'name': hub['name'], 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': None, 'hub': True})
 stops.sort(key=lambda s: s['name'])
 
-# The area as drawn: a soft blob round each pickup point, run together where points are near one another (metaballs:
-# each point's pull falling off over R, the outline where their sum is half a lone point's peak), so a point on its
-# own is its own small round, and a cluster one shape. The zone itself, Remix's outline, stays for asking whether a
-# place is inside; it's a planning boundary, not what a rider can walk to.
-# The area as one region where the pickups make one, and a small round for each on its own: places with two others
-# or more within GROUP are a group, a large blob each; a place on its own between two groups (River Heights, between
-# the Cliffside bench and Providence) reaches out to both and joins them; the rest (the Tabernacle, the Center) are
-# small rounds. Large and smooth over carved: a bus stop it doesn't serve may sit inside at its edge.
-R, R_SMALL, LEVEL, CELL, GROUP = 420, 180, 0.5, 30, 900   # R: a walk's reach, about five minutes on the flat
-R_BAND, W_BAND = 300, 0.22   # the band drawing groups together, through the place between them
+# The area as drawn, all of it measured as a walk is: metres on foot, the height between two points counted as CLIMB
+# metres on the flat a metre (a hill as it feels), so nothing reaches up a canyon side or off a bench. Each pickup
+# pulls the outline round it out to about a walk's reach (R); where pickups are near one another (metaballs: the
+# outline where their pulls add up to LEVEL) they run together into one shape. Groups (three places or more, each
+# within GROUP of the next) are drawn as one region, joined through a lone place between them (River Heights,
+# between the Cliffside bench and Providence) by a soft band along the walk; a place on its own is a small round.
+# A pickup among more bus stops POOL doesn't serve than other pickups (South Walmart's, by Main and Highway 165) is set apart as a small
+# round too, rather than drawing the region over those stops, and those stops push the region's edge back. The
+# zone itself, Remix's outline, stays for asking whether a place is inside; it's a planning line, not a walk.
+R, R_SMALL, LEVEL, CELL, GROUP = 420, 180, 0.5, 30, 900   # R: about five minutes on foot
+R_BAND, W_BAND = 300, 0.22   # the band drawing groups together
+SAME, MIN_GROUP, ON_WAY, BUSY = 40, 3, 1.3, 3
+R_PUSH, W_PUSH, KEEP = 300, 0.4, 40   # a bus stop's push back; a bus stop this near a pickup is that pickup
+CLIMB = 8
 lat0 = sum(s['lat'] for s in stops) / len(stops); kx, ky = 111320 * math.cos(math.radians(lat0)), 110540
 pts = [((s['lon']) * kx, s['lat'] * ky) for s in stops]
-dist = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
-# Places, not points: pickups within SAME of one another are one (two at the Tabernacle, one spot). A group is three
-# places or more within GROUP of one another; fewer, each is on its own (the Tabernacle, the Center, River Heights).
-SAME, MIN_GROUP, ON_WAY = 40, 3, 1.3
-places = []
-for p in pts:
-    if not any(dist(p, q) <= SAME for q in places): places.append(p)
-clusters = []
-for p in places:   # single-linkage: a place joins every cluster it's near, and those merge
-    near = [g for g in clusters if any(dist(p, q) <= GROUP for q in g)]
-    clusters = [g for g in clusters if g not in near] + [[p] + [q for g in near for q in g]]
-groups = [g for g in clusters if len(g) >= MIN_GROUP]
-alone = [p for g in clusters if len(g) < MIN_GROUP for p in g]
-grouped = [p for g in groups for p in g]
-bridges, joined = [], [groups[0]] if groups else []
-rest = groups[1:]
-while rest:   # Prim's: the nearest group to those joined, by its closest pair of places
-    a, b, g = min(((a, b, g) for g in rest for b in g for j in joined for a in j), key=lambda t: dist(t[0], t[1]))
-    # by way of a lone place that's on the way (River Heights, between the bench and Providence): the bridge
-    via = min(alone, key=lambda c: dist(a, c) + dist(c, b), default=None)
-    if via is not None and dist(a, via) + dist(via, b) <= ON_WAY * dist(a, b): bridges += [(a, via), (via, b)]
-    else: bridges.append((a, b))
-    joined.append(g); rest.remove(g)
-via_places = {c for a, b in bridges for c in (a, b) if c in alone}   # a lone place a bridge runs through: part of the region
-balls = [(p, R, 1.0) for p in grouped + list(via_places)]   # the region; the lone rounds apart, below
-band = []   # along each bridge, a point every 150 m: the groups drawn to one another (and to the place between)
-for a, b in bridges:
-    n = max(1, int(dist(a, b) / 150))
-    band += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(n + 1)]
-x0, x1 = min(p[0] for p in pts) - 2 * R, max(p[0] for p in pts) + 2 * R
-y0, y1 = min(p[1] for p in pts) - 2 * R, max(p[1] for p in pts) + 2 * R
-nx, ny = int((x1 - x0) / CELL) + 1, int((y1 - y0) / CELL) + 1
-# The lie of the land (data/elevation.json, tools/elevation.py): a blob's reach is a walk's, the height between a
-# point and its stop counted as CLIMB metres on the flat a metre (a hill as it feels on foot), so a blob keeps to the
-# bench or floor its stops stand on (Cliffside's, its bench) and never climbs a canyon side. No grid: flat.
-CLIMB = 8
 try:
     EL = json.load(open(os.path.join(ROOT, 'data', 'elevation.json')))
     EL['z'] = [[sum(r[:k + 1]) for k in range(len(r))] for r in EL['d']]
@@ -116,21 +84,51 @@ def height(x, y):
     if r < 0 or c < 0 or r > EL['rows'] - 1 or c > EL['cols'] - 1: return None
     r0, c0 = int(r), int(c); fr, fc = r - r0, c - c0; z = EL['z']; r1, c1 = min(r0 + 1, EL['rows'] - 1), min(c0 + 1, EL['cols'] - 1)
     return z[r0][c0] * (1 - fc) * (1 - fr) + z[r0][c1] * fc * (1 - fr) + z[r1][c0] * (1 - fc) * fr + z[r1][c1] * fc * fr
-balls = [(p, r, w, height(*p)) for p, r, w in balls]
-def at(x, y):
-    h = height(x, y)
-    up = lambda hp: (CLIMB * (h - hp)) ** 2 if h is not None and hp is not None else 0
-    return sum(w * math.exp(-((x - px) ** 2 + (y - py) ** 2 + up(hp)) / r ** 2) for (px, py), r, w, hp in balls) \
-        + sum(W_BAND * math.exp(-((x - px) ** 2 + (y - py) ** 2) / R_BAND ** 2) for px, py in band if abs(x - px) < 3 * R_BAND and abs(y - py) < 3 * R_BAND)
-# Bus stops POOL doesn't serve push back: each an invisible blob of its own, subtracted, wide and soft, so a row of them
-# (Main Street) eases the edge off smoothly rather than notching it. Not the Center's bays (its pickup is at them), nor
-# a bus stop at a pickup, and only the region: a lone pickup's small round stays whole.
-R_PUSH, W_PUSH, KEEP = float(os.environ.get('R_PUSH', 300)), float(os.environ.get('W_PUSH', 0.4)), 40
-push = [(b['lon'] * kx, b['lat'] * ky) for b in D['stops'] if not b.get('hub')]
+dist = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
+def walk2(a, ha, b, hb):   # metres on foot, squared
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + ((CLIMB * (ha - hb)) ** 2 if ha is not None and hb is not None else 0)
+walk = lambda a, b: math.sqrt(walk2(a, height(*a), b, height(*b)))
+places = []   # places, not points: pickups within SAME are one (two at the Tabernacle, one spot)
+for p in pts:
+    if not any(dist(p, q) <= SAME for q in places): places.append(p)
+push = [(b['lon'] * kx, b['lat'] * ky) for b in D['stops'] if not b.get('hub')]   # the Center's bays: its pickup is at them
 push = [q for q in push if not any(dist(q, p) <= KEEP for p in pts)]
-lone = [(p, R_SMALL) for p in alone if p not in via_places]
-lone_at = lambda x, y: sum(math.exp(-((x - px) ** 2 + (y - py) ** 2) / r ** 2) for (px, py), r in lone)
-def cell(x, y): return max(lone_at(x, y), at(x, y) - sum(W_PUSH * math.exp(-((x - qx) ** 2 + (y - qy) ** 2) / R_PUSH ** 2) for qx, qy in push if abs(x - qx) < 3 * R_PUSH and abs(y - qy) < 3 * R_PUSH))
+def busy(p):
+    n = sum(1 for q in push if walk(p, q) <= R)
+    return n >= BUSY and n > sum(1 for q in places if q is not p and walk(p, q) <= R)   # more bus stops than other pickups (South Walmart's)
+outliers = [p for p in places if busy(p)]
+clusters = []
+for p in places:   # single-linkage, by the walk: a place joins every cluster it's near, and those merge
+    if p in outliers: continue
+    near = [g for g in clusters if any(walk(p, q) <= GROUP for q in g)]
+    clusters = [g for g in clusters if g not in near] + [[p] + [q for g in near for q in g]]
+groups = [g for g in clusters if len(g) >= MIN_GROUP]
+alone = [p for g in clusters if len(g) < MIN_GROUP for p in g] + outliers
+grouped = [p for g in groups for p in g]
+bridges, joined = [], [groups[0]] if groups else []
+rest = groups[1:]
+while rest:   # Prim's: the nearest group to those joined, by its closest pair of places on foot
+    a, b, g = min(((a, b, g) for g in rest for b in g for j in joined for a in j), key=lambda t: walk(t[0], t[1]))
+    via = min((c for c in alone if c not in outliers), key=lambda c: walk(a, c) + walk(c, b), default=None)
+    if via is not None and walk(a, via) + walk(via, b) <= ON_WAY * walk(a, b): bridges += [(a, via), (via, b)]
+    else: bridges.append((a, b))
+    joined.append(g); rest.remove(g)
+via_places = {c for a, b in bridges for c in (a, b) if c in alone}   # a lone place a bridge runs through: part of the region
+band = []   # along each bridge, a point every 150 m
+for a, b in bridges:
+    n = max(1, int(dist(a, b) / 150))
+    band += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(n + 1)]
+H_ = lambda ps: [(p, height(*p)) for p in ps]
+region, band, push = H_(grouped + list(via_places)), H_(band), H_(push)
+lone = H_([p for p in alone if p not in via_places])
+x0, x1 = min(p[0] for p in pts) - 2 * R, max(p[0] for p in pts) + 2 * R
+y0, y1 = min(p[1] for p in pts) - 2 * R, max(p[1] for p in pts) + 2 * R
+nx, ny = int((x1 - x0) / CELL) + 1, int((y1 - y0) / CELL) + 1
+def pull(x, y, h, ps, r, w=1.0):
+    return sum(w * math.exp(-walk2((x, y), h, p, hp) / r ** 2) for p, hp in ps if abs(x - p[0]) < 3 * r and abs(y - p[1]) < 3 * r)
+def cell(x, y):
+    h = height(x, y)
+    return max(pull(x, y, h, lone, R_SMALL), pull(x, y, h, region, R) + pull(x, y, h, band, R_BAND, W_BAND) - pull(x, y, h, push, R_PUSH, W_PUSH))
 field = [[cell(x0 + i * CELL, y0 + j * CELL) for i in range(nx)] for j in range(ny)]
 # marching squares: each cell's crossings of the level, as segments, joined into rings
 def cross(a, b, fa, fb): t = (LEVEL - fa) / (fb - fa); return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
@@ -182,5 +180,5 @@ rings = [closed(r, 6) for r in rings]
 outer = [r for r in rings if sum(contains(o, r[0]) for o in rings if o is not r) % 2 == 0]
 area = [[[lonlat(p) for p in o]] + [[lonlat(p) for p in h] for h in rings if h not in outer and contains(o, h[0])] for o in outer]
 json.dump({'from': 'Connect, via Remix', **INFO, 'zone': ZONE, 'area': area, 'stops': stops}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
-print(f"{len(area)} blobs ({len(groups)} groups, joined through {len(via_places)} places; {len(alone) - len(via_places)} on their own), {sum(len(p[0]) for p in area)} points;", file=sys.stderr)
+print(f"{len(area)} blobs ({len(groups)} groups, joined through {len(via_places)} places; {len(alone) - len(via_places)} on their own, {len(outliers)} of them set apart among bus stops), {sum(len(p[0]) for p in area)} points;", file=sys.stderr)
 print(f"{len(stops)} POOL pickup points ({sum(1 for s in stops if s['stop'] is not None)} of them bus stops too), {os.path.getsize(OUT) // 1024} KB", file=sys.stderr)
