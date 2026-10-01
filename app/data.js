@@ -229,7 +229,7 @@ function trackedAlerts(list, byStop) {
     // until the agency announces it, when its notice closes the stops and this one only draws the way round.
     const word = n >= 4 ? 'are very likely skipped' : n === 3 ? 'are likely skipped' : 'may be skipped';
     out.push({ id: 'trk' + d.id, tracked: d, title: `${who} is going another way`, text: ` ${D.agency.brand} hasn't posted this, but ${how}, so ${ids.length === 1 ? 'a stop' : ids.length + ' stops'} on its usual way ${word}.`,
-      url: '', start: d.first, end: null, routes: [], ri: ris, stops: [], maybe: ids, names: null, posted, gone: ids, on });
+      url: '', start: d.first, end: null, routes: ris.map(ri => D.routes[ri].short), ri: ris, stops: [], maybe: ids, names: null, posted, gone: ids, on });
   }
   return out;
 }
@@ -328,7 +328,7 @@ function namedDay(title, start) {
 export function dayAlert(ymd) { return A.alerts.find(a => a.names === ymd && !(a.stops || []).length && !(a.routes || []).length && !(a.routeIds || []).length) || null; }
 export function stopAlerts(si, ymd) { return (A.byStop[D.stops[si].id] || []).filter(a => alertOn(a, ymd)); }
 export function routeAlerts(ri, ymd) { return (A.byRoute[ri] || []).filter(a => alertOn(a, ymd)); }
-export function systemAlerts(ymd) { return A.alerts.filter(a => !(a.stops || []).length && !(a.routes || []).length && !(a.routeIds || []).length && alertOn(a, ymd)); }
+export function systemAlerts(ymd) { return A.alerts.filter(a => !a.tracked && !(a.stops || []).length && !(a.routes || []).length && !(a.routeIds || []).length && alertOn(a, ymd)); }
 export function activeAlerts(ymd) { return A.alerts.filter(a => alertOn(a, ymd)); }
 /** Routes that skip a stop on a day: an alert naming both the route and the stop. */
 export function closedRoutes(si, ymd) {
