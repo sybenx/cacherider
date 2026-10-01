@@ -4,14 +4,15 @@
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames } from '../ui.js';
-import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt } from '../rt.js';
+import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
 const rtDown = () => rtStale() && (rt.at > 0 || !!rt.error);
 
 let countIv = 0;   // the pulse countdown's ticker
-const STILL = 3;   // metres a second: a bus slower than this is standing (or creeping into its bay)
-const IN_RADIUS = 65;   // metres from the hall: a bus this close is in (its bays all within 51 m; out at the light on 500 North, it has left)
+// A bus within HUB_IN metres of the hall is in (its bays all within 51 m; out at the light on 500 North, it has left);
+// slower than HUB_STILL metres a second, it's standing (or creeping into its bay).
+const STILL = HUB_STILL, IN_RADIUS = HUB_IN;
 const PARKED = 1;   // metres a second: slower than this, stopped (faster, it's pulling in or out)
 
 /** A badge's key: the route's short name, 16 AM and 16 PM as one '16' (they share a bay and a rider). */

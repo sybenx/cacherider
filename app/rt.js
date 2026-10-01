@@ -452,10 +452,18 @@ export function busOn(ti) {
   if (u) for (const [sid, x] of u.at) if (!x.skipped && x.time >= nowS - 60 && (!next || x.seq < next.seq)) next = { sid, ...x };
   return { bus: b, next: next ? D.stopById[next.sid] : undefined };
 }
-/** A bus of a route stopped in the Transit Center: the one that leaves next on it, whatever trip it reports or the
- *  feed names (a swap bus is put in, parked at the bay, while the late one finishes its run). */
+/** A bus of a route stopped in the Transit Center, set to go out on it: the one that leaves next, whatever bus the
+ *  feed names (a swap bus is put in, parked at the bay, while the late one finishes its run). Only on a trip out from
+ *  the Center that's due about now, not one it has just come in on: a bus in on its 2 goes out as a 5 (they swap all
+ *  day, and 3 and 8), and one in on its last run is done. */
 export const HUB_IN = 65, HUB_STILL = 3;   // metres from the hall (its bays within 51 m); metres a second
 export function standingAt(ri) {
-  return rt.buses.find(b => b.ri === ri && D.hub && distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= HUB_IN && !(b.speed > HUB_STILL)) || null;
+  if (!D.hub || !tripIdx) return null;
+  const nowMin = toMin(Date.now() / 1000);
+  return rt.buses.find(b => {
+    if (b.ri !== ri || distance(b.lat, b.lon, D.hub.lat, D.hub.lon) > HUB_IN || b.speed > HUB_STILL) return false;
+    const ti = tripIdx.get(b.trip), first = ti !== undefined ? tripStops(ti)[0] : null;
+    return !!first && !!D.stops[first[1]]?.hub && first[0] >= nowMin - 15;
+  }) || null;
 }
 export function findBus(id) { return rt.buses.find(b => b.id === id); }
