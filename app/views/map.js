@@ -1409,8 +1409,8 @@ function hubBadges() {
     for (const [c, on] of [['on', b.on], ['dim', b.dim], ['off', b.off]]) m.el.classList.toggle(c, on);
     m.el.href = b.on ? '#/hub' : '#/hub/' + b.k;
     m.el.title = b.title;
-    // Its bus in, a bus's circle on the badge, where the map's buses are put away: the bus at its bay, as it stands.
-    const inner = (b.here ? `<span class="hbus" style="--bus-color:${dark() ? lift(b.color) : b.color}"></span>` : '') + `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag">${b.tag.replace(' MIN', 'm')}</span>` : '');
+    // Its bus in, the map's own bus on the badge (they're put away there), facing as it stands: the bus at its bay.
+    const inner = (b.here ? `<span class="bus hbus" style="--bus-color:${dark() ? lift(b.color) : b.color}"><span class="bus-marker"${b.course === null ? ' data-still' : ` style="--course:${b.course}deg"`}>${b.course === null ? '' : ARROW}</span></span>` : '') + `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag">${b.tag.replace(' MIN', 'm')}</span>` : '');
     if (m.el.innerHTML !== inner) m.el.innerHTML = inner;
   }
   easeBays();
@@ -1418,7 +1418,7 @@ function hubBadges() {
 /** Badges that would touch pushed apart on the screen, a little air between each pair, each still pointing from
  *  as near its own stop as the others let it. */
 function easeBays() {
-  const ms = [...hubMarks.values()], AIR_X = 34, AIR_Y = 38, BUS_Y = 20;   // and room for a bus on the lower one's top
+  const ms = [...hubMarks.values()], AIR_X = 34, AIR_Y = 38, BUS_Y = 26;   // and room for a bus on the lower one's top
   const p = ms.map(m => { const q = map.project(m.at); return { x: q.x, y: q.y, x0: q.x, y0: q.y }; });
   for (let it = 0; it < 60; it++) {
     let moved = false;
@@ -1432,6 +1432,8 @@ function easeBays() {
     if (!moved) break;
   }
   ms.forEach((m, i) => m.marker.setOffset([p[i].x - p[i].x0, p[i].y - p[i].y0]));
+  const turn = -map.getBearing() + 'deg';   // a bus on a badge faces the way it does on the map, turned or not
+  for (const m of ms) m.el.style.setProperty('--map-turn', turn);
 }
 /** The buses standing at the Center out of the way of its badges while they're up (each drawn on its badge); one
  *  driving in or out stays, its arrow showing the way it goes. */

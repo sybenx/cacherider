@@ -62,7 +62,7 @@ function status(k, clockNow) {
   const off = !today || (!out && dep.min - clockNow.min > 90);
   const leave = dep ? dep.min : null;   // the feed's word, with its bus's arrival, from predict(): every screen agrees
   const late = today && !loop ? Math.max(0, leave - schedOf(dep)) : 0;
-  return { k, ris, loop, deps, dep, eta, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
+  return { k, ris, loop, deps, dep, eta, at: eta === 0 ? bus : null, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
 }
 /** Where a route's card on the board goes: to its bus on the map while it's on its way in or still on the run before
  *  (where is it, and how it comes), else the route picked on the board, or put back. */
@@ -239,7 +239,8 @@ export function bays(bay, clockNow) {
     if (!b) return null;
     // A bus at its bay is drawn there, on its badge, not said: here is where it is.
     const here = tags && !s.off && s.eta === 0, tag = !tags || s.off || here ? '' : s.eta > 0 ? s.eta + ' MIN' : '';
-    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, here, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
+    const course = here ? rt.buses.find(x => x.id === s.at)?.course ?? null : null;   // which way it faces in its bay
+    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, here, course, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);
 }
 
