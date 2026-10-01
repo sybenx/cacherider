@@ -410,10 +410,10 @@ function shapes() {
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
-/** The ways round the buses have been seen to take (data.js's tracked alerts), dashed in the route's colour,
- *  fainter while only two buses have gone that way. */
+/** The ways round the buses have been seen to take (data.js's tracked alerts), along the streets, dashed in the
+ *  route's colour, fainter while only two buses have gone that way. */
 function trackedPaths() {
-  return { type: 'FeatureCollection', features: (A.tracked || []).flatMap(a => a.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), sure: a.tracked.streak >= 3 ? 0.95 : 0.6 }, geometry: { type: 'LineString', coordinates: a.tracked.path.map(([la, lo]) => [lo, la]) } }))) };
+  return { type: 'FeatureCollection', features: (A.tracked || []).flatMap(a => a.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), sure: a.tracked.streak >= 3 ? 0.95 : 0.6 }, geometry: { type: 'LineString', coordinates: a.tracked.way.map(([la, lo]) => [lo, la]) } }))) };
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */

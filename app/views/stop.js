@@ -1,6 +1,6 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL } from '../data.js';
+import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL, A, distance } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom } from '../time.js';
 import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
 import { cancelledAt } from '../rt.js';
@@ -10,7 +10,7 @@ import { metres as m2 } from '../time.js';
 import { afterSave, app } from '../main.js';
 import { restOfDay, runSheet, wireSheet, sheetRun } from './stopwide.js';
 import { wirePointers, pointerDial } from '../pointer.js';
-import { atPath } from '../geo.js';
+import { atPath, walkMins } from '../geo.js';
 
 export function render({ id, full, run, on }, clockNow) {
   const si = stopIndex(id);
@@ -66,7 +66,11 @@ export function render({ id, full, run, on }, clockNow) {
     const head = allClosed ? (onEnd ? 'No buses stop here until the detour ends, later today' : `No buses stop here${ends || ' during the detour'}`)
       : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}`
       : maybe.length ? `${routeNames(maybe)} may be skipping this stop` : 'Service alert for this stop';
-    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
+    // Seen from the buses: on their way round they pass these stops, where they do stop. The nearest of them.
+    const ways = (A.tracked || []).filter(a => a.gone.includes(s.id) && a.on.length);
+    const alt = ways.flatMap(a => a.on.map(id => ({ a, t: D.stops[stopIndex(id)] }))).map(x => ({ ...x, d: distance(s.lat, s.lon, x.t.lat, x.t.lon) })).sort((x, y) => x.d - y.d)[0];
+    const instead = alt ? html`<div class="sub">${routeNames(alt.a.ri)} ${alt.a.ri.length > 1 ? 'stop' : 'stops'} at <a href="#/stop/${alt.t.id}">${alt.t.name}</a> (stop ${alt.t.code}) on the way round, ${walkMins(s.lat, s.lon, alt.t.lat, alt.t.lon)} min walk from here.</div>` : '';
+    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${instead}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
   }
 
   if (allClosed) {

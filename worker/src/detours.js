@@ -57,7 +57,7 @@ export async function watchStart(env) {
     env.TRACKS.prepare("SELECT v FROM state WHERE k = 'buses'"),
     env.TRACKS.prepare('SELECT * FROM detours'),
   ]);
-  return { L: await lines(), buses: st.results[0] ? JSON.parse(st.results[0].v) : {}, sus: sus.results.map(r => ({ ...r, path: JSON.parse(r.path) })), changed: new Set(), gone: [] };
+  return { L: await lines(), buses: st.results[0] ? JSON.parse(st.results[0].v) : {}, sus: sus.results.map(r => ({ ...r, paths: pathsOf(r.path) })), changed: new Set(), gone: [] };
 }
 
 /** One sample: [label, trip, key, lat, lon, ...] a bus. */
@@ -90,13 +90,13 @@ export function watchStep(W, t, buses) {
 }
 
 /** A bus's way round: the run of a suspect it matches up by one (started again after a bus went along), else a
- *  new suspect. The newest way's path is kept. */
+ *  new suspect. The last three buses' ways are kept, newest first. */
 function round(W, key, on, back, path, t) {
   const p = W.L.xy(on[0], on[1]), q = W.L.xy(back[0], back[1]);
   let s = W.sus.find(s => s.key === key && far(W.L, p, s.olat, s.olon) <= SAME && far(W.L, q, s.blat, s.blon) <= SAME);
   if (!s) W.sus.push(s = { id: null, key, first: t, streak: 0, trips: 0, along: null });
   s.streak += 1; s.trips += 1; s.last = t;
-  s.olat = on[0]; s.olon = on[1]; s.blat = back[0]; s.blon = back[1]; s.path = [on, ...path, back];
+  s.olat = on[0]; s.olon = on[1]; s.blat = back[0]; s.blon = back[1]; s.paths = [[on, ...path, back], ...(s.paths || [])].slice(0, 3);
   W.changed.add(s);
 }
 
@@ -109,18 +109,20 @@ export async function watchEnd(env, W, t) {
       : t - s.last > 4 * 86400;                              // no bus this way in four days
     if (stale && s.id !== null) q.push(db.prepare('DELETE FROM detours WHERE id = ?').bind(s.id));
     else if (!stale && W.changed.has(s)) q.push(s.id === null
-      ? db.prepare('INSERT INTO detours (key, olat, olon, blat, blon, path, streak, trips, first, last, along) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(s.key, s.olat, s.olon, s.blat, s.blon, JSON.stringify(s.path), s.streak, s.trips, s.first, s.last, s.along)
-      : db.prepare('UPDATE detours SET olat = ?, olon = ?, blat = ?, blon = ?, path = ?, streak = ?, trips = ?, last = ?, along = ? WHERE id = ?').bind(s.olat, s.olon, s.blat, s.blon, JSON.stringify(s.path), s.streak, s.trips, s.last, s.along, s.id));
+      ? db.prepare('INSERT INTO detours (key, olat, olon, blat, blon, path, streak, trips, first, last, along) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(s.key, s.olat, s.olon, s.blat, s.blon, JSON.stringify(s.paths), s.streak, s.trips, s.first, s.last, s.along)
+      : db.prepare('UPDATE detours SET olat = ?, olon = ?, blat = ?, blon = ?, path = ?, streak = ?, trips = ?, last = ?, along = ? WHERE id = ?').bind(s.olat, s.olon, s.blat, s.blon, JSON.stringify(s.paths), s.streak, s.trips, s.last, s.along, s.id));
   }
   q.push(db.prepare("INSERT OR REPLACE INTO state (k, v) VALUES ('buses', ?)").bind(JSON.stringify(W.buses)));
   await db.batch(q);
 }
 
+/** The last three buses' ways round, newest first (a row from before kept one: a list of points). */
+const pathsOf = j => { const p = JSON.parse(j); return typeof p[0][0] === 'number' ? [p] : p; };
 /** GET /detours: the ways round, newest first, as the app reads them. */
 export async function detoursJSON(env) {
   const r = await env.TRACKS.prepare('SELECT * FROM detours ORDER BY last DESC').all();
   return {
     t: Math.floor(Date.now() / 1000),
-    detours: r.results.map(s => ({ id: s.id, route: s.key, streak: s.streak, trips: s.trips, first: s.first, last: s.last, along: s.along, leaves: [s.olat, s.olon], rejoins: [s.blat, s.blon], path: JSON.parse(s.path) })),
+    detours: r.results.map(s => ({ id: s.id, route: s.key, streak: s.streak, trips: s.trips, first: s.first, last: s.last, along: s.along, leaves: [s.olat, s.olon], rejoins: [s.blat, s.blon], paths: pathsOf(s.path), path: pathsOf(s.path)[0] })),
   };
 }

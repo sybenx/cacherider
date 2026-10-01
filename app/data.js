@@ -176,12 +176,23 @@ export async function loadAlerts({ relay = true } = {}) {
       for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
     }
     let tracked = [];
-    if (relay && pref('detours') === 'on') try { const r = await fetch(LIVE_URL + 'detours', { cache: 'no-store' }); if (r.ok) tracked = trackedAlerts((await r.json()).detours || [], byStop); } catch { /* the agency's alone */ }
-    for (const a of tracked) {
+    if (relay && pref('detours') === 'on') try {
+      const r = await fetch(LIVE_URL + 'detours', { cache: 'no-store' });
+      if (r.ok) {
+        const list = ((await r.json()).detours || []).filter(d => d.streak >= 2);
+        // Each way round along the streets (the map's own tiles), for the stops it passes: the reports alone, twenty
+        // seconds apart, cut across blocks and miss them.
+        const { alongStreets } = await import('./roads.js');
+        for (const d of list) { d.best = (d.paths || [d.path]).reduce((m, p) => p.length > m.length ? p : m); try { d.way = (await alongStreets(d.best)).map(([lo, la]) => [la, lo]); } catch { d.way = d.best; } }
+        tracked = trackedAlerts(list, byStop);
+      }
+    } catch { /* the agency's alone */ }
+    const told = tracked.filter(a => !a.posted);
+    for (const a of told) {
       for (const id of [...a.stops, ...a.maybe]) (byStop[id] ||= []).push(a);
       for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
     }
-    A = { ...j, alerts: [...j.alerts, ...tracked], byStop, byRoute, tracked, loadedAt: relay ? Date.now() : A.loadedAt };   // the file alone is no check of the relay
+    A = { ...j, alerts: [...j.alerts, ...told], byStop, byRoute, tracked, loadedAt: relay ? Date.now() : A.loadedAt };   // the file alone is no check of the relay
   } catch { /* the app is fine without alerts */ }
 }
 /** Detours seen from the buses themselves (the relay's watch, worker/src/detours.js), as alerts of their own: the
@@ -204,17 +215,19 @@ function trackedAlerts(list, byStop) {
       let i = -1, j = -1;
       for (const a of near(lat0, lon0)) for (const b of near(lat1, lon1)) if (b > a && (i < 0 || b - a < j - i)) { i = a; j = b; }
       if (i < 0) continue;
-      for (const si of seq.slice(i, j + 1)) { const s = D.stops[si]; if (!s.hub && pathDistance(s.lat, s.lon, d.path) > TRACK_ON) gone.add(s.id); }
+      for (const si of seq.slice(i, j + 1)) { const s = D.stops[si]; if (!s.hub && pathDistance(s.lat, s.lon, d.way) > TRACK_ON) gone.add(s.id); }
     }
     const ids = [...gone];
-    if (!ids.length) continue;
-    const posted = ids.every(id => (byStop[id] || []).some(a => alertOn(a, ymd) && ris.some(ri => a.ri.includes(ri))));
-    if (posted) continue;
+    // The stops it passes on the way round, each served (a stop a detour passes is): where to wait instead.
+    const on = D.stops.filter(s => !s.hub && !gone.has(s.id) && pathDistance(s.lat, s.lon, d.way) <= TRACK_ON).map(s => s.id);
+    // Every stop gone round already in a notice in force (or none gone round): no notice of ours, but the way round
+    // still drawn, which the agency's notices never give.
+    const posted = !ids.length || ids.every(id => (byStop[id] || []).some(a => alertOn(a, ymd) && ris.some(ri => a.ri.includes(ri))));
     const n = d.streak, who = ris.length ? routeWord(ris[0]) : 'Route ' + d.route, since = clockText(now(new Date(d.first * 1000)).min);
     const how = n >= 4 ? `every ${who} bus since ${since}, ${n} in a row, has gone another way` : `the last ${n} ${who} buses went another way`;
     const word = n >= 4 ? 'are closed' : n === 3 ? 'are likely closed' : 'may be closed';
     out.push({ id: 'trk' + d.id, tracked: d, title: `${who} is going another way`, text: ` ${D.agency.brand} hasn't posted this, but ${how}, so ${ids.length === 1 ? 'a stop' : ids.length + ' stops'} on its usual way ${word}.`,
-      url: '', start: d.first, end: null, routes: [], ri: ris, stops: n >= 3 ? ids : [], maybe: n >= 3 ? [] : ids, names: null });
+      url: '', start: d.first, end: null, routes: [], ri: ris, stops: n >= 3 ? ids : [], maybe: n >= 3 ? [] : ids, names: null, posted, gone: ids, on });
   }
   return out;
 }
