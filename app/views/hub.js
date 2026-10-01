@@ -176,6 +176,7 @@ function connections(ks, st, p, clockNow) {
   const lateIn = ks.filter(k => !st[k].loop && st[k].eta > 0).map(k => ({ k, at: Math.round(clockNow.min + st[k].eta) })).filter(x => x.at > p.min + 1).sort((a, b) => a.at - b.at);
   if (!lateIn.length) return '';
   const next = nextPulse(2, clockNow)[1], last = !next || next.day > p.day;
+  if (!last) return '';   // a late bus's red time above says it got in late; only the last group, which waits, is news
   const and = xs => xs.length === 1 ? xs[0] : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
   const names = routeNames(lateIn.map(x => routesOf(x.k)[0])), times = and(lateIn.map(x => clock(x.at).h));
   const group = 'the ' + clock(p.min).h + 's';
@@ -208,15 +209,13 @@ function together(st, clockNow) {
   if (livenow && leaving.length) {
     // A route whose run in this group is cancelled: said so, and not counted as coming.
     const gone = leaving.filter(k => routesOf(k).some(ri => D.hub.bays.some(b => b.routes.includes(ri) && cancelledAt(b.stop, clockNow, diff + 1, t => t.r === ri && t.min === p.min).length)));
-    const n = leaving.length, inN = leaving.filter(k => st[k].eta === 0).length;
-    const coming = leaving.filter(k => st[k].eta > 0).length;
-    const loose = leaving.filter(k => st[k].loose).length, away = leaving.filter(k => st[k].away).length, quiet = leaving.filter(k => !st[k].out).length;
-    const rest = [coming ? coming + ' on the way' : '', away ? away + ' still on a run' : '', loose ? loose + ' out without an estimate' : '', quiet ? quiet + ' not reporting' : '', gone.length ? routeNames(gone.flatMap(k => routesOf(k).slice(0, 1))) + (gone.length > 1 ? ' cancelled' : ' cancelled') : ''].filter(Boolean).join(', ');
-    // The late ones by name and when they leave, first: '2 running late' left the rider to find which two.
-    const byTime = new Map();
-    for (const k of leaving) { const lt = gone.includes(k) ? null : leavesAt(k); if (lt !== null) byTime.set(lt, [...(byTime.get(lt) || []), k]); }
-    const lateWords = [...byTime].sort((a, b) => a[0] - b[0]).map(([at, ks2]) => `${routeNames(ks2.map(k => routesOf(k)[0]))} ${ks2.length > 1 ? 'leave' : 'leaves'} about ${clock(at).h}`).join('; ');
-    note = html`<span class="tc-note">${lateWords ? html`<b class="late">${lateWords}.</b> ` : ''}<b>${inN} of ${n} here.</b>${rest ? ' ' + rest.replace(/^./, c => c.toUpperCase()) + '.' : ''}</span>${connections(leaving.filter(k => !gone.includes(k)), st, p, clockNow)}`;
+    // Under the strip, only what it can't show: which routes are off their trips, out of sight, cancelled, or on a run
+    // that won't be back for this. Who's in and who leaves late (and when) are the strip's own bars and red times; said
+    // again here as a count and a list, it was three lines saying the strip over.
+    const name = ks2 => routeNames(ks2.map(k => routesOf(k)[0]));
+    const loose = leaving.filter(k => st[k].loose && !gone.includes(k)), away = leaving.filter(k => st[k].away && !gone.includes(k)), quiet = leaving.filter(k => !st[k].out && !st[k].loose && !st[k].away && !gone.includes(k));
+    const odd = [gone.length ? name(gone) + ' cancelled' : '', away.length ? name(away) + (away.length > 1 ? ' still out on runs before this' : ' still out on its run before this') : '', loose.length ? name(loose) + ' out with no estimate' : '', quiet.length ? name(quiet) + (quiet.length > 1 ? ' not reporting' : ' not reporting') : ''].filter(Boolean).join('; ');
+    note = html`${odd ? html`<span class="tc-note">${odd.replace(/^./, c => c.toUpperCase())}.</span>` : ''}${connections(leaving.filter(k => !gone.includes(k)), st, p, clockNow)}`;
   } else if (p.day === 0 && rtDown()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
   return html`<div class="tc-together blueprint">${corners()}
     <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}</span></div><div class="end">${end}</div></div>
