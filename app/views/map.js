@@ -1372,7 +1372,7 @@ const boxOf = pts => pts.length ? pts.reduce((b, [lon, lat]) => [Math.min(b[0], 
 function quiet() {
   if (!map || !ready || MT.R || JR) return;   // a run or a way dresses the map its own way
   if (!campusBox && U) campusBox = boxOf(U.stops.filter(s => s.routes.length).map(s => [s.lon, s.lat]));
-  if (!poolBox && POOL) poolBox = boxOf(POOL.area ? POOL.area.flatMap(p => p[0]) : POOL.zone);
+  if (!poolBox && POOL) poolBox = boxOf([...(POOL.area ? POOL.area.flatMap(p => p[0]) : POOL.zone), ...POOL.stops.map(s => [s.lon, s.lat])]);   // its pickups too: one with no area round it (the Center's) still shown
   const z = map.getZoom(), v = map.getBounds(), m = 0.003;   // a few hundred metres round the box
   const near = (b, zmin = 13.5) => !!b && z >= zmin && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
   const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
