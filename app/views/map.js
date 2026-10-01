@@ -691,7 +691,10 @@ async function made(app) {
       return;
     }
     // Another route's line tapped with one up on the Map tab: that one put away first; a tap on the line then picks it.
-    if (ris.length && !ris.some(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute)) && app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) {
+    // The same beside a wide screen's panel, the route its page there (app.route 'route'): a tablet's tap, wider than a
+    // mouse's, caught a road there and opened its stops over the route.
+    const routeUp = (app.route.name === 'map' || app.route.name === 'route') && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash);
+    if (ris.length && !ris.some(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute)) && routeUp) {
       card.classList.remove('open', 'peek'); location.hash = '#/map'; return;
     }
     selectedBus = null; selectedU = null; select(null, app);
@@ -705,7 +708,7 @@ async function made(app) {
     // Only the shuttle's line there: that spot, with its stops a walk off, as a road of Connect's gets.
     else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now()); }
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
-    else if (app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) location.hash = '#/map';
+    else if (routeUp) location.hash = '#/map';
     // At the Center, a route picked from its badge: put away as well, the board back as it was. Nothing picked there,
     // the board is put away for the map itself on a phone: the Map tab, the map where it is, turned north (as its
     // north button). Beside it on a wide screen, the board stays.
