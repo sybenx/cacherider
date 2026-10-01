@@ -61,11 +61,12 @@ stops.sort(key=lambda s: s['name'])
 # each point's pull falling off over R, the outline where their sum is half a lone point's peak), so a point on its
 # own is its own small round, and a cluster one shape. The zone itself, Remix's outline, stays for asking whether a
 # place is inside; it's a planning boundary, not what a rider can walk to.
-# A point with no other within ALONE is a small round of its own (the Transit Center's); the rest are groups (points
-# within GROUP of one another), each a large blob, and the groups joined into one shape by a narrower neck along the
-# shortest link between them, each to its nearest (a spanning tree), so the area reads as one region, its clusters
-# still seen, rather than blobs grown till they touch and swallow the town between.
-R, R_SMALL, R_NECK, W_NECK, LEVEL, CELL, ALONE, GROUP = 420, 180, 250, 0.22, 0.5, 30, 900, 900
+# The area as one region where the pickups make one, and a small round for each on its own: places with two others
+# or more within GROUP are a group, a large blob each; a place on its own between two groups (River Heights, between
+# the Cliffside bench and Providence) reaches out to both and joins them; the rest (the Tabernacle, the Center) are
+# small rounds. Large and smooth over carved: a bus stop it doesn't serve may sit inside at its edge.
+R_VIA = 950   # a lone place on the way between groups reaches out to both, the bridge
+R, R_SMALL, LEVEL, CELL, GROUP = 540, 180, 0.5, 30, 900
 lat0 = sum(s['lat'] for s in stops) / len(stops); kx, ky = 111320 * math.cos(math.radians(lat0)), 110540
 pts = [((s['lon']) * kx, s['lat'] * ky) for s in stops]
 dist = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
@@ -86,25 +87,19 @@ bridges, joined = [], [groups[0]] if groups else []
 rest = groups[1:]
 while rest:   # Prim's: the nearest group to those joined, by its closest pair of places
     a, b, g = min(((a, b, g) for g in rest for b in g for j in joined for a in j), key=lambda t: dist(t[0], t[1]))
-    # by way of a lone place that's on the way (River Heights, between the bench and Providence): the neck through it
+    # by way of a lone place that's on the way (River Heights, between the bench and Providence): the bridge
     via = min(alone, key=lambda c: dist(a, c) + dist(c, b), default=None)
     if via is not None and dist(a, via) + dist(via, b) <= ON_WAY * dist(a, b): bridges += [(a, via), (via, b)]
     else: bridges.append((a, b))
     joined.append(g); rest.remove(g)
-balls = [(p, R, 1.0) for p in grouped] + [(p, R_SMALL, 1.0) for p in alone]
-# The necks apart: drawn as they are, over hill and bus stop alike, so the region stays one piece.
-necks = []
-for a, b in bridges:
-    n = max(1, int(dist(a, b) / 150))
-    necks += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(0, n + 1)]
-neck = lambda x, y: sum(W_NECK * math.exp(-((x - px) ** 2 + (y - py) ** 2) / R_NECK ** 2) for px, py in necks)
+via_places = {c for a, b in bridges for c in (a, b) if c in alone}   # a lone place a bridge runs through: part of the region
+balls = [(p, R, 1.0) for p in grouped] + [(p, R_VIA, 1.0) for p in via_places] + [(p, R_SMALL, 1.0) for p in alone if p not in via_places]
 x0, x1 = min(p[0] for p in pts) - 2 * R, max(p[0] for p in pts) + 2 * R
 y0, y1 = min(p[1] for p in pts) - 2 * R, max(p[1] for p in pts) + 2 * R
 nx, ny = int((x1 - x0) / CELL) + 1, int((y1 - y0) / CELL) + 1
 # The lie of the land (data/elevation.json, tools/elevation.py): a point's pull fades with the height between it and
-# the ground there, H metres taking it to a third, so a blob keeps to the floor or bench its stops stand on and
-# doesn't climb a canyon side or spill off a bench edge. No grid: flat, as before.
-H = 25
+# the ground there, H metres taking it to a third, so a blob doesn't climb the canyon sides. No grid: flat.
+H = 90
 try:
     EL = json.load(open(os.path.join(ROOT, 'data', 'elevation.json')))
     EL['z'] = [[sum(r[:k + 1]) for k in range(len(r))] for r in EL['d']]
@@ -120,18 +115,7 @@ balls = [(p, r, w, height(*p)) for p, r, w in balls]
 def at(x, y):
     h = height(x, y)
     return sum(w * math.exp(-((x - px) ** 2 + (y - py) ** 2) / r ** 2) * (math.exp(-((h - hp) / H) ** 2) if h is not None and hp is not None else 1) for (px, py), r, w, hp in balls)
-# A bus stop that isn't a pickup (POOL doesn't stop there) is left out: a dent round it, just deep enough to put it
-# outside, or a small hole where it's well inside. Not the Transit Center's bays: its pickup is at them.
-R_OUT, KEEP = 90, 40   # metres: the dent's size; a bus stop this near a pickup is that pickup
-dents = []
-for b in D['stops']:
-    if b.get('hub'): continue
-    q = (b['lon'] * kx, b['lat'] * ky)
-    if any(dist(q, p) <= KEEP for p in pts): continue
-    f = at(*q)
-    if f >= LEVEL: dents.append((q, f - LEVEL + 0.15))
-def cell(x, y): return max(at(x, y) - sum(w * math.exp(-((x - qx) ** 2 + (y - qy) ** 2) / R_OUT ** 2) for (qx, qy), w in dents), neck(x, y))
-field = [[cell(x0 + i * CELL, y0 + j * CELL) for i in range(nx)] for j in range(ny)]
+field = [[at(x0 + i * CELL, y0 + j * CELL) for i in range(nx)] for j in range(ny)]
 # marching squares: each cell's crossings of the level, as segments, joined into rings
 def cross(a, b, fa, fb): t = (LEVEL - fa) / (fb - fa); return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
 segs = []
@@ -182,6 +166,5 @@ rings = [closed(r, 6) for r in rings]
 outer = [r for r in rings if sum(contains(o, r[0]) for o in rings if o is not r) % 2 == 0]
 area = [[[lonlat(p) for p in o]] + [[lonlat(p) for p in h] for h in rings if h not in outer and contains(o, h[0])] for o in outer]
 json.dump({'from': 'Connect, via Remix', **INFO, 'zone': ZONE, 'area': area, 'stops': stops}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
-print(f"{len(dents)} bus stops left out;", file=sys.stderr)
-print(f"{len(area)} blobs ({len(alone)} lone points, {len(groups)} groups joined by {len(bridges)} necks), {sum(len(p[0]) for p in area)} points;", file=sys.stderr)
+print(f"{len(area)} blobs ({len(groups)} groups, joined through {len(via_places)} places; {len(alone) - len(via_places)} on their own), {sum(len(p[0]) for p in area)} points;", file=sys.stderr)
 print(f"{len(stops)} POOL pickup points ({sum(1 for s in stops if s['stop'] is not None)} of them bus stops too), {os.path.getsize(OUT) // 1024} KB", file=sys.stderr)
