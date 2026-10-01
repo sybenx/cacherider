@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses } from '../data.js';
+import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pref } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres, dayFrom } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -1252,7 +1252,9 @@ function placeControls() {
   // Bottom corners stack upward in the order added, top corners downward. The map credit keeps its own corner:
   // bottom left on a phone, under the buttons' corner on a wide screen, so it never sits in a stack of buttons.
   ctrls = coarse() ? [credit, near, sat, north] : WIDE.matches ? [credit, near, nav, sat, north] : [credit, nav, near, sat, north];
-  for (const c of ctrls) map.addControl(c, c === credit ? (WIDE.matches ? 'bottom-right' : 'bottom-left') : WIDE.matches ? 'top-right' : c === nav ? 'bottom-left' : 'bottom-right');
+  // A phone's compass under the search bar, top right: in the bottom corner the Center's board covered it, and there,
+  // always shown, it's how the bays are turned round and back.
+  for (const c of ctrls) map.addControl(c, c === credit ? (WIDE.matches ? 'bottom-right' : 'bottom-left') : WIDE.matches || c === north ? 'top-right' : c === nav ? 'bottom-left' : 'bottom-right');
 }
 
 /** North: a button that appears once the map is turned, and turns it back. */
@@ -1260,13 +1262,23 @@ function northControl() {
   return {
     onAdd(m) {
       const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group northctl';
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'northbtn'; b.title = 'Point north'; b.setAttribute('aria-label', 'Point north');
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'northbtn';
       b.innerHTML = icon('compass', 20).s;
-      // On the Center, turning the map is using it as a map: the Map tab, the bays where they are, turned north.
-      b.onclick = () => { if (/^#\/hub/.test(location.hash)) leaveHubKept(); else m.resetNorth({ duration: 400 }); };
-      const sync = () => { const a = m.getBearing(); el.classList.toggle('on', Math.abs(a) > 0.5); b.querySelector('svg').style.transform = `rotate(${-a}deg)`; };
-      m.on('rotate', sync); m.on('rotateend', sync); sync();
-      this.off = () => { m.off('rotate', sync); m.off('rotateend', sync); };
+      // On the Center, always there: the bays turned between south up (as its benches face, the way it opens) and north
+      // up, and the turn kept for next time; a desktop has no turn of the fingers to find. Elsewhere, north again.
+      const atHub = () => /^#\/hub/.test(location.hash);
+      b.onclick = () => {
+        if (!atHub()) { m.resetNorth({ duration: 400 }); return; }
+        pref('hub-up', Math.abs(m.getBearing()) > 90 ? 'north' : null);
+        frame(hubBounds(), { ...hubFit(), duration: 500 });
+      };
+      const sync = () => {
+        const a = m.getBearing(), hub = atHub(), say = hub ? (Math.abs(a) > 90 ? 'North up' : 'South up, as the benches face') : 'Point north';
+        el.classList.toggle('on', hub || Math.abs(a) > 0.5); b.querySelector('svg').style.transform = `rotate(${-a}deg)`;
+        if (b.title !== say) { b.title = say; b.setAttribute('aria-label', say); }
+      };
+      m.on('rotate', sync); m.on('rotateend', sync); addEventListener('hashchange', sync); sync();
+      this.off = () => { m.off('rotate', sync); m.off('rotateend', sync); removeEventListener('hashchange', sync); };
       el.appendChild(b); this.el = el; return el;
     },
     onRemove() { this.off(); this.el.remove(); },
@@ -1594,7 +1606,9 @@ function hubFold(on) {
 /** The bays, and how the Center frames them: south up, as a rider stands at the Center facing the hall from 500
  *  North; in to the bays' own zoom at the least, whatever covers the map. */
 function hubBounds() { const bb = new maplibregl.LngLatBounds(); for (const b of D.hub.bays) bb.extend([b.lon, b.lat]); return bb; }
-const hubFit = () => ({ margin: wide() ? 100 : HUB_M, bearing: 180, minZoom: HUB_Z + 0.2, maxZoom: wide() ? 19 : 18.4 });   // beside a wide panel, the bays fill the map (it was a third of it)
+/** Which way the Center faces: south up, as its benches do, unless the rider turned it north (its compass button). */
+const hubBearing = () => pref('hub-up') === 'north' ? 0 : 180;
+const hubFit = () => ({ margin: wide() ? 100 : HUB_M, bearing: hubBearing(), minZoom: HUB_Z + 0.2, maxZoom: wide() ? 19 : 18.4 });   // beside a wide panel, the bays fill the map (it was a third of it)
 
 /** The tiles of the views a tab will ask for, built ahead while the map sits idle: the Center's bays, and the town as
  *  the Map tab shows it. Built only when first shown, each was gray a beat after its tab was tapped, seconds after
@@ -1645,12 +1659,12 @@ function warmViews() {
     // town wasn't, gray a long beat after the tab was tapped there.
     const town = homeBounds() && frameCam(homeBounds(), HOME_FIT);
     if (town) cams.push({ center: town.center, zoom: town.zoom });
-    for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: 180 });
+    for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: hubBearing() });
     // The zooms between, along the flight from the town to the bays (fitHub): its middle drawn toward the Center and
     // its turn half made as it comes in, so none is built mid-flight, gray till it is.
     if (home) for (const z of [14, 15, 16, 17]) {
       const k = Math.max(0, Math.min(1, (z - home.zoom) / Math.max(0.1, hz - home.zoom))), c = bb.getCenter(), h = maplibregl.LngLat.convert(home.center);
-      cams.push({ center: [h.lng + (c.lng - h.lng) * k, h.lat + (c.lat - h.lat) * k], zoom: z, bearing: 180 * k });
+      cams.push({ center: [h.lng + (c.lng - h.lng) * k, h.lat + (c.lat - h.lat) * k], zoom: z, bearing: hubBearing() * k });
     }
     const want = new Map();
     for (const c of cams) for (const id of tilesFor(T, c)) if (!T._inViewTiles.getTileById(id.key) && !T._outOfViewCache.has(id)) want.set(id.key, id);
@@ -2140,7 +2154,7 @@ function leaveHubKept() {
   if (!wide() && hubRest) r.bottom = Math.max(r.bottom, box.clientHeight - hubRest);
   const x = left + (box.clientWidth - left + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
   stayAt = map.unproject([x, y]); stayOff = true; location.hash = '#/map';
-}   // stayOff: the Center left by its north button, the map kept
+}   // stayOff: the Center left by a tap off its board, the map kept
 export function leaveHub() { backDue = true; }
 /** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
  *  out or panned off), and on a phone its board back up if it was put away. */
@@ -2460,7 +2474,7 @@ export async function show(o, app, clockNow) {
   // North alone left a desktop's map on the bays, turned: Transit Center, Stops, then Map never came out again.
   if (!o.hub && hubTurned && !o.tick) {
     const own = stayOff || o.stopId || o.routeShort || o.ustopId || o.campus || o.uRoute || o.alertId || o.at || o.journey || o.run || o.busId || o.page || o.from || o.to;
-    // Left by its north button or a tap off the board: the bays north up in the whole map, not turned about a middle
+    // Left by a tap off the board: the bays north up in the whole map, not turned about a middle
     // that was set above the board (they came to rest low on the screen).
     // Zoomed out or panned off them first, the rider's own view is kept, only turned north.
     if (stayOff) {
