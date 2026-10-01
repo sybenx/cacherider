@@ -1534,6 +1534,10 @@ function warmViews() {
     const bb = hubBounds(), fit = frameCam(bb, hubFit()), hz = fit ? fit.zoom : 18, home = homeBounds() && frameCam(...homeView(meGeo)), cams = home ? [{ center: home.center, zoom: home.zoom }] : [];
     if (bornCam) cams.push(bornCam);
     if (beforeHub) cams.push(beforeHub);
+    // The town, as the Map tab frames it from the Transit Center (frameHome): the near view was built ahead and the
+    // town wasn't, gray a long beat after the tab was tapped there.
+    const town = homeBounds() && frameCam(homeBounds(), HOME_FIT);
+    if (town) cams.push({ center: town.center, zoom: town.zoom });
     for (const z of [hz - 0.4, hz, hz + 0.4]) cams.push({ center: bb.getCenter(), zoom: Math.min(18.4, Math.max(HUB_Z, z)), bearing: 180 });
     // The zooms between, along the flight from the town to the bays (fitHub): its middle drawn toward the Center and
     // its turn half made as it comes in, so none is built mid-flight, gray till it is.
