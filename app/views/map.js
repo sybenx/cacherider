@@ -105,10 +105,8 @@ function style(sat = true) {
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
       // POOL's zone, a faint wash under everything else; its pickup points are rings under the stops, so a bus stop
       // that is one keeps its dot inside the ring.
-      // Zoomed in to the streets it steps back, for its pickups and the stops.
+      // No outline: the walk fades out, it doesn't stop at a line. Zoomed in to the streets it steps back, for its pickups.
       { id: 'pool-zone', type: 'fill', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'fill-color': '#007AB8', 'fill-antialias': false, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 14, flavor === 'dark' ? 0.08 : 0.065, 16.5, 0.025] } },
-      // Its outer edge dotted, the walk most riders will make: where POOL's area ends, as a line can say it.
-      { id: 'pool-edge', type: 'line', source: 'pool', filter: ['all', ['==', ['get', 'kind'], 'zone'], ['get', 'outer']], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#007AB8', 'line-width': 1.4, 'line-dasharray': [0.1, 2.4], 'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0.7, 16.5, 0.3] } },
       { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'], 'circle-opacity': 0.15, 'circle-stroke-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
       // A P in each, from the streets' zoom: a POOL pickup, not a bus stop, at a glance (the Blue Loop is blue too).
       { id: 'pool-p', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 14.5, layout: { 'text-field': 'P', 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 14.5, 8, 17, 12], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'] } },
@@ -1400,7 +1398,7 @@ function applySelection() {
 
 /** The shuttle and POOL drawn only where they run, or when asked for: near campus (the shuttle's stops) or POOL's zone,
  *  from the streets in, and a shuttle loop, stop or bus picked. Out over the valley they'd be noise over Connect's. */
-const U_LAYERS = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels'], POOL_LAYERS = ['pool-zone', 'pool-edge', 'pool-stops', 'pool-p'];
+const U_LAYERS = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels'], POOL_LAYERS = ['pool-zone', 'pool-stops', 'pool-p'];
 let campusBox = null, poolBox = null;
 const boxOf = pts => pts.length ? pts.reduce((b, [lon, lat]) => [Math.min(b[0], lon), Math.min(b[1], lat), Math.max(b[2], lon), Math.max(b[3], lat)], [180, 90, -180, -90]) : null;
 function quiet() {
@@ -1424,7 +1422,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5, HUB_IN = 110, HUB_STILL = 3;   // metres from the hall: a bus this close is in; metres a second: one slower stands
-const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'pool-zone', 'pool-edge', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'pool-zone', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -2736,7 +2734,7 @@ function runBounds(R, o) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60 };
-const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-edge', 'pool-stops', 'pool-p'];
+const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-stops', 'pool-p'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
