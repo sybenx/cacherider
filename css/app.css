@@ -261,6 +261,13 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 .callout.alert .sub + .sub { margin-top: 8px; }
 .callout.alert .sub b { display: block; margin-bottom: 1px; }
 .callout.alert a { color: inherit; font-weight: 600; }
+/* unannounced detours: ours, not the agency's, so never its colours; a question, quietly, with a dashed edge */
+.callout.unann { background: transparent; color: var(--color-text); box-shadow: inset 0 0 0 1px var(--cr-line); border: 1px dashed var(--cr-line); }
+.callout.unann a { color: inherit; font-weight: 600; }
+.callout .fine { font-size: 0.75rem; color: var(--cr-muted); margin: 6px 0 0; padding: 0; }
+.qbadge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--rc); color: var(--rt, #fff); font-family: var(--font-heading); font-weight: 700; font-size: 0.8125rem; line-height: 1; flex: none; }
+.qnote { color: var(--cr-muted); }
+.qmark { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid currentColor; font-size: 0.625rem; font-weight: 700; line-height: 1; color: var(--cr-muted); vertical-align: 1px; margin-left: 4px; }
 /* yellow, and only for what changes a rider's trip: a route skipping a stop, a stop not served, a bus days off */
 .warnmark { display: inline-block; padding: 1px 6px; background: var(--warn-bg); color: var(--warn-ink); box-shadow: inset 3px 0 0 var(--warn-edge); font-weight: 600; }
 .stoprow .dist .alert { color: var(--color-accent-700); font-weight: 600; }

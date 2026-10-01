@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow } from '../data.js';
+import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -170,12 +170,11 @@ function style(sat = true) {
   return st;
 }
 
-/** A stop's state on the map: closed (a hollow ring) by a notice that closes it, or only perhaps skipped (a '?') by a
- *  detour seen from the buses and not yet announced. */
+/** A stop's state on the map: closed (a hollow ring) by the agency's notice, or only perhaps skipped (a '?') by an
+ *  unannounced detour. */
 function closedOrMaybe(s, i, ymd) {
-  const list = A.byStop[s.id] ? stopAlerts(i, ymd) : [];
-  const closed = list.some(a => !(a.maybe || []).includes(s.id));
-  return { closed, maybe: !closed && list.length > 0 };
+  const closed = !!(A.byStop[s.id] && stopAlerts(i, ymd).length);
+  return { closed, maybe: !closed && skipsAt(s.id).length > 0 };
 }
 function stopsGeo() {
   const ymd = now().ymd;
@@ -419,10 +418,10 @@ function shapes() {
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
-/** The ways round the buses have been seen to take (data.js's tracked alerts), along the streets, dashed in the
- *  route's colour, fainter while only two buses have gone that way. */
+/** The ways round the buses have been seen to take (data.js's A.seen, announced or not), along the streets, dashed
+ *  in the route's colour, fainter while only two buses have gone that way. */
 function trackedPaths() {
-  return { type: 'FeatureCollection', features: (A.tracked || []).flatMap(a => a.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), sure: a.tracked.streak >= 3 ? 0.95 : 0.6 }, geometry: { type: 'LineString', coordinates: a.tracked.way.map(([la, lo]) => [lo, la]) } }))) };
+  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, stop: u.gone[0] || u.on[0] || '' }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
@@ -431,7 +430,7 @@ const drawn = { lines: null, closed: null, key: null };
  *  were fetched, so a refetch saying the same thing (every ten minutes, and the relay's just after launch) redraws
  *  nothing, and a detour whose day's buses are done is dropped when it is. */
 function closedKeyOf(clockNow) {
-  return clockNow.ymd + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.tracked || []).map(a => [a.tracked.id, a.tracked.streak, a.tracked.last]));
+  return clockNow.ymd + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced]));
 }
 async function loadShapes(m = map) {
   const fc = await shapes();
@@ -601,6 +600,9 @@ async function made(app) {
       else selectU(best.properties.id, app, best.properties.id === uHilite || U.stopById[best.properties.id] === selectedU);
       return;
     }
+    // A way round the buses have been taking (dashed): the stop it goes round, whose page says what's known.
+    const way = map.getLayer('trk-path') && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['trk-path'] }).find(f => f.properties.stop);
+    if (way) { select(way.properties.stop, app, true); return; }
     // No stop there, but a route's line: that route lit up with its times, where the map is. Where several share the
     // road, the card asks which.
     // A route the timetable splits by time of day (16 AM and PM) is one route here: the half on the road now or next.
@@ -746,7 +748,7 @@ function routeRow(si, ri, next0, clockNow, opts = {}) {
   // Estimated, from the bus's place); a timetable time, Scheduled.
   const mark = !t ? '' : t.live ? liveMark(t.live.est ? 'Estimated' : 'Live') : sched(t);
   const tp = timed(si, ri);
-  return html`<a class="croute${opts.here ? ' here' : ''}${tp ? ' tp' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}"><span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${heard(si, s.town && s.town !== 'Logan' ? ', ' + s.town : '')}${tp ? timedMark() : ''}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
+  return html`<a class="croute${opts.here ? ' here' : ''}${tp ? ' tp' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}"><span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${heard(si, s.town && s.town !== 'Logan' ? ', ' + s.town : '')}${tp ? timedMark() : ''}${maySkip(s.id, ri) ? html.raw('<span class="qmark" title="May be skipped: unannounced detour">?</span>') : ''}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
 }
 
 // ---- staying on the bus. A bus swaps routes at the Transit Center all day (9 and 1 on a Saturday): its next

@@ -46,11 +46,11 @@ function roadsOf(b, tx, ty) {
         const cmd = g[i] & 7, cnt = g[i] >> 3; i++;
         for (let c = 0; c < cnt && cmd !== 7; c++) {
           x += (g[i] >> 1) ^ -(g[i] & 1); y += (g[i + 1] >> 1) ^ -(g[i + 1] & 1); i += 2;
-          if (cmd === 1) { if (line && line.length > 1) lines.push({ w: SLOW[props.kind_detail] || 1, pts: line }); line = [ll(x, y)]; }
+          if (cmd === 1) { if (line && line.length > 1) lines.push({ w: SLOW[props.kind_detail] || 1, name: props.name || '', pts: line }); line = [ll(x, y)]; }
           else line.push(ll(x, y));
         }
       }
-      if (line && line.length > 1) lines.push({ w: SLOW[props.kind_detail] || 1, pts: line });
+      if (line && line.length > 1) lines.push({ w: SLOW[props.kind_detail] || 1, name: props.name || '', pts: line });
     }
   }
   return lines;
@@ -80,7 +80,7 @@ async function network(pts) {
     if (!adj.has(a)) adj.set(a, new Map()); if (!adj.has(b)) adj.set(b, new Map());
     if (d < (adj.get(a).get(b) ?? Infinity)) { adj.get(a).set(b, d); adj.get(b).set(a, d); }
   };
-  for (const w of ways) for (let i = 0; i + 1 < w.pts.length; i++) { const a = key(w.pts[i]), b = key(w.pts[i + 1]); if (a !== b) { link(a, b, w.w); segs.push([a, b, w.w]); } }
+  for (const w of ways) for (let i = 0; i + 1 < w.pts.length; i++) { const a = key(w.pts[i]), b = key(w.pts[i + 1]); if (a !== b) { link(a, b, w.w); segs.push([a, b, w.w, w.name]); } }
   // segments by 50 m cell, for joining ends and for snapping
   const CELL = 50, cells = new Map(), cellOf = (x, y) => Math.floor(x / CELL) + ',' + Math.floor(y / CELL);
   segs.forEach((s, i) => {
@@ -111,7 +111,9 @@ async function network(pts) {
     const [x, y] = xy(k), h = nearSeg(x, y, 3);
     if (h && segs[h.i][0] !== k && segs[h.i][1] !== k) link(k, onto(h), 1);
   }
-  return { adj, xy, toLL: k => { const [x, y] = xy(k); return [x / kx, y / ky]; }, snap: (lat, lon) => { const h = nearSeg(lon * kx, lat * ky, SNAP); return h ? onto(h) : null; } };
+  // The street a stretch of a way runs along: the name of the way nearest its middle.
+  const nameAt = (lon, lat) => { const h = nearSeg(lon * kx, lat * ky, 12); return h ? segs[h.i][3] : ''; };
+  return { adj, xy, nameAt, toLL: k => { const [x, y] = xy(k); return [x / kx, y / ky]; }, snap: (lat, lon) => { const h = nearSeg(lon * kx, lat * ky, SNAP); return h ? onto(h) : null; } };
 }
 
 function shortest(adj, from, to) {
@@ -129,8 +131,9 @@ function shortest(adj, from, to) {
   return { cost: dist.get(to), keys: out.reverse() };
 }
 
-/** A way as reported, [lat, lon] points in order, run along the streets between them: [lon, lat] coordinates for a
- *  map line. A report too far from any street, or two with no street between, are joined straight, as they came. */
+/** A way as reported, [lat, lon] points in order, run along the streets between them: { coords: [lon, lat] for a map
+ *  line, streets: the names of those it ran along, in order }. A report too far from any street, or two with no
+ *  street between, are joined straight, as they came. */
 const done = new Map();
 export async function alongStreets(path) {
   const k = JSON.stringify(path);
@@ -160,7 +163,13 @@ export async function alongStreets(path) {
         if (len && dot / len < -0.95) { out.splice(i, 1); changed = true; break; }   // a turn straight back
       }
     }
-    return out;
+    // The streets it took, in order, each counted once it's run along for a block or so.
+    const by = new Map();
+    for (let i = 0; i + 1 < out.length; i++) {
+      const [a, b] = [out[i], out[i + 1]], n = net.nameAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+      if (n) by.set(n, (by.get(n) || 0) + Math.hypot((a[0] - b[0]) * 83000, (a[1] - b[1]) * 110540));
+    }
+    return { coords: out, streets: [...by].filter(([, m]) => m >= 80).map(([n]) => n) };
   })();
   done.set(k, run);
   return run;

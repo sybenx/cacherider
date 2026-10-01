@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts } from './data.js';
+import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { clock, clockText, relative, now, metres } from './time.js';
@@ -177,7 +177,10 @@ export function depRow(t0, clockNow, opts = {}) {
   const rel = opts.rel || relative(t, clockNow, opts);
   const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t)).s : sched(t).s;
   const b = t.si !== undefined ? routeBadgeLink(t.r, t.si, 36, t.dir) : badge(t.r, 36).s;
-  return raw(`<div class="row${opts.href ? ' tap' : ''}">${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
+  // An unannounced detour may be taking this route round the stop: the time kept, a question beside it.
+  const u = t.si !== undefined && maySkip(stop(t.si).id, t.r) && skipsAt(stop(t.si).id).find(u => u.ri.includes(t.r));
+  const q = u ? `<span class="sub qnote">The last ${u.n} skipped this stop<span class="qmark">?</span></span>` : '';
+  return raw(`<div class="row${opts.href ? ' tap' : ''}">${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${q}${lastTag(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
 }
 
 /** A run the feed says is cancelled, in a list of departures: its time struck, 'Cancelled', nothing to count down to. */
@@ -202,7 +205,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const end = opts.bare ? '' : opts.later ? `<div class="end" data-later="${si}"></div>` : stopEnd(next, clockNow, opts);
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
-  const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';
+  const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : skipsAt(s.id).length ? `<span class="qnote">${esc(skipsAt(s.id).map(u => u.who).join(', '))} skipped last ${Math.max(...skipsAt(s.id).map(u => u.n))}<span class="qmark">?</span></span>` : '';
   const way = opts.point ? pointerMark(s.lat, s.lon, opts.point) + (num ? ' · ' : '') : '';
   const dist = `<span class="dist">${way}${esc([opts.dist, s.by, num].filter(Boolean).join(' · '))}${alert ? (opts.dist || num || way ? ' · ' : '') + alert : ''}</span>`;
   // `dest`: where the next bus goes (a road's stops, both sides: which side is which way)

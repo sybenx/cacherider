@@ -1,5 +1,5 @@
 // What this is, where the times come from, and the offline map switch.
-import { D, BASE, pref, A, activeAlerts, alertRoutes } from '../data.js';
+import { D, BASE, pref, A, activeAlerts, alertRoutes, lastBuses } from '../data.js';
 import { fmtDay, is24, isKm, clockText, now, metres } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
 import { shareBlock, siteLink, fillQRs } from '../share.js';
@@ -33,6 +33,7 @@ export function render({ section }, clockNow) {
 `;
   const right = html`<div class="section" id="alerts">${icon('ban', 16)}Service alerts</div>
     ${alertsBlock(clockNow)}
+    ${unannouncedBlock()}
     <div class="section">${icon('info', 16)}About the data</div>
     <div class="pad muted" style="font-size:0.875rem;line-height:1.5">
       <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Once a bus is on the road, ${D.agency.brand}'s own tracker reports where it is and when it expects to reach each stop, and those rows say <b>Live</b> instead of Scheduled. A live time is still a prediction. A bus on a detour shows on the map but can't give stop times, so its route's rows stay Scheduled.</p>
@@ -141,6 +142,18 @@ function alertsBlock(clockNow) {
   const upd = when ? `Checked ${when.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', hourCycle: is24() ? 'h23' : 'h12' })}` : '';
   if (!al.length) return html`<div class="pad muted" style="font-size:0.875rem"><p>Nothing from ${D.agency.brand} right now. ${upd}</p></div>`;
   return html`<div class="list">${al.map(a => html`<div class="alertrow"><a class="alerthead" href="#/map/alert/${a.id}">${alertRoutes(a).length ? badges(alertRoutes(a), 24) : ''}<b>${a.title}</b><span class="alertmap">${icon('map', 16)}Map</span></a><p>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</p>${known(a).length ? html`<p class="muted">Stops: ${known(a).map(id => html`<a href="#/stop/${id}">${D.stops[D.stopById[id]].name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), [])}</p>` : ''}</div>`)}</div><div class="fine">${upd}. Alerts come from ${D.agency.brand}'s rider alerts feed, checked hourly.</div>`;
+}
+/** Unannounced detours, after the agency's notices and apart from them: seen from the buses, each a question with
+ *  what it rests on, its stops linked. None, nothing said. */
+function unannouncedBlock() {
+  const list = (A.seen || []).filter(u => !u.announced);
+  if (!list.length) return '';
+  const stopLinks = ids => ids.map(id => html`<a href="#/stop/${id}">${D.stops[D.stopById[id]].name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), []);
+  return html`<div class="section">${icon('info', 16)}Unannounced</div>
+    <div class="list">${list.map(u => html`<div class="alertrow unann"><div class="alerthead">${badges(u.ri.slice(0, 1), 24)}<b>${lastBuses(u)} skipped ${u.gone.length === 1 ? 'a stop' : u.gone.length + ' stops'}</b></div>
+      <p>They went around ${u.gone.length === 1 ? 'it' : 'them'}${u.by.length ? ' by ' + u.by.join(' and ') : ''}, the latest at ${u.last}.</p>
+      <p class="muted">Skipped: ${stopLinks(u.gone)}</p>${u.on.length ? html`<p class="muted">Passed on the way round: ${stopLinks(u.on)}</p>` : ''}</div>`)}</div>
+    <div class="fine">Seen from ${D.agency.brand}'s buses, not posted by ${D.agency.brand}: a stop is asked about, never taken off the timetable, until ${D.agency.brand} announces the detour.</div>`;
 }
 // Stops the alert names that are in the timetable; the others are in its words already.
 const known = a => (a.stops || []).filter(id => D.stopById[id] !== undefined);

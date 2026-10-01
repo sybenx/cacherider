@@ -1,6 +1,6 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL, A, distance } from '../data.js';
+import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom } from '../time.js';
 import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
 import { cancelledAt } from '../rt.js';
@@ -48,9 +48,11 @@ export function render({ id, full, run, on }, clockNow) {
   const alerts = stopAlerts(si, clockNow.ymd);
   const closed = closedRoutes(si, clockNow.ymd);
   const allClosed = closed.size && s.routes.every(ri => closed.has(ri));
-  // Buses gone round it, the detour not announced: asked, how sure by how many in a row, nothing dropped.
-  const maybe = [...new Set(alerts.filter(a => (a.maybe || []).includes(s.id)).flatMap(a => a.ri))].filter(ri => !closed.has(ri));
-  const sure = Math.max(0, ...alerts.filter(a => (a.maybe || []).includes(s.id)).map(a => a.tracked ? a.tracked.streak : 0));
+  // Where its buses stop instead, seen from them on their way round (announced or not): the nearest such stop.
+  const instead = list => {
+    const alt = list.flatMap(u => u.on.map(id => ({ u, t: D.stops[stopIndex(id)] }))).map(x => ({ ...x, d: distance(s.lat, s.lon, x.t.lat, x.t.lon) })).sort((x, y) => x.d - y.d)[0];
+    return alt ? html`<div class="sub">${routeNames(alt.u.ri)} buses came past <a href="#/stop/${alt.t.id}">${alt.t.name}</a> (stop ${alt.t.code}) on their way round, a ${walkMins(s.lat, s.lon, alt.t.lat, alt.t.lon)} min walk from here.</div>` : '';
+  };
   // A way the bus calls here only when asked (16 northbound at Pepperidge Farms): said once, with the number to ask.
   const req = nextAt(si, 60, clockNow).find(t => t.req);
   if (req) parts.push(html`<div class="notice">${icon('info', 16)}<span>${headsign(req)}, the bus stops here only on request: pull the cord to get off, or call <a href="tel:${D.agency.phone}">${D.agency.phone}</a> ahead to be picked up.</span></div>`);
@@ -65,13 +67,20 @@ export function render({ id, full, run, on }, clockNow) {
     const end = alertsUntil(alerts), onEnd = end === clockNow.ymd;
     const ends = end && !onEnd ? ' · the detour ends ' + (end === dayFrom(clockNow.ymd, 1).ymd ? 'tomorrow' : fmtDay(end)) : '';
     const head = allClosed ? (onEnd ? 'No buses stop here until the detour ends, later today' : `No buses stop here${ends || ' during the detour'}`)
-      : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}`
-      : maybe.length ? `${routeNames(maybe)} ${sure >= 4 ? 'is very likely skipping' : sure === 3 ? 'is likely skipping' : 'may be skipping'} this stop?` : 'Service alert for this stop';
-    // Seen from the buses: on their way round they pass these stops, where they do stop. The nearest of them.
-    const ways = (A.tracked || []).filter(a => a.gone.includes(s.id) && a.on.length);
-    const alt = ways.flatMap(a => a.on.map(id => ({ a, t: D.stops[stopIndex(id)] }))).map(x => ({ ...x, d: distance(s.lat, s.lon, x.t.lat, x.t.lon) })).sort((x, y) => x.d - y.d)[0];
-    const instead = alt ? html`<div class="sub">${routeNames(alt.a.ri)} ${alt.a.ri.length > 1 ? 'stop' : 'stops'} at <a href="#/stop/${alt.t.id}">${alt.t.name}</a> (stop ${alt.t.code}) on the way round, ${walkMins(s.lat, s.lon, alt.t.lat, alt.t.lon)} min walk from here.</div>` : '';
-    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${instead}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
+      : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}` : 'Service alert for this stop';
+    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${instead((A.seen || []).filter(u => u.gone.includes(s.id)))}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
+  }
+
+  // Unannounced detours, apart from the agency's notices and never in their red: a question, what it rests on, where
+  // to wait instead, and that it's ours. Nothing dropped from the times.
+  const fine = html`<div class="fine">Unannounced: seen from ${D.agency.brand}'s buses, not posted by ${D.agency.brand}.</div>`;
+  const qbadge = u => html`<span class="qbadge" style="--rc:#${D.routes[u.ri[0]].color};--rt:#${D.routes[u.ri[0]].text}">?</span>`;
+  for (const u of skipsAt(s.id).filter(u => !u.ri.every(ri => closed.has(ri)))) {
+    parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} ${u.n >= 4 ? 'has' : 'have'} skipped this stop</b><div class="sub">${u.n >= 4 ? 'They have gone' : 'They went'} around it${u.by.length ? ' by ' + u.by.join(' and ') : ''}, the latest at ${u.last}.</div>${instead([u])}${fine}</div></div>`);
+  }
+  for (const u of passesAt(s.id)) {
+    const names = u.gone.map(id => D.stops[stopIndex(id)].name);
+    parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} came past this stop</b><div class="sub">On their way around ${names.length === 1 ? names[0] : names.length + ' of their usual stops: ' + names.join(', ')}.</div>${fine}</div></div>`);
   }
 
   if (allClosed) {

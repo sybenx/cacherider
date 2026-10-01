@@ -1,6 +1,6 @@
 // Directions to a stop or a spot: from where the rider is, or from a stop they name. Each way there is one card: the walk
 // to the first stop, the bus, where to change, where to get off, in order, with when.
-import { D, stop, stopIndex, distance, tripStops, POOL, inPool } from '../data.js';
+import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, relative, metres, fmtDay, dayName, now, dayFrom } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
@@ -316,9 +316,16 @@ function planLegs(p, J) {
     // haven't started yet, and a loop's stop count means little, so those just say it's coming. A shuttle's times
     // are its buses' estimates, no timetable behind them, and say so.
     const on = !l.u && l === rides[0] && l.t.live ? whereabouts(l) : '';
+    // An unannounced detour may take the bus round the stop to board or leave at: asked, with where it does stop.
+    const q = si => {
+      const id = stop(si).id, u = !l.u && skipsAt(id).find(u => u.ri.includes(l.r));
+      if (!u) return '';
+      const s0 = stop(si), alt = u.on.map(x => stop(stopIndex(x))).sort((a, b) => distance(s0.lat, s0.lon, a.lat, a.lon) - distance(s0.lat, s0.lon, b.lat, b.lon))[0];
+      return html`<span class="sub qnote">Skipped by the last ${u.n} of these buses<span class="qmark">?</span>${alt ? html` · they came past <a href="#/stop/${alt.id}">${alt.name}</a> instead` : ''}</span>`;
+    };
     legs.push(html`<div class="leg ride">${l.u ? chip(l.r, 36) : badge(l.r, 36)}<div class="mid"><span class="name">${toward(l)}</span>
-      <span class="sub">Get on at <a href="${stopHref(l.from)}">${stopWords(l.from)}</a>${said(l.from) && said(l.from).addr ? html` <span class="addr-in">${said(l.from).addr}</span>` : ''} · leaves <b>${clockText(l.on)}</b>${l.u ? liveMark('Estimated') : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${on ? html`<span class="sub">${on}</span>` : ''}
-      <span class="sub">Get off at <a href="${stopHref(l.to)}">${stopWords(l.to)}</a>${said(l.to) && said(l.to).addr ? html` <span class="addr-in">${said(l.to).addr}</span>` : ''}, ${l.n} ${l.n === 1 ? 'stop' : 'stops'} on · <b>${clockText(l.off)}</b></span></div></div>`);
+      <span class="sub">Get on at <a href="${stopHref(l.from)}">${stopWords(l.from)}</a>${said(l.from) && said(l.from).addr ? html` <span class="addr-in">${said(l.from).addr}</span>` : ''} · leaves <b>${clockText(l.on)}</b>${l.u ? liveMark('Estimated') : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${q(l.from)}${on ? html`<span class="sub">${on}</span>` : ''}
+      <span class="sub">Get off at <a href="${stopHref(l.to)}">${stopWords(l.to)}</a>${said(l.to) && said(l.to).addr ? html` <span class="addr-in">${said(l.to).addr}</span>` : ''}, ${l.n} ${l.n === 1 ? 'stop' : 'stops'} on · <b>${clockText(l.off)}</b></span>${q(l.to)}</div></div>`);
   });
   return legs;
 }
