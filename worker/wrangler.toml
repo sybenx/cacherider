@@ -3,9 +3,19 @@
 # at the edge for ten seconds so CVTD sees a few requests a minute however many
 # riders are looking. For a route the feed has no bus on (a detour), the
 # tracker site's own vehicle list fills in positions. Nothing about the rider passes through: no location, no
-# identifiers, no logs kept.
+# identifiers, no logs kept of anyone using it.
 name = "cacherider-live"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 workers_dev = true
 routes = [{ pattern = "live.cacherider.com", custom_domain = true }]
+
+# Bus tracks for spotting detours (the agency's alerts aren't to be trusted alone): every minute, where the buses
+# are, three samples twenty seconds apart, kept fourteen days. Buses only; still nothing of a rider's.
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "TRACKS"
+database_name = "cacherider-tracks"
+database_id = "eeda6d94-9e17-4455-b975-00051ff6de6a"

@@ -21,6 +21,8 @@ const ALERT_TTL = 300;   // a notice posted at the agency reaches riders within 
 const ANNOUNCEMENTS = 'https://mycvtdbus.org/announcements.data';
 
 export default {
+  // Every minute: where the buses are, for spotting detours from the tracks (tools/detours.py reads them).
+  async scheduled(ev, env, ctx) { ctx.waitUntil(track(env)); },
   async fetch(req) {
     const origin = req.headers.get('Origin') || '';
     const cors = {
@@ -51,6 +53,26 @@ export default {
     }
   },
 };
+
+// ---- bus tracks: three samples a minute, twenty seconds apart (a short detour, a block or two, is gone in a
+// minute), each the feed's buses and the tracker's (a detoured bus is only on the tracker), as one row. Nothing
+// written while no bus is out; rows older than fourteen days put away once an hour.
+const SAMPLES = 3, EVERY = 20000, KEEP = 14 * 86400;
+async function track(env) {
+  for (let i = 0; i < SAMPLES; i++) {
+    if (i) await new Promise(r => setTimeout(r, EVERY));
+    try {
+      const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
+      const out = decode(vp, tu);
+      try { await fillIn(out, false); } catch (e) { /* the feed's own buses */ }
+      if (!out.buses.length) continue;
+      const t = Math.floor(Date.now() / 1000);
+      const rows = out.buses.map(b => [b.label || b.id, b.trip || '', b.route || shortOf(b.trip) || '', b.lat, b.lon, b.bearing, b.speed, b.ts]);
+      await env.TRACKS.prepare('INSERT OR REPLACE INTO samples (t, buses) VALUES (?, ?)').bind(t, JSON.stringify(rows)).run();
+    } catch (e) { /* a sample missed */ }
+  }
+  if (new Date().getUTCMinutes() === 0) await env.TRACKS.prepare('DELETE FROM samples WHERE t < ?').bind(Math.floor(Date.now() / 1000) - KEEP).run();
+}
 
 // ---- service notices: the tracker site's announcements, posted by the agency and on the site at once, where
 // the GTFS-realtime alerts feed lags and misses some (a stop closure assigned to routes alone). The site is a
