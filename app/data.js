@@ -198,7 +198,7 @@ export async function loadAlerts({ relay = true } = {}) {
             try { const w = await alongStreets(d.best); d.way = w.coords.map(([lo, la]) => [la, lo]); d.streets = w.streets; keep[wayKey(d.best)] = { way: d.way, streets: d.streets, at: Date.now() }; } catch { /* as reported */ }
           }
           const recent = Object.entries(keep).sort((x, y) => y[1].at - x[1].at).slice(0, 16);   // the last few, not every way ever
-          try { localStorage.setItem('cr-ways', JSON.stringify(Object.fromEntries(recent))); } catch { /* traced again next time */ }
+          try { localStorage.removeItem('cr-ways'); localStorage.setItem('cr-ways-2', JSON.stringify(Object.fromEntries(recent))); } catch { /* traced again next time */ }
           A = { ...A, seen: unannounced(list, A.byStop) };
           window.dispatchEvent(new Event('seenchange'));
         });
@@ -208,7 +208,7 @@ export async function loadAlerts({ relay = true } = {}) {
   } catch { /* the app is fine without alerts */ }
 }
 const wayKey = path => path.map(([la, lo]) => la.toFixed(4) + ',' + lo.toFixed(4)).join(';');
-const traced = () => { try { return JSON.parse(localStorage.getItem('cr-ways') || '{}'); } catch { return {}; } };
+const traced = () => { try { return JSON.parse(localStorage.getItem('cr-ways-2') || '{}'); } catch { return {}; } };
 const idle = f => (window.requestIdleCallback || (g => setTimeout(g, 1500)))(f, { timeout: 4000 });
 /** Unannounced detours: seen from the buses themselves (the relay's watch, worker/src/detours.js), kept apart from
  *  the agency's notices everywhere (A.seen, never A.alerts): never counted with them, never a stop closed or a time

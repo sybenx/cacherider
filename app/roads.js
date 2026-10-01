@@ -80,14 +80,43 @@ async function network(pts) {
     if (!adj.has(a)) adj.set(a, new Map()); if (!adj.has(b)) adj.set(b, new Map());
     if (d < (adj.get(a).get(b) ?? Infinity)) { adj.get(a).set(b, d); adj.get(b).set(a, d); }
   };
-  for (const w of ways) for (let i = 0; i + 1 < w.pts.length; i++) { const a = key(w.pts[i]), b = key(w.pts[i + 1]); if (a !== b) { link(a, b, w.w); segs.push([a, b, w.w, w.name]); } }
-  // segments by 50 m cell, for joining ends and for snapping
-  const CELL = 50, cells = new Map(), cellOf = (x, y) => Math.floor(x / CELL) + ',' + Math.floor(y / CELL);
+  for (const w of ways) for (let i = 0; i + 1 < w.pts.length; i++) { const a = key(w.pts[i]), b = key(w.pts[i + 1]); if (a !== b) segs.push([a, b, w.w, w.name]); }
+  // segments by 50 m cell, for joining and for snapping
+  const CELL = 50, cells = new Map();
   segs.forEach((s, i) => {
     const [ax, ay] = xy(s[0]), [bx, by] = xy(s[1]);
     for (let cx = Math.floor(Math.min(ax, bx) / CELL); cx <= Math.floor(Math.max(ax, bx) / CELL); cx++)
       for (let cy = Math.floor(Math.min(ay, by) / CELL); cy <= Math.floor(Math.max(ay, by) / CELL); cy++) { const k = cx + ',' + cy; (cells.get(k) || cells.set(k, []).get(k)).push(i); }
   });
+  // Tiles don't share a point where two streets cross, or where one ends on another, unless the way bends there
+  // (a straight street keeps only its ends): each segment cut at every crossing and every end that lands on it,
+  // and only the pieces linked, so a bus can turn at any corner. (tools/roads.py does the same.)
+  const cuts = segs.map(s => [[0, s[0]], [1, s[1]]]);
+  const at = (i, f) => { const [ax, ay] = xy(segs[i][0]), [bx, by] = xy(segs[i][1]); return [ax + f * (bx - ax), ay + f * (by - ay)]; };
+  const kOf = ([x, y]) => Math.round(x / 2) + ',' + Math.round(y / 2);
+  const tried = new Set();
+  for (const ids of cells.values()) for (const i of ids) for (const j of ids) {
+    if (j <= i || tried.has(i * 1e6 + j)) continue;
+    tried.add(i * 1e6 + j);
+    const [a, b, w1] = segs[i], [c, d, w2] = segs[j];
+    if (a === c || a === d || b === c || b === d) continue;   // already meet
+    const [ax, ay] = xy(a), [bx, by] = xy(b), [cx, cy] = xy(c), [dx, dy] = xy(d);
+    // an end of one on the other
+    for (const [e, k] of [[a, j], [b, j], [c, i], [d, i]]) {
+      const [ex, ey] = xy(e), [px, py] = xy(segs[k][0]), [qx, qy] = xy(segs[k][1]), vx = qx - px, vy = qy - py, L = vx * vx + vy * vy;
+      if (!L) continue;
+      const f = ((ex - px) * vx + (ey - py) * vy) / L;
+      if (f <= 0 || f >= 1) continue;
+      const n = at(k, f);
+      if (Math.hypot(n[0] - ex, n[1] - ey) <= 3) { const nk = kOf(n); cuts[k].push([f, nk]); link(nk, e, 1); }
+    }
+    // a crossing
+    const den = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / den, u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / den;
+    if (t > 0 && t < 1 && u > 0 && u < 1) { const nk = kOf(at(i, t)); cuts[i].push([t, nk]); cuts[j].push([u, nk]); }
+  }
+  cuts.forEach((cs, i) => { cs.sort((p, q) => p[0] - q[0]); for (let k = 0; k + 1 < cs.length; k++) link(cs[k][1], cs[k + 1][1], segs[i][2]); });
   const nearSeg = (x, y, r) => {
     let best = null;
     for (let cx = Math.floor((x - r) / CELL); cx <= Math.floor((x + r) / CELL); cx++)
@@ -99,18 +128,13 @@ async function network(pts) {
         }
     return best;
   };
-  // A node on a segment, splitting it: its two ends linked to it.
+  // A node on a segment: linked to the cuts either side of it.
   const onto = h => {
-    const [a, b, w] = segs[h.i];
-    const k = Math.round(h.x / 2) + ',' + Math.round(h.y / 2);
-    link(k, a, w); link(k, b, w);
+    const cs = cuts[h.i], w = segs[h.i][2], k = kOf([h.x, h.y]);
+    let n = 1; while (n < cs.length - 1 && cs[n][0] < h.f) n++;
+    link(k, cs[n - 1][1], w); link(k, cs[n][1], w);
     return k;
   };
-  for (const k of [...adj.keys()]) {
-    if (adj.get(k).size !== 1) continue;   // a way's end: onto the way it touches
-    const [x, y] = xy(k), h = nearSeg(x, y, 3);
-    if (h && segs[h.i][0] !== k && segs[h.i][1] !== k) link(k, onto(h), 1);
-  }
   // The street a stretch of a way runs along: the name of the way nearest its middle.
   const nameAt = (lon, lat) => { const h = nearSeg(lon * kx, lat * ky, 12); return h ? segs[h.i][3] : ''; };
   return { adj, xy, nameAt, toLL: k => { const [x, y] = xy(k); return [x / kx, y / ky]; }, snap: (lat, lon) => { const h = nearSeg(lon * kx, lat * ky, SNAP); return h ? onto(h) : null; } };
