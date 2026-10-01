@@ -141,8 +141,10 @@ function alertsBlock(clockNow) {
   const when = A.fetched ? new Date(A.fetched) : null;
   const upd = when ? `Checked ${when.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', hourCycle: is24() ? 'h23' : 'h12' })}` : '';
   if (!al.length) return html`<div class="pad muted" style="font-size:0.875rem"><p>Nothing from ${D.agency.brand} right now. ${upd}</p></div>`;
-  return html`<div class="list">${al.map(a => html`<div class="alertrow"><a class="alerthead" href="#/map/alert/${a.id}">${alertRoutes(a).length ? badges(alertRoutes(a), 24) : ''}<b>${a.title}</b><span class="alertmap">${icon('map', 16)}Map</span></a><p>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</p>${known(a).length ? html`<p class="muted">Stops: ${known(a).map(id => html`<a href="#/stop/${id}">${D.stops[D.stopById[id]].name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), [])}</p>` : ''}</div>`)}</div><div class="fine">${upd}. Alerts come from ${D.agency.brand}'s rider alerts feed, checked hourly.</div>`;
+  return html`<div class="list">${al.map(a => html`<div class="alertrow"><a class="alerthead" href="#/map/alert/${a.id}">${alertRoutes(a).length ? badges(alertRoutes(a), 24) : ''}<b>${a.title}</b><span class="alertmap">${icon('map', 16)}Map</span></a><p>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</p>${stillLine(a)}${known(a).length ? html`<p class="muted">Stops: ${known(a).map(id => html`<a href="#/stop/${id}">${D.stops[D.stopById[id]].name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), [])}</p>` : ''}</div>`)}</div><div class="fine">${upd}. Alerts come from ${D.agency.brand}'s rider alerts feed, checked hourly.</div>`;
 }
+/** A notice kept on past its end by its buses (data.js renew()): said, so a rider knows why it's here. */
+const stillLine = a => a.stillOn ? html`<p class="muted">${D.agency.brand} took this notice down after ${fmtDay(now(new Date(a.end * 1000)).ymd)}, but its buses are still going round: ${a.stillOn.n} in a row, the latest at ${a.stillOn.last}.</p>` : '';
 /** Unannounced detours, after the agency's notices and apart from them: seen from the buses, each a question with
  *  what it rests on, its stops linked. None, nothing said. */
 function unannouncedBlock() {

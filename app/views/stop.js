@@ -68,7 +68,7 @@ export function render({ id, full, run, on }, clockNow) {
     const ends = end && !onEnd ? ' · the detour ends ' + (end === dayFrom(clockNow.ymd, 1).ymd ? 'tomorrow' : fmtDay(end)) : '';
     const head = allClosed ? (onEnd ? 'No buses stop here until the detour ends, later today' : `No buses stop here${ends || ' during the detour'}`)
       : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}` : 'Service alert for this stop';
-    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${instead((A.seen || []).filter(u => u.gone.includes(s.id)))}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div>`)}</div></div>`);
+    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${instead((A.seen || []).filter(u => u.gone.includes(s.id)))}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}${a.stillOn ? html`<span class="muted"> ${D.agency.brand} took this notice down, but its buses are still going round (${a.stillOn.n} in a row, the latest at ${a.stillOn.last}).</span>` : ''}</div>`)}</div></div>`);
   }
 
   // Unannounced detours, apart from the agency's notices and never in their red: a question, what it rests on, where
