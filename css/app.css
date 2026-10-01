@@ -817,6 +817,9 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .tc-together .tc-seg.in i { background: var(--rc); box-shadow: inset 0 0 0 1px rgba(0,0,0,.14); }
 .tc-together .tc-seg b { font-family: var(--font-heading); font-weight: 600; font-size: 0.75rem; line-height: 1; color: var(--cr-muted); }
 .tc-together .tc-seg.in b { color: var(--color-text); }
+.tc-together .tc-seg { color: inherit; text-decoration: none; }
+.tc-together .tc-seg em { font-family: var(--font-heading); font-style: normal; font-weight: 600; font-size: 0.6875rem; line-height: 1; color: var(--cr-late); white-space: nowrap; }   /* when a late one leaves */
+.tc-note b.late { color: var(--cr-late); }
 .tc-note { font-size: 0.8125rem; color: var(--cr-muted); }
 .tc-note b { font-weight: 600; color: var(--color-text); }
 .tc-conn { display: block; margin-top: 4px; }
@@ -978,6 +981,10 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 .tcb .note { font-size: 0.75rem; color: var(--cr-muted); }
 .tcb-row { display: grid; grid-template-columns: 64px auto minmax(0, 1fr) 52px; align-items: center; gap: 10px; min-height: 52px; padding: 6px 16px; border-bottom: 1px solid var(--cr-line); color: inherit; text-decoration: none; }
 .tcb-row.on { background: var(--color-accent-100); }
+/* routes leaving together on time: one row, their badges */
+.tcb-group .tcb-mid { grid-column: 2 / -1; gap: 6px; }
+.tcb-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.tcb-badges a { display: inline-flex; border-radius: 4px; }
 @media (hover: hover) { .tcb-row:hover { background: var(--cr-hover); } }
 .tcb-t { display: flex; flex-direction: column; align-items: flex-start; }
 .tcb-t .t { font-size: 1.375rem; }

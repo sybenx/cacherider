@@ -129,7 +129,23 @@ function nextHour(st, pick, clockNow) {
   const f = !soon && rows[0] && rows[0].t;
   const title = soon ? 'Leaving in the next hour' : f ? (f.day === 0 ? 'Next buses, from ' : (f.day === 1 ? 'Tomorrow' : dayName(f.ymd)) + ' from ') + clockText(f.min) : 'Next buses';
   const tags = !rtStale();
+  // Routes leaving together on time, one row: their badges, each picking its route. A group was eleven rows the same
+  // but for the badge, and the list ran to thirty in an hour; a late one keeps its own row, struck time and all.
+  const onTime = t => !t.cancelled && Math.abs(t.min - schedOf(t)) < 2;
+  const groups = new Map();
+  for (const r of rows) if (onTime(r.t) && !isLoop(r.t.r)) { const g = r.t.day * 1440 + r.t.min; groups.set(g, [...(groups.get(g) || []), r]); }
+  for (const [g, rs] of groups) if (rs.length < 3) groups.delete(g); else rs.sort((a, b) => (parseInt(a.s.k) || 999) - (parseInt(b.s.k) || 999) || (a.s.k < b.s.k ? -1 : 1));   // 1, 2, 3 … 15: in order of number, not of text
+  const shown = new Set();
   const out = rows.map(({ t, s, first }) => {
+    const g = t.day * 1440 + t.min, grp = onTime(t) && !isLoop(t.r) ? groups.get(g) : null;
+    if (grp) {
+      if (shown.has(g)) return '';
+      shown.add(g);
+      const sure = grp.every(r => r.t.live || r.t.onTime);
+      return html`<div class="tcb-row tcb-group${grp.some(r => r.s.k === pick) ? ' on' : ''}">
+        <span class="tcb-t"><span class="t${grp.some(r => r.t.live) ? ' est' : ''}">${clock(t.min).h}</span></span>
+        <span class="tcb-mid"><span class="tcb-badges">${grp.map(r => html`<a href="#/hub${pick === r.s.k ? '' : '/' + encodeURIComponent(r.s.k)}" aria-label="${isLoop(r.s.ris[0]) ? D.routes[r.t.r].long : 'Route ' + r.s.k}">${badge(r.t.r, 26)}</a>`)}</span><span class="sub">${grp.length} routes leave together${sure ? ' · on time' : ''}</span></span></div>`;
+    }
     if (t.cancelled) return cancelledRow(t);
     const tag = !first || !tags || s.off ? '' : s.eta === 0 ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : '';
     return html`<a class="tcb-row${pick === s.k ? ' on' : ''}" href="${first ? cardHref(s, pick) : '#/hub' + (pick === s.k ? '' : '/' + s.k)}">
@@ -179,19 +195,28 @@ function together(st, clockNow) {
     ? html`<span class="t tc-count" data-countdown="${p.min}">${countdown(p.min, clockNow)}</span><span class="cap">min : sec</span>`
     : html`<span class="t tc-count">${p.day === 0 ? diff : ''}</span><span class="cap">${p.day === 0 ? 'min' : relative(p, clockNow)}</span>`;
   const livenow = p.day === 0 && !rtStale();
+  // When each route's run in this group leaves, where the feed has moved it 2 min or more: the question a rider at the
+  // Center asks first is whether their bus leaves on time, and if not, when. Its run in the group, not its next
+  // departure: a route's next can be the run before, late itself (2's 5:00, leaving 5:06, with the 5:30s up).
+  const leavesAt = k => { if (!livenow) return null; const t = st[k].deps.find(d => d.day === p.day && schedOf(d) === p.min); return t && t.min - p.min >= 2 ? t.min : null; };
+  // Each a link that picks its route (where its bus is, in words, and its bay): a route's own answer a tap away.
   const segs = leaving.map(k => {
-    const s = st[k], r = D.routes[s.ris[0]], full = livenow && s.eta === 0;
-    return `<span class="tc-seg${full ? ' in' : ''}" style="--rc:#${r.color}"><i></i><b>${k}</b></span>`;
+    const s = st[k], r = D.routes[s.ris[0]], full = livenow && s.eta === 0, lt = leavesAt(k);
+    return `<a class="tc-seg${full ? ' in' : ''}${lt !== null ? ' late' : ''}" href="#/hub/${encodeURIComponent(k)}" style="--rc:#${r.color}" aria-label="${isLoop(s.ris[0]) ? r.long : 'Route ' + k}${lt !== null ? ', leaves about ' + clockText(lt) : ''}"><i></i><b>${k}</b>${lt !== null ? `<em>${clock(lt).h}</em>` : ''}</a>`;
   }).join('');
   let note = '';
   if (livenow && leaving.length) {
     // A route whose run in this group is cancelled: said so, and not counted as coming.
     const gone = leaving.filter(k => routesOf(k).some(ri => D.hub.bays.some(b => b.routes.includes(ri) && cancelledAt(b.stop, clockNow, diff + 1, t => t.r === ri && t.min === p.min).length)));
     const n = leaving.length, inN = leaving.filter(k => st[k].eta === 0).length;
-    const coming = leaving.filter(k => st[k].eta > 0).length, late = leaving.filter(k => st[k].late).length;
+    const coming = leaving.filter(k => st[k].eta > 0).length;
     const loose = leaving.filter(k => st[k].loose).length, away = leaving.filter(k => st[k].away).length, quiet = leaving.filter(k => !st[k].out).length;
-    const rest = [coming ? coming + ' on the way' : '', late ? late + ' running late' : '', away ? away + ' still on a run' : '', loose ? loose + ' out without an estimate' : '', quiet ? quiet + ' not reporting' : '', gone.length ? routeNames(gone.flatMap(k => routesOf(k).slice(0, 1))) + (gone.length > 1 ? ' cancelled' : ' cancelled') : ''].filter(Boolean).join(', ');
-    note = html`<span class="tc-note"><b>${inN} of ${n} here.</b>${rest ? ' ' + rest.replace(/^./, c => c.toUpperCase()) + '.' : ''}</span>${connections(leaving.filter(k => !gone.includes(k)), st, p, clockNow)}`;
+    const rest = [coming ? coming + ' on the way' : '', away ? away + ' still on a run' : '', loose ? loose + ' out without an estimate' : '', quiet ? quiet + ' not reporting' : '', gone.length ? routeNames(gone.flatMap(k => routesOf(k).slice(0, 1))) + (gone.length > 1 ? ' cancelled' : ' cancelled') : ''].filter(Boolean).join(', ');
+    // The late ones by name and when they leave, first: '2 running late' left the rider to find which two.
+    const byTime = new Map();
+    for (const k of leaving) { const lt = gone.includes(k) ? null : leavesAt(k); if (lt !== null) byTime.set(lt, [...(byTime.get(lt) || []), k]); }
+    const lateWords = [...byTime].sort((a, b) => a[0] - b[0]).map(([at, ks2]) => `${routeNames(ks2.map(k => routesOf(k)[0]))} ${ks2.length > 1 ? 'leave' : 'leaves'} about ${clock(at).h}`).join('; ');
+    note = html`<span class="tc-note">${lateWords ? html`<b class="late">${lateWords}.</b> ` : ''}<b>${inN} of ${n} here.</b>${rest ? ' ' + rest.replace(/^./, c => c.toUpperCase()) + '.' : ''}</span>${connections(leaving.filter(k => !gone.includes(k)), st, p, clockNow)}`;
   } else if (p.day === 0 && rtDown()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
   return html`<div class="tc-together blueprint">${corners()}
     <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}</span></div><div class="end">${end}</div></div>
