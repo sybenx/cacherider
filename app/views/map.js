@@ -700,10 +700,13 @@ async function made(app) {
     selectedBus = null; selectedU = null; select(null, app);
     // The route up, its own line tapped: the whole of it again, its sheet back.
     if (ris.length && focusRoute !== undefined && ris.some(ri => familyKey(ri) === familyKey(focusRoute)) && /^#\/map\/route\//.test(location.hash)) pickRoute(focusRoute, app);
-    // A road tapped is a place, as a long press is: its card, with the stops along that road a short walk off, both
-    // sides, nearest first, each with its next bus and where it's going, and a badge a route for anyone who wants its
-    // line. A road with one route lights it too, as a tap on it always has. (It was a chooser of routes: a menu that
-    // only someone who already knew the system could pick from.)
+    // A road with one route: that route, its line lit and its stops in the sheet. A tap on a line is a question about
+    // the line; the spot (directions there, its nearest stops) is a long press. It was the spot's card, the route a
+    // small badge on it, and a rider never found the route.
+    else if (ris.length === 1) pickRoute(ris[0], app);
+    // A road several share is a place: its card, its routes first as rows to pick from (named, where badges alone were
+    // a chooser only someone who already knew the system could use), then the stops along that road a short walk off,
+    // both sides, nearest first, each with its next bus and where it's going.
     else if (ris.length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), null, null, ris); }
     // Only the shuttle's line there: that spot, with its stops a walk off, as a road of Connect's gets.
     else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now()); }
@@ -2356,9 +2359,9 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   const go = forId ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${forId}/${atPath(at)}">${corners()}Directions from here</a></div>`
     : toFrom ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}/${atPath(spotOf(toFrom))}">${corners()}Directions to here</a></div>`
     : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath(at)}">From here</a></div>`;
-  // On a road, its routes' next buses only, each with where it's going, and the routes as badges that light them.
+  // On a road, its routes' next buses only, each with where it's going, and the routes as rows that open them.
   const next = i => nextAt(i, 1, clockNow, 8, road ? t => road.includes(t.r) : undefined)[0];
-  const lines = road ? html`<div class="roadroutes">${road.map(ri => html`<button type="button" class="roadroute" data-ri="${ri}" aria-label="${routeName(ri, false)} on the map">${badge(ri, 30)}</button>`)}</div>` : '';
+  const lines = road ? html`<div class="roadroutes">${road.map(ri => { const r = D.routes[ri]; return html`<button type="button" class="roadroute" data-ri="${ri}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</button>`; })}</div>` : '';
   // The stops at once, their next buses (and a road's route times on the map) the moment after.
   const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span>${road ? '' : placeStar(at)}</div>${lines}</div>${go}
     ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`.s;

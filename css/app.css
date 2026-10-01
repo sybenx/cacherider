@@ -340,8 +340,13 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 /* the map card's twin, at the right of the eyebrow line */
 .mapcard .busline .dot { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 3px var(--color-text); flex: none; margin: 0 8px; }
 .mapcard .busline .livetag { margin-left: auto; }
-.mapcard .roadroutes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.mapcard .roadroute { all: unset; cursor: pointer; border-radius: 6px; }
+/* a shared road's routes, each a row: badge, name, where it runs, and the chevron that says it opens */
+.mapcard .roadroutes { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.mapcard .roadroute { all: unset; cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 10px; padding: 6px 0; color: var(--color-text); }
+.mapcard .roadroute .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mapcard .roadroute .name { font-weight: 600; }
+.mapcard .roadroute .sub { font-size: 0.8125rem; color: var(--cr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mapcard .roadroute > svg { color: var(--cr-muted); flex: none; }
 .mapcard .roadroute:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 /* a road's stop: where its next bus goes, which tells the two sides of the road apart */
 .stoprow .go { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; font-weight: 500; line-height: 1.3; }
