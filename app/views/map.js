@@ -556,8 +556,9 @@ async function made(app) {
   const center = homeCentre();
   map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false,
     // Drawn at twice the screen's resolution at most: a phone's three times filled half again the pixels on every frame
-    // of a zoom (15 frames a second to 25, at a quarter speed), for sharpness no one sees at arm's length.
-    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    // of a zoom (15 frames a second to 25, at a quarter speed), for sharpness no one sees at arm's length. And within a
+    // budget of pixels (inkRatio): a 12.9-inch tablet at twice is four phones' worth every frame.
+    pixelRatio: inkRatio(document.getElementById('map')),
     // Tiles already built kept for coming back to (the Map tab and the Center, a zoom out and in again): a tile not
     // kept is built again, gray until it is. MapLibre keeps five screens' worth at most whatever the size says, some
     // 30 tiles on a phone, and the Center and the town at once overflowed it: twenty screens, up to the 120.
@@ -1621,6 +1622,10 @@ function warmViews() {
     }
     const bb = hubBounds(), fit = frameCam(bb, hubFit()), hz = fit ? fit.zoom : 18, home = homeBounds() && frameCam(...homeView(meGeo)), cams = home ? [{ center: home.center, zoom: home.zoom }] : [];
     if (bornCam) cams.push(bornCam);
+    // Where the map rests, a zoom level in and out: a pinch crosses into the next level's tiles mid-gesture (13 to 14,
+    // 14 to 15), and those built then, uploaded mid-zoom, were its stutters. Past 15 the tiles are 15's, drawn larger.
+    const z0 = map.getZoom(), here = map.getCenter();
+    for (const z of [Math.floor(z0) + 1, Math.floor(z0) - 1]) if (z >= 10 && z <= 15) cams.push({ center: here, zoom: z + 0.5, bearing: map.getBearing() });
     if (beforeHub) cams.push(beforeHub);
     // The town, as the Map tab frames it from the Transit Center (frameHome): the near view was built ahead and the
     // town wasn't, gray a long beat after the tab was tapped there.
@@ -2673,8 +2678,18 @@ function routeBounds(ri) {
 function sized(m = map) {
   const box = m.getContainer(), cv = m.getCanvas();
   if (!box.clientWidth || !box.clientHeight) return;   // hidden: fitted when it's shown
+  const r = inkRatio(box);
+  if (Math.abs(r - m.getPixelRatio()) > 0.05) { m.setPixelRatio(r); return; }   // a size the budget draws differently: redrawn at its ratio
   if (cv.clientWidth === box.clientWidth && cv.clientHeight === box.clientHeight) return;
   m.resize();
+}
+/** The map's drawing resolution: the screen's, twice at most, and within PIXELS for the whole map. A phone or a laptop
+ *  is under it at full sharpness; a big tablet (a 12.9-inch iPad, 5.6 million at twice) draws a little under twice,
+ *  where its fill rate, not its sharpness, is what a zoom runs short of. */
+const PIXELS = 4.2e6;
+function inkRatio(box) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), w = box && box.clientWidth, h = box && box.clientHeight;
+  return !w || !h ? dpr : Math.max(1, Math.min(dpr, Math.round(Math.sqrt(PIXELS / (w * h)) * 20) / 20));
 }
 
 /** The road a run drives between its stops, from the route's drawn lines: for each pair of stops in turn, the
