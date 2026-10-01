@@ -1215,7 +1215,11 @@ function wireGrip(app) {
   });
   card.addEventListener('click', e => {
     const g = e.target.closest('[data-go]'), bk = e.target.closest('[data-back]'), a = e.target.closest('a[href^="#"]');
-    if (g) asPage(g.dataset.go);
+    // A road's route, caught by the card, not by each row: a handler set on the row when the card was drawn went with
+    // the row if it was drawn again, and the tap did nothing.
+    const rr = e.target.closest('.roadroute[data-ri]');
+    if (rr) pickRoute(+rr.dataset.ri, app);
+    else if (g) asPage(g.dataset.go);
     else if (bk) { e.preventDefault(); backToWays(); }
     // A card's link to the address already up (a bus's Open route, on its route): nothing to change to, so the tap
     // did nothing. It's shown again instead: the route's sheet back, the bus ringed.
@@ -2366,7 +2370,6 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span>${road ? '' : placeStar(at)}</div>${lines}</div>${go}
     ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`.s;
   card.innerHTML = markup(true);
-  card.querySelectorAll('[data-ri]').forEach(b => { b.onclick = () => pickRoute(+b.dataset.ri, app); });
   const spotKeyNow = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
   afterPaint(() => {
     if (lastFocused !== spotKeyNow || selected !== null || selectedBus !== null) return;   // something else picked meanwhile
