@@ -1912,6 +1912,8 @@ function busScale() {
   if (small !== busSmallAt) { busSmallAt = small; c.classList.toggle('bus-small', small); }
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
+// An Aggie shuttle's: the same arrow with an A's counter cut above its notch, the notch its legs and what's between its crossbar.
+const ARROW_A = '<svg viewBox="0 0 24 24" fill="#fff" fill-rule="evenodd"><path d="M12 3 20 20l-8-4-8 4zM12 8.3 14.3 13.2H9.7z"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 /** A way drawn for another day: no bus out now is one of its. */
 const wayLater = () => !!(JR && JR.plan && JR.plan.ymd !== now().ymd);
@@ -2177,7 +2179,7 @@ export function liveUpdate(app) {
     let m = busMarkers.get(b.id);
     if (!m) {
       const el = document.createElement('div');
-      el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + ARROW + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
+      el.className = kind === 'u' ? 'bus shuttle' : 'bus'; el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? ARROW_A : ARROW) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
       el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind, id: b.id };
       busMarkers.set(b.id, m);
