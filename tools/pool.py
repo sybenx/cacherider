@@ -11,7 +11,7 @@ it. To refresh the outline: open https://rideconnectutah.gov/map/pool/'s iframe,
   window._mapboxInstance.getStyle().sources[Object.keys(...).find(k => k.startsWith('zones-'))].data.features[0].geometry.coordinates[0]
 Hours and the phone number are from https://rideconnectutah.gov/pool/. Nothing here is fetched while a rider uses the app.
 """
-import json, os, sys, urllib.request
+import json, os, sys, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'pool.json')
@@ -52,133 +52,195 @@ reach = max([metres(H, (s['lon'], s['lat'])) for s in D['stops'] if s.get('hub')
 if min(metres(H, v) for v in ZONE) <= reach and not any(metres(H, (s['lon'], s['lat'])) <= reach for s in stops):
     near = [p for p in places if not p.get('ghost') and metres(H, p['geometry']['coordinates'][:2]) <= reach]
     near.sort(key=lambda p: (hub['name'].lower() not in p['name'].lower(), metres(H, p['geometry']['coordinates'][:2])))
-    if near:
-        lon, lat = near[0]['geometry']['coordinates'][:2]
-        stops.append({'id': near[0]['gtfsStopId'], 'name': hub['name'], 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': None, 'hub': True})
+    # Where it stands, OpenStreetMap knows better than Remix (whose point is the middle of the bays): its stop named
+    # for POOL at the Center (node 12873238387 when written), asked of Overpass once; Remix's point if that fails.
+    osm = None
+    try:
+        q = f'[out:json][timeout:30];node(around:{reach:.0f},{hub["lat"]},{hub["lon"]})[highway=bus_stop][name~"^pool$",i];out;'
+        r = urllib.request.Request('https://overpass-api.de/api/interpreter', data=urllib.parse.urlencode({'data': q}).encode(), headers={'User-Agent': 'cacherider-pool/1.0 (+https://cacherider.com)'})
+        els = json.load(urllib.request.urlopen(r, timeout=60))['elements']
+        if els: osm = min(els, key=lambda e: metres(H, (e['lon'], e['lat'])))
+    except Exception as e: print('Overpass:', e, '(Remix\'s point kept)', file=sys.stderr)
+    if near or osm:
+        lon, lat = (osm['lon'], osm['lat']) if osm else near[0]['geometry']['coordinates'][:2]
+        stops.append({'id': near[0]['gtfsStopId'] if near else 'osm' + str(osm['id']), 'name': hub['name'], 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': None, 'hub': True})
+# A pickup at a bus stop carries that stop's own GTFS id (seven digits, as every stop in the timetable has; POOL's own
+# points have Remix's short numbers). One whose bus stop has left the timetable stands at a stop that's gone (36 W
+# 1200 S, South Walmart's Blue Loop stop, out during construction): marked gone, covering nothing, for as long as
+# the timetable leaves it out; the first night it's back, so is the pickup. Nothing to undo by hand.
+lengths = {len(s_['id']) for s_ in D['stops'] if s_['id'].isdigit()}
+for s_ in stops:
+    if s_['id'].isdigit() and len(s_['id']) in lengths and s_['id'] not in fixed: s_['gone'] = True
 stops.sort(key=lambda s: s['name'])
 
-# The area as drawn, all of it measured as a walk is: metres on foot, the height between two points counted as CLIMB
-# metres on the flat a metre (a hill as it feels), so nothing reaches up a canyon side or off a bench. Each pickup
-# pulls the outline round it out to about a walk's reach (R); where pickups are near one another (metaballs: the
-# outline where their pulls add up to LEVEL) they run together into one shape. Groups (three places or more, each
-# within GROUP of the next) are drawn as one region, joined through a lone place between them (River Heights,
-# between the Cliffside bench and Providence) by a soft band along the walk; a place on its own is a small round.
-# A pickup among more bus stops POOL doesn't serve than other pickups (South Walmart's, by Main and Highway 165) is set apart as a small
-# round too, rather than drawing the region over those stops, and those stops push the region's edge back. The
-# zone itself, Remix's outline, stays for asking whether a place is inside; it's a planning line, not a walk.
-R, R_SMALL, LEVEL, CELL, GROUP = 420, 180, 0.5, 30, 900   # R: about five minutes on foot
-R_BAND, W_BAND = 300, 0.22   # the band drawing groups together
-SAME, MIN_GROUP, ON_WAY, BUSY = 40, 3, 1.3, 3
-R_PUSH, W_PUSH, KEEP = 300, 0.4, 40   # a bus stop's push back; a bus stop this near a pickup is that pickup
-CLIMB = 8
+# The area as POOL covers it: every street and path where a POOL pickup is the nearest stop on foot, within a walk
+# most riders will make (WALK, the planner's five minutes). On foot along the streets and paths of the map's own
+# tiles (tools/roads.py), a climb costing CLIMB metres on the flat a metre up (none down). Bus stops compete: a street
+# nearer a bus stop POOL doesn't serve is the bus's, not POOL's (the Center's bays too, so the Center isn't washed blue).
+# Drawn as an area, not a skeleton: each covered street widened by about BUF, near streets running together across
+# the block between (their pulls summed), small gaps filled, the outline rounded and simplified. The zone itself, Remix's outline, stays for asking
+# whether a place is inside; it's a planning line, not a walk.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from roads import Roads
+import heapq
+WALK, CLIMB, BUF, CELL, LEVEL, KEEP, SAME = 400, 8, 70, 20, 0.5, 40, 40
+STEP = 15   # metres between the points a covered street is drawn by
+HOLE, SPECK, SMOOTH = 40000, 2500, 10   # m²: a gap inside smaller than two blocks is filled, a patch smaller than a lot dropped; m: simplified to
 lat0 = sum(s['lat'] for s in stops) / len(stops); kx, ky = 111320 * math.cos(math.radians(lat0)), 110540
-pts = [((s['lon']) * kx, s['lat'] * ky) for s in stops]
 try:
     EL = json.load(open(os.path.join(ROOT, 'data', 'elevation.json')))
     EL['z'] = [[sum(r[:k + 1]) for k in range(len(r))] for r in EL['d']]
 except Exception: EL = None
-def height(x, y):
-    if not EL: return None
-    lat, lon = y / ky, x / kx
+def height(lon, lat):
+    if not EL: return 0
     r, c = (EL['lat0'] - lat) / EL['dlat'] - 0.5, (lon - EL['lon0']) / EL['dlon'] - 0.5
-    if r < 0 or c < 0 or r > EL['rows'] - 1 or c > EL['cols'] - 1: return None
+    if r < 0 or c < 0 or r > EL['rows'] - 1 or c > EL['cols'] - 1: return 0
     r0, c0 = int(r), int(c); fr, fc = r - r0, c - c0; z = EL['z']; r1, c1 = min(r0 + 1, EL['rows'] - 1), min(c0 + 1, EL['cols'] - 1)
     return z[r0][c0] * (1 - fc) * (1 - fr) + z[r0][c1] * fc * (1 - fr) + z[r1][c0] * (1 - fc) * fr + z[r1][c1] * fc * fr
-dist = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
-def walk2(a, ha, b, hb):   # metres on foot, squared
-    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + ((CLIMB * (ha - hb)) ** 2 if ha is not None and hb is not None else 0)
-walk = lambda a, b: math.sqrt(walk2(a, height(*a), b, height(*b)))
-places = []   # places, not points: pickups within SAME are one (two at the Tabernacle, one spot)
-for p in pts:
-    if not any(dist(p, q) <= SAME for q in places): places.append(p)
-push = [(b['lon'] * kx, b['lat'] * ky) for b in D['stops'] if not b.get('hub')]   # the Center's bays: its pickup is at them
-push = [q for q in push if not any(dist(q, p) <= KEEP for p in pts)]
-def busy(p):
-    n = sum(1 for q in push if walk(p, q) <= R)
-    return n >= BUSY and n > sum(1 for q in places if q is not p and walk(p, q) <= R)   # more bus stops than other pickups (South Walmart's)
-outliers = [p for p in places if busy(p)]
-clusters = []
-for p in places:   # single-linkage, by the walk: a place joins every cluster it's near, and those merge
-    if p in outliers: continue
-    near = [g for g in clusters if any(walk(p, q) <= GROUP for q in g)]
-    clusters = [g for g in clusters if g not in near] + [[p] + [q for g in near for q in g]]
-groups = [g for g in clusters if len(g) >= MIN_GROUP]
-alone = [p for g in clusters if len(g) < MIN_GROUP for p in g] + outliers
-grouped = [p for g in groups for p in g]
-bridges, joined = [], [groups[0]] if groups else []
-rest = groups[1:]
-while rest:   # Prim's: the nearest group to those joined, by its closest pair of places on foot
-    a, b, g = min(((a, b, g) for g in rest for b in g for j in joined for a in j), key=lambda t: walk(t[0], t[1]))
-    via = min((c for c in alone if c not in outliers), key=lambda c: walk(a, c) + walk(c, b), default=None)
-    if via is not None and walk(a, via) + walk(via, b) <= ON_WAY * walk(a, b): bridges += [(a, via), (via, b)]
-    else: bridges.append((a, b))
-    joined.append(g); rest.remove(g)
-via_places = {c for a, b in bridges for c in (a, b) if c in alone}   # a lone place a bridge runs through: part of the region
-band = []   # along each bridge, a point every 150 m
-for a, b in bridges:
-    n = max(1, int(dist(a, b) / 150))
-    band += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(n + 1)]
-H_ = lambda ps: [(p, height(*p)) for p in ps]
-region, band, push = H_(grouped + list(via_places)), H_(band), H_(push)
-lone = H_([p for p in alone if p not in via_places])
-x0, x1 = min(p[0] for p in pts) - 2 * R, max(p[0] for p in pts) + 2 * R
-y0, y1 = min(p[1] for p in pts) - 2 * R, max(p[1] for p in pts) + 2 * R
-nx, ny = int((x1 - x0) / CELL) + 1, int((y1 - y0) / CELL) + 1
-def pull(x, y, h, ps, r, w=1.0):
-    return sum(w * math.exp(-walk2((x, y), h, p, hp) / r ** 2) for p, hp in ps if abs(x - p[0]) < 3 * r and abs(y - p[1]) < 3 * r)
-def cell(x, y):
-    h = height(x, y)
-    return max(pull(x, y, h, lone, R_SMALL), pull(x, y, h, region, R) + pull(x, y, h, band, R_BAND, W_BAND) - pull(x, y, h, push, R_PUSH, W_PUSH))
-field = [[cell(x0 + i * CELL, y0 + j * CELL) for i in range(nx)] for j in range(ny)]
-# marching squares: each cell's crossings of the level, as segments, joined into rings
-def cross(a, b, fa, fb): t = (LEVEL - fa) / (fb - fa); return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
-segs = []
-for j in range(ny - 1):
-    for i in range(nx - 1):
-        c = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
-        v = [field[y][x] for x, y in c]
-        edges = []
-        for k in range(4):
-            (ax, ay), (bx, by), fa, fb = c[k], c[(k + 1) % 4], v[k], v[(k + 1) % 4]
-            if (fa >= LEVEL) != (fb >= LEVEL): edges.append(cross((ax, ay), (bx, by), fa, fb))
-        if len(edges) == 2: segs.append((edges[0], edges[1]))
-        elif len(edges) == 4:   # a saddle: joined as the middle's value says
-            mid = sum(v) / 4
-            segs += [(edges[0], edges[1]), (edges[2], edges[3])] if (mid >= LEVEL) == (v[0] >= LEVEL) else [(edges[0], edges[3]), (edges[1], edges[2])]
-key = lambda p: (round(p[0], 6), round(p[1], 6))
-ends = {}
-for a, b in segs: ends.setdefault(key(a), []).append(b); ends.setdefault(key(b), []).append(a)
-rings, used = [], set()
-for a, b in segs:
-    if (key(a), key(b)) in used: continue
-    ring, prev, cur = [a], a, b
-    used.add((key(a), key(b))); used.add((key(b), key(a)))
-    while key(cur) != key(a):
-        ring.append(cur)
-        nxt = next((n for n in ends[key(cur)] if key(n) != key(prev) and (key(cur), key(n)) not in used), None)
-        if nxt is None: break
-        used.add((key(cur), key(nxt))); used.add((key(nxt), key(cur)))
-        prev, cur = cur, nxt
-    if len(ring) > 3: rings.append(ring)
-def simplify(r, tol):   # Douglas-Peucker on grid units
-    if len(r) < 3: return r
-    (ax, ay), (bx, by) = r[0], r[-1]
-    d = [abs((by - ay) * (px - ax) - (bx - ax) * (py - ay)) / (math.hypot(bx - ax, by - ay) or 1) for px, py in r[1:-1]]
-    i = max(range(len(d)), key=d.__getitem__) + 1
-    return simplify(r[:i + 1], tol)[:-1] + simplify(r[i:], tol) if d[i - 1] > tol / CELL else [r[0], r[-1]]
-def lonlat(p): return [round((x0 + p[0] * CELL) / kx, 5), round((y0 + p[1] * CELL) / ky, 5)]
-def contains(ring, pt):
-    c = False
-    for i in range(len(ring)):
-        (x1_, y1_), (x2_, y2_) = ring[i], ring[i - 1]
-        if (y1_ > pt[1]) != (y2_ > pt[1]) and pt[0] < (x2_ - x1_) * (pt[1] - y1_) / (y2_ - y1_) + x1_: c = not c
-    return c
-def closed(r, tol):   # a loop simplified in two halves, from its first point to the point farthest from it and back
-    far = max(range(len(r)), key=lambda i: math.hypot(r[i][0] - r[0][0], r[i][1] - r[0][1]))
-    return simplify(r[:far + 1], tol)[:-1] + simplify(r[far:] + [r[0]], tol)
-rings = [closed(r, 6) for r in rings]
-outer = [r for r in rings if sum(contains(o, r[0]) for o in rings if o is not r) % 2 == 0]
-area = [[[lonlat(p) for p in o]] + [[lonlat(p) for p in h] for h in rings if h not in outer and contains(o, h[0])] for o in outer]
-json.dump({'from': 'Connect, via Remix', **INFO, 'zone': ZONE, 'area': area, 'stops': stops}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
-print(f"{len(area)} blobs ({len(groups)} groups, joined through {len(via_places)} places; {len(alone) - len(via_places)} on their own, {len(outliers)} of them set apart among bus stops), {sum(len(p[0]) for p in area)} points;", file=sys.stderr)
+far = lambda a, b: math.hypot((a[0] - b[0]) * kx, (a[1] - b[1]) * ky)
+picks = []
+# A pickup among more bus stops than POOL pickups (downtown's Tabernacle, the Center, South Walmart) covers only
+# scraps between them, streaks that read as nothing: drawn as its pickup alone, no area.
+BUSY = 3
+everyone = [(b['lon'], b['lat']) for b in D['stops']]
+in_use = [(s_['lon'], s_['lat']) for s_ in stops if not s_.get('gone')]
+def busy(q):
+    nb = sum(1 for b in everyone if far(b, q) <= WALK and not any(far(b, o) <= KEEP for o in in_use))
+    return nb >= BUSY and nb > sum(1 for o in in_use if o != q and far(o, q) <= WALK)
+for s_ in stops:
+    if s_.get('gone'): continue
+    q = (s_['lon'], s_['lat'])
+    if busy(q): s_['alone'] = True; continue
+    if not any(far(q, p_) <= SAME for p_ in picks): picks.append(q)
+buses = [(b['lon'], b['lat']) for b in D['stops'] if not any(far((b['lon'], b['lat']), p_) <= KEEP for p_ in picks)]   # the Center's bays too: there the bus is the thing
+lo0, la0 = min(p_[0] for p_ in picks) - 0.012, min(p_[1] for p_ in picks) - 0.009
+lo1, la1 = max(p_[0] for p_ in picks) + 0.012, max(p_[1] for p_ in picks) + 0.009
+buses = [b for b in buses if lo0 <= b[0] <= lo1 and la0 <= b[1] <= la1]
+roads = Roads(picks, margin=0.012, kinds={'major_road', 'medium_road', 'minor_road', 'path', 'other'}, slow={})
+H = {}
+def hk(k):
+    if k not in H: H[k] = height(*roads.lonlat_of(k))
+    return H[k]
+def cost(u, v, c): return c + CLIMB * max(0, hk(v) - hk(u))   # from u to v; a rider walks to the stop, so it's run from the stops backwards
+# Every stop at once (Dijkstra from many sources): each street point's nearest stop on foot, and which kind it is.
+best, heap = {}, []
+for kind, ps in (('pool', picks), ('bus', buses)):
+    for p_ in ps:
+        n = roads.snap(p_)
+        d0 = roads.m(roads.key(p_), n)
+        heapq.heappush(heap, (d0, n, kind))
+while heap:
+    d, u, kind = heapq.heappop(heap)
+    if u in best: continue
+    best[u] = (d, kind)
+    if d > WALK * 2: continue
+    for v, c in roads.adj[u].items():
+        if v not in best: heapq.heappush(heap, (d + cost(v, u, c), v, kind))
+# The bus's streets (nearest a bus stop, within the walk), as points every STEP, for pulling the drawing back.
+bus_pts = []
+for u in roads.adj:
+    if not (u in best and best[u][1] == 'bus' and best[u][0] <= WALK): continue
+    for v, c in roads.adj[u].items():
+        if not (v in best and best[v][1] == 'bus') or v < u: continue
+        (ax, ay), (bx, by) = roads.lonlat_of(u), roads.lonlat_of(v)
+        n = max(1, int(c / STEP))
+        bus_pts += [((ax + (bx - ax) * i / n) * kx, (ay + (by - ay) * i / n) * ky) for i in range(n + 1)]
+def shape(walk):
+    """The area within `walk` metres on foot of a pickup, where it's nearer than any bus stop: [polygon, ...]."""
+    pool_at = lambda k: k in best and best[k][1] == 'pool' and best[k][0] <= walk
+    # The covered streets, as points every 15 m, each edge cut where the bus stop's side or the walk's end begins.
+    cov = []
+    for u in roads.adj:
+        if not pool_at(u): continue
+        du = best[u][0]
+        for v, c in roads.adj[u].items():
+            if pool_at(v): t = 0.5   # both ends POOL's: each end draws its half
+            elif v in best and best[v][1] == 'bus': t = max(0, min(1, (best[v][0] - du + c) / (2 * c))) if c else 0
+            else: t = max(0, min(1, (walk - du) / c)) if c else 0
+            (ax, ay), (bx, by) = roads.lonlat_of(u), roads.lonlat_of(v)
+            n = max(1, int(c * t / STEP))
+            cov += [((ax + (bx - ax) * t * i / n) * kx, (ay + (by - ay) * t * i / n) * ky) for i in range(n + 1)]
+    if not cov: return []
+    x0 = min(p_[0] for p_ in cov) - 3 * BUF; x1 = max(p_[0] for p_ in cov) + 3 * BUF
+    y0 = min(p_[1] for p_ in cov) - 3 * BUF; y1 = max(p_[1] for p_ in cov) + 3 * BUF
+    nx, ny = int((x1 - x0) / CELL) + 1, int((y1 - y0) / CELL) + 1
+    field = [[0.0] * nx for _ in range(ny)]
+    norm = STEP / (math.sqrt(math.pi) * BUF)   # a lone straight street sums to 1 along its middle
+    for px, py in cov:   # each covered point adds its pull to the cells within 2 BUF of it
+        for j in range(max(0, int((py - y0 - 2 * BUF) / CELL)), min(ny, int((py - y0 + 2 * BUF) / CELL) + 2)):
+            for i in range(max(0, int((px - x0 - 2 * BUF) / CELL)), min(nx, int((px - x0 + 2 * BUF) / CELL) + 2)):
+                field[j][i] += norm * math.exp(-((x0 + i * CELL - px) ** 2 + (y0 + j * CELL - py) ** 2) / BUF ** 2)
+    # The bus's streets pull it back as much: widened alike, each edge comes to rest about halfway between a POOL
+    # street and the bus's, where the walk splits, not out over the bus's side.
+    for px, py in bus_pts:
+        if not (x0 - 2 * BUF <= px <= x1 + 2 * BUF and y0 - 2 * BUF <= py <= y1 + 2 * BUF): continue
+        for j in range(max(0, int((py - y0 - 2 * BUF) / CELL)), min(ny, int((py - y0 + 2 * BUF) / CELL) + 2)):
+            for i in range(max(0, int((px - x0 - 2 * BUF) / CELL)), min(nx, int((px - x0 + 2 * BUF) / CELL) + 2)):
+                field[j][i] -= norm * math.exp(-((x0 + i * CELL - px) ** 2 + (y0 + j * CELL - py) ** 2) / BUF ** 2)
+    # marching squares: each cell's crossings of the level, as segments, joined into rings
+    def cross(a, b, fa, fb): t = (LEVEL - fa) / (fb - fa); return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+    segs = []
+    for j in range(ny - 1):
+        for i in range(nx - 1):
+            c = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+            v = [field[y][x] for x, y in c]
+            edges = []
+            for k in range(4):
+                (ax, ay), (bx, by), fa, fb = c[k], c[(k + 1) % 4], v[k], v[(k + 1) % 4]
+                if (fa >= LEVEL) != (fb >= LEVEL): edges.append(cross((ax, ay), (bx, by), fa, fb))
+            if len(edges) == 2: segs.append((edges[0], edges[1]))
+            elif len(edges) == 4:   # a saddle: joined as the middle's value says
+                mid = sum(v) / 4
+                segs += [(edges[0], edges[1]), (edges[2], edges[3])] if (mid >= LEVEL) == (v[0] >= LEVEL) else [(edges[0], edges[3]), (edges[1], edges[2])]
+    key = lambda p: (round(p[0], 6), round(p[1], 6))
+    ends = {}
+    for a, b in segs: ends.setdefault(key(a), []).append(b); ends.setdefault(key(b), []).append(a)
+    rings, used = [], set()
+    for a, b in segs:
+        if (key(a), key(b)) in used: continue
+        ring, prev, cur = [a], a, b
+        used.add((key(a), key(b))); used.add((key(b), key(a)))
+        while key(cur) != key(a):
+            ring.append(cur)
+            nxt = next((n for n in ends[key(cur)] if key(n) != key(prev) and (key(cur), key(n)) not in used), None)
+            if nxt is None: break
+            used.add((key(cur), key(nxt))); used.add((key(nxt), key(cur)))
+            prev, cur = cur, nxt
+        if len(ring) > 3: rings.append(ring)
+    def simplify(r, tol):   # Douglas-Peucker on grid units
+        if len(r) < 3: return r
+        (ax, ay), (bx, by) = r[0], r[-1]
+        d = [abs((by - ay) * (px - ax) - (bx - ax) * (py - ay)) / (math.hypot(bx - ax, by - ay) or 1) for px, py in r[1:-1]]
+        i = max(range(len(d)), key=d.__getitem__) + 1
+        return simplify(r[:i + 1], tol)[:-1] + simplify(r[i:], tol) if d[i - 1] > tol / CELL else [r[0], r[-1]]
+    def lonlat(p): return [round((x0 + p[0] * CELL) / kx, 5), round((y0 + p[1] * CELL) / ky, 5)]
+    def contains(ring, pt):
+        c = False
+        for i in range(len(ring)):
+            (x1_, y1_), (x2_, y2_) = ring[i], ring[i - 1]
+            if (y1_ > pt[1]) != (y2_ > pt[1]) and pt[0] < (x2_ - x1_) * (pt[1] - y1_) / (y2_ - y1_) + x1_: c = not c
+        return c
+    def closed(r, tol):   # a loop simplified in two halves, from its first point to the point farthest from it and back
+        far = max(range(len(r)), key=lambda i: math.hypot(r[i][0] - r[0][0], r[i][1] - r[0][1]))
+        return simplify(r[:far + 1], tol)[:-1] + simplify(r[far:] + [r[0]], tol)
+    def chaikin(r, n=2):   # corners cut, twice: a stair-step from the grid rounded off
+        for _ in range(n):
+            r = [p for a, b in zip(r, r[1:] + r[:1]) for p in ((0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]), (0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]))]
+        return r
+    def size(r): return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(r, r[1:] + r[:1]))) / 2 * CELL * CELL   # m²
+    rings = [closed(chaikin(r), SMOOTH) for r in rings]
+    rings = [r for r in rings if len(r) > 3]
+    outer = [r for r in rings if sum(contains(o, r[0]) for o in rings if o is not r) % 2 == 0 and size(r) >= SPECK]
+    holes = [r for r in rings if r not in outer and size(r) >= HOLE]
+    return [[[lonlat(p) for p in o]] + [[lonlat(p) for p in h] for h in holes if contains(o, h[0])] for o in outer]
+# How far riders walk falls off with the distance, not at a line (distance decay): drawn as tiers, the easy walk
+# (EASY, about Via's own average to a pickup and three minutes on foot) solid, fading out to the walk most will make
+# (WALK, five minutes), so the edge reads as what it is.
+EASY = 250
+TIERS = [EASY, (EASY + WALK) // 2, WALK]
+areas = [{'walk': w, 'area': shape(w)} for w in TIERS]
+area = areas[-1]['area']
+json.dump({'from': 'Connect, via Remix', **INFO, 'zone': ZONE, 'area': area, 'tiers': areas, 'stops': stops}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+print(f"covered on foot, {len(picks)} pickups against {len(buses)} bus stops: " + ', '.join(f"{a['walk']} m: {len(a['area'])} areas, {sum(len(r) for poly in a['area'] for r in poly)} points" for a in areas), file=sys.stderr)
+print(f"gone (their bus stop left the timetable): {[s_['name'] for s_ in stops if s_.get('gone')]}; no area (among bus stops): {[s_['name'] for s_ in stops if s_.get('alone')]}", file=sys.stderr)
 print(f"{len(stops)} POOL pickup points ({sum(1 for s in stops if s['stop'] is not None)} of them bus stops too), {os.path.getsize(OUT) // 1024} KB", file=sys.stderr)

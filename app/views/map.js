@@ -105,9 +105,11 @@ function style(sat = true) {
       { id: 'spot-edge', type: 'line', source: 'spot', paint: { 'line-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 } },
       // POOL's zone, a faint wash under everything else; its pickup points are rings under the stops, so a bus stop
       // that is one keeps its dot inside the ring.
-      { id: 'pool-zone', type: 'fill', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'fill-color': '#007AB8', 'fill-opacity': flavor === 'dark' ? 0.1 : 0.08 } },
-      { id: 'pool-edge', type: 'line', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], layout: { 'line-join': 'round' }, paint: { 'line-color': '#007AB8', 'line-width': 1.2, 'line-opacity': 0.45 } },
-      { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': '#007AB8', 'circle-opacity': 0.15, 'circle-stroke-color': '#007AB8', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
+      // No outline: the edge is a fade, not a line. Zoomed in to the streets it steps back, for its pickups and the stops.
+      { id: 'pool-zone', type: 'fill', source: 'pool', filter: ['==', ['get', 'kind'], 'zone'], paint: { 'fill-color': '#007AB8', 'fill-antialias': false, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 14, flavor === 'dark' ? 0.08 : 0.065, 16.5, 0.025] } },
+      { id: 'pool-stops', type: 'circle', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 7, 17, 10], 'circle-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'], 'circle-opacity': 0.15, 'circle-stroke-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 15, 2, 17, 2.5] } },
+      // A P in each, from the streets' zoom: a POOL pickup, not a bus stop, at a glance (the Blue Loop is blue too).
+      { id: 'pool-p', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 14.5, layout: { 'text-field': 'P', 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 14.5, 8, 17, 12], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': ['case', ['get', 'closed'], '#8a8d91', '#007AB8'] } },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
       // A route under the pointer on a desktop (on the map, or its badge in the panel): drawn up, over the rest.
@@ -344,13 +346,22 @@ function placesGeo() {
   const dup = o => seen.some(([n, la, lo]) => n === o.name.toLowerCase() && distance(la, lo, o.lat, o.lon) < 200);
   return { type: 'FeatureCollection', features: [...PLACES, ...OSM_PLACES.filter(o => !dup(o))].map(p => ({ type: 'Feature', properties: { name: p.name }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) };
 }
+/** A pickup at the same place as a bus stop that's closed is closed too: the stop it is (Remix says), else a bus stop
+ *  within 25 m, closed by a notice in force. */
+function poolClosed(p) {
+  const ymd = now().ymd;
+  const si = p.stop !== null && p.stop !== undefined ? p.stop : D.stops.findIndex(b => distance(p.lat, p.lon, b.lat, b.lon) <= 25);
+  return si >= 0 && !!A.byStop[D.stops[si].id] && stopAlerts(si, ymd).length > 0;
+}
 /** POOL's zone and pickup points as one collection; empty without the file. */
 function poolGeo() {
   if (!POOL) return { type: 'FeatureCollection', features: [] };
   return { type: 'FeatureCollection', features: [
-    // Drawn as the blobs round its pickup points (tools/pool.py), where it has them: Remix's outline is a planning line.
-    { type: 'Feature', properties: { kind: 'zone' }, geometry: POOL.area ? { type: 'MultiPolygon', coordinates: POOL.area } : { type: 'Polygon', coordinates: [POOL.zone] } },
-    ...POOL.stops.map(s => ({ type: 'Feature', properties: { kind: 'stop', id: s.id, name: s.name, stop: s.stop === null || s.stop === undefined ? -1 : s.stop }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
+    // Drawn as it covers on foot (tools/pool.py): tiers of the walk to a pickup, stacked, so the easy walk is the
+    // deepest and the edge fades out where most riders stop walking. Remix's outline, a planning line, without them.
+    ...(POOL.tiers ? POOL.tiers.map((t, i) => ({ type: 'Feature', properties: { kind: 'zone', outer: i === POOL.tiers.length - 1 }, geometry: { type: 'MultiPolygon', coordinates: t.area } }))
+      : [{ type: 'Feature', properties: { kind: 'zone', outer: true }, geometry: POOL.area ? { type: 'MultiPolygon', coordinates: POOL.area } : { type: 'Polygon', coordinates: [POOL.zone] } }]),
+    ...POOL.stops.map(s => ({ type: 'Feature', properties: { kind: 'stop', id: s.id, name: s.name, stop: s.stop === null || s.stop === undefined ? -1 : s.stop, closed: !!s.gone || poolClosed(s) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
   ] };
 }
 function usuStopsGeo() {
@@ -483,7 +494,7 @@ function refreshClosed(clockNow) {
   const key = closedKeyOf(clockNow);
   if (closedKey === key) return;
   closedKey = key;
-  for (const m of [map]) if (m && m.getSource('stops')) { m.getSource('stops').setData(stopsGeo()); loadShapes(m); }
+  for (const m of [map]) if (m && m.getSource('stops')) { m.getSource('stops').setData(stopsGeo()); if (m.getSource('pool')) m.getSource('pool').setData(poolGeo()); loadShapes(m); }
 }
 let tilesLoaded = null;
 function loadTiles() {
@@ -1355,7 +1366,7 @@ function applySelection() {
 
 /** The shuttle and POOL drawn only where they run, or when asked for: near campus (the shuttle's stops) or POOL's zone,
  *  from the streets in, and a shuttle loop, stop or bus picked. Out over the valley they'd be noise over Connect's. */
-const U_LAYERS = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels'], POOL_LAYERS = ['pool-zone', 'pool-edge', 'pool-stops'];
+const U_LAYERS = ['usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels'], POOL_LAYERS = ['pool-zone', 'pool-stops', 'pool-p'];
 let campusBox = null, poolBox = null;
 const boxOf = pts => pts.length ? pts.reduce((b, [lon, lat]) => [Math.min(b[0], lon), Math.min(b[1], lat), Math.max(b[2], lon), Math.max(b[3], lat)], [180, 90, -180, -90]) : null;
 function quiet() {
@@ -1379,7 +1390,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5, HUB_IN = 110, HUB_STILL = 3;   // metres from the hall: a bus this close is in; metres a second: one slower stands
-const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'pool-zone', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -1743,7 +1754,11 @@ export function selectPool(id, app) {
   applySelection();
   const card = col.querySelector('#mapcard');
   const ua = navigator.userAgent, appHref = /iPhone|iPad|iPod/.test(ua) ? POOL.ios : POOL.android;
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">POOL pickup · on demand · zero fare</span><div class="name"><span>${s.name}</span></div>
+  // Its bus stop out of the timetable (tools/pool.py marks it gone each night it's missing, and not once it's back):
+  // not served for now, as during construction.
+  const shut = s.gone ? html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">Not served right now</b><div class="sub">The bus stop here is out of service right now.</div></div></div>`
+    : poolClosed(s) ? html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">Closed with the bus stop here</b><div class="sub">A notice closes the stop at this spot, and the pickup with it. Book from the nearest open pickup instead.</div></div></div>` : '';
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">POOL pickup · on demand · zero fare</span><div class="name"><span>${s.name}</span></div>${shut}
       <div class="muted">${D.agency.brand}'s on-demand ride around ${POOL.towns.slice(0, 4).join(', ')}: book it and a van comes to this point. Same-day bookings twenty minutes ahead or more.</div>
       <div class="muted">${POOL.hours}.</div></div>
     <div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="${appHref}" target="_blank" rel="noopener">${corners()}Book in the On-Demand app</a><a class="btn btn-secondary btn-lg blueprint" href="tel:${POOL.phone}">Call</a></div>`;
@@ -2656,7 +2671,7 @@ function runBounds(R, o) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60 };
-const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-edge', 'pool-stops'];
+const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-zone', 'pool-stops', 'pool-p'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;

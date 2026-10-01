@@ -20,7 +20,7 @@ def metres(a, b):
     return math.hypot((b[0] - a[0]) * 111320 * math.cos(math.radians((a[1] + b[1]) / 2)), (b[1] - a[1]) * 110540)
 
 class Roads:
-    def __init__(self, points, margin=0.02):
+    def __init__(self, points, margin=0.02, kinds=KINDS, slow=SLOW):
         lons = [p[0] for p in points]; lats = [p[1] for p in points]
         x0, y0 = tile_of(min(lons) - margin, max(lats) + margin); x1, y1 = tile_of(max(lons) + margin, min(lats) - margin)
         self.lat0, self.lon0 = sum(lats) / len(lats), sum(lons) / len(lons)
@@ -36,16 +36,18 @@ class Roads:
                 conv = lonlat(tx, ty)
                 for f in mvt.decode(b, default_options={'y_coord_down': True}).get('roads', {}).get('features', []):
                     pr = f['properties']
-                    if pr.get('kind') not in KINDS: continue
-                    w = SLOW.get(pr.get('kind_detail'), 1.0)
+                    if pr.get('kind') not in kinds: continue
+                    w = slow.get(pr.get('kind_detail'), 1.0)
                     g = f['geometry']
                     for line in (g['coordinates'] if g['type'] == 'MultiLineString' else [g['coordinates']]):
                         pts = [self.key(conv(px, py)) for px, py in line]
                         for a, c in zip(pts[:-1], pts[1:]):
                             if a != c: raw.append((a, c, w))
-        for a, c, w in raw: self.link(a, c, w)
         # Tiles don't share vertices where ways meet or at their edges, so join every crossing and every end
-        # that touches another segment: that is what makes the network one piece.
+        # that touches another segment: that is what makes the network one piece. Each segment is cut at every
+        # such point and only the pieces linked, so a long straight block with side streets partway along is
+        # walked corner to corner (linked end to end as well, a point snapped onto it reached neither corner).
+        self.cuts = {}   # segment index → [(fraction along, node)]
         cell = 30   # grid units of 2 m: a 60 m bucket
         buckets = {}
         for i, (a, c, w) in enumerate(raw):
@@ -58,7 +60,10 @@ class Roads:
                 for j in ids:
                     if j <= i or (i, j) in done: continue
                     done.add((i, j))
-                    self.join(raw[i], raw[j])
+                    self.join(i, raw[i], j, raw[j])
+        for i, (a, c, w) in enumerate(raw):
+            pts = sorted([(0.0, a), (1.0, c)] + self.cuts.get(i, []))
+            for (_, p), (_, q) in zip(pts, pts[1:]): self.link(p, q, w)
 
     def key(self, p):
         """A node id: the point on a 2 m grid, so shared vertices and near-shared ones become one."""
@@ -73,15 +78,15 @@ class Roads:
         self.adj.setdefault(a, {}); self.adj.setdefault(c, {})
         if d < self.adj[a].get(c, math.inf): self.adj[a][c] = d; self.adj[c][a] = d
         self.segs.append((a, c, w))
-    def join(self, s1, s2):
+    def join(self, i, s1, j, s2):
         (a, b, w1), (c, d, w2) = s1, s2
         if len({a, b, c, d}) < 4 and (a in (c, d) or b in (c, d)): return   # already share a node
-        # an end of one on the other
-        for e, (p, q, w) in ((a, s2), (b, s2), (c, s1), (d, s1)):
+        # an end of one on the other: the other cut there, and the end joined to the cut
+        for e, (p, q, w), k in ((a, s2, j), (b, s2, j), (c, s1, i), (d, s1, i)):
             u = self.along(p, q, e)
             if u is None: continue
             n = self.at(p, q, u)
-            if self.m(n, e) <= 2.5: self.link(n, p, w); self.link(n, q, w); self.link(n, e, 1.0)
+            if self.m(n, e) <= 2.5: self.cuts.setdefault(k, []).append((u, n)); self.link(n, e, 1.0)
         # a crossing
         den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0])
         if abs(den) < 1e-9: return
@@ -89,7 +94,7 @@ class Roads:
         u = ((c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0])) / den
         if 0 < t < 1 and 0 < u < 1:
             n = self.at(a, b, t)
-            self.link(n, a, w1); self.link(n, b, w1); self.link(n, c, w2); self.link(n, d, w2)
+            self.cuts.setdefault(i, []).append((t, n)); self.cuts.setdefault(j, []).append((u, n))
     def along(self, p, q, e):
         vx, vy = q[0] - p[0], q[1] - p[1]; L2 = vx * vx + vy * vy
         if L2 == 0: return None
