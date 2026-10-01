@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, LIVE_URL, tripStops, tripEnd, runOf, timesOn, serviceSpan } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, runOf, timesOn, serviceSpan } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -301,9 +301,41 @@ function inbound(u, id) {
  *  whole trip again from now: a Route 5 bus 116 m from the Center, in for its 8:00, was 'back at 8:22' (2026-09-30),
  *  its 7:30 trip done but never marked off. The bus's place is the word then, not the feed's. */
 function lost(b, u) {
+  if (stuck(b, u)) return true;
   if (!u.stops.length || u.stops[0][1] > 1) return false;
   const ts = tripStops(D.trips.indexOf(b.trip));
   return ts.length > 0 && toMin(Date.now() / 1000) > ts[ts.length - 1][0] + 2;
+}
+/** Whether the feed is stuck on a stop its bus went round: the same stop next for five minutes and more, its time
+ *  slipping five minutes and more, while the bus drove on 800 m and more. The feed waits for a stop passed by before
+ *  it moves on, and times the rest of the trip from it: a Route 2 on its unannounced detour, up 400 East past its
+ *  first stops on 200 East, was all the way round and on time, and its 3:00 out of the Center 'late, 3:14'
+ *  (2026-10-01). Traffic slips a stop's time with the bus standing; a long way between stops moves the bus, not
+ *  the time. */
+const stuckOn = new Map();   // trip → { seq, t, time, lat, lon }: its next stop when first seen next
+function stuck(b, u) {
+  const first = u.stops[0];
+  if (!first) return false;
+  const nowS = Date.now() / 1000;
+  let s = stuckOn.get(b.trip);
+  if (!s || s.seq !== first[1]) {
+    if (stuckOn.size > 200) stuckOn.clear();
+    stuckOn.set(b.trip, s = { seq: first[1], t: nowS, time: first[2], lat: b.lat, lon: b.lon });
+  }
+  if (nowS - s.t >= 300 && first[2] - s.time >= 300 && distance(b.lat, b.lon, s.lat, s.lon) > 800) return true;
+  // Or seen at once: the bus at a stop further on, on time there and headed the trip's way from it, while the feed
+  // has it 8 min and more behind at the stop it waits for. Headed its way: a route out and back along one street has
+  // its stops in pairs a few metres apart (1206 and 1201 North 200 East), and a bus late at one is at the other's time.
+  const ts = tripStops(D.trips.indexOf(b.trip)), i0 = ts.findIndex(([, si]) => D.stops[si].id === first[0]);
+  if (i0 < 0 || toMin(first[2]) - ts[i0][0] < 8) return false;
+  const nowM = toMin(nowS);
+  for (let j = i0 + 4; j + 1 < ts.length; j++) {
+    const [m, si] = ts[j], st = D.stops[si], nx = D.stops[ts[j + 1][1]];
+    if (Math.abs(m - nowM) > 6 || distance(b.lat, b.lon, st.lat, st.lon) > 150) continue;
+    const way = Math.abs(((bearing(st.lat, st.lon, nx.lat, nx.lon) - b.course) % 360 + 540) % 360 - 180);
+    if (way < 70) return true;
+  }
+  return false;
 }
 /** When a bus gets to its trip's last stop, in seconds: the feed's time; where the feed has lost the trip, from where
  *  the bus is (there, within 150 m; else the way at a town bus's pace, 6 m/s, a road 1.4 times the straight line). */
