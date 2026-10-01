@@ -10,6 +10,7 @@ const OFF = 60;        // metres from every one of its route's lines: off the ro
 const HUB_R = 150;     // the Transit Center's own drives and bays are nobody's detour
 const GAP = 120;       // seconds without a bus's report beyond which its track is broken
 const NEAR = 150;      // metres from where a way round leaves or rejoins the line: passing there
+const FAR = 150;       // metres off its line: one report this far off is a way round (one report a minute gets one, round a block)
 const SAME = 200;      // metres apart two ways round can leave and rejoin and still be one
 const THROUGH = 1800;  // seconds from passing where a way round leaves to passing where it rejoins: one trip
 const CELL = 100;
@@ -37,16 +38,18 @@ async function lines() {
         }
     }
   }
-  const off = (key, p) => {
-    if (Math.hypot(p[0], p[1]) <= HUB_R) return false;
+  // Metres from a point to its route's lines, as far as the cells round it hold them (beyond that, Infinity).
+  const dist = (key, p) => {
+    let d = Infinity;
     for (const [k, ax, ay, bx, by] of cells.get(Math.floor(p[0] / CELL) + ',' + Math.floor(p[1] / CELL)) || []) {
       if (k !== key) continue;
       const dx = bx - ax, dy = by - ay, n = dx * dx + dy * dy;
       const f = n ? Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / n)) : 0;
-      if (Math.hypot(p[0] - ax - f * dx, p[1] - ay - f * dy) <= OFF) return false;
+      d = Math.min(d, Math.hypot(p[0] - ax - f * dx, p[1] - ay - f * dy));
     }
-    return true;
+    return d;
   };
+  const off = (key, p) => Math.hypot(p[0], p[1]) > HUB_R && dist(key, p) > OFF;
   // In service: a route's hours that weekday, in the agency's own time (the timetable's, by tools/reduce.py).
   const fmt = new Intl.DateTimeFormat('en-US', { timeZone: j.tz || 'America/Denver', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -59,7 +62,7 @@ async function lines() {
   // (driven to its next run's start, to the yard) is out of service, whatever the feed says.
   const ends = new Map();
   for (const [la, lo, ...ts] of j.ends || []) { const q = xy(la, lo); for (const t of ts) ends.set(t, q); }
-  L = { xy, off, inHours, ends, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
+  L = { xy, off, dist, inHours, ends, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
   return L;
 }
 const far = (L, p, lat, lon) => { const q = L.xy(lat, lon); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
@@ -113,21 +116,27 @@ export function watchStep(W, t, buses) {
       else if (b.away && toSeg(end, last || p, p) <= END) { b.done = true; b.on = null; b.off = []; return true; }
       return false;
     };
-    if (L.off(key, p)) { b.off.push([lat, lon]); ended(); continue; }
+    if (L.off(key, p)) { b.off.push([lat, lon]); b.offFar = Math.max(b.offFar || 0, L.dist(key, p)); ended(); continue; }
     if (b.off.length) {
-      // Off and back on, two reports or more off between: a way round. (Off and never back is a bus to the yard.)
-      if (b.on && b.off.length >= 2) round(W, key, b.on, [lat, lon], b.off, t);
-      b.off = []; b.offEnd = t;
+      // Off and back on: a way round, with two reports or more off between, or one well off (a report a minute, and a
+      // way round a block takes about that: Route 2 out of the Transit Center by 300 East and 600 North, one report off
+      // a trip, and none of them counted). Off and never back is a bus to the yard.
+      if (b.on && (b.off.length >= 2 || b.offFar >= FAR)) round(W, key, b.on, [lat, lon], b.off, t);
+      b.off = []; b.offEnd = t; b.offFar = 0;
     }
     b.on = [lat, lon];
-    // Along the line where a suspect goes round: past where it leaves, then where it rejoins, no way off between.
+    // Along the line where a suspect goes round: past where it leaves, seen on the line between (well clear of both
+    // ends), then where it rejoins, no way off between. Seen only at the two ends, it may as well have gone round
+    // between reports a minute apart: Route 2's way out of the Center, 220 m of 200 East, was 'along' that way, and
+    // its run kept starting again at one.
+    if (!b.mid) b.mid = {};
     for (const s of W.sus) {
       if (s.key !== key) continue;
-      if (far(L, p, s.olat, s.olon) <= NEAR) b.near[s.id] = t;
+      if (far(L, p, s.olat, s.olon) <= NEAR) { b.near[s.id] = t; b.mid[s.id] = false; }
       else if (b.near[s.id] && far(L, p, s.blat, s.blon) <= NEAR) {
-        if (t - b.near[s.id] < THROUGH && b.offEnd < b.near[s.id] && s.streak > 0) { s.streak = 0; s.along = t; W.changed.add(s); }
-        delete b.near[s.id];
-      }
+        if (t - b.near[s.id] < THROUGH && b.offEnd < b.near[s.id] && b.mid[s.id] && s.streak > 0) { s.streak = 0; s.along = t; W.changed.add(s); }
+        delete b.near[s.id]; delete b.mid[s.id];
+      } else if (b.near[s.id]) b.mid[s.id] = true;   // on its line, clear of both ends, on the way from one to the other
     }
     ended();
   }
