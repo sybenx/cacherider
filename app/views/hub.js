@@ -1,7 +1,7 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn } from '../data.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt } from '../rt.js';
@@ -193,6 +193,14 @@ function together(st, clockNow) {
     ${leaving.length ? html`<div class="bars"><div class="segs" style="grid-template-columns:repeat(${leaving.length},minmax(0,1fr))">${html.raw(segs)}</div>${note}</div>` : ''}</div>`;
 }
 
+/** A route's last departure from here today, gone already, and about when its run ends: null when none left today. */
+function lastLeft(ri, clockNow) {
+  const bay = D.hub.bays.find(b => b.routes.includes(ri));
+  const gone = bay ? timesOn(bay.stop, clockNow.ymd).filter(t => t.r === ri && t.min <= clockNow.min).map(t => t.min) : [];
+  if (!gone.length) return null;
+  const min = Math.max(...gone), end = lastTripOn(ri, clockNow.ymd);
+  return { min, back: end && end.end ? Math.max(end.end[0], min) : min + 30 };
+}
 /** The two loops, side by side: the next one's time, the one after, and where its bus is. */
 function loops(st, pick, clockNow) {
   const ls = (D.hub.loops || []).map(keyOf).filter(k => st[k] && st[k].dep);
@@ -202,7 +210,9 @@ function loops(st, pick, clockNow) {
   const every = gaps.length ? [...gaps].sort((a, b) => gaps.filter(g => g === b).length - gaps.filter(g => g === a).length)[0] : null;
   const cells = ls.map(k => {
     const s = st[k], r = D.routes[s.ris[0]], t = s.dep, then = s.deps[1];
-    const where = s.off ? 'Not running now' : s.eta === 0 ? 'Bus at its stop' : s.eta > 0 ? `Bus ${s.eta} min out` : s.away ? 'Bus on its run' : s.loose ? 'Out, no estimate' : 'Not reporting';
+    // Done leaving for the day, its last run may still be out, coming in to end there: said, not 'not running'.
+    const last = s.off ? lastLeft(s.ris[0], clockNow) : null, lastOut = !!last && s.eta !== 0 && (s.out || clockNow.min < last.back) && clockNow.min < last.back + 30;   // the feed's bus, or the timetable's end
+    const where = s.off ? (lastOut ? (s.eta > 0 ? `Last run · back in ${s.eta} min` : `Last run left ${clockText(last.min)}`) : last ? 'Done for today' : 'Not running today') : s.eta === 0 ? 'Bus at its stop' : s.eta > 0 ? `Bus ${s.eta} min out` : s.away ? 'Bus on its run' : s.loose ? 'Out, no estimate' : 'Not reporting';
     // Its bus at its stop: board it now, and the line beneath is the bus after (a rider who misses this one wants
     // that, not when this one pulls out).
     // In and waiting for its minute (a bus in early holds for the timetable): that minute, with the wait. In and
@@ -213,7 +223,7 @@ function loops(st, pick, clockNow) {
     return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="${cardHref(s, pick)}">
       <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
       <span class="when">${here && !waiting ? html`<span class="t t-36 est">NOW</span>` : html`${wasLine(t)}<span class="whent">${time(t.min, 36, !!t.live)}</span>`}<span class="rel">${rel}</span></span>
-      ${lastTag(t)}<span class="where${s.out && !s.off ? ' live' : ''}"><i></i>${where}</span></a>`;
+      ${lastTag(t)}<span class="where${s.out && (!s.off || lastOut) ? ' live' : ''}"><i></i>${where}</span></a>`;
   });
   return html`<div class="tc-loops blueprint">${corners()}
     <div class="top"><span class="eyebrow">The loops</span>${every ? html`<span class="note">Every ${every} min, on their own timetable</span>` : ''}</div>

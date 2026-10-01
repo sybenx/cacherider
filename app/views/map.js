@@ -1494,7 +1494,7 @@ function hubFold(on) {
 /** The bays, and how the Center frames them: south up, as a rider stands at the Center facing the hall from 500
  *  North; in to the bays' own zoom at the least, whatever covers the map. */
 function hubBounds() { const bb = new maplibregl.LngLatBounds(); for (const b of D.hub.bays) bb.extend([b.lon, b.lat]); return bb; }
-const hubFit = () => ({ margin: wide() ? 80 : HUB_M, bearing: 180, minZoom: HUB_Z + 0.2, maxZoom: wide() ? 19 : 18.4 });   // beside a wide panel, the bays fill the map (it was a third of it)
+const hubFit = () => ({ margin: wide() ? 100 : HUB_M, bearing: 180, minZoom: HUB_Z + 0.2, maxZoom: wide() ? 19 : 18.4 });   // beside a wide panel, the bays fill the map (it was a third of it)
 
 /** The tiles of the views a tab will ask for, built ahead while the map sits idle: the Center's bays, and the town as
  *  the Map tab shows it. Built only when first shown, each was gray a beat after its tab was tapped, seconds after
@@ -1573,7 +1573,7 @@ function tilesFor(T, cam) {
 
 /** The map's height the bays need on a phone: the arc across the width, south up, its badges and their tags clear of
  *  the search bar above it and the board below. */
-const HUB_M = 36;   // the margin round the bays on a phone
+const HUB_M = 52;   // the margin round the bays on a phone: room for a bus on a top badge, and 500 North below
 function hubRoom() {
   let w = 180, n = 90, e = -180, so = -90;
   for (const b of D.hub.bays) { w = Math.min(w, b.lon); e = Math.max(e, b.lon); so = Math.max(so, b.lat); n = Math.min(n, b.lat); }
