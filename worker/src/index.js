@@ -128,7 +128,9 @@ function atStops(out, only) {
     const s = trip.s.filter(x => only.has(x[0]));
     if (s.length || trip.c) trips[id] = trip.c ? { v: trip.v, ts: trip.ts, s, c: 1 } : { v: trip.v, ts: trip.ts, s };
   }
-  return { t: out.t, trips, at: out.buses.map(b => [b.lat, b.lon, b.ts, b.trip]) };
+  // A bus the tracker site fills in (a detour, off the feed's trips) carries its route as a fifth field: it's on
+  // the road for that route, not between trips. One off both is logged in and off a trip: pulling in, at night.
+  return { t: out.t, trips, at: out.buses.map(b => b.src === 'rtpi' ? [b.lat, b.lon, b.ts, b.trip, b.route] : [b.lat, b.lon, b.ts, b.trip]) };
 }
 
 async function feed(name) {
