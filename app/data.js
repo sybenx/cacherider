@@ -176,7 +176,7 @@ export async function loadAlerts({ relay = true } = {}) {
       for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
     }
     let tracked = [];
-    if (relay && pref('detours') === 'on') try {
+    if (relay && pref('detours') !== 'off') try {
       const r = await fetch(LIVE_URL + 'detours', { cache: 'no-store' });
       if (r.ok) {
         const list = ((await r.json()).detours || []).filter(d => d.streak >= 2);
@@ -197,9 +197,9 @@ export async function loadAlerts({ relay = true } = {}) {
 }
 /** Detours seen from the buses themselves (the relay's watch, worker/src/detours.js), as alerts of their own: the
  *  stops of a route's line between where its buses left it and where they came back, less any they passed on the way
- *  round (a stop a detour passes is served). Three buses in a row the same way round closes them, as an alert would;
- *  two only says they may be (a.maybe: nothing dropped from the times). A way round the agency already has every stop
- *  of in a notice in force adds nothing. For now only with the switch on (?detours in the address). */
+ *  round (a stop a detour passes is served), each only perhaps skipped (a.maybe: a question mark, nothing dropped
+ *  from the times) till the agency announces it; how sure grows with the buses in a row that went round. A way round the agency already has every stop
+ *  of in a notice in force adds nothing. On for everyone; ?detours=off in the address turns them off on a phone. */
 const TRACK_ON = 45;   // metres from a way round a stop is on it
 function trackedAlerts(list, byStop) {
   const ymd = now().ymd, out = [];
@@ -225,9 +225,11 @@ function trackedAlerts(list, byStop) {
     const posted = !ids.length || ids.every(id => (byStop[id] || []).some(a => alertOn(a, ymd) && ris.some(ri => a.ri.includes(ri))));
     const n = d.streak, who = ris.length ? routeWord(ris[0]) : 'Route ' + d.route, since = clockText(now(new Date(d.first * 1000)).min);
     const how = n >= 4 ? `every ${who} bus since ${since}, ${n} in a row, has gone another way` : `the last ${n} ${who} buses went another way`;
-    const word = n >= 4 ? 'are closed' : n === 3 ? 'are likely closed' : 'may be closed';
+    // Never closed on the buses' word alone (a stop wrongly closed loses its times): perhaps skipped, a question mark,
+    // until the agency announces it, when its notice closes the stops and this one only draws the way round.
+    const word = n >= 4 ? 'are very likely skipped' : n === 3 ? 'are likely skipped' : 'may be skipped';
     out.push({ id: 'trk' + d.id, tracked: d, title: `${who} is going another way`, text: ` ${D.agency.brand} hasn't posted this, but ${how}, so ${ids.length === 1 ? 'a stop' : ids.length + ' stops'} on its usual way ${word}.`,
-      url: '', start: d.first, end: null, routes: [], ri: ris, stops: n >= 3 ? ids : [], maybe: n >= 3 ? [] : ids, names: null, posted, gone: ids, on });
+      url: '', start: d.first, end: null, routes: [], ri: ris, stops: [], maybe: ids, names: null, posted, gone: ids, on });
   }
   return out;
 }

@@ -145,6 +145,8 @@ function style(sat = true) {
         'circle-stroke-color': ['case', ['get', 'closed'], ['get', col], flavor === 'dark' ? '#101214' : '#ffffff'],
         'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, ['case', ['get', 'closed'], 2.5, 1.5], 17, ['case', ['get', 'closed'], 3.5, 1.5]],
         'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
+      // A stop the buses have been going round, the detour not announced: a question mark on its dot, its times kept.
+      { id: 'stops-maybe', type: 'symbol', source: 'stops', minzoom: 13.5, filter: ['get', 'maybe'], layout: { 'text-field': '?', 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 13.5, 8, 17, 12, 19, 15], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(0,0,0,.35)', 'text-halo-width': 0.6 } },
       // A stop under the pointer in the panel (a row of the home page's lists): ringed, as a picked stop is, lighter.
       { id: 'stop-hover', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 10, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 2.5 } },
       { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', col], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
@@ -168,9 +170,16 @@ function style(sat = true) {
   return st;
 }
 
+/** A stop's state on the map: closed (a hollow ring) by a notice that closes it, or only perhaps skipped (a '?') by a
+ *  detour seen from the buses and not yet announced. */
+function closedOrMaybe(s, i, ymd) {
+  const list = A.byStop[s.id] ? stopAlerts(i, ymd) : [];
+  const closed = list.some(a => !(a.maybe || []).includes(s.id));
+  return { closed, maybe: !closed && list.length > 0 };
+}
 function stopsGeo() {
   const ymd = now().ymd;
-  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: sinkLine('#' + route(s.routes[0]).color), dcolor: lift('#' + route(s.routes[0]).color), closed: !!(A.byStop[s.id] && stopAlerts(i, ymd).length) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  return { type: 'FeatureCollection', features: D.stops.map((s, i) => ({ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: sinkLine('#' + route(s.routes[0]).color), dcolor: lift('#' + route(s.routes[0]).color), ...closedOrMaybe(s, i, ymd) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 
 /** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes:
@@ -1337,7 +1346,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5, HUB_IN = 110, HUB_STILL = 3;   // metres from the hall: a bus this close is in; metres a second: one slower stands
-const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {

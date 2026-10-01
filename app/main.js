@@ -574,8 +574,8 @@ function wireHover() {
 }
 
 async function boot() {
-  // Detours seen from the buses (a trial): ?detours in the address turns them on for this phone, ?detours=off off.
-  try { const q = new URLSearchParams(location.search); if (q.has('detours')) pref('detours', q.get('detours') === 'off' ? null : 'on'); } catch { /* no address to read */ }
+  // Detours seen from the buses: ?detours=off in the address turns them off on this phone, ?detours on again.
+  try { const q = new URLSearchParams(location.search); if (q.has('detours')) pref('detours', q.get('detours') === 'off' ? 'off' : null); } catch { /* no address to read */ }
   // The first page asks only for the timetable and the alerts file, both kept on the phone: never the relay, never the
   // files for search, the shuttle, POOL and walks, which follow it.
   try {
