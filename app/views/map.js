@@ -499,7 +499,10 @@ async function loadShapes(m = map) {
 }
 /** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
 let closedKey = null;
+let doneKey = '';
 function refreshClosed(clockNow) {
+  const dk = doneRoutes(clockNow).join();
+  if (dk !== doneKey) { doneKey = dk; if (map && map.getLayer('route-lines')) applySelection(); }   // a route's day ended: its line steps back
   const key = closedKeyOf(clockNow);
   if (closedKey === key) return;
   closedKey = key;
@@ -1682,6 +1685,13 @@ function tintStops(m, ri) {
   m.setPaintProperty('stop-selected', 'circle-color', fill);
 }
 
+/** The routes whose last run of the day has ended (ten minutes on, a late one in), by the timetable: none from
+ *  midnight till the next evening, so the map never reads as shut while tomorrow's ride is planned. */
+let doneDay = null, doneEnds = null;
+function doneRoutes(c = now()) {
+  if (doneDay !== c.ymd) { doneDay = c.ymd; doneEnds = D.routes.map((r, ri) => { const t = lastTripOn(ri, c.ymd); return t && t.end ? t.end[0] : null; }); }
+  return doneEnds.map((e, ri) => e !== null && c.min > e + 10 ? ri : -1).filter(ri => ri >= 0);
+}
 /** A picked route, or a bus's loop, drawn on top at full strength; every other line faded back. With a way on drawn
  *  from a bus or stop (`soft`), everything fades back, the lit route too, so the way stands out from the road. */
 function litLines(m, lines, loops, soft = false) {
@@ -1691,7 +1701,10 @@ function litLines(m, lines, loops, soft = false) {
   const any = lines.length > 0 || loops.length > 0 || soft, dk = dark();
   m.setPaintProperty('route-on', 'line-color', ['get', soft ? (dk ? 'dsoft' : 'soft') : dk ? 'dcolor' : 'color']);
   m.setPaintProperty('route-lines', 'line-color', ['get', any ? (dk ? 'dfade' : 'fade') : dk ? 'dcolor' : 'color']);
-  m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : 0.75);
+  // Nothing picked: a route whose day is done steps back at the town's zoom, what's still running tonight standing
+  // out; in at the streets, every line as ever. Nothing shut for planning: a stop or route opened is all there.
+  const done = doneRoutes();
+  m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : done.length ? ['interpolate', ['linear'], ['zoom'], 13, ['case', ['in', ['get', 'route'], ['literal', done]], 0.3, 0.75], 15, 0.75] : 0.75);
   m.setPaintProperty('usu-lines', 'line-opacity', any ? 0.25 : ['case', ['get', 'approx'], 0.35, 0.9]);
 }
 
