@@ -533,11 +533,11 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 #map.bus-small .bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
 #map.bus-small .bus.lit .bus-marker svg, #map.bus-small .bus.on .bus-marker svg { width: 14px; height: 14px; }
 #map.bus-small .bus.lit .bus-marker path, #map.bus-small .bus.on .bus-marker path { fill: #fff; stroke: none; }
-/* the Aggie Shuttle's A (map.js ARROW_A): solid on the full marker; far off in strokes, its head hollow with the paper
-   in it as Connect's arrows are, its legs (a stroke wide) tails; a lit or picked one keeps its full marker, as Connect's do */
+/* the Aggie Shuttle's A (map.js ARROW_A): solid on the full marker, in strokes far off (its legs a stroke wide, there's
+   no hollow to it); a lit or picked one keeps its full marker, as Connect's do */
 .bus-marker path.as { display: none; }
 #map.bus-small .bus.shuttle .bus-marker path.af, #map.u-small .bus.shuttle .bus-marker path.af { display: none; }
-#map.bus-small .bus.shuttle .bus-marker path.as, #map.u-small .bus.shuttle .bus-marker path.as { display: inline; fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+#map.bus-small .bus.shuttle .bus-marker path.as, #map.u-small .bus.shuttle .bus-marker path.as { display: inline; fill: none; stroke: var(--bus-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 #map.bus-small:not(.u-small) .bus.shuttle.lit .bus-marker path.af, #map.bus-small:not(.u-small) .bus.shuttle.on .bus-marker path.af { display: inline; }
 #map.bus-small:not(.u-small) .bus.shuttle.lit .bus-marker path.as, #map.bus-small:not(.u-small) .bus.shuttle.on .bus-marker path.as { display: none; }
 /* the Aggie Shuttle's buses go to their arrows with its lines, wherever those are put away (off campus, or out past
