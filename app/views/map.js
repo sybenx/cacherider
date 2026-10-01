@@ -1589,9 +1589,12 @@ const hubFit = () => ({ margin: wide() ? 100 : HUB_M, bearing: 180, minZoom: HUB
  *  asked for beside the ones on screen, and each put in its cache the moment it's in, before a frame is drawn. Left
  *  among the tiles on screen, a frame readied its labels for drawing while placing none of them: their buffers made
  *  empty, and once that view was shown every frame threw on them ("length of new data ... current length of 0"). */
-let warmStyle = null, warmExtra = [];
+let warmStyle = null, warmExtra = [], warmAt = 0;
 function warmViews() {
-  if (!map || !ready || !map.style || warmStyle === map.style || map.isMoving()) return;
+  // Topped up, not built once: browsing elsewhere lets the tiles kept aside go (MapLibre keeps 120 or so out of
+  // view), and the near view moves with the rider. Each time the map rests, at most every ten seconds, what's missing.
+  if (!map || !ready || !map.style || warmExtra.length || (warmStyle === map.style && Date.now() - warmAt < 10000) || map.isMoving()) return;
+  warmAt = Date.now();
   const T = map.style.tileManagers && map.style.tileManagers.protomaps;
   if (!T || typeof T.update !== 'function' || typeof T._updateRetainedTiles !== 'function' || typeof T._addTile !== 'function' || typeof T._tileLoaded !== 'function'
     || typeof T._removeTile !== 'function' || !T._inViewTiles || !T._outOfViewCache || typeof T._outOfViewCache.has !== 'function' || !T.transform || typeof T.transform.clone !== 'function') return;
