@@ -342,6 +342,7 @@ export function locate(onDone) {
     const moved = !app.geo || distance(app.geo.lat, app.geo.lon, g.lat, g.lon) > 30;
     app.geo = g;
     pref('near', 'on');
+    pref('lastgeo', JSON.stringify({ lat: g.lat, lon: g.lon, at: g.at, acc: g.acc }));   // on this phone only: the next open starts here
     if (!answered) { answered = true; onDone && onDone(g); }
     if (moved || !fine) render();   // the GPS's fix redraws only where it moves the rider: a page doesn't reshuffle for nothing
     return true;
@@ -396,6 +397,7 @@ export function toggleUnits() {
 export function nearOff() {
   app.geo = null;
   pref('near', null);
+  pref('lastgeo', null);
   render();
 }
 
@@ -408,6 +410,7 @@ async function autoLocate() {
   try {
     const st = await navigator.permissions.query({ name: 'geolocation' });
     if (st.state === 'granted') locate();
+    else if (app.geo && app.geo.kept) { app.geo = null; render(); }   // no longer allowed: the kept place isn't where they are
   } catch { /* the browser won't say; wait for the tap */ }
 }
 
@@ -589,6 +592,9 @@ async function boot() {
   // Not `render` itself: the event would arrive as the tick flag and the map would sit still.
   window.addEventListener('hashchange', () => render());
   matchMedia(WIDE_MQ).addEventListener('change', () => render());
+  // Opened with location on: the last place found stands until the new fix comes (or doesn't, and it's said as old),
+  // rather than a page without location for the seconds the GPS takes: opened at the Transit Center, its card at once.
+  if (pref('near') === 'on' && !app.geo) try { const g = JSON.parse(pref('lastgeo') || 'null'); if (g && isFinite(g.lat) && isFinite(g.lon)) app.geo = { ...g, stale: false, kept: true }; } catch { /* none kept */ }
   render();
   autoLocate();
   // The rest in, the page again with it (a saved shuttle stop, the map beside a wide screen); then the relay's alerts,
