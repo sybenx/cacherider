@@ -60,10 +60,12 @@ function renderTabs() {
     };
     for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', hubAgain);
     // The same for the home page beside the map: the wordmark (or the Stops link) tapped while already home.
+    // The home view back, the same each time: not the Map tab's second tap, which turns between the town and the near
+    // view (tapped over and over, the map flipped between the two).
     const home = e => {
       if (!['', '#', '#/'].includes(location.hash) || !app.mapMod || !isDesktop()) return;
       e.preventDefault();
-      app.mapMod.resetView(app);
+      app.mapMod.resetView(app, false, null, false, true);
     };
     document.querySelector('.wordmark').addEventListener('click', home);
     document.getElementById('topnav').addEventListener('click', e => { if (e.target.closest('a[href="#/"]')) home(e); });
