@@ -12,6 +12,8 @@ const rtDown = () => rtStale() && (rt.at > 0 || !!rt.error);
 let countIv = 0;   // the pulse countdown's ticker
 const STILL = 3;   // metres a second: a bus slower than this is standing (or creeping into its bay)
 const IN_RADIUS = 110;   // metres from the hall: a bus this close is in
+const AT_BAY = 25;   // metres from its bay's point: a bus this close, stopped, is drawn on its badge
+const PARKED = 1;   // metres a second: slower than this, stopped (faster, it's pulling in or out)
 
 /** A badge's key: the route's short name, 16 AM and 16 PM as one '16' (they share a bay and a rider). */
 /** The scheduled time crossed out, for a time the feed has moved off it: placed before the estimate. */
@@ -247,10 +249,14 @@ export function bays(bay, clockNow) {
   return keys().map(k => {
     const s = st[k], ri = s.ris[s.ris.length - 1], r = D.routes[ri], b = D.hub.bays.find(x => x.routes.includes(ri));
     if (!b) return null;
-    // A bus at its bay is drawn there, on its badge, not said: here is where it is.
-    const here = tags && !s.off && s.eta === 0, tag = !tags || s.off || here ? '' : s.eta > 0 ? s.eta + ' MIN' : '';
-    const course = here ? rt.buses.find(x => x.id === s.at)?.course ?? null : null;   // which way it faces in its bay
-    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, here, course, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
+    // A bus stopped at its own bay is drawn there, on its badge, not said: here is where it is. Only stopped, and only
+    // at its bay: one rolling out (or parked well off its bay's point, as 5's are) is drawn where it is, moving, so
+    // nobody takes a bus leaving for one sitting.
+    const in_ = tags && !s.off && s.eta === 0, bus = in_ ? rt.buses.find(x => x.id === s.at) : null;
+    const here = !!bus && distance(bus.lat, bus.lon, b.lat, b.lon) <= AT_BAY && !(bus.speed > PARKED);
+    const tag = !tags || s.off || in_ ? '' : s.eta > 0 ? s.eta + ' MIN' : '';
+    const course = here ? bus.course ?? null : null;   // which way it faces in its bay
+    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, here, bus: here ? bus.id : null, course, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);
 }
 

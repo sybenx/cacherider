@@ -1434,7 +1434,7 @@ function quiet() {
 // each bay's stop wears its route's badge with where its bus is, as the timetable places it; the route lines, stop
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
-const HUB_Z = 17.5, HUB_IN = 110, HUB_STILL = 3;   // metres from the hall: a bus this close is in; metres a second: one slower stands
+const HUB_Z = 17.5;
 const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'pool-zone', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
@@ -1497,9 +1497,11 @@ function paper(on) {
   }
 }
 /** The badges drawn, or brought up to date (the feed, the minute, a route picked). */
+let onBadges = new Set();   // the buses drawn on their badges, put away on the map
 function hubBadges() {
   if (!hubOn) return;
   const items = bays(hubBay, now());
+  onBadges = new Set(items.map(b => b.bus).filter(Boolean));
   for (const b of items) {
     let m = hubMarks.get(b.k);
     if (!m) {
@@ -1544,7 +1546,7 @@ function easeBays() {
 /** The buses standing at the Center out of the way of its badges while they're up (each drawn on its badge); one
  *  driving in or out stays, its arrow showing the way it goes. */
 function hubBuses() {
-  for (const m of busMarkers.values()) { const [lon, lat] = m.to; m.el.classList.toggle('athub', hubOn && !(m.speed > HUB_STILL) && distance(lat, lon, D.hub.lat, D.hub.lon) <= HUB_IN); }
+  for (const [id, m] of busMarkers) m.el.classList.toggle('athub', hubOn && onBadges.has(id));
 }
 /** The board as a phone's card: the countdown alone at first (the map's the thing), the loops and the next hour a
  *  swipe up; a route picked, its card alone, the badges still in view above it. Redrawn in place for the minute and
