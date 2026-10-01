@@ -840,7 +840,6 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .hbay.dim > * { opacity: .35; }
 .hbay.on .b { box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent); }
 .bus.athub { display: none; }
-#map.hubon .bus { z-index: 1; }   /* at the Center, a bus moving at its bay over its badge, not under it */
 .mapcard .hubhead { padding: 0 0 6px; }
 .mapcard .hubhead > .blueprint { margin-top: 0; }
 .tc-pick { margin: 22px 16px 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; }

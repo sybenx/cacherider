@@ -112,10 +112,11 @@ async function tick(force) {
     // knows, it gives up): their times are worked out here from the bus's place along its trip, the timetable's
     // minute there set against the clock and carried to every stop ahead. Marked `est`, as a carried delay is.
     // The feed's word on a bus held against where the bus is (agrees()): where they don't agree, its trip's times
+    // (only the bus the feed names for the trip: a swap bus parked at the Center reports the trip it's covering too)
     // are dropped, not guessed at, and every screen keeps to the timetable for it (the bus still on the map): right,
     // or not said. A feed waiting at a stop its bus went round had a Route 2 back and on time 'late, 3:14'.
     const doubt = new Set();
-    for (const b of buses) if (trips[b.trip] && !trips[b.trip].est && tripIdx.has(b.trip) && !agrees(b, trips[b.trip], tripIdx.get(b.trip), j.t)) { delete trips[b.trip]; doubt.add(b.trip); }
+    for (const b of buses) if (trips[b.trip] && !trips[b.trip].est && trips[b.trip].v && b.id === 'c:' + trips[b.trip].v && tripIdx.has(b.trip) && !agrees(b, trips[b.trip], tripIdx.get(b.trip), j.t)) { delete trips[b.trip]; doubt.add(b.trip); }
     for (const b of buses) if (!trips[b.trip] && !doubt.has(b.trip) && tripIdx.has(b.trip) && j.t - b.ts < 180) { const u = fromPlace(b, tripIdx.get(b.trip), j.t); if (u) trips[b.trip] = u; }
     rt.doubt = doubt;
     const t0 = Date.now();
@@ -322,6 +323,9 @@ function runArrives(t) {
 /** When the bus that runs a trip gets to the Transit Center, if it's still on its way in on the trip before; else null. */
 function inbound(u, id) {
   if (!u.v) return null;
+  // A bus of its route standing at the Center (a swap, put in so it leaves on time): it doesn't wait for this one.
+  const ti = tripIdx.get(id);
+  if (ti !== undefined && tripInfo[ti] && standingAt(tripInfo[ti].r)) return null;
   const b = rt.buses.find(x => x.id === 'c:' + u.v);
   if (!b || b.trip === id) return null;
   const prev = rt.trips[b.trip];
@@ -447,5 +451,11 @@ export function busOn(ti) {
   let next = null;
   if (u) for (const [sid, x] of u.at) if (!x.skipped && x.time >= nowS - 60 && (!next || x.seq < next.seq)) next = { sid, ...x };
   return { bus: b, next: next ? D.stopById[next.sid] : undefined };
+}
+/** A bus of a route stopped in the Transit Center: the one that leaves next on it, whatever trip it reports or the
+ *  feed names (a swap bus is put in, parked at the bay, while the late one finishes its run). */
+export const HUB_IN = 65, HUB_STILL = 3;   // metres from the hall (its bays within 51 m); metres a second
+export function standingAt(ri) {
+  return rt.buses.find(b => b.ri === ri && D.hub && distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= HUB_IN && !(b.speed > HUB_STILL)) || null;
 }
 export function findBus(id) { return rt.buses.find(b => b.id === id); }

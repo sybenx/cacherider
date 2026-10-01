@@ -4,7 +4,7 @@
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames } from '../ui.js';
-import { rt, rtStale, isLoop, endAt, cancelledAt } from '../rt.js';
+import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
 const rtDown = () => rtStale() && (rt.at > 0 || !!rt.error);
@@ -40,7 +40,10 @@ function status(k, clockNow) {
     // one the feed has on that trip, which may well be out on the other route right now. Only when the feed names
     // none is it any bus showing this route.
     const u0 = dep && dep.day === 0 && dep.trip !== undefined ? rt.trips[D.trips[dep.trip]] : null;
-    const own = u0 && u0.v ? rt.buses.find(b => b.id === 'c:' + u0.v) : null;
+    // A bus of this route standing in the Center leaves next, whoever the feed names (a swap, parked at the bay
+    // while the late one finishes its run: the feed named each by turns, and the badge's bus came and went).
+    const standing = ris.map(standingAt).find(Boolean);
+    const own = standing || (u0 && u0.v ? rt.buses.find(b => b.id === 'c:' + u0.v) : null);
     for (const b of own ? [own] : rt.buses) {
       if (!own && !ris.includes(b.ri)) continue;
       let e = null;
