@@ -1912,9 +1912,9 @@ function busScale() {
   if (small !== busSmallAt) { busSmallAt = small; c.classList.toggle('bus-small', small); }
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
-// An Aggie shuttle's: an A, its apex the way it heads. Close in solid (its counter a hole); far off in strokes, two legs
-// and a crossbar (app.css shows the one its marker wants).
-const ARROW_A = '<svg viewBox="0 0 24 24" fill="#fff"><path class="af" fill-rule="evenodd" d="M12 3 20 20H17L15.12 16H8.88L7 20H4ZM12 9.37 13.71 13H10.29Z"/><path class="as" d="M5 20.5 12 3.5l7 17M7.7 14H16.3"/></svg>';
+// An Aggie shuttle's: an A, an arrowhead with its legs for tails, its apex the way it heads. Close in solid; far off in
+// strokes, the head filled with the paper as Connect's hollow arrows are (app.css shows the one its marker wants).
+const ARROW_A = '<svg viewBox="0 0 24 24" fill="#fff"><path class="af" d="M12 3 20 20H17L15.59 17H8.41L7 20H4Z"/><path class="as" d="M12 3.5 16.94 15.5H7.06ZM7.06 15.5 5 20.5M16.94 15.5 19 20.5"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 /** A way drawn for another day: no bus out now is one of its. */
 const wayLater = () => !!(JR && JR.plan && JR.plan.ymd !== now().ymd);
