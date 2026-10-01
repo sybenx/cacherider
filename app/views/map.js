@@ -700,13 +700,10 @@ async function made(app) {
     selectedBus = null; selectedU = null; select(null, app);
     // The route up, its own line tapped: the whole of it again, its sheet back.
     if (ris.length && focusRoute !== undefined && ris.some(ri => familyKey(ri) === familyKey(focusRoute)) && /^#\/map\/route\//.test(location.hash)) pickRoute(focusRoute, app);
-    // A road with one route: that route, its line lit and its stops in the sheet. A tap on a line is a question about
-    // the line; the spot (directions there, its nearest stops) is a long press. It was the spot's card, the route a
-    // small badge on it, and a rider never found the route.
-    else if (ris.length === 1) pickRoute(ris[0], app);
-    // A road several share is a place: its card, its routes first as rows to pick from (named, where badges alone were
-    // a chooser only someone who already knew the system could use), then the stops along that road a short walk off,
-    // both sides, nearest first, each with its next bus and where it's going.
+    // A road tapped is a place, as a long press is, however many routes run on it (where several share it, a tap can't
+    // say which was meant): its card, its routes first as rows, each opening the whole route (named, where badges alone
+    // were a chooser only someone who already knew the system could use), then the stops along that road a short walk
+    // off, both sides, nearest first, each with its next bus and where it's going. A road with one route lights it too.
     else if (ris.length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), null, null, ris); }
     // Only the shuttle's line there: that spot, with its stops a walk off, as a road of Connect's gets.
     else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now()); }
@@ -726,7 +723,7 @@ async function made(app) {
   wireGrip(app);
 }
 
-/** A route picked on the map itself (its line, or a road card's row): its address, so Back puts it away, and the map
+/** A route picked on the map itself (a road card's row, or its line tapped with it up): its address, so Back puts it away, and the map
  *  out to the whole of it, as a route opened from elsewhere is. It was lit where the map was: the route's overview
  *  asked for, the rider was left zoomed in on the road they'd tapped. Picked again: the whole of it again, and a
  *  phone's sheet comes back up. */
