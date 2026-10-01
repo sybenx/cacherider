@@ -11,6 +11,7 @@ import * as hub from './views/hub.js';
 import * as about from './views/about.js';
 import * as ustop from './views/ustop.js';
 import * as uroute from './views/uroute.js';
+import * as routesView from './views/routes.js';
 import * as go from './views/go.js';
 import { loadUSU, setWanted, onLive, U } from './usu.js';
 import { setRtWanted, onRt } from './rt.js';
@@ -18,7 +19,7 @@ import { setRtWanted, onRt } from './rt.js';
 const side = document.getElementById('side');
 const body = document.getElementById('body');
 const TABS = [
-  { href: '#/', label: 'Stops', icon: 'stops', match: h => /^#\/(stop|search|about|usu|go|$)/.test(h) },
+  { href: '#/', label: 'Stops', icon: 'stops', match: h => /^#\/(stop|search|about|usu|go|routes|$)/.test(h) },
   { href: '#/map', label: 'Map', icon: 'map', match: h => h.startsWith('#/map') },
   { href: '#/hub', label: 'Transit Center', icon: 'hub', match: h => h.startsWith('#/hub') },
 ];
@@ -217,6 +218,7 @@ async function render(tick = false) {
     else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
     else if (name === 'route') view = (await ensureMap()).routePage(routeArgs, clockNow);
     else if (name === 'about') view = about.render({ section: seg[1] }, clockNow);
+    else if (name === 'routes') view = routesView.render({}, clockNow);
     else if (name === 'usu' && seg[1] === 'route') view = uroute.render({ id: seg[2] }, clockNow);
     else if (name === 'usu') view = ustop.render({ id: seg[1] }, clockNow);
     else if (name === 'map') view = null;

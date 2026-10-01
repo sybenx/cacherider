@@ -85,7 +85,7 @@ function landing(clockNow, app) {
     <form class="search" id="search" role="search"><input class="input" type="search" placeholder="${first ? 'Street, place or route' : 'Where to?'}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
     ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
       <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : ''}</div>`);
-  parts.push(homeLine(geo), hubLine(clockNow), shuttleLine(clockNow));
+  parts.push(homeLine(geo), hubLine(clockNow), shuttleLine(clockNow), isWide() ? '' : routesLine());   // wide, the chips below are the routes
   // And what the app does, shown rather than said: the stops with the most buses today (by the timetable's departures,
   // not by riders: there's no count of those, so not 'popular' or 'busiest'), with their next buses.
   // A newcomer may find their own there; either way the page isn't half empty on a first visit.
@@ -95,7 +95,7 @@ function landing(clockNow, app) {
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   parts.push(detourNotice(clockNow));
   if (sv.length) parts.push(installCard());   // the offer waits until a rider has saved a stop: proof it's their app
-  parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
+  parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">Settings &amp; about</a></div>`);
   return { html: html`<div class="land">${html.raw(parts.join(''))}</div>`.s, mount, title: '' };
 }
 
@@ -204,6 +204,12 @@ function hubLine(clockNow) {
   return html`<a class="land-hub" href="#/hub">${icon('hub', 18)}<span class="col"><span>${D.hub.name}</span><span class="sub">${(D.hub.pulseName || 'All routes').replace(/\s+leave$/, '')} leave at <b>${clockText(p.min)}</b> · ${soon}</span></span>${icon('fwd', 18)}</a>`;
 }
 
+/** Every route as a line under the shuttle's: their colours, and the list a tap away. On a phone the routes were only
+ *  to be had by typing 'routes'; a wide screen has them as chips. */
+function routesLine() {
+  const dots = D.routes.filter(r => !/\s(AM|PM)$/.test(r.short) || /\sAM$/.test(r.short)).slice(0, 9).map(r => html`<i style="background:#${esc(r.color)}"></i>`);
+  return html`<a class="land-hub land-usu" href="#/routes"><span class="udots" aria-hidden="true">${dots}</span><span class="col"><span>Routes</span><span class="sub">Where each goes, its stops and times</span></span>${icon('fwd', 18)}</a>`;
+}
 /** The Aggie Shuttle as a line under the Center's, so a rider knows it's here too: its loops' colours, and whether
  *  it's running. To the map, on campus with its loops drawn. */
 function shuttleLine(clockNow) {
@@ -240,7 +246,7 @@ function searchPage(q, clockNow, app, pick = null) {
   if (app && app.geo) parts.push(nearestSection(app.geo, clockNow));
   const rec = recent();
   if (rec.length) parts.push(html`<div class="section">${icon('history', 16)}Recent on this device</div><div class="list">${rec.map(id => stopRow(D.stopById[id], nextAt(D.stopById[id], 1, clockNow)[0], clockNow))}</div>`);
-  parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">About this app</a></div>`);
+  parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">Settings &amp; about</a></div>`);
   return { html: parts.join(''), mount, title: 'Search' };
 }
 

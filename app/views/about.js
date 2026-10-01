@@ -8,7 +8,7 @@ import { installState, installSheet, app, themeButton, cycleTheme, nearMe, nearO
 
 export function render({ section }, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
-  const left = html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div>
+  const left = html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a></div>
     <div class="head"><span class="eyebrow">Unofficial</span><h1>Cache Rider</h1></div>
     <div class="pad" style="font-size:1rem;line-height:1.5">
       <p>A schedule app for ${D.agency.brand}, the ${D.agency.name} bus. Made by a rider, not by the agency.</p>

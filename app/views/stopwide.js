@@ -101,12 +101,14 @@ export function restOfDay(si, next, clockNow, pick) {
   const d = dayOf(si, next, clockNow);
   if (!d) return '';
   const { rows, head, from, today } = d;
+  // The whole day, the ones gone too (a rider checking what they missed, or the timetable as printed): its own page,
+  // which nothing linked to.
   const hours = new Map();
   for (const t of [...rows].sort((a, b) => a.min - b.min)) { const h = Math.floor(t.min / 60); if (!hours.has(h)) hours.set(h, []); hours.get(h).push(t); }   // by when each leaves, a late bus in its place
   const last = rows.reduce((x, t) => t.min > x.min ? t : x, rows[0]);
   const cols = [...hours].map(([h, list]) => `<div class="hr${today && h === from ? ' now' : ''}"><span class="hr-h">${esc(clockShort(h * 60))}</span>${list.map(t => depBtn(t, d, clockNow, pick.trip === t.trip)).join('')}</div>`).join('');
   const lastLine = `Last bus ${clockText(last.min)} · ${isLoop(last.r) ? D.routes[last.r].long : 'Route ' + D.routes[last.r].short}`;
-  return html`<section class="ws-sec ws-day phone-day"><div class="ws-eye"><span>${head}</span><span>${lastLine}</span></div><div class="hours">${raw(cols)}</div><p class="day-hint">Tap a time for its stops from here on.</p></section>`;
+  return html`<section class="ws-sec ws-day phone-day"><div class="ws-eye"><span>${head}</span><span>${lastLine}</span></div><div class="hours">${raw(cols)}</div><p class="day-hint">Tap a time for its stops from here on.${today ? raw(` <a href="#/stop/${encodeURIComponent(D.stops[si].id)}/all">The whole day</a>, gone ones too.`) : ''}</p></section>`;
 }
 
 // ---- the run: a sheet over the stop page, with its own address (…?run=trip&on=day), so Back closes it
