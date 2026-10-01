@@ -263,9 +263,10 @@ for ri, ids in sorted(route_shapes.items()):
     for sid in sorted(ids):
         pts = [[lo, la] for _, la, lo in sorted(shape_pts[sid])]
         dedup = [p for i, p in enumerate(pts) if i == 0 or p != pts[i - 1]]
-        lines.append({'route': ri, 'shape': sid, 'coords': dedup})
+        # key: the route as a bus's trip id names it (16's AM and PM as one), for the relay, which reads only this file
+        lines.append({'route': ri, 'key': routes[ri]['short'].split()[0], 'shape': sid, 'coords': dedup})
 p = os.path.join(a.out, a.tag + '-shapes.json')
-json.dump({'lines': lines}, open(p, 'w'), separators=(',', ':'))
+json.dump({'lines': lines, 'hub': {'lat': hub['lat'], 'lon': hub['lon']}}, open(p, 'w'), separators=(',', ':'))
 print('wrote', p, os.path.getsize(p), 'bytes:', len(lines), 'lines')
 for sid, ms in pulse.items():
     print('pulse', sid, len(ms), 'times', ms[:6], '...' if len(ms) > 6 else '')
