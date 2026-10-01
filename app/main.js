@@ -425,7 +425,7 @@ export function afterSave() {
 export function installCard() {
   if (!app.installPrompt || standalone() || pref('install')) return '';
   return html`<div class="blueprint install" id="install-card">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}
-    <div class="who"><span class="cr">CR</span><div class="col"><span class="title">Install Cache Rider</span><span class="sub">One tap from your home screen. Works offline.</span></div></div>
+    <div class="who"><img class="cr" src="icons/icon.svg" alt=""><div class="col"><span class="title">Install Cache Rider</span><span class="sub">One tap from your home screen. Works offline.</span></div></div>
     <div class="acts"><button class="btn btn-ghost" data-act="no">Not now</button><button class="btn btn-primary blueprint" data-act="go">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}${icon('install', 18)}Install</button></div></div>`;
 }
 export function wireInstall(el) {
@@ -460,7 +460,7 @@ export function installSheet(ios = isIOS()) {
   const sheet = document.createElement('div');
   sheet.className = 'ios-install';
   sheet.innerHTML = html`<div class="scrim"></div><div class="sheet blueprint" role="dialog" aria-label="Add to Home Screen">${html.raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>')}
-    <div class="who"><span class="cr big">CR</span><div class="col"><span class="title">Keep Cache Rider on your home screen</span><span class="sub">Opens full screen on your saved stops. Works offline with the last timetable it downloaded.</span></div><button class="btn btn-ghost btn-icon" data-act="no" aria-label="Close">${icon('close', 22)}</button></div>
+    <div class="who"><img class="cr big" src="icons/icon.svg" alt=""><div class="col"><span class="title">Keep Cache Rider on your home screen</span><span class="sub">Opens full screen on your saved stops. Works offline with the last timetable it downloaded.</span></div><button class="btn btn-ghost btn-icon" data-act="no" aria-label="Close">${icon('close', 22)}</button></div>
     <div class="steps">${html.raw(steps.map(([t, ic], i) => `<div class="step"><span class="n">${i + 1}</span><span>${t}</span><span class="ic">${icon(ic, 20).s}</span></div>`).join(''))}</div>
     <button class="btn btn-secondary btn-lg btn-block" data-act="no">Not now</button></div>`;
   const close = () => { pref('install', 'no'); sheet.remove(); };
