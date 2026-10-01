@@ -1434,7 +1434,9 @@ function quiet() {
   const near = (b, zmin = 13.5) => !!b && z >= zmin && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
   const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
   const asked = selectedU !== null || !!uHilite || hiLoops.length > 0 || runLoops.length > 0;
-  show(U_LAYERS, asked || near(campusBox));
+  const lines = asked || near(campusBox);
+  show(U_LAYERS, lines);
+  map.getContainer().classList.toggle('u-lines', lines);   // its arrows tappable where its lines are (app.css)
   // its buses to arrows with its lines put away, and a zoom further in than its lines: at the lines' first zoom its
   // squared markers crowded the campus streets
   map.getContainer().classList.toggle('u-small', !(asked || near(campusBox, 14.5)));

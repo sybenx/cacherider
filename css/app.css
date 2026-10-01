@@ -543,6 +543,9 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 /* the Aggie Shuttle's buses go to their arrows with its lines, wherever those are put away (off campus, or out past
    the streets), not only at Connect's zoom: a full marker with no line under it read as a bus off its route */
 #map.u-small .bus.shuttle { pointer-events: none; }
+/* but tappable where its lines are drawn, under its squares' zoom: Connect's buses are tappable there, and a shuttle
+   that wasn't read as broken */
+#map.u-small.u-lines .bus.shuttle { pointer-events: auto; }
 #map.u-small .bus.shuttle .bus-marker { border-color: transparent; background: transparent; box-shadow: none; }
 #map.u-small .bus.shuttle .bus-marker svg { width: 26px; height: 26px; overflow: visible; filter: drop-shadow(0 0 1px var(--color-bg)); }
 /* thumbs: bigger buses, zoom buttons and satellite toggle on touch screens; the mouse keeps the small ones */
