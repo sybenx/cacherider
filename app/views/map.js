@@ -536,6 +536,9 @@ async function made(app) {
     if (!again) tapTimer = setTimeout(() => pick(e), 300);
   });
   const pick = e => {
+    // Beside the board on a wide screen, the Center's own view: a click on it leaves the board up and the map where it
+    // is (a route picked from a badge put away, the board as it was). The board is the page there, not a card over it.
+    if (wide() && hubOn && /^#\/hub/.test(location.hash)) { if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub'); return; }
     const r = coarse() ? 22 : 8;
     const all = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'stops-near', 'usu-stops', 'pool-stops', 'place-labels'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
     const hits = all.filter(f => f.layer.id !== 'place-labels');
@@ -610,9 +613,10 @@ async function made(app) {
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
     else if (app.route.name === 'map' && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash)) location.hash = '#/map';
     // At the Center, a route picked from its badge: put away as well, the board back as it was. Nothing picked there,
-    // the board is put away for the map itself: the Map tab, the map where it is, turned north (as its north button).
+    // the board is put away for the map itself on a phone: the Map tab, the map where it is, turned north (as its
+    // north button). Beside it on a wide screen, the board stays.
     else if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub');
-    else if (/^#\/hub(\?|$)/.test(location.hash)) leaveHubKept();
+    else if (/^#\/hub(\?|$)/.test(location.hash) && !wide()) leaveHubKept();
   };
   for (const id of ['stops', 'stops-lit', 'stops-near']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
