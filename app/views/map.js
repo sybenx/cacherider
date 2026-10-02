@@ -713,7 +713,7 @@ async function made(app) {
     // mouse's, caught a road there and opened its stops over the route.
     const routeUp = (app.route.name === 'map' || app.route.name === 'route') && focusRoute !== undefined && /^#\/map\/route\//.test(location.hash);
     if (ris.length && !ris.some(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute)) && routeUp) {
-      card.classList.remove('open', 'peek'); location.hash = '#/map'; return;
+      card.classList.remove('open', 'peek'); routeAway(); return;
     }
     selectedBus = null; selectedU = null; select(null, app);
     // The route up, its own line tapped: the whole of it again, its sheet back.
@@ -726,7 +726,7 @@ async function made(app) {
     // Only the shuttle's line there: that spot, with its stops a walk off, as a road of Connect's gets.
     else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now()); }
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
-    else if (routeUp) location.hash = '#/map';
+    else if (routeUp) routeAway();
     // At the Center, a route picked from its badge: put away as well, the board back as it was. Nothing picked there,
     // the board is put away for the map itself on a phone: the Map tab, the map where it is, turned north (as its
     // north button). Beside it on a wide screen, the board stays.
@@ -2276,10 +2276,17 @@ function busRouteHref(id) {
   const b = live.buses.find(x => x.id === id);
   return b ? '#/usu/route/' + U.routes[b.ri].id : null;
 }
+/** Beside a wide screen's panel, the page a bus was clicked from (a stop, the Center), and the route it opened: a click
+ *  off it, on nothing, goes back there. It went to the Map tab, whatever the rider had been looking at. */
+let busFrom = null;
+const routeAway = () => {
+  const b = busFrom; busFrom = null;
+  location.hash = b && wide() && location.hash.startsWith(b.route) ? b.hash : '#/map';
+};
 function selectBus(id, app) {
   clearSpot();
   // Beside the panel (a wide screen, off the Map tab) a bus opens its route there, as a stop opens its page.
-  if (wide() && app.route.name !== 'map') { const h = busRouteHref(id); if (h) { location.hash = h; return; } }
+  if (wide() && app.route.name !== 'map') { const h = busRouteHref(id); if (h) { busFrom = { hash: location.hash, route: h.split('?')[0].split('/').slice(0, 4).join('/') }; location.hash = h; return; } }
   const c = findBus(id), b = c || live.buses.find(x => x.id === id);
   selectedBus = id; selectedU = null; selected = null; uHilite = '';
   // A Connect bus draws its way on, not its whole route: the route's line, if lit, drops back so the bus's reads.
