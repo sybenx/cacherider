@@ -177,7 +177,8 @@ export function render({ to, from, at, plan, t }, clockNow) {
 function sheet(J, head, clockNow, fixed = false, also = '') {
   const p0 = J.plans[0];
   const day = p0.day > 0 ? html`<div class="dayhead">${fixed ? fmtDay(p0.ymd, true) + ' · nothing more that day' : (p0.day === 1 ? 'Tomorrow, ' + fmtDay(p0.ymd) : fmtDay(p0.ymd, true)) + ' · nothing more today'}</div>` : '';
-  return html`<div class="gohead">${head}${day}${also}<div class="jrows" role="list">${J.plans.map((p, k) => planRow(p, J.hrefs[k], k === J.i, clockNow, fixed))}</div></div>
+  const sortRow = J.plans.length > 1 ? html`<div class="chips gosort">${['quick', 'walk'].map(k => html`<button type="button" class="chip" data-sort="${k}" aria-pressed="${goSort() === k ? 'true' : 'false'}">${k === 'quick' ? 'Quickest' : 'Least walking'}</button>`)}</div>` : '';
+  return html`<div class="gohead">${head}${day}${also}${sortRow}<div class="jrows" role="list">${J.plans.map((p, k) => planRow(p, J.hrefs[k], k === J.i, clockNow, fixed))}</div></div>
     <div class="journeysheet legs">${planLegs(J.plans[J.i], J)}</div>
     <div class="fine">Worked out on this phone from the timetable and the live feed: leave when it says, and the next bus is the answer if one is missed. Walks are as the crow flies.</div>`.s;
 }
@@ -217,7 +218,14 @@ function findPlan(plans, key) {
 /** The way picked, with the others beside it for the map's card: { plans, i, from, to, dest, hrefs, top(k), legs(k),
  *  back }. A way whose first bus has since gone (the rider is on it) is kept as it was, first. */
 let kept = null;
-function pickPlan(plans, key, e, clockNow, t = null) {
+/** The ways in the order asked for: quickest (arriving soonest, then leaving latest), or least walking (the fewest
+ *  minutes on foot, climb and all, then arriving soonest). In the address (?sort=walk), so a chip is a navigation:
+ *  the map draws an address once, and the first of the new order has to be drawn. */
+const walkOf = p => p.legs.filter(l => l.kind !== 'ride').reduce((m, l) => m + (l.mins || 0), 0);
+export const goSort = () => new URLSearchParams(location.hash.split('?')[1] || '').get('sort') === 'walk' ? 'walk' : 'quick';
+const sortPlans = plans => plans.slice().sort((a, b) => goSort() === 'walk' ? (walkOf(a) - walkOf(b)) || (a.arrive - b.arrive) : (a.day - b.day) || (a.arrive - b.arrive) || (b.leave - a.leave));
+function pickPlan(plans0, key, e, clockNow, t = null) {
+  const plans = sortPlans(plans0);
   const base = location.hash.split('?')[0];
   let list = plans, i = key ? findPlan(plans, key) : -1, own = i >= 0;
   // Kept only for a way picked (not the first of whatever's listed, which then showed twice), and for the same time.
@@ -228,7 +236,7 @@ function pickPlan(plans, key, e, clockNow, t = null) {
   kept = own ? { base, key, t, plan: list[i] } : null;
   const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
   return { plans: list, i, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon }, name: e.name, base,
-    hrefs: list.map(p => base + '?' + (t ? 't=' + t + '&' : '') + 'plan=' + encodeURIComponent(planKey(p))),   // a time picked goes with the way
+    hrefs: list.map(p => base + '?' + (t ? 't=' + t + '&' : '') + (goSort() === 'walk' ? 'sort=walk&' : '') + 'plan=' + encodeURIComponent(planKey(p))),   // a time picked, and the order, go with the way
     dest: e.dest, destName: e.name };
 }
 /** For the Map tab on a phone: the way the address names, worked out afresh, or null when there's none to draw. */
@@ -376,6 +384,13 @@ function whereabouts(l) {
 }
 
 function mount(el, _app, inCard = false) {
+  // Quickest or least walking: the same ways, re-sorted, the first drawn; kept for next time.
+  for (const c of el.querySelectorAll('.gosort .chip')) c.onclick = () => {
+    kept = null;
+    const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
+    q.delete('plan'); if (c.dataset.sort === 'walk') q.set('sort', 'walk'); else q.delete('sort');   // the first of the new order is drawn; a time picked stays
+    location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
+  };
   const b = el.querySelector('#go-near');
   if (b) b.onclick = () => nearMe(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
   // From a spot to where the rider is: their fix is the end.

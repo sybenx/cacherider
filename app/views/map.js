@@ -32,6 +32,7 @@ const busMarkers = new Map();   // bus id → { marker, el }
 let selectedBus = null, selectedU = null;
 let pickFor = null;   // the stop directions are wanted to, while the map is asked where from
 let pickTo = null;
+let pickMe = false;   // the map asked where the rider is (no location to be had, or none wanted): a tap says
 let pickNow = false;  // beside a wide screen's directions page: a click is the other end, straight away, no card first    // the spot directions are wanted from, while the map is asked where to
 let hiLines = [], hiLoops = [];   // Connect route indices and shuttle route ids whose lines are drawn on top
 let runRoutes = [];   // the routes whose way on is drawn from a picked bus or stop: their buses stay bright, the rest dim
@@ -128,7 +129,7 @@ function style(sat = true) {
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
-      { id: 'trk-path', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3, 17, 5], 'line-dasharray': [1.6, 1.2], 'line-opacity': ['get', 'sure'] } },
+      { id: 'trk-path', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3, 17, 5], 'line-dasharray': [0, 1.6], 'line-opacity': ['get', 'sure'] } },   // dots, closer than a notice's, and never the shuttle's dashes
       { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
       { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
@@ -654,6 +655,13 @@ async function made(app) {
     // Beside the directions page, a click is the other end: a stop that stop, a place's name that place, anywhere else
     // that spot, a way drawn or not. A stop of the way drawn is still that stop, though: its page, as on a phone.
     const ofWay = JR && hits.some(f => f.layer.id.startsWith('stops') ? JR.stops.includes(f.properties.id) : f.layer.id === 'usu-stops' && JR.ustops.includes(f.properties.id));
+    // Asked where the rider is: the spot tapped is their place from here on, kept as a fix found would be.
+    if (pickMe) {
+      const { lat, lng } = e.lngLat, g = { lat, lon: lng, at: Date.now(), acc: 0, stale: false, kept: true, picked: true };
+      app.geo = g; pref('near', 'on'); pref('lastgeo', JSON.stringify({ lat: g.lat, lon: g.lon, at: g.at, acc: 0 }));
+      pickMe = false; location.hash = '#/';
+      return;
+    }
     if (pickNow && (pickFor || pickTo) && !ofWay) {
       const near = f => { const q = map.project(f.geometry.coordinates); return Math.hypot(q.x - e.point.x, q.y - e.point.y); };
       const st = hits.filter(f => f.layer.id.startsWith('stops')).sort((a, b) => near(a) - near(b))[0];
@@ -1293,7 +1301,8 @@ function northControl() {
       // At the Center: north up, and from north up back to south (as its benches face); any other turn is the fingers'.
       b.onclick = () => {
         if (!atHub()) { m.resetNorth({ duration: 400 }); return; }
-        pref('hub-bearing', Math.abs(m.getBearing()) > 1 ? '0' : '180');
+        const q = (Math.round((((m.getBearing() % 360) + 360) % 360) / 90) * 90 + 90) % 360;   // the next cardinal turn round
+        pref('hub-bearing', String(q > 180 ? q - 360 : q));
         frame(hubBounds(), { ...hubFit(), duration: 500 });
       };
       const UP = { 0: 'North up', 90: 'East up', 180: 'South up, as the benches face', 270: 'West up' };
@@ -1641,12 +1650,12 @@ function hubBounds() { const bb = new maplibregl.LngLatBounds(); for (const b of
 /** Which way the Center faces: south up, as its benches do, unless the rider turned it north (its compass button). */
 /** Which way the Center faces: as the rider last turned it, kept on the phone (a coworker reads it east up); else
  *  south up, as its benches face. The compass's old north-or-south choice stands until it's turned. */
-const hubBearing = () => { const b = parseFloat(pref('hub-bearing')); return Number.isFinite(b) ? b : pref('hub-up') === 'north' ? 0 : 180; };
+const hubBearing = () => { const b = parseFloat(pref('hub-bearing')); return Number.isFinite(b) ? b : 0; };   // north up unless the rider turned it (and only to a cardinal)
 /** A turn of the fingers at the Center, kept: within 10° of north, east, south or west it settles on it. */
 function keepHubTurn(e) {
   if (!hubOn || !e.originalEvent) return;   // the map's own turns (framing the Center) aren't the rider's
-  const a = ((map.getBearing() % 360) + 360) % 360, q = Math.round(a / 90) * 90 % 360, d = Math.abs(((a - q + 540) % 360) - 180);
-  const b = d <= 10 ? q : Math.round(a);
+  const a = ((map.getBearing() % 360) + 360) % 360, q = Math.round(a / 90) * 90 % 360;
+  const b = q;   // north, east, south or west, whichever is nearest: never a slant
   pref('hub-bearing', String(b > 180 ? b - 360 : b));
   if (b !== Math.round(a)) map.easeTo({ bearing: b > 180 ? b - 360 : b, duration: 200 });
 }
@@ -2483,6 +2492,15 @@ function frameStop(ll) {
 }
 
 /** The map asked where the rider will start from, for directions to a stop: the ask on the card, the map left as it is. */
+/** Where are you: the card that asks for a tap on the map, when the browser has no location to give. */
+function askMe() {
+  selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
+  const card = col.querySelector('#mapcard');
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">Where are you?</span><div class="name"><span>Tap the map where you are</span></div>
+    <div class="muted">The stops nearest that spot come first. It stays on this device.</div></div>`;
+  card.classList.remove('hidden', 'peek');
+  requestAnimationFrame(() => card.classList.add('open'));
+}
 function askSpot(toId, app, dest = false) {
   const sp = spotOf(toId), si = D.stopById[toId], name = sp ? sp.label || 'the spot you picked' : si === undefined ? '' : stop(si).hub ? D.hub.name : stop(si).name;
   selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
@@ -2576,7 +2594,7 @@ function busIn(id, app) {
   b.extend([D.hub.lon, D.hub.lat]);
   requestAnimationFrame(() => frame(b, { maxZoom: 16, bearing: 0, duration: 700 }));
 }
-async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, at, from, to, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
+async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
   // A spot's disc and pin go with its card: gone to another page (the Center, a stop, Stops) the card was replaced and
   // the dashed disc stayed on the map. Kept for a spot's own address and for picking one; not by the minute's redraw.
@@ -2605,6 +2623,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   if (app.route.name !== 'map') col.querySelector('#mapresults').classList.add('hidden');   // the search's list is the Map tab's, not the page's beside it
   notice(clockNow);
   pickFor = from || goPick && goPick.for || null; pickTo = to || goPick && goPick.to || null; pickNow = !!goPick;
+  pickMe = !!me; if (me && !tick) askMe();
   if (ready) refreshClosed(clockNow);
   if (app.geo) placeMe(app.geo);
   if (page && tick) { pageSheet(page, app, false); return; }   // a stop's sheet: its times, counting down

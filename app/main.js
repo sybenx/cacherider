@@ -275,8 +275,9 @@ async function render(tick = false) {
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert', mapB = name === 'map' && seg[1] === 'bus';
     const from = name === 'map' && seg[1] === 'from' ? seg[2] || null : null;   // the map asked where the rider will start from, for directions to this stop
     const to = name === 'map' && seg[1] === 'to' ? seg[2] || null : null;   // or where they're going, for directions from this spot
+    const me = name === 'map' && seg[1] === 'me';   // or where the rider is, with no location to be had
     m.show({
-      stopId: name === 'map' && !hubMap && !goMap && !at && !from && !mapU && !mapR && !mapUR && !mapA && !mapB && seg[1] !== 'to' && seg[1] !== 'from' ? seg[1] : name === 'stop' ? seg[1] : null, from, to,
+      stopId: name === 'map' && !hubMap && !goMap && !at && !from && !mapU && !mapR && !mapUR && !mapA && !mapB && seg[1] !== 'to' && seg[1] !== 'from' && !me ? seg[1] : name === 'stop' ? seg[1] : null, from, to, me,
       uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       campus: mapU && !seg[2],   // the home page's shuttle line: campus, its loops drawn
@@ -323,11 +324,13 @@ export function askLocation(onDone) {
       ? html`<p>Your browser is refusing to share your location with Cache Rider. Allow it in the site settings for this page, then try again.</p><p class="sub">Search and browsing by route work without it.</p>`
       : html`<p>Your browser will ask to share your location. Cache Rider uses it on this device to list the nearest stops first. It isn't sent anywhere or stored.</p><p class="sub">Search and browsing by route work without it.</p>`}
     <button class="btn btn-primary btn-lg blueprint" data-act="go"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>${blocked ? 'Try again' : 'Use my location'}</button>
+    <button class="btn btn-secondary btn-lg" data-act="pick">Pick a spot on the map</button>
     <button class="btn btn-secondary btn-lg" data-act="no">Not now</button>
   </div>`;
   const close = () => sheet.remove();
   sheet.querySelector('.scrim').onclick = close;
   sheet.querySelector('[data-act=no]').onclick = close;
+  sheet.querySelector('[data-act=pick]').onclick = () => { close(); location.hash = '#/map/me'; };   // a desk, a tablet without GPS: say where on the map
   sheet.querySelector('[data-act=go]').onclick = () => { close(); locate(onDone); };
   body.appendChild(sheet);
 }

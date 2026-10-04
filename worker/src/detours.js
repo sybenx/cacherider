@@ -85,7 +85,9 @@ export function inService(W, out, b, key, nowSec) {
     // The feed drops a trip's stops as they're passed: a first stop past the trip's second, it's started; else its first
     // stop due within two minutes, about to. Nothing still to come, it's done.
     const ahead = u.s.filter(x => x[2] > nowSec - 60);
-    if (u.s.some(x => x[2])) return ahead.length > 0 && (Math.min(...u.s.map(x => x[1] ?? 0)) >= 2 || Math.min(...ahead.map(x => x[2])) <= nowSec + 120);
+    // Started, and not done: its first stop dropped from the feed. Not 'about to' (its first stop due within minutes):
+    // a bus on its way to its first stop from the yard (16, across its own route) counted as going round.
+    if (u.s.some(x => x[2])) return ahead.length > 0 && Math.min(...u.s.map(x => x[1] ?? 0)) >= 2;
   }
   return W.L.inHours(key, nowSec * 1000);
 }
@@ -100,6 +102,7 @@ export function watchStep(W, t, buses) {
     if (live === 0) { if (b) { b.on = null; b.off = []; b.t = t; } continue; }
     // A track begun again keeps what it knew of its trip (done with it, say), its trip unchanged.
     if (!b || b.key !== key || t - b.t > GAP) b = W.buses[label] = { key, t, on: null, off: [], offEnd: 0, near: {}, trip: b?.trip, away: b?.away, done: b?.done };
+    const prevT = b.t;
     b.t = t;
     const p = L.xy(lat, lon), last = b.at;
     b.at = p;
@@ -134,7 +137,11 @@ export function watchStep(W, t, buses) {
       if (s.key !== key) continue;
       if (far(L, p, s.olat, s.olon) <= NEAR) { b.near[s.id] = t; b.mid[s.id] = false; }
       else if (b.near[s.id] && far(L, p, s.blat, s.blon) <= NEAR) {
-        if (t - b.near[s.id] < THROUGH && b.offEnd < b.near[s.id] && b.mid[s.id] && s.streak > 0) { s.streak = 0; s.along = t; W.changed.add(s); }
+        // A short way round (a block or two: Route 2's by 300 East out of the Center) has no report between its two
+        // ends: a bus along the line there is seen at one end and then the other, the straight way between them on
+        // the line, within a report or two. Its ways round have a report off between, which b.offEnd keeps.
+        const straight = last && t - prevT <= 90 && !L.off(key, [(last[0] + p[0]) / 2, (last[1] + p[1]) / 2]);
+        if (t - b.near[s.id] < THROUGH && b.offEnd < b.near[s.id] && (b.mid[s.id] || straight) && s.streak > 0) { s.streak = 0; s.along = t; W.changed.add(s); }
         delete b.near[s.id]; delete b.mid[s.id];
       } else if (b.near[s.id]) b.mid[s.id] = true;   // on its line, clear of both ends, on the way from one to the other
     }

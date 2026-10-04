@@ -43,7 +43,7 @@ export function render({ section }, clockNow) {
       <p><a href="https://github.com/sybenx/cacherider" target="_blank" rel="noopener">Source on GitHub</a> · Companion to the <a href="https://github.com/sybenx/headway" target="_blank" rel="noopener">Headway</a> Pebble watchface. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, via Protomaps.</p></div>
     ${shareBlock({ url: siteLink(''), title: 'Share Cache Rider', lines: ['Next buses for Cache Valley, on any phone. Nothing to install.'] })}
     <div class="fine">Build <span id="build">…</span></div>
-    <div class="fine">Cache Rider isn't affiliated with ${D.agency.name}${U && U.agency ? ' or ' + U.agency : ''}.</div>`;
+    <div class="fine">Cache Rider isn't affiliated with ${D.agency.name} (${D.agency.brand})${U && U.agency ? ' or ' + U.agency : ''}.</div>`;
   return {
     title: 'About',
     anchor: section === 'alerts' ? 'alerts' : null,   // #/about/alerts lands on the alerts
