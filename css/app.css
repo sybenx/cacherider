@@ -85,7 +85,7 @@ svg { display: block; flex: none; }
 /* a stop page opened from the map slides up over it, and a swipe down at its top sends it back */
 #side.sheet-in { transition: transform .28s cubic-bezier(.2,.7,.2,1); }
 @media (prefers-reduced-motion: reduce) { #side.sheet-in { transition: none; } }
-#mapcol { display: none; position: relative; background: var(--color-surface); }
+#mapcol { display: none; position: relative; background: var(--color-surface); overflow: hidden; }   /* a card slid out below is clipped, not scrolled to */
 #body.map-open #side { display: none; }
 #body.map-open #mapcol { display: block; flex: 1; }
 #tabs {
@@ -512,7 +512,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .nobus .title { font-family: var(--font-heading); font-weight: 600; font-size: 1.625rem; line-height: 1.05; }
 .nobus .sub { font-size: 0.9375rem; line-height: 1.45; color: var(--cr-muted); text-wrap: pretty; }
 .bus { cursor: pointer; }
-.bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: var(--bus-color); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; transform: scale(var(--bus-scale, 1)); }
+.bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: var(--bus-color); color: var(--bus-ink, #fff); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; transform: scale(var(--bus-scale, 1)); }
 .bus-marker svg { width: 14px; height: 14px; }
 .bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
 .bus.dim .bus-marker { opacity: .4; }
@@ -537,7 +537,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 #map.bus-small .bus.lit .bus-marker, #map.bus-small .bus.on .bus-marker { transform: none; border-color: #fff; background: var(--bus-color); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); }
 #map.bus-small .bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
 #map.bus-small .bus.lit .bus-marker svg, #map.bus-small .bus.on .bus-marker svg { width: 14px; height: 14px; }
-#map.bus-small .bus.lit .bus-marker path, #map.bus-small .bus.on .bus-marker path { fill: #fff; stroke: none; }
+#map.bus-small .bus.lit .bus-marker path, #map.bus-small .bus.on .bus-marker path { fill: var(--bus-ink, #fff); stroke: none; }
 /* the Aggie Shuttle's A (map.js ARROW_A): solid on the full marker, in strokes far off (its legs a stroke wide, there's
    no hollow to it); a lit or picked one keeps its full marker, as Connect's do */
 .bus-marker path.as { display: none; }

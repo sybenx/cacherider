@@ -153,7 +153,7 @@ function nextHour(st, pick, clockNow) {
       ${badge(t.r, 26)}<span class="tcb-mid"><span class="dest">${headsign(t)}</span><span class="sub${t.live ? ' live' : ''}">${t.live ? liveWord(t) : t.onTime ? 'Scheduled · on time' : 'Scheduled'}</span>${lastTag(t)}</span>
       <span class="tcb-tag">${tag ? html.raw(`<span class="tag${tag === 'HERE' ? ' in' : ''}">${tag}</span>`) : ''}</span></a>`;
   });
-  return html`<div class="tcb"><div class="section between"><span>${title}</span>${rows.some(r => r.t.live) ? html`<span class="note">struck is the timetable</span>` : ''}</div>
+  return html`<div class="tcb"><div class="section between"><span>${title}</span>${rows.some(r => r.t.live) ? html`<span class="note">crossed out · scheduled</span>` : ''}</div>
     ${out.length ? out : html`<p class="tc-foot">Nothing leaves in the next hour.</p>`}</div>`;
 }
 
@@ -284,7 +284,7 @@ export function bays(bay, clockNow) {
     const here = !!bus && distance(bus.lat, bus.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(bus.speed > PARKED);
     // In but not drawn on its badge (creeping into its bay or out of it, between standing here and leaving): HERE, as
     // the board says. Without it the badge said nothing, its bus under it, and a rider read the bay as empty.
-    const tag = !tags || s.off ? '' : in_ ? (here ? '' : 'HERE') : s.eta > 0 ? s.eta + ' MIN' : '';
+    const tag = !tags || s.off ? '' : in_ ? (here ? '' : 'HERE') : s.eta > 0 ? s.eta + ' MIN' : s.dep && s.dep.day === 0 && s.leave !== null ? clock(s.leave).h : '';   // no bus on its way: when the next leaves
     const course = here ? bus.course ?? null : null;   // which way it faces in its bay
     return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, here, bus: here ? bus.id : null, course, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);

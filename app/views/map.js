@@ -508,7 +508,7 @@ function detourCard(u) {
 /** The ways round the buses have been seen to take (data.js's A.seen, announced or not), along the streets, dashed
  *  in the route's colour, fainter while only two buses have gone that way. */
 function trackedPaths() {
-  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
+  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), fade: mix(sinkLine('#' + D.routes[ri].color), '#f2f2f3', 0.3), dfade: mix(lift('#' + D.routes[ri].color), '#101214', 0.3), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
@@ -1830,6 +1830,7 @@ function litLines(m, lines, loops, soft = false) {
   const own = dk ? 'dcolor' : 'color', gone = dk ? 'dgone' : 'gone';
   m.setPaintProperty('route-lines', 'line-color', any ? ['get', dk ? 'dfade' : 'fade'] : ['interpolate', ['linear'], ['zoom'], 13, ['case', ['==', ['get', 'done'], true], ['get', gone], ['get', own]], 15, ['get', own]]);
   m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : 0.75);
+  if (m.getLayer('trk-path')) m.setPaintProperty('trk-path', 'line-color', ['get', any ? (dk ? 'dfade' : 'fade') : own]);   // a detour the buses showed us fades with its route
   m.setPaintProperty('usu-lines', 'line-opacity', any ? 0.25 : ['case', ['get', 'approx'], 0.35, 0.9]);
 }
 
@@ -1960,11 +1961,16 @@ function busScale() {
   if (scale !== busScaleAt) { busScaleAt = scale; c.style.setProperty('--bus-scale', scale); }
   if (small !== busSmallAt) { busSmallAt = small; c.classList.toggle('bus-small', small); }
 }
-const ARROW = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
+const ARROW = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
+/** The ink on a bus's marker: dark on a light colour (the Green Loop's white arrow vanished on its green), white on the rest. */
+function inkOn(hex) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 170 ? '#101214' : '#ffffff';
+}
 // An Aggie shuttle's: an A, its apex the way it heads. Close in solid (its counter a hole); far off in strokes, two legs
 // and a crossbar low, the paper filling the A's top as it does Connect's hollow arrows: an arrowhead first, its legs
 // short tails (app.css shows the one it wants).
-const ARROW_A = '<svg viewBox="0 0 24 24" fill="#fff"><path class="af" fill-rule="evenodd" d="M12 3 20 20H17L15.12 16H8.88L7 20H4ZM12 9.37 13.71 13H10.29Z"/><path class="as" d="M12 3.5 17.35 16.5H6.65ZM6.65 16.5 5 20.5M17.35 16.5 19 20.5"/></svg>';
+const ARROW_A = '<svg viewBox="0 0 24 24" fill="currentColor"><path class="af" fill-rule="evenodd" d="M12 3 20 20H17L15.12 16H8.88L7 20H4ZM12 9.37 13.71 13H10.29Z"/><path class="as" d="M12 3.5 17.35 16.5H6.65ZM6.65 16.5 5 20.5M17.35 16.5 19 20.5"/></svg>';
 /** A bus fades when the rider has lit something else: a Connect route or a shuttle loop that isn't its own. */
 /** A way drawn for another day: no bus out now is one of its. */
 const wayLater = () => !!(JR && JR.plan && JR.plan.ymd !== now().ymd);
@@ -2237,13 +2243,13 @@ export function liveUpdate(app) {
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
     } else glide(m, b.lon, b.lat);
     m.el.title = title;
-    m.el.style.setProperty('--bus-color', color);
+    m.el.style.setProperty('--bus-color', color); m.el.style.setProperty('--bus-ink', inkOn(color));
     m.marker.setRotation(b.course);
     m.ri = b.ri; m.speed = b.speed; m.to = [b.lon, b.lat];   // where it's gliding to: in or out by that, not by where it's got
     m.el.classList.toggle('on', selectedBus === b.id || ringed === b.id);
     paintBus(m);
   };
-  if (U) for (const b of live.buses) place(b, 'u', U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
+  if (U) for (const b of live.buses) place(b, 'u', dark() ? lift(U.routes[b.ri].color) : U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
   if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
