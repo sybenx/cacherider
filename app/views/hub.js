@@ -69,9 +69,10 @@ function status(k, clockNow) {
   const late = today && !loop ? Math.max(0, leave - schedOf(dep)) : 0;
   return { k, ris, loop, deps, dep, eta, at: eta === 0 ? bus : null, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, doubt: eta === null && loose && doubt, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
 }
-/** Where a route's card on the board goes: to its bus on the map while it's on its way in or still on the run before
- *  (where is it, and how it comes), else the route picked on the board, or put back. */
-const cardHref = (s, pick) => s.bus && pick !== s.k ? '#/map/bus/' + encodeURIComponent(s.bus) : '#/hub' + (pick === s.k ? '' : '/' + s.k);
+/** Where a route's card on the board goes: the route picked on the board, or put back. (It went to the bus on the map
+ *  while one was on its way in, and to the board otherwise: the same button did two things by the minute, and the
+ *  board's own answer, its next departures, was a tap away only some of the time. The bus is a link on the card.) */
+const cardHref = (s, pick) => '#/hub' + (pick === s.k ? '' : '/' + encodeURIComponent(s.k));
 
 /** Every key's status, and the picked one: a key, or (from older links) a bay's stop id. */
 let stKey = null, stKept = null, stAlerts = null;   // the alerts by the object: a reload is a new one
@@ -320,7 +321,7 @@ function picked(s, clockNow) {
   });
   return html`<div class="tc-pick blueprint">${corners()}
     <div class="top">${baySi !== undefined ? html.raw(routeBadgeLink(ri, baySi, 44, s.deps[0] && s.deps[0].dir)) : badge(ri, 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
-    ${lateLine}<span class="words">${words}</span>
+    ${lateLine}<span class="words">${words}</span>${s.bus ? html`<div class="golinks"><a class="golink" href="#/map/bus/${encodeURIComponent(s.bus)}">${icon('map', 16)}Where it is on the map</a></div>` : ''}
     ${cells.length ? html`<div class="cells">${cells}</div>` : ''}</div>`;
 }
 

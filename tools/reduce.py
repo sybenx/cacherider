@@ -232,6 +232,11 @@ hub_out = {'name': hub['name'], 'short': hub['short'], 'lat': hub['lat'], 'lon':
            'plan': hub.get('plan')}
 
 agency = table('agency.txt')[0]
+# 'CVTD Cache Valley Transit District': the initials said and then spelled out. The name alone, when the first word is
+# the initials of the words after it; the brand ('Connect') is the hints', else the name.
+_an = agency['agency_name'].split()
+if len(_an) > 2 and _an[0].isupper() and _an[0] == ''.join(w[0] for w in _an[1:1 + len(_an[0])]).upper():
+    agency['agency_name'] = ' '.join(_an[1:])
 feed = (table('feed_info.txt', required=False) or [{}])[0]
 out = {
     'agency': {'name': agency['agency_name'], 'brand': H.get('brand', agency['agency_name']), 'url': H.get('agency_url', agency.get('agency_url', '')),
