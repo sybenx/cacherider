@@ -158,7 +158,7 @@ export const LIVE_URL = 'https://live.cacherider.com/';
 export async function loadAlerts({ relay = true } = {}) {
   try {
     let j = null;
-    if (relay) try { const r = await fetch(LIVE_URL + 'alerts', { cache: 'no-store' }); if (r.ok) j = await r.json(); } catch { /* the file, then */ }
+    if (relay) try { const r = await fetch(LIVE_URL + 'alerts', { cache: 'no-store', signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined }); if (r.ok) j = await r.json(); } catch { /* the file, then */ }
     // The file's too, beside the relay's: it keeps an alert two days after the agency drops it at its posted end
     // ('lapsed', tools/alerts.py), and the relay has only what the agency lists now.
     let file = null;
@@ -177,7 +177,7 @@ export async function loadAlerts({ relay = true } = {}) {
     }
     let seen = [];
     if (relay && pref('detours') !== 'off') try {
-      const r = await fetch(LIVE_URL + 'detours', { cache: 'no-store' });
+      const r = await fetch(LIVE_URL + 'detours', { cache: 'no-store', signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
       if (r.ok) {
         const list = ((await r.json()).detours || []).filter(d => d.streak >= 2);
         // Each way round along the streets (the map's own tiles), for the stops it passes and the streets it takes:

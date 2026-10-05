@@ -80,7 +80,7 @@ async function tick(force) {
   if (!force && document.visibilityState !== 'visible') return;   // the timer waits for the screen to be looked at
   live.fetching = true; lastTry = Date.now();
   try {
-    const r = await fetch(FEED + '?getBuses=1&deviceId=1', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'json=' + JSON.stringify({ s0: U.system, sA: 1 }) });
+    const r = await fetch(FEED + '?getBuses=1&deviceId=1', { signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined, method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'json=' + JSON.stringify({ s0: U.system, sA: 1 }) });
     const j = await r.json();
     const buses = [];
     for (const list of Object.values(j.buses || {})) for (const b of list) {

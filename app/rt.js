@@ -69,7 +69,7 @@ async function tick(force) {
   if (!force && Date.now() - lastTry < IDLE && !busesDue()) return;
   rt.fetching = true; lastTry = Date.now();
   try {
-    const j = await (await fetch(RT_URL, { cache: 'no-store' })).json();
+    const j = await (await fetch(RT_URL, { cache: 'no-store', signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined })).json();   // a relay that hangs would stall the polling, not just this poll
     if (j.error) throw new Error(j.error);
     index();
     const trips = {};
