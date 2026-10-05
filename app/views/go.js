@@ -405,10 +405,10 @@ function mount(el, _app, inCard = false) {
     location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
   };
   const b = el.querySelector('#go-near');
-  if (b) b.onclick = () => nearMe(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
+  if (b) b.onclick = () => nearMe(() => window.dispatchEvent(new HashChangeEvent('hashchange')), true);
   // From a spot to where the rider is: their fix is the end.
   const h = el.querySelector('#go-home');
-  if (h) h.onclick = () => nearMe(g => { if (g) location.hash = `#/go/${spotKey(g.lat, g.lon, 'where you are')}/${h.dataset.from}`; });
+  if (h) h.onclick = () => nearMe(g => { if (g) location.hash = `#/go/${spotKey(g.lat, g.lon, 'where you are')}/${h.dataset.from}`; }, true);
   // Leave now, at a time, or arrive by one: the button opens the pickers; Set puts the time in the address (the ways
   // worked out afresh from it), Now takes it out. A way picked before goes: it was a way from another time.
   const fb = el.querySelector('#go-from'), fa = el.querySelector('.fromacts');

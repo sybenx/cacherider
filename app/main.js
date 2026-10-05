@@ -336,7 +336,7 @@ export function askLocation(onDone) {
   body.appendChild(sheet);
 }
 
-export function locate(onDone) {
+export function locate(onDone, fresh = false) {
   if (!navigator.geolocation) { pref('near', 'blocked'); onDone && onDone(null); return; }
   let precise = false, answered = false;
   const take = (p, fine) => {
@@ -370,21 +370,27 @@ export function locate(onDone) {
   // them show now, not after the GPS has warmed up (seconds, on a phone opened after a while). Only for the page's own
   // sorting: a way asked for from here (onDone) waits for the GPS.
   if (!onDone) navigator.geolocation.getCurrentPosition(p => { if (!precise) take(p, false); }, () => { /* the GPS's, then */ }, { enableHighAccuracy: false, maximumAge: 600000, timeout: 4000 });
-  navigator.geolocation.getCurrentPosition(p => { precise = true; take(p, true); }, fail, { enableHighAccuracy: true, maximumAge: 60000, timeout: 15000 });
+  // Asked afresh (a tap on the map's button): the GPS's own fix now, not one up to a minute old.
+  navigator.geolocation.getCurrentPosition(p => { precise = true; take(p, true); }, fail, { enableHighAccuracy: true, maximumAge: fresh ? 0 : 60000, timeout: 15000 });
 }
 
 /** Near me: silent when the browser already allows it, the explaining sheet only when the browser is about to ask. */
-export async function nearMe(onDone) {
+export async function nearMe(onDone, fresh = false) {
   // A fix from the last two minutes is where the rider is: no browser call, so no prompt.
-  if (app.geo && Date.now() - app.geo.at < 120000) { onDone && onDone(app.geo); return; }
+  const have = app.geo && Date.now() - app.geo.at < 120000 ? app.geo : null;
+  if (have && !fresh) { onDone && onDone(have); return; }
+  // Asked afresh (the map's button, a way from where you are): the kept fix at once, where there is one, and the
+  // phone asked for its own now; that one again, where it's somewhere else. A tap on the button is a question
+  // about now, not two minutes ago (a rider walking, or a spot picked on the map earlier).
+  if (have && onDone) { onDone(have); const first = onDone; onDone = g => { if (g && distance(have.lat, have.lon, g.lat, g.lon) > 30) first(g); }; }
   // Allowed before: straight to the browser, without our explaining sheet. (Firefox answers 'prompt' for a
   // permission it has given unless the rider ticked Remember, so its answer isn't trusted here.)
-  if (pref('near') === 'on') return locate(onDone);
+  if (pref('near') === 'on') return locate(onDone, fresh);
   let state = 'prompt';
   try {
     if (navigator.permissions) state = (await navigator.permissions.query({ name: 'geolocation' })).state;
   } catch { /* the browser won't say; go by what we remember */ }
-  if (state === 'granted') return locate(onDone);
+  if (state === 'granted') return locate(onDone, fresh);
   if (state === 'denied') pref('near', 'blocked');
   askLocation(onDone);
 }

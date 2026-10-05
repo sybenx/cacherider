@@ -1357,7 +1357,7 @@ function nearControl() {
         // At the Center (the map too, its board up): leave it for the near view, as the Map tab leaves it for the map.
         if (/^#\/hub/.test(location.hash)) { resetDue = true; location.hash = '#/map'; return; }
         toNear(geo, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700);
-      });
+      }, true);   // the phone asked for its fix now, every tap
       el.appendChild(b); this.el = el; return el;
     },
     onRemove() { this.el.remove(); },
