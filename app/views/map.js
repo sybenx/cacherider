@@ -78,7 +78,12 @@ function style(sat = true) {
   // The basemap, less what draws nothing in the valley (no tunnels, piers, beaches, zoo, airfield worth a layer; no
   // borders, country or ocean names) and what only clutters it (one-way arrows, house numbers, shops and churches):
   // the map is the buses', and a street's name is all a rider reads off it. Buildings come in half a zoom later.
-  const base = layers('protomaps', f, { lang: 'en' }).filter(l => !QUIET.test(l.id)).map(l => l.id === 'buildings' ? { ...l, minzoom: 12.5 } : l)
+  // Paths thin and, close up (17 and in), broken, the service drives wider and whole: alike in the basemap, where a
+  // path was the wider of the two. Written into the style, not set at the Center: a dash pattern changed on a layer
+  // makes MapLibre lay out the whole source again, every tile on screen built anew and its kept tiles thrown out,
+  // which was the gray on every step between the Center and the Map tab, however many tiles were built ahead.
+  const paths = l => l.id === 'roads_other' ? { ...l, paint: { ...l.paint, 'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 14, 0.5, 20, 3], 'line-dasharray': ['step', ['zoom'], ['literal', [1, 0]], 17, ['literal', [2, 1.5]]] } } : l;
+  const base = layers('protomaps', f, { lang: 'en' }).filter(l => !QUIET.test(l.id)).map(l => l.id === 'buildings' ? { ...l, minzoom: 12.5 } : paths(l))
     .flatMap(l => [l, ...with500(l)]);
   const st = {
     version: 8,
@@ -1550,9 +1555,7 @@ function paper(on) {
         : l.type === 'symbol' ? [['text-opacity', 0.12], ['icon-opacity', 0.12]] : [];
       for (const [prop, v] of props) { paperKept.push([l.id, prop, map.getPaintProperty(l.id, prop)]); map.setPaintProperty(l.id, prop, v); }
     }
-    // The paths drawn as paths, thin and broken, the drives the buses take wider and whole: alike in the basemap,
-    // where a path was the wider of the two.
-    for (const [prop, v] of [['line-width', ['interpolate', ['exponential', 1.6], ['zoom'], 14, 0.5, 20, 3]], ['line-dasharray', [2, 1.5]]]) if (map.getLayer('roads_other')) { paperKept.push(['roads_other', prop, map.getPaintProperty('roads_other', prop)]); map.setPaintProperty('roads_other', prop, v); }
+    // (The paths' own look, thin and broken, is in the style from zoom 17: see paths() in style().)
   } else if (!on && paperKept) {
     for (const [id, prop, v] of paperKept) if (map.getLayer(id)) map.setPaintProperty(id, prop, v === undefined ? null : v);
     paperKept = null;
