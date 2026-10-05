@@ -593,7 +593,7 @@ async function made(app) {
   placeControls();
   WIDE.addEventListener('change', placeControls);
   squaresOnDemand(map);
-  map.on('load', () => { ready = true; markNear(nearIds, nearBy); addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimesSoon(focusRoute, now()); });
+  map.on('load', () => { ready = true; zoomBias = biasOf(map.getContainer()); applyBias(); markNear(nearIds, nearBy); addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimesSoon(focusRoute, now()); });
   map.on('idle', () => (window.requestIdleCallback || (f => setTimeout(f, 200)))(warmViews, { timeout: 2000 }));
   map.on('zoom', busScale);
   map.on('rotateend', keepHubTurn);
@@ -747,7 +747,7 @@ async function made(app) {
   for (const id of ['stops', 'stops-lit', 'stops-near']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; runsKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); markNear(nearIds, nearBy); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; applyBias(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; runsKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); markNear(nearIds, nearBy); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -1469,7 +1469,7 @@ function quiet() {
   if (!campusBox && U) campusBox = boxOf(U.stops.filter(s => s.routes.length).map(s => [s.lon, s.lat]));
   if (!poolBox && POOL) poolBox = boxOf([...(POOL.area ? POOL.area.flatMap(p => p[0]) : POOL.zone), ...POOL.stops.map(s => [s.lon, s.lat])]);   // its pickups too: one with no area round it (the Center's) still shown
   const z = map.getZoom(), v = map.getBounds(), m = 0.003;   // a few hundred metres round the box
-  const near = (b, zmin = 13.5) => !!b && z >= zmin && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
+  const near = (b, zmin = 13.5) => !!b && z >= zmin - zoomBias && v.getWest() < b[2] + m && v.getEast() > b[0] - m && v.getSouth() < b[3] + m && v.getNorth() > b[1] - m;
   const show = (ids, on) => { for (const id of ids) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
   const asked = selectedU !== null || !!uHilite || hiLoops.length > 0 || runLoops.length > 0;
   const lines = asked || near(campusBox);
@@ -1970,7 +1970,7 @@ function notice(clockNow) {
 let busScaleAt = null, busSmallAt = null;
 function busScale() {
   if (!map) return;
-  const z = map.getZoom();
+  const z = map.getZoom() + zoomBias;   // a bigger screen's buses grow sooner, with its stops
   const scale = (Math.round((z >= 14 ? 1 : z >= 12 ? 0.45 + (z - 12) * 0.275 : Math.max(0.2, 0.45 - (12 - z) * 0.125)) * 10) / 10).toFixed(1), small = z < 13;
   const c = map.getContainer();
   if (scale !== busScaleAt) { busScaleAt = scale; c.style.setProperty('--bus-scale', scale); }
@@ -2801,9 +2801,20 @@ function routeBounds(ri) {
 // frame it showed blank between (the map flashed all through a window's resize). Its resolution set once the size
 // rests: on a big window every step of a drag changed it, the canvas built anew each time.
 let ratioWait = 0;
+/** How much sooner the map's things come in on a bigger screen: a tablet or a desk shows twice a phone's width at
+ *  the same zoom, so stops, the shuttle's lines and the labels at a phone's thresholds came late to it, the map
+ *  bare where a phone's would be busy. One zoom level at most, by the screen's shorter side against a phone's. */
+let zoomBias = 0;
+const biasOf = box => Math.max(0, Math.min(1, Math.round(Math.log2(Math.min(box.clientWidth, box.clientHeight) / 390) * 4) / 4));
+const ZOOMS = { stops: [12, null], 'stops-maybe': [13.5, null], 'pool-stops': [12, null], 'usu-stops': [12.5, null], 'usu-lines': [12, null], 'usu-labels': [15.5, null], 'stop-labels': [15, null], 'place-labels': [15, null], 'route-arrows': [14, null], 'runs-arrows': [14, null], 'stops-lit': [null, 12], 'stops-near': [null, 12], 'stops-near-labels': [0, 15] };
+function applyBias(m = map) {
+  if (!m || !m.getLayer('stops')) return;
+  for (const [id, [lo, hi]] of Object.entries(ZOOMS)) if (m.getLayer(id)) m.setLayerZoomRange(id, lo === null ? 0 : Math.max(0, lo - zoomBias), hi === null ? 24 : hi - zoomBias);
+}
 function sized(m = map) {
   const box = m.getContainer(), cv = m.getCanvas();
   if (!box.clientWidth || !box.clientHeight) return;   // hidden: fitted when it's shown
+  if (m === map) { const b = biasOf(box); if (b !== zoomBias) { zoomBias = b; applyBias(); busScale(); quiet(); } }
   const r = inkRatio(box);
   if (Math.abs(r - m.getPixelRatio()) > 0.05) {   // a size the budget draws differently: redrawn at its ratio, when it rests
     clearTimeout(ratioWait);
