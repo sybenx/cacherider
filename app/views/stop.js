@@ -81,7 +81,14 @@ export function render({ id, full, run, on }, clockNow) {
   }
   for (const u of passesAt(s.id)) {
     const names = u.gone.map(id => D.stops[stopIndex(id)].name);
-    parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} came past this stop</b><div class="sub">On their way around ${names.length === 1 ? names[0] : names.length + ' of their usual stops: ' + names.join(', ')}.</div>${fine}</div></div>`);
+    // When the next comes past: its time at the last stop it serves before going round (the nearest of the route's
+    // stops to where the buses leave the line that they haven't skipped), a minute or two before here.
+    const [lla, llo] = u.d.leaves;
+    const before = u.ri.flatMap(ri => Object.values(D.routes[ri].stops || {}).flat().map(si => ({ ri, si }))).filter(x => !u.gone.includes(D.stops[x.si].id))
+      .map(x => ({ ...x, d: distance(lla, llo, D.stops[x.si].lat, D.stops[x.si].lon) })).sort((x, y) => x.d - y.d)[0];
+    const t = before && before.d < 400 ? nextAt(before.si, 1, clockNow, 8, x => x.r === before.ri)[0] : null;
+    const nextLine = t ? html`<div class="sub">${t.day === 0 ? html`Next one: it leaves <a href="#/stop/${D.stops[before.si].id}">${D.stops[before.si].name}</a> ${relative(t, clockNow)} (${clockText(t.min)}${t.live ? ', ' + liveWord(t).toLowerCase() : ''}) and comes past here a minute or two after. Wave it down.` : html`No more today; the next is ${t.day === 1 ? 'tomorrow' : dayName(t.ymd)} ${clockText(t.min)} from ${D.stops[before.si].name}.`}</div>` : '';
+    parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} came past this stop</b><div class="sub">On their way around ${names.length === 1 ? names[0] : names.length + ' of their usual stops: ' + names.join(', ')}.</div>${nextLine}${fine}</div></div>`);
   }
 
   if (allClosed) {
