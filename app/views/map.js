@@ -1526,8 +1526,11 @@ function with500(l) {
   const lines = /^roads_/.test(l.id) && l.type === 'line' && !PAPER_KEEP.test(l.id), names = /^roads_labels_/.test(l.id) && l.type === 'symbol';
   if (!lines && !names) return [];
   const filter = l.filter ? ['all', l.filter, IS500] : IS500;
-  return [lines ? { ...l, id: l.id + '-500n', filter, paint: { ...l.paint, 'line-opacity': 0 } }
-    : { ...l, id: l.id + '-500n', filter, layout: { ...l.layout, 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { ...l.paint, 'text-opacity': 0 } }];
+  // From the Center's own zoom only: a layer below its minzoom is skipped when a tile is parsed, so these eighteen
+  // copies cost nothing across the valley (parsed in every tile, every pan, they were the roads twice over).
+  const minzoom = Math.max(l.minzoom || 0, 17);
+  return [lines ? { ...l, id: l.id + '-500n', minzoom, filter, paint: { ...l.paint, 'line-opacity': 0 } }
+    : { ...l, id: l.id + '-500n', minzoom, filter, layout: { ...l.layout, 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { ...l.paint, 'text-opacity': 0 } }];
 }
 let paperKept = null;
 function paper(on) {
