@@ -30,6 +30,8 @@ export function setRtWanted(w) {
   if (w && Date.now() - rt.at > POLL && Date.now() - lastTry > POLL) tick(true);
 }
 export const rtStale = () => rt.at === 0 || Date.now() - rt.at > STALE;
+// A tab back in view (hidden, its polling stops): the feed asked for at once, not on the interval's next beat.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && rt.wanted && Date.now() - rt.at > POLL) tick(true); });
 export const rtHasData = () => rt.at > 0;
 export function rtSeen() { return clockText(now(new Date(rt.at)).min); }
 
@@ -362,8 +364,15 @@ function feedSays(t, u) {
   // how trips switch). A loop's listing is trusted for ten minutes past its time, a route's for thirty: a loop bus
   // has been seen with the Transit Center still listed, minutes old, well after it left.
   const nowS = Date.now() / 1000, cap = isLoop(t.r) ? 600 : 1800;
-  if (hit && !hit.skipped && D.stops[t.si].hub && hit.time < nowS - 30 && nowS - hit.time < cap)
-    return held(t, toMin(Math.floor(nowS)) - t.min);
+  if (hit && !hit.skipped && D.stops[t.si].hub && hit.time < nowS - 30 && nowS - hit.time < cap) {
+    // Still there by the bus itself, where the feed names one: its position within the bay (110 m, as below). A bus
+    // on this trip a long way off has gone, whatever the listing says; a listing with no bus to check it against is
+    // trusted only while the trip's word is fresh (three minutes). A feed whose trip updates froze while its positions
+    // flowed had every bay of a pulse 'leaving now', the whole board late by however long the freeze.
+    const bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v), st = D.stops[t.si];
+    const there = bus && bus.trip === D.trips[t.trip] ? distance(bus.lat, bus.lon, st.lat, st.lon) < 110 : !(rt.t - u.ts > 180);   // no timestamp on the trip: trusted, as before
+    return there ? held(t, toMin(Math.floor(nowS)) - t.min) : { gone: true };
+  }
   if (hit) return hit.skipped ? { gone: true } : u.est ? { ...held(t, toMin(hit.time) - t.min), est: true } : held(t, toMin(hit.time) - t.min);
   const order = (D.routes[t.r].stops || {})[String(t.dir)] || [];
   const i = order.indexOf(t.si);
