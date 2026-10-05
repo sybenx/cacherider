@@ -423,14 +423,20 @@ function squareImage(hex) {
 }
 /** POOL's pickup badge: a rounded square in its colour, edged white, a white van (the ride that comes); drawn at twice
  *  the size for a sharp screen. It was a P, and a white P on a blue square is a parking sign. */
-function poolImage(hex) {
+function poolImage(hex, darkPaper = dark(), hollow = false) {
   const n = 36, c = document.createElement('canvas'); c.width = c.height = n;
   const g = c.getContext('2d');
-  g.fillStyle = '#fff'; g.beginPath(); g.roundRect(0, 0, n, n, 9); g.fill();
-  g.fillStyle = hex; g.beginPath(); g.roundRect(3, 3, n - 6, n - 6, 7); g.fill();
-  g.fillStyle = '#fff'; g.fill(new Path2D('M7 12.5a2 2 0 0 1 2-2h14.5l5.5 5.8V23a1.5 1.5 0 0 1-1.5 1.5H8.5A1.5 1.5 0 0 1 7 23z'));   // its body
-  g.fillStyle = hex; g.fill(new Path2D('M10 13.2h4.2v3.6H10zM16 13.2h4.2v3.6H16zM22 13.2h1.2l3 3.6H22z'));   // windows, the windscreen
-  for (const x of [12.5, 23.5]) { g.fillStyle = hex; g.beginPath(); g.arc(x, 24.5, 3, 0, 7); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(x, 24.5, 1.8, 0, 7); g.fill(); }   // wheels
+  // Edged as a stop is: white on the light map, the paper's dark on the dark one (a white frame there was the
+  // brightest thing on the map, louder than any stop), and its blue lifted there as a route's colour is. A closed
+  // pickup is hollow, as a closed stop is: the paper inside a grey edge, the van in grey.
+  const paper = darkPaper ? '#101214' : '#f2f2f3', fill = darkPaper ? lift(hex) : hex;
+  const ink = hollow ? fill : '#fff', ground = hollow ? paper : fill;
+  g.fillStyle = darkPaper ? '#101214' : '#fff'; g.beginPath(); g.roundRect(0, 0, n, n, 9); g.fill();
+  g.fillStyle = fill; g.beginPath(); g.roundRect(3, 3, n - 6, n - 6, 7); g.fill();
+  if (hollow) { g.fillStyle = paper; g.beginPath(); g.roundRect(5, 5, n - 10, n - 10, 5.5); g.fill(); }
+  g.fillStyle = ink; g.fill(new Path2D('M7 12.5a2 2 0 0 1 2-2h14.5l5.5 5.8V23a1.5 1.5 0 0 1-1.5 1.5H8.5A1.5 1.5 0 0 1 7 23z'));   // its body
+  g.fillStyle = ground; g.fill(new Path2D('M10 13.2h4.2v3.6H10zM16 13.2h4.2v3.6H16zM22 13.2h1.2l3 3.6H22z'));   // windows, the windscreen
+  for (const x of [12.5, 23.5]) { g.fillStyle = ground; g.beginPath(); g.arc(x, 24.5, 3, 0, 7); g.fill(); g.fillStyle = ink; g.beginPath(); g.arc(x, 24.5, 1.8, 0, 7); g.fill(); }   // wheels
   return g.getImageData(0, 0, n, n);
 }
 /** An arrow for a line, pointing along it (+x, as line placement lays an icon): a chevron in the line's colour edged
@@ -467,7 +473,7 @@ function addUsuImages() {
   // layout of its pickups had none, and kept that, 6 of 27 drawn over the town until a zoom laid them out again.
   // Its data is in the style from the start, so laid out once before this: laid out again with them.
   let made = false;
-  for (const [id, hex] of [['poolp-on', '#007AB8'], ['poolp-off', '#8a8d91']]) if (!map.hasImage(id)) { map.addImage(id, poolImage(hex), { pixelRatio: 2 }); made = true; }
+  for (const [id, hex] of [['poolp-on', '#007AB8'], ['poolp-off', '#8a8d91']]) if (!map.hasImage(id)) { map.addImage(id, poolImage(hex, dark(), id === 'poolp-off'), { pixelRatio: 2 }); made = true; }
   if (made && map.getSource('pool')) map.getSource('pool').setData(poolGeo());
   if (!U) return;
   for (const r of U.routes) { const name = 'usq-' + r.color.slice(1); if (!map.hasImage(name)) map.addImage(name, squareImage(r.color)); }
@@ -558,7 +564,7 @@ function loadTiles() {
 function squaresOnDemand(m) {
   m.on('styleimagemissing', e => {
     if (e.id.startsWith('usq-') && !m.hasImage(e.id)) m.addImage(e.id, squareImage('#' + e.id.slice(4)));
-    if ((e.id === 'poolp-on' || e.id === 'poolp-off') && !m.hasImage(e.id)) m.addImage(e.id, poolImage(e.id === 'poolp-on' ? '#007AB8' : '#8a8d91'), { pixelRatio: 2 });
+    if ((e.id === 'poolp-on' || e.id === 'poolp-off') && !m.hasImage(e.id)) m.addImage(e.id, poolImage(e.id === 'poolp-on' ? '#007AB8' : '#8a8d91', dark(), e.id === 'poolp-off'), { pixelRatio: 2 });
     const a = /^arw-([0-9a-f]{6})-([dl])$/i.exec(e.id);
     if (a && !m.hasImage(e.id)) m.addImage(e.id, arrowImage(a[1], a[2] === 'd'), { pixelRatio: 2 });
   });
