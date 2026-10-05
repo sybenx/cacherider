@@ -2681,8 +2681,9 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   if (!tick || measured !== lastMeasured) requestAnimationFrame(() => sized());
   lastMeasured = measured;
   panelPad(app);
-  // Beside the panel the stop is in the panel: no card over the map as well.
-  if (wide() && app.route.name !== 'map') col.querySelector('#mapcard').classList.remove('open');
+  // Beside the panel the stop is in the panel: no card over the map as well. On the page's arrival, not on its
+  // every redraw: a spot's card (a right click on the map beside the home page) went with the feed's next tick.
+  if (wide() && app.route.name !== 'map' && !tick) col.querySelector('#mapcard').classList.remove('open');
   if (app.route.name !== 'map') col.querySelector('#mapresults').classList.add('hidden');   // the search's list is the Map tab's, not the page's beside it
   notice(clockNow);
   pickFor = from || goPick && goPick.for || null; pickTo = to || goPick && goPick.to || null; pickNow = !!goPick;
