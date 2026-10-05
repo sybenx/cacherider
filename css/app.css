@@ -542,18 +542,18 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 /* the Aggie Shuttle's A (map.js ARROW_A): solid on the full marker, in strokes far off (its legs a stroke wide, there's
    no hollow to it); a lit or picked one keeps its full marker, as Connect's do */
 .bus-marker path.as { display: none; }
-#map.bus-small .bus.shuttle .bus-marker path.af, #map.u-small .bus.shuttle .bus-marker path.af { display: none; }
-#map.bus-small .bus.shuttle .bus-marker path.as, #map.u-small .bus.shuttle .bus-marker path.as { display: inline; fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+#map.bus-small .bus.shuttle .bus-marker path.af, #map.u-small .bus.shuttle:not(.charter) .bus-marker path.af { display: none; }
+#map.bus-small .bus.shuttle .bus-marker path.as, #map.u-small .bus.shuttle:not(.charter) .bus-marker path.as { display: inline; fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 #map.bus-small:not(.u-small) .bus.shuttle.lit .bus-marker path.af, #map.bus-small:not(.u-small) .bus.shuttle.on .bus-marker path.af { display: inline; }
 #map.bus-small:not(.u-small) .bus.shuttle.lit .bus-marker path.as, #map.bus-small:not(.u-small) .bus.shuttle.on .bus-marker path.as { display: none; }
 /* the Aggie Shuttle's buses go to their arrows with its lines, wherever those are put away (off campus, or out past
    the streets), not only at Connect's zoom: a full marker with no line under it read as a bus off its route */
-#map.u-small .bus.shuttle { pointer-events: none; }
+#map.u-small .bus.shuttle:not(.charter) { pointer-events: none; }
 /* but tappable where its lines are drawn, under its squares' zoom: Connect's buses are tappable there, and a shuttle
    that wasn't read as broken */
 #map.u-small.u-lines .bus.shuttle { pointer-events: auto; }
-#map.u-small .bus.shuttle .bus-marker { border-color: transparent; background: transparent; box-shadow: none; }
-#map.u-small .bus.shuttle .bus-marker svg { width: 26px; height: 26px; overflow: visible; filter: drop-shadow(0 0 1px var(--color-bg)); }
+#map.u-small .bus.shuttle:not(.charter) .bus-marker { border-color: transparent; background: transparent; box-shadow: none; }
+#map.u-small .bus.shuttle:not(.charter) .bus-marker svg { width: 26px; height: 26px; overflow: visible; filter: drop-shadow(0 0 1px var(--color-bg)); }
 /* thumbs: bigger buses, zoom buttons and satellite toggle on touch screens; the mouse keeps the small ones */
 @media (pointer: coarse) {
   .bus-marker { width: 30px; height: 30px; }
