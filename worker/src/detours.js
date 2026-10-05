@@ -25,9 +25,13 @@ async function lines() {
   if (!j.hub || !j.lines?.[0]?.key) throw new Error('shapes without keys');
   const lat0 = j.hub.lat, lon0 = j.hub.lon, kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
   const xy = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * ky];
-  const cells = new Map();
+  const cells = new Map(), byKey = new Map();   // each route's lines with the distance along each, for between()
   for (const l of j.lines) {
     const pts = l.coords.map(([lo, la]) => xy(la, lo));
+    let d = 0;
+    const walk = pts.map((p, i) => { if (i) d += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); return d; });
+    if (!byKey.has(l.key)) byKey.set(l.key, []);
+    byKey.get(l.key).push({ pts, walk });
     for (let i = 0; i + 1 < pts.length; i++) {
       const [ax, ay] = pts[i], [bx, by] = pts[i + 1], seg = [l.key, ax, ay, bx, by];
       for (let cx = Math.floor(Math.min(ax, bx) / CELL) - 1; cx <= Math.floor(Math.max(ax, bx) / CELL) + 1; cx++)
@@ -50,6 +54,21 @@ async function lines() {
     return d;
   };
   const off = (key, p) => Math.hypot(p[0], p[1]) > HUB_R && dist(key, p) > OFF;
+  // Metres along the route's line from p on to q, the shortest of its lines that pass both (within NEAR of a
+  // vertex), or null: how far a bus going along has to go from where a way round leaves to where it rejoins.
+  const between = (key, p, q) => {
+    let best = null;
+    for (const { pts, walk } of byKey.get(key) || []) {
+      let ap = null, aq = null, ep = NEAR, eq = NEAR;
+      for (let i = 0; i < pts.length; i++) {
+        const dp = Math.hypot(pts[i][0] - p[0], pts[i][1] - p[1]), dq = Math.hypot(pts[i][0] - q[0], pts[i][1] - q[1]);
+        if (dp < ep) { ep = dp; ap = walk[i]; }
+        if (dq < eq) { eq = dq; aq = walk[i]; }
+      }
+      if (ap !== null && aq !== null && aq > ap && (best === null || aq - ap < best)) best = aq - ap;
+    }
+    return best;
+  };
   // In service: a route's hours that weekday, in the agency's own time (the timetable's, by tools/reduce.py).
   const fmt = new Intl.DateTimeFormat('en-US', { timeZone: j.tz || 'America/Denver', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -62,7 +81,7 @@ async function lines() {
   // (driven to its next run's start, to the yard) is out of service, whatever the feed says.
   const ends = new Map();
   for (const [la, lo, ...ts] of j.ends || []) { const q = xy(la, lo); for (const t of ts) ends.set(t, q); }
-  L = { xy, off, dist, inHours, ends, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
+  L = { xy, off, dist, between, inHours, ends, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
   return L;
 }
 const far = (L, p, lat, lon) => { const q = L.xy(lat, lon); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
@@ -141,7 +160,11 @@ export function watchStep(W, t, buses) {
         // ends: a bus along the line there is seen at one end and then the other, the straight way between them on
         // the line, within a report or two. Its ways round have a report off between, which b.offEnd keeps.
         const straight = last && t - prevT <= 90 && !L.off(key, [(last[0] + p[0]) / 2, (last[1] + p[1]) / 2]);
-        if (t - b.near[s.id] < THROUGH && b.offEnd < b.near[s.id] && (b.mid[s.id] || straight) && s.streak > 0) { s.streak = 0; s.along = t; W.changed.add(s); }
+        // One trip's time between the two, or as long as the line between them takes a bus in service, stops and all
+        // (3.5 m/s, and five minutes): Route 16's way round from north Main to 980 East 700 North cut 7.8 km of its
+        // line, which no run along it covers in thirty minutes, so no run could end it.
+        const through = Math.max(THROUGH, (L.between(key, L.xy(s.olat, s.olon), L.xy(s.blat, s.blon)) || 0) / 3.5 + 300);
+        if (t - b.near[s.id] < through && b.offEnd < b.near[s.id] && (b.mid[s.id] || straight) && s.streak > 0) { s.streak = 0; s.along = t; W.changed.add(s); }
         delete b.near[s.id]; delete b.mid[s.id];
       } else if (b.near[s.id]) b.mid[s.id] = true;   // on its line, clear of both ends, on the way from one to the other
     }
