@@ -2399,25 +2399,36 @@ function roadStops(at, road) {
   const close = all.filter(x => x.d <= 400).slice(0, 6);
   return close.length ? close : all.slice(0, 3);
 }
-/** The routes whose drawn lines pass within `within` metres of a spot: one of a family (16 AM and PM), the half on
- *  the road now. A sidewalk is ten or twenty metres off the road's middle; the next street is a block away. */
-function routesBy(at, within = 50) {
-  if (!drawn.lines) return [];
+/** The lines among `features` that pass within `within` metres of a spot, by `keyOf` (one of each key), as the line's
+ *  own geometry: a sidewalk is ten or twenty metres off the road's middle; the next street is a block away. */
+function linesBy(features, keyOf, at, within = 50) {
   const kx = Math.cos(at.lat * Math.PI / 180) * 111320, ky = 110540, dn = within / kx, dl = within / ky;
   const out = new Map();
-  for (const f of drawn.lines.features) {
-    const ri = f.properties.route;
-    if (ri === undefined || f.geometry.type !== 'LineString' || out.has(familyKey(ri))) continue;
+  for (const f of features) {
+    const key = keyOf(f);
+    if (key === undefined || f.geometry.type !== 'LineString' || out.has(key)) continue;
     const c = f.geometry.coordinates;
     for (let k = 1; k < c.length; k++) {
       const [ax, ay] = c[k - 1], [bx, by] = c[k];
       if ((ax < at.lon - dn && bx < at.lon - dn) || (ax > at.lon + dn && bx > at.lon + dn) || (ay < at.lat - dl && by < at.lat - dl) || (ay > at.lat + dl && by > at.lat + dl)) continue;
       const vx = (bx - ax) * kx, vy = (by - ay) * ky, px = (at.lon - ax) * kx, py = (at.lat - ay) * ky, L2 = vx * vx + vy * vy;
       const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0;
-      if (Math.hypot(px - t * vx, py - t * vy) <= within) { out.set(familyKey(ri), familyNow(ri, now())); break; }
+      if (Math.hypot(px - t * vx, py - t * vy) <= within) { out.set(key, f); break; }
     }
   }
-  return [...out.values()].sort((a, b) => a - b);
+  return [...out.values()];
+}
+/** The routes whose drawn lines pass within 50 m of a spot (a long press at the kerb, a place on the route): one of
+ *  a family (16 AM and PM), the half on the road now. */
+function routesBy(at) {
+  if (!drawn.lines) return [];
+  return linesBy(drawn.lines.features, f => f.properties.route === undefined ? undefined : familyKey(f.properties.route), at).map(f => familyNow(f.properties.route, now())).sort((a, b) => a - b);
+}
+/** The shuttle's loops whose published lines pass within 50 m of a spot (not a loop traced stop to stop: a straight
+ *  line between stops isn't the road), as route indexes. */
+function loopsBy(at) {
+  if (!U) return [];
+  return linesBy(usuLinesGeo().features.filter(f => !f.properties.approx), f => f.properties.id, at).map(f => U.routeById[f.properties.id]).filter(ri => ri !== undefined);
 }
 /** A searched place's pin and disc off the map, and the address back to the plain Map tab, so a reload doesn't
  *  bring them back: the rider has moved on to something else, or closed its card. */
@@ -2445,6 +2456,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   // A spot very near a route's line (a long press at the kerb, a place on the route): the route is an option too, as
   // a road tapped gives it, before the stops. Not when the spot is one end of directions being picked.
   const by = road ? [...road] : forId || toFrom ? [] : routesBy(at);
+  const uby = road || forId || toFrom ? [] : loopsBy(at);   // the shuttle's loops by it too, each opening its loop
   // The Aggie Shuttle's stops a short walk off too, on a road's card as anywhere, in among Connect's by distance: on
   // campus they're the nearer buses. One at the same pole as a Connect stop is listed as well, its loops and their
   // buses being what its row says (the Connect stop's row says only Connect's).
@@ -2459,7 +2471,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
     : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath(at)}">From here</a></div>`;
   // On a road, its routes' next buses only, each with where it's going, and the routes as rows that open them.
   const next = i => nextAt(i, 1, clockNow, 8, road ? t => road.includes(t.r) : undefined)[0];
-  const lines = () => by.length ? html`<div class="roadroutes">${by.map(ri => { const r = D.routes[ri]; return html`<button type="button" class="roadroute" data-ri="${ri}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</button>`; })}</div>` : '';
+  const lines = () => by.length || uby.length ? html`<div class="roadroutes">${by.map(ri => { const r = D.routes[ri]; return html`<button type="button" class="roadroute" data-ri="${ri}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</button>`; })}${uby.map(ri => html`<a class="roadroute" href="#/map/uroute/${encodeURIComponent(U.routes[ri].id)}">${chip(ri, 30)}<span class="mid"><span class="name">${U.routes[ri].name}</span><span class="sub">Aggie Shuttle · ${U.routes[ri].stops.length} stops</span></span>${icon('fwd', 18)}</a>`)}</div>` : '';
   // The stops at once, their next buses (and a road's route times on the map) the moment after.
   const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span>${road ? '' : placeStar(at)}</div>${lines()}</div>${go}
     ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`.s;
