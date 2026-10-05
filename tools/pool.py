@@ -36,12 +36,40 @@ D = json.load(open(os.path.join(ROOT, 'data', 'cvtd.json')))
 fixed = {s['id']: i for i, s in enumerate(D['stops'])}
 req = urllib.request.Request(MAP_API, headers={'User-Agent': 'cacherider-pool/1.0 (+https://cacherider.com)', 'Accept': 'application/json'})
 places = json.load(urllib.request.urlopen(req, timeout=60))['stops']
+# The zone and its pickups, from the project the embed shows (its on-demand zone 'POOL'): the zone's outline, and its
+# own named places, the pickup points Connect's page draws (parks, the Walmarts, the Center, a street corner in
+# Cliffside), 48 when written. The outline kept above is the fallback for a day the project can't be read. A pickup
+# at a bus stop (within 30 m of one in the timetable) carries that stop, so the stop's page says it's a pickup too.
+PROJECT_API = 'https://platform.remix.com/api/projects/d203b573'
+pickups = []
+try:
+    proj = json.load(urllib.request.urlopen(urllib.request.Request(PROJECT_API, headers={'User-Agent': 'cacherider-pool/1.0 (+https://cacherider.com)', 'Accept': 'application/json'}), timeout=60))
+    zones = [z for sc in proj.get('scenarios', []) for z in sc.get('onDemandZones', []) if not z.get('isHidden')]
+    zone = next((z for z in zones if (z.get('name') or '').strip().upper() == 'POOL'), zones[0] if zones else None)
+    if zone and zone.get('geometry', {}).get('type') == 'Polygon':
+        ZONE = [[round(x, 5), round(y, 5)] for x, y in zone['geometry']['coordinates'][0]]
+        pickups = [q for q in zone.get('places', []) if q.get('geometry', {}).get('type') == 'Point']
+except Exception as e: print('the POOL zone not read from the project; the outline kept here stands:', e, file=sys.stderr)
+import math as _m
+def _near(lon, lat):
+    best = None
+    for i, s_ in enumerate(D['stops']):
+        d = _m.hypot((s_['lon'] - lon) * 111320 * _m.cos(_m.radians(lat)), (s_['lat'] - lat) * 110540)
+        if d <= 30 and (best is None or d < best[0]): best = (d, i)
+    return best[1] if best else None
 stops = []
-for p in places:
-    lon, lat = p['geometry']['coordinates']
-    if p.get('ghost') or not inside(lon, lat, ZONE): continue
-    name = ' '.join(p['name'].replace('(', ' (').split())   # '5 North Main(Providence City Hall)' reads as two words
-    stops.append({'id': p['gtfsStopId'], 'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': fixed.get(p['gtfsStopId'])})
+if pickups:
+    for q in pickups:
+        lon, lat = q['geometry']['coordinates'][:2]
+        name = ' '.join(str(q.get('label') or '').replace('(', ' (').split())
+        si = _near(lon, lat)
+        stops.append({'id': D['stops'][si]['id'] if si is not None else 'p-' + str(q['id']), 'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': si})
+else:
+    for p in places:
+        lon, lat = p['geometry']['coordinates']
+        if p.get('ghost') or not inside(lon, lat, ZONE): continue
+        name = ' '.join(p['name'].replace('(', ' (').split())   # '5 North Main(Providence City Hall)' reads as two words
+        stops.append({'id': p['gtfsStopId'], 'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'stop': fixed.get(p['gtfsStopId'])})
 # The Transit Center: the zone reaches up to it (a strip along 100 East) to serve it, but its pickup there stands at
 # the bays, just outside the strip, and the test above loses it. Where the zone comes within the Center's own radius
 # (as far out as its bays go), the pickup at the Center is kept: the one Remix names for the Center, else its nearest.
