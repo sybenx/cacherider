@@ -104,9 +104,12 @@ export function inService(W, out, b, key, nowSec) {
     // The feed drops a trip's stops as they're passed: a first stop past the trip's second, it's started; else its first
     // stop due within two minutes, about to. Nothing still to come, it's done.
     const ahead = u.s.filter(x => x[2] > nowSec - 60);
-    // Started, and not done: its first stop dropped from the feed. Not 'about to' (its first stop due within minutes):
-    // a bus on its way to its first stop from the yard (16, across its own route) counted as going round.
-    if (u.s.some(x => x[2])) return ahead.length > 0 && Math.min(...u.s.map(x => x[1] ?? 0)) >= 2;
+    // Started, and not done: its first stop (sequence 0: the feed counts from nought) dropped from the feed. Not
+    // 'about to' (its first stop due within minutes): a bus on its way to its first stop from the yard (16, across
+    // its own route) counted as going round. (It asked for two stops dropped, read as if the feed counted from one:
+    // Route 2 out of the Center was never in service by its second stop, past where its way round rejoins, so the
+    // way round could never end.)
+    if (u.s.some(x => x[2])) return ahead.length > 0 && Math.min(...u.s.map(x => x[1] ?? 0)) >= 1;
   }
   return W.L.inHours(key, nowSec * 1000);
 }
