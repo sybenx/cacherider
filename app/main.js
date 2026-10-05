@@ -294,6 +294,7 @@ async function render(tick = false) {
       page: stopMap ? { key: name + '/' + seg[1] + (seg[2] ? '/' + seg[2] : ''), html: String(view.html), mount: view.mount } : null,   // a stop's page, the map's sheet
     }, app, clockNow);
   }
+  if (!(mapOpen || isDesktop()) && app.mapMod && app.mapMod.away) app.mapMod.away();   // the map behind a phone's page: its next address is new to it
   document.title = (view && view.title ? view.title + ' · ' : '') + 'Cache Rider';
 }
 

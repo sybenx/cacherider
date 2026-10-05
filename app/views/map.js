@@ -572,7 +572,10 @@ async function made(app) {
   await loadTiles();
   col.innerHTML = '<div id="map"></div>' + chrome();
   const center = homeCentre();
-  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false,
+  // Tiles kept across the Center (zoom 18) and the town (13): MapLibre's cache drops tiles more than five zoom levels
+  // from the one on screen, which is just the gap between the two, so each tab's tiles were gone when it came back,
+  // gray till fetched again, whatever was built ahead. Ten levels, and room for a few hundred small tiles.
+  map = new maplibregl.Map({ container: 'map', style: style(), center, zoom: 13, minZoom: 8, maxZoom: 19, pitchWithRotate: false, touchPitch: false, attributionControl: false, transformConstrain: (c, z) => keepIn(c, z), trackResize: false, maxTileCacheZoomLevels: 10, maxTileCacheSize: 240,
     // Drawn at twice the screen's resolution at most: a phone's three times filled half again the pixels on every frame
     // of a zoom (15 frames a second to 25, at a quarter speed), for sharpness no one sees at arm's length. And within a
     // budget of pixels (inkRatio): a 12.9-inch tablet at twice is four phones' worth every frame.
@@ -2542,6 +2545,10 @@ function searchMarks(m) {
 
 /** Called by the router whenever the map is on screen. */
 let shownHash = null, lastMeasured = '';
+/** The map put away on a phone (another tab drawn over it): the next address is acted on afresh, even the same one.
+ *  The home page's shuttle line, tapped a second time after a trip back home, did nothing: its address was the one
+ *  the map had last shown. */
+export function away() { shownHash = null; }
 export async function show(o, app, clockNow) {
   if (!/^#\/(map|hub)/.test(location.hash)) { townTap = false; markNear(); }   // the map left (the Center is the map too): the Map tab starts again at the near view
   await showPage(o, app, clockNow);
@@ -2658,8 +2665,9 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
     hubBay = hubPick || null;
     // On a phone the board is the map's card; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide()) hubCard(clockNow); else col.querySelector('#mapcard').classList.remove('open');
-    // Framed whenever the tab opens; from one of its routes to another, the rider's zoom and turn are kept.
-    if (!cameFrom.startsWith('#/hub') || !hubOn) fitHub(!cameFrom.startsWith('#/hub'), 700, wide() || /^#\/map(\/|$)/.test(cameFrom));
+    // Framed whenever the tab opens; from one of its routes to another, or a route put away (a click on the map beside
+    // a wide screen's board), the rider's zoom and turn are kept, even zoomed out past the bays.
+    if (!cameFrom.startsWith('#/hub')) fitHub(true, 700, wide() || /^#\/map(\/|$)/.test(cameFrom));
     lastFocused = 'hub';
     hubBadges();
     return;
