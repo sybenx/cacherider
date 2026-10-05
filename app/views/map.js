@@ -1491,7 +1491,6 @@ function quiet() {
   map.getContainer().classList.toggle('u-lines', lines);   // its arrows tappable where its lines are (app.css)
   // its buses to arrows with its lines put away, and a zoom further in than its lines: at the lines' first zoom its
   // squared markers crowded the campus streets
-  map.getContainer().classList.toggle('u-small', !(asked || near(campusBox, 14.5)));
   show(POOL_LAYERS, near(poolBox, 12));   // from the zoom Connect's stops come in at, 12: the two sets of stops together
   hubCheck();
 }
@@ -2263,7 +2262,7 @@ export function liveUpdate(app) {
     let m = busMarkers.get(b.id);
     if (!m) {
       const el = document.createElement('div');
-      el.className = kind === 'u' ? 'bus shuttle' + (U.routes[b.ri].stops.length ? '' : ' charter') : 'bus';   // a charter (no stops, no line) keeps its full marker and its tap wherever it is
+      el.className = kind === 'u' ? 'bus shuttle' : 'bus';
       el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? ARROW_A : ARROW) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
       el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind, id: b.id };
