@@ -986,7 +986,7 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 /* routes leaving together on time: one row, their badges */
 .tcb-group .tcb-mid { grid-column: 2 / -1; gap: 6px; }
 .tcb-badges { display: flex; flex-wrap: wrap; gap: 4px; }
-.tcb-badges a { display: inline-flex; border-radius: 4px; }
+.tcb-badges a { display: inline-flex; border-radius: 4px; text-decoration: none; }   /* the badge's number was underlined: the browser's own link line */
 @media (hover: hover) { .tcb-row:hover { background: var(--cr-hover); } }
 .tcb-t { display: flex; flex-direction: column; align-items: flex-start; }
 .tcb-t .t { font-size: 1.375rem; }
