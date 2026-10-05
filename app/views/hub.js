@@ -277,12 +277,16 @@ export function bays(bay, clockNow) {
   return keys().map(k => {
     const s = st[k], ri = s.ris[s.ris.length - 1], r = D.routes[ri], b = D.hub.bays.find(x => x.routes.includes(ri));
     if (!b) return null;
-    // A bus in (stopped at the Center, by the board) is said on the badge, HERE, and drawn where it is: it was lifted
-    // onto its badge, which stands at the bay's timetable point eased apart from the others, metres from where the
-    // bus had actually stopped (5's held in the middle, one waiting short of its bay, a swap bus at another's).
-    const in_ = tags && !s.off && s.eta === 0;
+    // A bus in (stopped at the Center, by the board): the badge goes to the bus, not the bus to the badge. Standing
+    // (within the hall's radius, slower than a walk), the route's card sits where the bus is, HERE on it, and the
+    // map's own bus is put away: one mark, where the bus actually stopped (5's held in the middle, one short of its
+    // bay). It was the bus lifted onto the badge at the bay's timetable point, eased apart from the others, metres
+    // off; then the two drawn apart, a bus half under a card. Rolling, the card is back at its bay and the bus is
+    // the bus, its arrow showing the way.
+    const in_ = tags && !s.off && s.eta === 0, bus = in_ ? rt.buses.find(x => x.id === s.at) : null;
+    const here = !!bus && distance(bus.lat, bus.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(bus.speed > PARKED);
     const tag = !tags || s.off ? '' : in_ ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : s.dep && s.dep.day === 0 && s.leave !== null ? clock(s.leave).h : '';   // no bus on its way: when the next leaves
-    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
+    return { k, lat: here ? bus.lat : b.lat, lon: here ? bus.lon : b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, bus: here ? bus.id : null, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);
 }
 
