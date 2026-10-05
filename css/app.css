@@ -937,7 +937,7 @@ html:has(#body.map-open), html:has(#body.map-open) body { overscroll-behavior: n
 .hr-dep .est { color: var(--color-accent-700); }
 /* gone: the time muted, the badge only a little, so 16's navy stays navy and its AM or PM readable (at .4 the whole
    of it went gray, its suffix white on gray) */
-.hr-dep.past > span { color: var(--cr-muted); }
+.hr-dep.past, .hr-dep.past > span { color: var(--cr-muted); }   /* gone; a link while its run is still out */
 .hr-dep.past .badge { opacity: .7; }
 button.hr-dep { background: none; border: 0; padding: 2px 4px; margin: 0 -4px; color: inherit; cursor: pointer; text-align: left; }
 button.hr-dep:hover { background: var(--cr-hover); }

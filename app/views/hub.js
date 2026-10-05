@@ -1,7 +1,7 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn } from '../data.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort } from '../time.js';
 import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
@@ -338,9 +338,12 @@ function dayTimes(s, clockNow) {
   const hours = new Map();
   for (const t of list) { const h = Math.floor(t.min / 60); if (!hours.has(h)) hours.set(h, []); hours.get(h).push(t); }
   const nowH = Math.floor(clockNow.min / 60), name = s.loop ? D.routes[s.ris[0]].long : 'Route ' + s.k;
-  const cols = [...hours].map(([h, ts]) => `<div class="hr${h === nowH ? ' now' : ''}"><span class="hr-h">${clockShort(h * 60)}</span>${ts.map(t => t.min < clockNow.min
+  // A departure gone is muted; while its run is still on the road it still opens (the bus a rider just missed, or is
+  // watching for, is the one out on the map), then it's a time and nothing more.
+  const out = t => { const e = tripEnd(t.trip); return !!e && e.min > clockNow.min; };
+  const cols = [...hours].map(([h, ts]) => `<div class="hr${h === nowH ? ' now' : ''}"><span class="hr-h">${clockShort(h * 60)}</span>${ts.map(t => t.min < clockNow.min && !out(t)
     ? `<span class="hr-dep past">${clock(t.min).h}</span>`
-    : `<a class="hr-dep" href="#/stop/${D.stops[t.si].id}?run=${t.trip}&on=${clockNow.ymd}">${clock(t.min).h}</a>`).join('')}</div>`).join('');
+    : `<a class="hr-dep${t.min < clockNow.min ? ' past' : ''}" href="#/stop/${D.stops[t.si].id}?run=${t.trip}&on=${clockNow.ymd}">${clock(t.min).h}</a>`).join('')}</div>`).join('');
   return html`<section class="phone-day tc-day"><div class="ws-eye"><span>${name} today from here</span><span>${list.length} departures</span></div><div class="hours">${html.raw(cols)}</div><p class="day-hint">Tap a time for its run on the map.</p></section>`;
 }
 
