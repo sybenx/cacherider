@@ -8,7 +8,7 @@ import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, 
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict } from '../rt.js';
+import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
@@ -1567,11 +1567,9 @@ function paper(on) {
   }
 }
 /** The badges drawn, or brought up to date (the feed, the minute, a route picked). */
-let onBadges = new Set();   // the buses drawn on their badges, put away on the map
 function hubBadges() {
   if (!hubOn) return;
   const items = bays(hubBay, now());
-  onBadges = new Set(items.map(b => b.bus).filter(Boolean));
   for (const b of items) {
     let m = hubMarks.get(b.k);
     if (!m) {
@@ -1582,13 +1580,11 @@ function hubBadges() {
       m = { el, marker: new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([b.lon, b.lat]).addTo(map), at: [b.lon, b.lat] };
       hubMarks.set(b.k, m);
     }
-    m.here = b.here;
     m.el.classList.add('hbay');   // toggled, not set: the marker's own classes place it
     for (const [c, on] of [['on', b.on], ['dim', b.dim], ['off', b.off]]) m.el.classList.toggle(c, on);
     m.el.href = b.on ? '#/hub' : '#/hub/' + b.k;
     m.el.title = b.title;
-    // Its bus in, the map's own bus on the badge (they're put away there), facing as it stands: the bus at its bay.
-    const inner = (b.here ? `<span class="bus hbus" style="--bus-color:${dark() ? lift(b.color) : b.color}"><span class="bus-marker"${b.course === null ? ' data-still' : ` style="--course:${b.course}deg"`}>${b.course === null ? '' : ARROW}</span></span>` : '') + `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag${b.tag === 'HERE' ? ' in' : b.late ? ' late' : ''}"${b.late ? ` title="${b.late} min late"` : ''}>${b.tag.replace(' MIN', 'm')}</span>` : '');
+    const inner = `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag${b.tag === 'HERE' ? ' in' : b.late ? ' late' : ''}"${b.late ? ` title="${b.late} min late"` : ''}>${b.tag.replace(' MIN', 'm')}</span>` : '');
     if (m.el.innerHTML !== inner) m.el.innerHTML = inner;
   }
   easeBays();
@@ -1596,12 +1592,12 @@ function hubBadges() {
 /** Badges that would touch pushed apart on the screen, a little air between each pair, each still pointing from
  *  as near its own stop as the others let it. */
 function easeBays() {
-  const ms = [...hubMarks.values()], AIR_X = 34, AIR_Y = 38, BUS_Y = 26;   // and room for a bus on the lower one's top
+  const ms = [...hubMarks.values()], AIR_X = 34, AIR_Y = 38;
   const p = ms.map(m => { const q = map.project(m.at); return { x: q.x, y: q.y, x0: q.x, y0: q.y }; });
   for (let it = 0; it < 60; it++) {
     let moved = false;
     for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) {
-      const a = p[i], b = p[j], dx = b.x - a.x, dy = b.y - a.y, ox = AIR_X - Math.abs(dx), oy = AIR_Y + (ms[dy >= 0 ? j : i].here ? BUS_Y : 0) - Math.abs(dy);
+      const a = p[i], b = p[j], dx = b.x - a.x, dy = b.y - a.y, ox = AIR_X - Math.abs(dx), oy = AIR_Y - Math.abs(dy);
       if (ox <= 0 || oy <= 0) continue;
       moved = true;
       if (ox < oy) { const k = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= k; b.x += k; }
@@ -1610,13 +1606,14 @@ function easeBays() {
     if (!moved) break;
   }
   ms.forEach((m, i) => m.marker.setOffset([p[i].x - p[i].x0, p[i].y - p[i].y0]));
-  const turn = -map.getBearing() + 'deg';   // a bus on a badge faces the way it does on the map, turned or not
-  for (const m of ms) m.el.style.setProperty('--map-turn', turn);
 }
-/** The buses standing at the Center out of the way of its badges while they're up (each drawn on its badge); one
- *  driving in or out stays, its arrow showing the way it goes. */
+/** At the Center, a bus is drawn where it is: standing (within the hall's radius, slower than a walk) under its
+ *  badge, whose number is what a rider reads; moving, over it, its arrow showing the way it goes. */
 function hubBuses() {
-  for (const [id, m] of busMarkers) m.el.classList.toggle('athub', hubOn && onBadges.has(id));
+  for (const [id, m] of busMarkers) {
+    const b = m.kind === 'c' ? rt.buses.find(x => x.id === id) : null;
+    m.el.classList.toggle('parked', hubOn && !!b && distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= HUB_IN && !(b.speed > 1));
+  }
 }
 /** The board as a phone's card: the countdown alone at first (the map's the thing), the loops and the next hour a
  *  swipe up; a route picked, its card alone, the badges still in view above it. Redrawn in place for the minute and

@@ -852,15 +852,15 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .hbay { display: block; width: 28px; height: 28px; text-decoration: none; cursor: pointer; }
 .hbay .b { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 4px; font-family: var(--font-heading); font-weight: 600; font-size: 1rem; line-height: 1; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.35); }
 .hbay .tag { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); font-family: var(--font-heading); font-weight: 600; font-size: 0.625rem; line-height: 1; letter-spacing: .03em; padding: 2px 4px; white-space: nowrap; background: var(--color-bg); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--cr-line); border-radius: 3px; }
-#map.hubon .bus { z-index: 1; }   /* at the Center, a bus moving at its bay over its badge, not under it */
+/* at the Center: a bus moving over the badges, one standing under its badge (its number is what a rider reads) */
+#map.hubon .bus { z-index: 2; }
+#map.hubon .bus.parked { z-index: 0; }
+.maplibregl-marker.hbay { z-index: 1; }
 .hbay .tag.in { background: var(--color-accent-100); color: var(--color-accent-900); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent); }   /* in, its bus not on the badge */
 .hbay .tag.late { background: var(--cr-late); color: #fff; box-shadow: 0 0 0 1.5px var(--color-bg); }   /* its bus in late, so out late */
-.hbay .hbus { position: absolute; left: 50%; top: -24px; width: 22px; height: 22px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.hbay .hbus .bus-marker { flex: none; rotate: calc(var(--course, 0deg) + var(--map-turn, 0deg)); }
 .hbay.off > * { opacity: .45; filter: grayscale(1); }   /* done for the day: no colour, nothing to board (on the contents: the marker's own opacity is MapLibre's) */
 .hbay.dim > * { opacity: .35; }
 .hbay.on .b { box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent); }
-.bus.athub { display: none; }
 .mapcard .hubhead { padding: 0 0 6px; }
 .mapcard .hubhead > .blueprint { margin-top: 0; }
 .tc-pick { margin: 22px 16px 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; }

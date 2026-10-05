@@ -277,17 +277,12 @@ export function bays(bay, clockNow) {
   return keys().map(k => {
     const s = st[k], ri = s.ris[s.ris.length - 1], r = D.routes[ri], b = D.hub.bays.find(x => x.routes.includes(ri));
     if (!b) return null;
-    // A bus stopped in the Center is drawn at its bay, on its badge, not said: here is where it is. Stopped by its
-    // speed, not its place: a bus's position holds while it stands (where it first stopped, waiting for its bay, then
-    // crept in: 5's, held in the middle), but its speed comes at once, so one rolling out is drawn where it is, moving,
-    // and nobody takes a bus leaving for one sitting.
-    const in_ = tags && !s.off && s.eta === 0, bus = in_ ? rt.buses.find(x => x.id === s.at) : null;
-    const here = !!bus && distance(bus.lat, bus.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(bus.speed > PARKED);
-    // In but not drawn on its badge (creeping into its bay or out of it, between standing here and leaving): HERE, as
-    // the board says. Without it the badge said nothing, its bus under it, and a rider read the bay as empty.
-    const tag = !tags || s.off ? '' : in_ ? (here ? '' : 'HERE') : s.eta > 0 ? s.eta + ' MIN' : s.dep && s.dep.day === 0 && s.leave !== null ? clock(s.leave).h : '';   // no bus on its way: when the next leaves
-    const course = here ? bus.course ?? null : null;   // which way it faces in its bay
-    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, here, bus: here ? bus.id : null, course, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
+    // A bus in (stopped at the Center, by the board) is said on the badge, HERE, and drawn where it is: it was lifted
+    // onto its badge, which stands at the bay's timetable point eased apart from the others, metres from where the
+    // bus had actually stopped (5's held in the middle, one waiting short of its bay, a swap bus at another's).
+    const in_ = tags && !s.off && s.eta === 0;
+    const tag = !tags || s.off ? '' : in_ ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : s.dep && s.dep.day === 0 && s.leave !== null ? clock(s.leave).h : '';   // no bus on its way: when the next leaves
+    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
   }).filter(Boolean);
 }
 
