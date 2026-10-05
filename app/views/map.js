@@ -2017,7 +2017,8 @@ function dimBus(m) {
   if (JR && JR.appBus) return m.id !== JR.appBus;   // a way drawn with its bus coming: that bus alone, the rest dim
   const on = hiLines.length ? hiLines : runRoutes;
   if (m.kind === 'c') return (on.length > 0 && !on.includes(m.ri)) || hiLoops.length > 0;
-  return hiLoops.length > 0 && !hiLoops.includes(U.routes[m.ri].id);
+  // A shuttle's too when a Connect route or bus is up, as Connect's are when a loop is: they stayed full strength.
+  return (hiLoops.length > 0 && !hiLoops.includes(U.routes[m.ri].id)) || (on.length > 0 && !hiLoops.length);
 }
 /** A bus's marker as the map is now: dimmed, lit, or on a way drawn not its own, not there at all (the buses parked
  *  at the Center, dimmed, lay over the way's end ring there, five deep). */
