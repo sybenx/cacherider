@@ -114,6 +114,16 @@ if min(metres(H, v) for v in ZONE) <= reach and not any(metres(H, (s['lon'], s['
 lengths = {len(s_['id']) for s_ in D['stops'] if s_['id'].isdigit()}
 for s_ in stops:
     if s_['id'].isdigit() and len(s_['id']) in lengths and s_['id'] not in fixed: s_['gone'] = True
+# A named pickup (the project's own point) standing at a stop on Connect's map (within 30 m of one drawn there, not
+# a ghost) whose id has left the timetable: the same, gone. The project's point for Les Schwab stays where the Blue
+# Loop's stop was while the timetable has no stop there; the agency's own map still draws the stop.
+for s_ in stops:
+    if s_.get('gone') or s_.get('hub') or s_['id'].isdigit(): continue
+    for p in places:
+        gid = str(p.get('gtfsStopId') or '')
+        if p.get('ghost') or not gid.isdigit() or len(gid) not in lengths or gid in fixed: continue   # a timetable stop's id, not a POOL point's short number
+        lon, lat = p['geometry']['coordinates'][:2]
+        if _m.hypot((s_['lon'] - lon) * 111320 * _m.cos(_m.radians(lat)), (s_['lat'] - lat) * 110540) <= 30: s_['gone'] = True; s_['was'] = gid; break
 stops.sort(key=lambda s: s['name'])
 
 # The area as POOL covers it: every street and path where a POOL pickup is the nearest stop on foot, within a walk
