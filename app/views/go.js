@@ -6,7 +6,7 @@ import { clockText, relative, metres, fmtDay, dayName, now, dayFrom } from '../t
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { spotOf, spotKey, atPath } from '../geo.js';
+import { spotOf, spotKey, atPath, climb, RISE } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, chip, shuttleAlso, hours } from '../usu.js';
@@ -221,11 +221,24 @@ let kept = null;
 /** The ways in the order asked for: quickest (arriving soonest, then leaving latest), or least walking (the fewest
  *  minutes on foot, climb and all, then arriving soonest). In the address (?sort=walk), so a chip is a navigation:
  *  the map draws an address once, and the first of the new order has to be drawn. */
-const walkOf = p => p.legs.filter(l => l.kind !== 'ride').reduce((m, l) => m + (l.mins || 0), 0);
+/** A way's walking, for the least-walking order: its minutes on foot (which count a climb once, a minute for each
+ *  10 m up) with the climb counted twice more, so a way up the bench (USU's hill from 800 East) is dearly bought
+ *  against one along the flat, and a bus up the hill wins. `o` and `d` are the way's own ends; a leg's missing end is
+ *  one of them. */
+function walkOf(p, o, d) {
+  const at = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x);
+  let m = 0;
+  for (const l of p.legs) {
+    if (l.kind === 'ride') continue;
+    const a = at(l.from) || o, b = at(l.to) || d;
+    m += (l.mins || 0) + (a && b ? 2 * climb(a.lat, a.lon, b.lat, b.lon) / RISE : 0);
+  }
+  return m;
+}
 export const goSort = () => new URLSearchParams(location.hash.split('?')[1] || '').get('sort') === 'walk' ? 'walk' : 'quick';
-const sortPlans = plans => plans.slice().sort((a, b) => goSort() === 'walk' ? (walkOf(a) - walkOf(b)) || (a.arrive - b.arrive) : (a.day - b.day) || (a.arrive - b.arrive) || (b.leave - a.leave));
+const sortPlans = (plans, o, d) => plans.slice().sort((a, b) => goSort() === 'walk' ? (walkOf(a, o, d) - walkOf(b, o, d)) || (a.arrive - b.arrive) : (a.day - b.day) || (a.arrive - b.arrive) || (b.leave - a.leave));
 function pickPlan(plans0, key, e, clockNow, t = null) {
-  const plans = sortPlans(plans0);
+  const plans = sortPlans(plans0, e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d);
   const base = location.hash.split('?')[0];
   let list = plans, i = key ? findPlan(plans, key) : -1, own = i >= 0;
   // Kept only for a way picked (not the first of whatever's listed, which then showed twice), and for the same time.
