@@ -183,13 +183,15 @@ export function journeys(origin, dest, clockNow, days = 8, sh = null, live = tru
   // The stops that count as arriving, each with its walk from the stop to where the rider's going (off the bus and
   // up the hill, or down it).
   const wanted = new Map(spot ? [] : [[dest, 0]]);
-  for (const { i, d: dd } of around(d, spot ? undefined : dest, spot ? 0 : WALK_FROM)) wanted.set(i, walkTo(stop(i), d, dd));
+  for (const { i, d: dd } of around(d, spot ? undefined : dest, WALK_FROM)) wanted.set(i, walkTo(stop(i), d, dd));
   for (const { x, d: dd } of nearU(d.lat, d.lon, WALK_TO).slice(0, 6)) wanted.set(x, walkTo(pt(x), d, dd));
   // The stops close enough to the one asked for to be it (a first stop among them is no journey, just the walk).
   const at = new Set([...wanted].filter(([x]) => x === dest || distance(pt(x).lat, pt(x).lon, d.lat, d.lon) <= WALK_FROM).map(([x]) => x));
   // Where to start: the stop named at no walk, and the stops within a walk of it or of the rider, each with its walk.
   const starts = origin.si !== undefined ? [{ si: origin.si, walk: 0, d: 0 }] : [];
-  for (const { i, d: dd } of around(o, origin.si, origin.si !== undefined ? CHANGE_WALK : 0)) starts.push({ si: i, walk: walkTo(o, stop(i), dd), d: Math.round(dd) });
+  // A spot's close stops are kept whatever the count too: standing in the Transit Center ('Where I am'), the eight
+  // nearest bays left Route 2's out, the ninth, and the way to the hospital was the 5, or the Green Loop to a 2.
+  for (const { i, d: dd } of around(o, origin.si, CHANGE_WALK)) starts.push({ si: i, walk: walkTo(o, stop(i), dd), d: Math.round(dd) });
   for (const { x, d: dd } of nearU(o.lat, o.lon, WALK_TO).slice(0, 6)) starts.push({ si: x, walk: walkTo(o, pt(x), dd), d: Math.round(dd) });
   // Standing at the stop wanted, or within its walk: no bus to catch.
   const apart = Math.round(distance(o.lat, o.lon, d.lat, d.lon));
