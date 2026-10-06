@@ -121,16 +121,17 @@ export function watchStep(W, t, buses) {
     if (!key) continue;
     // Out of service (to the yard, between runs, a trip not started or done): its track dropped, nothing made of it.
     let b = W.buses[label];
-    if (live === 0) { if (b) { b.on = null; b.off = []; b.t = t; } continue; }
+    const dbg = key === '2' ? (m, x) => console.log('watch2', label, trip, new Date(t * 1000).toISOString().slice(11, 19), m, JSON.stringify(x)) : () => {};
+    if (live === 0) { dbg('out of service', { on: !!b?.on, off: b?.off?.length }); if (b) { b.on = null; b.off = []; b.t = t; } continue; }
     // A track begun again keeps what it knew of its trip (done with it, say), its trip unchanged.
-    if (!b || b.key !== key || t - b.t > GAP) b = W.buses[label] = { key, t, on: null, off: [], offEnd: 0, near: {}, trip: b?.trip, away: b?.away, done: b?.done };
+    if (!b || b.key !== key || t - b.t > GAP) { dbg('track begun', { had: !!b, gap: b ? t - b.t : null }); b = W.buses[label] = { key, t, on: null, off: [], offEnd: 0, near: {}, trip: b?.trip, away: b?.away, done: b?.done }; }
     const prevT = b.t;
     b.t = t;
     const p = L.xy(lat, lon), last = b.at;
     b.at = p;
     // Done with its trip (its last stop reached, below): nothing more made of it till the next.
-    if (b.trip !== trip) { b.trip = trip; b.away = false; b.done = false; }
-    if (b.done) continue;
+    if (b.trip !== trip) { dbg('trip change', { from: b.trip }); b.trip = trip; b.away = false; b.done = false; }
+    if (b.done) { dbg('done, skipped', {}); continue; }
     const end = trip && L.ends.get(trip);
     // Its trip's last stop reached, once away from it: this report taken as any other (a way round can rejoin right
     // there), then the trip done, whatever the feed says, and what the bus does after on it (driven to its next run's
@@ -141,11 +142,12 @@ export function watchStep(W, t, buses) {
       else if (b.away && toSeg(end, last || p, p) <= END) { b.done = true; b.on = null; b.off = []; return true; }
       return false;
     };
-    if (L.off(key, p)) { b.off.push([lat, lon]); b.offFar = Math.max(b.offFar || 0, L.dist(key, p)); ended(); continue; }
+    if (L.off(key, p)) { b.off.push([lat, lon]); b.offFar = Math.max(b.offFar || 0, L.dist(key, p)); dbg('off', { n: b.off.length, far: Math.round(b.offFar), on: !!b.on, away: b.away }); ended(); continue; }
     if (b.off.length) {
       // Off and back on: a way round, with two reports or more off between, or one well off (a report a minute, and a
       // way round a block takes about that: Route 2 out of the Transit Center by 300 East and 600 North, one report off
       // a trip, and none of them counted). Off and never back is a bus to the yard.
+      dbg('back on', { n: b.off.length, far: Math.round(b.offFar || 0), on: !!b.on });
       if (b.on && (b.off.length >= 2 || b.offFar >= FAR)) round(W, key, b.on, [lat, lon], b.off, t);
       b.off = []; b.offEnd = t; b.offFar = 0;
     }
@@ -167,6 +169,7 @@ export function watchStep(W, t, buses) {
         // (3.5 m/s, and five minutes): Route 16's way round from north Main to 980 East 700 North cut 7.8 km of its
         // line, which no run along it covers in thirty minutes, so no run could end it.
         const through = Math.max(THROUGH, (L.between(key, L.xy(s.olat, s.olon), L.xy(s.blat, s.blon)) || 0) / 3.5 + 300);
+        dbg('at rejoins', { sus: s.id, since: t - b.near[s.id], through, offEndBefore: b.offEnd < b.near[s.id], mid: !!b.mid[s.id], straight: !!straight, streak: s.streak });
         if (t - b.near[s.id] < through && b.offEnd < b.near[s.id] && (b.mid[s.id] || straight) && s.streak > 0) { s.streak = 0; s.along = t; W.changed.add(s); }
         delete b.near[s.id]; delete b.mid[s.id];
       } else if (b.near[s.id]) b.mid[s.id] = true;   // on its line, clear of both ends, on the way from one to the other

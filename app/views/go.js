@@ -1,8 +1,8 @@
 // Directions to a stop or a spot: from where the rider is, or from a stop they name. Each way there is one card: the walk
 // to the first stop, the bus, where to change, where to get off, in order, with when.
-import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt } from '../data.js';
+import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
-import { clockText, relative, metres, fmtDay, dayName, now, dayFrom } from '../time.js';
+import { clockText, clock, relative, metres, fmtDay, dayName, now, dayFrom } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
@@ -21,7 +21,7 @@ function ends({ to, from, at }) {
   const fromSi = from ? stopIndex(from) : undefined, geo = app.geo;
   // Where from: a spot picked on the map or found as a place or address, the stop named, else where the phone is.
   const origin = at ? { lat: at.lat, lon: at.lon } : fromSi !== undefined ? { si: fromSi } : geo ? { lat: geo.lat, lon: geo.lon } : null;
-  return { spot, dest, d, name, fromSi, origin };
+  return { spot, dest, d, name, fromSi, origin, at };
 }
 
 /** Directions from a spot, where to not chosen yet (#/go/-/at/…): the same page as directions to one, the other way
@@ -39,23 +39,56 @@ function fromOnly(at) {
   return { html: parts.join(''), mount, title: 'Directions' };
 }
 
-/** The page's head: Back, where to, and where from with its ways to change it (once there's a start). */
-function headOf(to, e, at, t) {
-  const { spot, d, name, fromSi, origin } = e;
+/** The page's head: Back, where to; and the trip's two ends as a labelled pair, From and To, with a swap between
+ *  them. From, tapped, opens the start picker under the pair (once there's a start; without one the picker is the page). */
+function headOf(to, e, at, t, clockNow = now()) {
+  const { spot, d, name, fromSi, origin, dest } = e;
   const key = encodeURIComponent(to);   // the destination in the search's address
   const geo = app.geo;
   const back = spot ? `#/map/at/${d.lat.toFixed(5)},${d.lon.toFixed(5)}/${encodeURIComponent(d.label)}` : `#/stop/${d.id}`;
-  // None chosen yet, and no location: the choice.
   const chosen = !!at || fromSi !== undefined;
-  const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'where you are';
+  const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'Where you are';
   const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a>${spot ? placeStar({ lat: d.lat, lon: d.lon, label: d.label || name }, true) : ''}${shareButton(shareOf(name, chosen ? fromName : null, t))}</div>`];
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
-  // Where from, the trip's first setting, as when (whenControl) is its second: a button alike, the pin for 'from', the
-  // name whole, and tapped, the ways to change it under it. It was 'From 1111 N…' and three buttons on a line.
-  const from = origin ? { btn: html`<button type="button" class="btn btn-secondary" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}" aria-label="Starting from ${fromName}">${icon(at ? 'pin' : 'near', 18)}<span class="gw-t" data-short="${gridShort(fromName)}">${fromName}</span></button>`,
-    acts: html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${chosen && !geo ? html`<button class="btn btn-ghost" id="go-near" type="button">My location</button>` : ''}${chosen && geo ? html`<a class="btn btn-ghost" href="#/go/${to}">My location</a>` : ''}${myPlaces().filter(p => !(spot && Math.abs(p.lat - d.lat) < 1e-4 && Math.abs(p.lon - d.lon) < 1e-4)).map(p => html`<a class="btn btn-ghost" href="#/go/${to}/${atPath({ lat: p.lat, lon: p.lon, label: p.name })}">${p.name}</a>`)}<a class="btn btn-ghost" href="#/search?for=${key}">Stop or address</a><a class="btn btn-ghost" href="#/map/from/${to}">Map</a></div>` } : null;
+  // The other way round: from where this goes to, to where it starts (where you are, as the spot the phone has).
+  const toKey = at ? spotKey(at.lat, at.lon, at.label) : fromSi !== undefined ? stop(fromSi).id : geo ? spotKey(geo.lat, geo.lon, 'where you are') : null;
+  const fromPath = spot ? atPath({ lat: d.lat, lon: d.lon, label: d.label || name }) : d.id;
+  const swap = toKey ? html`<a class="pr-swap" href="#/go/${toKey}/${fromPath}" aria-label="Swap from and to">${icon('swap', 20)}</a>` : '';
+  const from = origin ? {
+    pair: html`<div class="pair"><div class="pr"><span class="pr-k">From</span><button type="button" class="pr-v" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}">${icon(at ? 'pin' : fromSi !== undefined ? 'stops' : 'near', 16)}<span>${fromName}</span>${icon('down', 14)}</button></div>
+      <div class="pr"><span class="pr-k">To</span><span class="pr-v">${icon(spot ? 'pin' : 'stops', 16)}<span>${name}</span></span></div>${swap}</div>`,
+    picker: html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${startPicker(to, e, key, hubBay, clockNow)}</div>`,
+  } : null;
   return { parts, key, hubBay, from };
+}
+/** The start, picked: search for a stop, place or address; where I am, the one main action; then the Transit Center
+ *  (with the way from it, worked out), a spot on the map, and the places this phone knows (saved, and stops opened
+ *  lately), each a row. The destination itself is never offered. */
+function startPicker(to, e, key, hubBay, clockNow) {
+  const { d, spot, dest } = e;
+  const hubSi = D.hub.bays[0] ? D.hub.bays[0].stop : undefined;
+  let hubPreview = '';
+  if (hubSi !== undefined && !(d && d.hub)) {
+    try {
+      const f = journeys({ si: hubSi }, dest, clockNow, 2, null, true), p = f && f.plans && f.plans[0];
+      if (f && f.walk !== undefined) hubPreview = f.walk ? `A ${metres(f.walk)} walk` : '';
+      else if (p) {
+        const rides = p.legs.filter(l => l.kind === 'ride'), last = p.legs[p.legs.length - 1];
+        hubPreview = html`${rides.map((l, i) => html`${i ? ', then ' : ''}${l.u ? chip(l.r, 18) : badge(l.r, 18)}`)}${last.kind === 'walk' && last.mins >= 1 ? html`, then ${last.mins} min on foot` : ''} · ${p.arrive - p.leave} min`;
+      }
+    } catch { /* no preview: the row still opens the way */ }
+  }
+  const isDest = p => spot ? Math.abs(p.lat - d.lat) < 1e-4 && Math.abs(p.lon - d.lon) < 1e-4 : false;
+  const saved = myPlaces().filter(p => !isDest(p)).slice(0, 4);
+  const lately = recent().filter(id => !(d && d.id === id)).map(id => stopIndex(id)).filter(si => si !== undefined && si !== dest && !stop(si).hub).slice(0, 3);   // the Center has its own row
+  return html`<div class="startpick">
+    <a class="sp-search" href="#/search?for=${key}">${icon('search', 20)}<span>Stop, place or address</span></a>
+    <button type="button" class="sp-main blueprint" id="go-near">${corners()}${icon('near', 22)}<span class="col"><b>Where I am</b><span class="sub">Uses location on this device only</span></span></button>
+    ${hubBay && !(d && d.hub) ? html`<a class="sp-row" href="#/go/${to}/${hubBay}">${icon('hub', 22)}<span class="col"><b>${D.hub.name}</b><span class="sub">${hubPreview || 'Every route starts here'}</span></span></a>` : ''}
+    <a class="sp-row" href="#/map/from/${to}">${icon('map', 22)}<span class="col"><b>A spot on the map</b><span class="sub">Drop a pin</span></span></a>
+    ${saved.length || lately.length ? html`<div class="sp-sec">On this device</div>${saved.map(p => html`<a class="sp-row" href="#/go/${to}/${atPath(p)}">${icon('star', 22)}<span class="col"><b>${p.label}</b>${p.sub ? html`<span class="sub">${p.sub}</span>` : ''}</span></a>`)}${lately.map(si => html`<a class="sp-row" href="#/go/${to}/${stop(si).id}">${icon('history', 22)}<span class="col"><b>${stop(si).hub ? D.hub.name : stopTitle(si)}</b>${stop(si).town && stop(si).town !== 'Logan' ? html`<span class="sub">${stop(si).town}</span>` : ''}</span></a>`)}` : ''}
+    <span class="ask-note">Location stays on this device. It picks the stops you can walk to.</span></div>`;
 }
 
 /** What a shared link to these directions opens: the address as it is, but the way picked only from a start picked
@@ -107,54 +140,30 @@ const liveFor = (c, clockNow) => !c || (c.ymd === clockNow.ymd && c.min - clockN
 const hashWith = t => location.hash.split('?')[0] + (t ? '?t=' + t : '');
 const dayWord = ymd => { const today = now().ymd; return ymd === today ? 'today' : ymd === dayFrom(today, 1).ymd ? 'tomorrow' : dayName(ymd); };
 let pickBy = false, pickOpen = false, pickFor = null, fromOpen = false;   // the pickers and the start's choices, open through redraws
-/** Leave now, at a time picked, or arrive by one: the button says which; tapped, Leave or Arrive and the phone's own
- *  date and time pickers, a week ahead. */
+/** Leave or arrive by, as a switch, and when: Now, or the time picked; the button opens the phone's own date and
+ *  time pickers, a week ahead, Set putting the time in the address. */
 function whenControl(c, clockNow) {
   const today = dayFrom(clockNow.ymd), iso = ymd => ymd.slice(0, 4) + '-' + ymd.slice(4, 6) + '-' + ymd.slice(6, 8);
   const at = c || clockNow, hh = String(Math.floor(at.min / 60) % 24).padStart(2, '0'), mm = String(at.min % 60).padStart(2, '0');
-  const label = c ? `${c.by ? 'Arrive by' : 'Leave'} ${clockText(c.min)} ${dayWord(c.ymd)}` : 'Leave now';
-  // Leave or arrive as switched in the pickers, kept through the page's redraws (the minute, the feed) till Set.
+  const label = c ? `${clockText(c.min)} ${dayWord(c.ymd)}` : 'Now';
+  // Leave or arrive as switched, kept through the page's redraws (the minute, the feed) till Set.
   const key = (c ? (c.by ? 'a' : '') + c.ymd + c.min : '');
   if (pickFor !== key) { pickFor = key; pickBy = !!(c && c.by); pickOpen = false; }
   const by = pickBy;
-  return { btn: html`<button type="button" class="btn btn-secondary" id="go-when" aria-expanded="${pickOpen ? 'true' : 'false'}">${icon('clock', 18)}<span class="gw-t">${label}</span></button>`,
-    pick: html`<div class="gowhen-pick"${pickOpen ? '' : ' hidden'}><div class="seg" role="group" aria-label="Leave or arrive"><button type="button" data-by="0" aria-pressed="${by ? 'false' : 'true'}">Leave at</button><button type="button" data-by="1" aria-pressed="${by ? 'true' : 'false'}">Arrive by</button></div><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
+  return { btn: html`<div class="whenrow"><div class="seg" role="group" aria-label="Leave or arrive"><button type="button" data-by="0" aria-pressed="${by ? 'false' : 'true'}">Leave</button><button type="button" data-by="1" aria-pressed="${by ? 'true' : 'false'}">Arrive by</button></div><button type="button" class="btn btn-secondary" id="go-when" aria-expanded="${pickOpen ? 'true' : 'false'}">${icon('clock', 18)}<span class="gw-t">${label}</span>${icon('down', 14)}</button></div>`,
+    pick: html`<div class="gowhen-pick"${pickOpen ? '' : ' hidden'}><input class="input" type="date" id="go-date" value="${iso(at.ymd)}" min="${iso(today.ymd)}" max="${iso(dayFrom(clockNow.ymd, 7).ymd)}" aria-label="Day">
     <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div>` };
 }
-/** A grid address the short way: '1111 N 1200 E', '55 N Main'. A direction only after a number, so North Logan and
- *  West Stadium stay as they are. Used only where it helps (fitTrip): whole, the words read better. */
-const gridShort = n => String(n).replace(/(\d+)\s+(North|South|East|West)\b/g, (_, d, w) => d + ' ' + w[0]);
-/** The start's name whole, unless shortening it (1111 N 1200 E) is what lets where from and when share a line, or
- *  keeps a name too long for a line of its own from being cut. Measured as drawn. */
-function fitTrip(fb, w) {
-  const t = fb && fb.querySelector('.gw-t[data-short]');
-  if (!t || !w || !fb.offsetWidth) return;
-  const full = t.dataset.full || (t.dataset.full = t.textContent), short = t.dataset.short;
-  if (short === full) return;
-  const inline = () => Math.round(fb.getBoundingClientRect().top) === Math.round(w.getBoundingClientRect().top);
-  const cut = () => t.scrollWidth > t.clientWidth + 1;
-  t.textContent = full;
-  if (inline() && !cut()) return;
-  t.textContent = short;
-  if (inline() && !cut()) return;
-  if (!cut()) { t.textContent = full; if (cut()) t.textContent = short; }   // on a line of its own: whole if it fits there
-}
-/** Where from and when, the trip's two settings: side by side where both fit (when drops under where from where they
- *  don't, the start's name kept whole), each one's choices opening under them the whole width. No arrow on either:
- *  a bordered button says it's one, and the two arrows kept 'from here' and 'leave now' from sharing a phone's line. */
-const tripRow = (from, when) => html`<div class="gowhen"><div class="gw-row">${from ? from.btn : ''}${when.btn}</div>${from ? from.acts : ''}${when.pick}</div>`;
+/** The trip's settings: From and To, the start picker under them when open, then leave or arrive and when. */
+const tripRow = (from, when) => html`<div class="gowhen">${from ? from.pair : ''}${from ? from.picker : ''}${when.btn}${when.pick}</div>`;
 
 export function render({ to, from, at, plan, t }, clockNow) {
   if (to === '-' && at) return fromOnly(at);
   const e = ends({ to, from, at }), { spot, dest, d, name, origin } = e;
   if (dest === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such stop</h2></div>`, title: 'Directions' };
-  const { parts, key, hubBay, from: fromCtl } = headOf(to, e, at, t);
+  const { parts, key, hubBay, from: fromCtl } = headOf(to, e, at, t, clockNow);
   if (!origin) {
-    parts.push(html`<div class="ask"><button class="btn btn-primary btn-lg blueprint" id="go-near" type="button">${corners()}${icon('near', 20)}From where I am</button>
-      <a class="btn btn-secondary btn-lg btn-block" href="#/map/from/${to}">${icon('map', 20)}From a spot on the map</a>
-      <a class="btn btn-secondary btn-lg btn-block" href="#/search?for=${key}">From a stop, place or address</a>
-      ${hubBay ? html`<a class="btn btn-secondary btn-lg btn-block" href="#/go/${to}/${hubBay}">From the ${D.hub.name}</a>` : ''}
-      <span class="ask-note">Location stays on this device. It picks the stops you can walk to.</span></div>`);
+    parts.push(html`<div class="head tight pickhead"><h2>Where from?</h2></div>`, startPicker(to, e, key, hubBay, clockNow));
     return { html: parts.join(''), mount, title: 'Directions' };
   }
 
@@ -173,25 +182,51 @@ export function render({ to, from, at, plan, t }, clockNow) {
   const J = pickPlan(found.plans, plan, e, c, fixed ? t : null);
   return { html: sheet(J, parts, c, !!fixed, also), mount, title: 'Directions', keepScroll: true, journey: J };
 }
-/** The sheet: the head, the ways as rows (the drawn one marked), then the drawn way told leg by leg. */
+/** The sheet: the head and the trip's settings; the way picked, summed up (leave, arrive, how long, the change) and
+ *  then told step by step as a timeline; the same way later as a strip of times; and the other ways as rows, one a
+ *  route, in the order asked for. */
 function sheet(J, head, clockNow, fixed = false, also = '') {
-  const p0 = J.plans[0];
+  const p0 = J.plans[0], P = J.plans[J.i];
   const day = p0.day > 0 ? html`<div class="dayhead">${fixed ? fmtDay(p0.ymd, true) + ' · nothing more that day' : (p0.day === 1 ? 'Tomorrow, ' + fmtDay(p0.ymd) : fmtDay(p0.ymd, true)) + ' · nothing more today'}</div>` : '';
-  const sortRow = J.plans.length > 1 ? html`<div class="chips gosort">${['quick', 'walk'].map(k => html`<button type="button" class="chip" data-sort="${k}" aria-pressed="${goSort() === k ? 'true' : 'false'}">${k === 'quick' ? 'Quickest' : 'Least walking'}</button>`)}</div>` : '';
-  return html`<div class="gohead">${head}${day}${also}${sortRow}<div class="jrows" role="list">${J.plans.map((p, k) => planRow(p, J.hrefs[k], k === J.i, clockNow, fixed))}</div></div>
-    <div class="journeysheet legs">${planLegs(J.plans[J.i], J)}</div>
-    <div class="fine">Worked out on this phone from the timetable and the live feed: leave when it says, and the next bus is the answer if one is missed. Walks are as the crow flies.</div>`.s;
+  const key = sigOf(P);
+  const same = J.plans.map((p, k) => [p, k]).filter(([p, k]) => k !== J.i && sigOf(p) === key);
+  const others = J.plans.map((p, k) => [p, k]).filter(([p, k]) => k !== J.i && sigOf(p) !== key);
+  // One row a route among the other ways: the first of each, the rest of its times said on it.
+  const groups = new Map();
+  for (const [p, k] of others) { const g = sigOf(p); if (!groups.has(g)) groups.set(g, []); groups.get(g).push([p, k]); }
+  const later = same.length ? html`<div class="later"><span class="k">Same way, later</span><span class="ts">${same.map(([p, k]) => html`<a class="chip" href="${J.hrefs[k]}">${clockText(p.leave)}</a>`)}</span></div>` : '';
+  const sortRow = groups.size ? html`<div class="section between otherways"><span>Other ways</span><button type="button" class="chip" data-sort="walk" aria-pressed="${goSort() === 'walk' ? 'true' : 'false'}">Least walking</button></div>` : '';
+  const rows = groups.size ? html`<div class="jrows" role="list">${[...groups.values()].map(g => planRow(g[0][0], J.hrefs[g[0][1]], g.slice(1), clockNow, fixed))}</div>` : '';
+  return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}</div>
+    <div class="journeysheet legs">${timeline(P, J, clockNow)}${later}${sortRow}${rows}</div>
+    <div class="fine">From the timetable and the live feed, worked out on this phone. Walks are as the crow flies.</div>`.s;
 }
-/** A way as a row: leave and arrive, then its legs, each a badge (or the walker) with a word. */
-function planRow(p, href, picked, clockNow, fixed = false) {
+/** A way's shape, for grouping: its rides, each by route and where it's boarded. The same shape at another time is the
+ *  same way, later. */
+const sigOf = p => p.legs.filter(l => l.kind === 'ride').map(l => (l.u ? 'u' : '') + l.r + '@' + l.from).join('_');
+/** The way picked, summed up: when it leaves and gets there, how long, and the change if there is one. */
+function summary(p, J, clockNow, fixed) {
   const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || l.u));
-  // leaving at a time picked: which day, not how long from a moment that isn't now
-  const rel = fixed ? dayWord(p.ymd) : p.day === 0 ? relative({ min: p.leave, day: 0 }, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
-  const legs = p.legs.filter(l => l.kind === 'ride' || l.mins >= 1).map(l => l.kind === 'walk' ? html`<span class="jleg">${icon('walk', 18)}${l.mins}m</span>`
+  const walk = p.legs.filter(l => l.kind === 'walk').reduce((m, l) => m + (l.mins || 0), 0);
+  const changes = p.legs.filter((l, k) => l.kind === 'ride' && p.legs.slice(0, k).some(x => x.kind === 'ride'));
+  const at = [...new Set(changes.map(l => where(l.from).hub ? 'the ' + D.hub.name : stopWords(l.from)))];
+  const left = p.leave - clockNow.min;
+  const eye = fixed ? (p.day === 0 ? 'Today' : dayWord(p.ymd).replace(/^./, c => c.toUpperCase())) : p.day === 0 ? (left <= 0 ? 'Leaving now' : left === 1 ? 'Leave in a minute' : `Leave in ${left} min`) : p.day === 1 ? 'Tomorrow' : dayName(p.ymd);
+  return html`<div class="jrow picked jsum" data-go="${J.hrefs[J.i]}" aria-current="true" role="listitem link" tabindex="0"><span class="eyebrow">${eye}</span>
+    <div class="js-t">${time(p.leave, 36, live)}<span class="to">→</span>${time(p.arrive, 36, live)}<span class="dur">${p.arrive - p.leave} min</span></div>
+    <span class="sub">${changes.length ? `${changes.length === 1 ? 'One change' : changes.length + ' changes'}, at ${at.join(' and ')}` : 'No change'}${walk ? ` · ${walk} min walking` : ''}</span></div>`;
+}
+/** Another way as a row, one a route: its legs as badges (the walker for a walk) with minutes, how long and how much
+ *  on foot, and when it leaves, large, with when it arrives; its later times, where there are any. */
+function planRow(p, href, more, clockNow, fixed = false) {
+  const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || l.u));
+  const walk = p.legs.filter(l => l.kind === 'walk').reduce((m, l) => m + (l.mins || 0), 0);
+  const rel = fixed ? dayWord(p.ymd) : p.day === 0 ? '' : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
+  const legs = p.legs.filter(l => l.kind === 'ride' || l.mins >= 1).map(l => l.kind === 'walk' ? html`<span class="jleg">${icon('walk', 16)}${l.mins}m</span>`
     : html`<span class="jleg">${l.u ? chip(l.r, 20) : badge(l.r, 20)}${l.off - l.on}m</span>`);
-  return html`<div class="jrow${picked ? ' picked' : ''}" role="listitem link" tabindex="0" data-go="${href}"${picked ? ' aria-current="true"' : ''}>
-    <span class="jt">${time(p.leave, 20, live)}<span class="to">→</span>${time(p.arrive, 20, live)}<span class="rel">${rel}</span></span>
-    <span class="jlegs">${legs.map((x, i) => html`${i ? html`<span class="sep">›</span>` : ''}${x}`)}</span></div>`;
+  return html`<div class="jrow" role="listitem link" tabindex="0" data-go="${href}">
+    <div class="jr-top"><span class="jlegs">${legs.map((x, i) => html`${i ? html`<span class="sep">›</span>` : ''}${x}`)}</span><span class="jr-time">${time(p.leave, 26, live)}<small>${rel || 'arr ' + clockText(p.arrive)}</small></span></div>
+    <span class="sub">${p.arrive - p.leave} min${walk ? ` · ${walk} min walking` : ''}${more.length ? ` · then ${more.map(([q]) => clockText(q.leave)).join(', ')}` : ''}</span></div>`;
 }
 
 /** A way's name in the address: its rides, a Connect bus by its trip and where it's boarded, a shuttle's (no trips)
@@ -236,7 +271,7 @@ function walkOf(p, o, d) {
   return m;
 }
 export const goSort = () => new URLSearchParams(location.hash.split('?')[1] || '').get('sort') === 'walk' ? 'walk' : 'quick';
-const sortPlans = (plans, o, d) => plans.slice().sort((a, b) => goSort() === 'walk' ? (walkOf(a, o, d) - walkOf(b, o, d)) || (a.arrive - b.arrive) : (a.day - b.day) || (a.arrive - b.arrive) || (b.leave - a.leave));
+const sortPlans = (plans, o, d) => plans.slice().sort((a, b) => goSort() === 'walk' ? (a.day - b.day) || (walkOf(a, o, d) - walkOf(b, o, d)) || (a.arrive - b.arrive) : (a.day - b.day) || (a.arrive - b.arrive) || (b.leave - a.leave));   // quickest there (then leaving latest), the first opened; or by the walk
 function pickPlan(plans0, key, e, clockNow, t = null) {
   const plans = sortPlans(plans0, e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d);
   const base = location.hash.split('?')[0];
@@ -248,7 +283,8 @@ function pickPlan(plans0, key, e, clockNow, t = null) {
   // bus left) fell back to the first listed, kept as that name, and was listed again on top of itself at the next draw.
   kept = own ? { base, key, t, plan: list[i] } : null;
   const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
-  return { plans: list, i, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon }, name: e.name, base,
+  const fromName = e.origin.si !== undefined ? (o.hub ? D.hub.name : stopTitle(e.origin.si)) : (e.at && e.at.label) || 'Where you are';
+  return { plans: list, i, from: { lat: o.lat, lon: o.lon }, fromName, to: { lat: e.d.lat, lon: e.d.lon }, name: e.name, base,
     hrefs: list.map(p => base + '?' + (t ? 't=' + t + '&' : '') + (goSort() === 'walk' ? 'sort=walk&' : '') + 'plan=' + encodeURIComponent(planKey(p))),   // a time picked, and the order, go with the way
     dest: e.dest, destName: e.name };
 }
@@ -307,39 +343,41 @@ function noBus(d, name, apart) {
  *  stop or the Transit Center has only the one name. */
 const said = x => isU(x) || stop(x).hub ? null : heardName(x);
 const addrLine = x => { const h = said(x); return h && h.addr ? html`<span class="sub addr">${h.addr}</span>` : ''; };
-/** Each leg in order, for someone who doesn't know the system: the stops by the names the bus announces, each bus by
- *  its badge and where it's heading (its number on the badge, not in the words), the change as the walk it is. */
+/** The way told step by step, as a timeline: times in their own column, a line down the middle in the route's
+ *  colour (dotted on foot), each stop a ring and the end a dot; the change at the Center in its own frame. The step the
+ *  clock is in is tinted; a bus already gone says which one comes next. For someone who doesn't know the system: stops
+ *  by the names the bus announces, each bus by its badge and where it's heading. */
 const CROSS = 45;   // metres: two stops this near, a change between them, are across the street from each other
-function planLegs(p, J) {
-  const rides = p.legs.filter(l => l.kind === 'ride');
-  const legs = [];
+function timeline(p, J, clockNow) {
+  const rides = p.legs.filter(l => l.kind === 'ride'), today = p.day === 0, m = clockNow.min;
+  const colour = l => l.u ? U.routes[l.r].color : '#' + D.routes[l.r].color;
+  const within = (a, b) => today && m >= a && m < b;
+  const tl = (t, node, body, cls = '', c = '') => html`<div class="tl ${cls}"${c ? html.raw(` style="--c:${c}"`) : ''}><span class="tl-t">${t === null ? '' : clock(t).h}</span><span class="tl-n ${node}"><i></i></span><div class="tl-b">${body}</div></div>`;
+  const out = [];
+  const origin = J ? (J.from && J.fromName) || null : null;
   p.legs.forEach((l, k) => {
     const prev = p.legs[k - 1], next = p.legs[k + 1];
     if (l.kind === 'walk') {
-      // Between two buses: the change, the walk to the other stop in it.
-      if (prev && prev.kind === 'ride' && next && next.kind === 'ride') {
+      if (prev && prev.kind === 'ride' && next && next.kind === 'ride') {   // the change, on foot
         const wait = next.on - prev.off, a = where(prev.to), b = where(next.from);
         const how = a.hub && b.hub && !next.u ? html`Walk ${metres(l.d)} to the bay for ${badge(next.r, 20)}` : l.d <= CROSS ? html`Cross the street to ${stopWords(next.from)}` : html`Walk ${metres(l.d)} to ${stopWords(next.from)}`;
-        legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">${how}</span>${a.hub && b.hub ? '' : addrLine(next.from)}<span class="sub">${wait <= l.mins ? 'The next bus leaves as you get there' : `${wait} min until it leaves`}</span></div></div>`);
+        out.push(tl(null, 'none', html`<div class="tl-change"><span class="eyebrow">Change · ${wait <= l.mins ? 'as you get there' : wait - l.mins <= 0 ? 'no time to spare' : `${wait - l.mins} min to spare`}</span><span class="name">${how}</span>${a.hub && b.hub ? '' : addrLine(next.from)}<span class="sub">${wait <= l.mins ? 'The next bus leaves as you get there' : `${wait} min until it leaves`}</span></div>`, 'change' + (within(prev.off, next.on) ? ' now' : ''), colour(next)));
         return;
       }
-      // To the first stop, or on from the last to where you're going.
-      const target = l.to !== undefined ? l.to : null;
-      const words = target !== null ? html`Walk to ${stopWords(target)}` : html`Walk to ${J ? J.destName : l.label || 'where you’re going'}`;
-      legs.push(html`<div class="leg walk">${icon('walk', 22)}<div class="mid"><span class="name">${words}</span>${target !== null ? addrLine(target) : ''}<span class="sub">${metres(l.d)} · about ${l.mins} min</span></div></div>`);
+      if (l.to !== undefined && !prev) {   // from the start to the first stop
+        out.push(tl(p.leave, 'ring', html`<span class="name">${J ? J.fromName : 'Where you are'}</span><span class="sub">${icon('walk', 14)} Walk ${metres(l.d)} · about ${l.mins} min</span>`, 'walk' + (within(p.leave, next ? next.on : p.arrive) ? ' now' : '')));
+        return;
+      }
+      // On from the last stop to where you're going: said under the get-off row (below); nothing of its own.
+      if (prev && prev.kind === 'ride') return;
+      out.push(tl(p.leave, 'ring', html`<span class="name">${J ? J.fromName : 'Where you are'}</span><span class="sub">${icon('walk', 14)} Walk ${metres(l.d)} · about ${l.mins} min</span>`, 'walk' + (within(p.leave, p.arrive) ? ' now' : '')));
       return;
     }
-    if (prev && prev.kind === 'ride') {
+    if (prev && prev.kind === 'ride') {   // the change, staying put
       const wait = l.on - prev.off;
-      legs.push(html`<div class="leg change">${icon('swap', 20)}<div class="mid"><span class="name">Stay at ${stopWords(l.from)} for ${l.u ? chip(l.r, 20) : badge(l.r, 20)}</span><span class="sub">${wait <= 0 ? 'The next bus is waiting' : `${wait} min until it leaves`}</span></div></div>`);
+      out.push(tl(null, 'none', html`<div class="tl-change"><span class="eyebrow">Change · ${wait <= 0 ? 'the bus is waiting' : `${wait} min to spare`}</span><span class="name">Stay at ${stopWords(l.from)} for ${l.u ? chip(l.r, 20) : badge(l.r, 20)}</span></div>`, 'change' + (within(prev.off, l.on) ? ' now' : ''), colour(l)));
     }
-    // The first bus, where it is: the proof the plan is real, in the bus card's own words. Later buses mostly
-    // haven't started yet, and a loop's stop count means little, so those just say it's coming. A shuttle's times
-    // are its buses' estimates, no timetable behind them, and say so.
-    const on = !l.u && l === rides[0] && l.t.live ? whereabouts(l) : '';
-    // An unannounced detour may take the bus round the stop to board or leave at: asked, with where it does stop.
-    // A shuttle leg's stops aren't Connect's (looked up first, one threw, and every way with a shuttle ride was 'Something
-    // went wrong'); nor are its detours.
+    const first = l === rides[0], on = !l.u && first && l.t.live ? whereabouts(l) : '';
     const q = si => {
       if (l.u || !stop(si)) return '';
       const id = stop(si).id, u = skipsAt(id).find(u => u.ri.includes(l.r));
@@ -347,11 +385,25 @@ function planLegs(p, J) {
       const s0 = stop(si), alt = u.on.map(x => stop(stopIndex(x))).filter(Boolean).sort((a, b) => distance(s0.lat, s0.lon, a.lat, a.lon) - distance(s0.lat, s0.lon, b.lat, b.lon))[0];
       return html`<span class="sub qnote">Skipped by the last ${u.n} of these buses<span class="qmark">?</span>${alt ? html` · they came past <a href="#/stop/${alt.id}">${alt.name}</a> instead` : ''}</span>`;
     };
-    legs.push(html`<div class="leg ride">${l.u ? chip(l.r, 36) : badge(l.r, 36)}<div class="mid"><span class="name">${toward(l)}</span>
-      <span class="sub">Get on at <a href="${stopHref(l.from)}">${stopWords(l.from)}</a>${said(l.from) && said(l.from).addr ? html` <span class="addr-in">${said(l.from).addr}</span>` : ''} · leaves <b>${clockText(l.on)}</b>${l.u ? liveMark('Estimated') : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${q(l.from)}${on ? html`<span class="sub">${on}</span>` : ''}
-      <span class="sub">Get off at <a href="${stopHref(l.to)}">${stopWords(l.to)}</a>${said(l.to) && said(l.to).addr ? html` <span class="addr-in">${said(l.to).addr}</span>` : ''}, ${l.n} ${l.n === 1 ? 'stop' : 'stops'} on · <b>${clockText(l.off)}</b></span>${q(l.to)}</div></div>`);
+    // The bus gone (today, its time past): the next one of its route from the same stop, so a rider who missed it
+    // has the answer in the same place.
+    let missed = '';
+    if (today && !l.u && m > l.on + 1 && first) {
+      const n = nextAt(l.from, 6, clockNow).find(t => t.r === l.r && t.min > l.on && t.day === 0);
+      missed = html`<span class="sub missed">Missed it? ${n ? html`The next ${badge(l.r, 18)} leaves at <b>${clockText(n.min)}</b>` : 'No more today on this route'}</span>`;
+    }
+    out.push(tl(l.on, 'on', html`<span class="name">${stopWords(l.from)}</span>${addrLine(l.from)}
+      <span class="tl-bus">${l.u ? chip(l.r, 28) : badge(l.r, 28)}<span>${toward(l)}</span>${l.u ? liveMark('Estimated') : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${q(l.from)}${on ? html`<span class="sub">${on}</span>` : ''}${missed}
+      <span class="sub">Ride ${l.n} ${l.n === 1 ? 'stop' : 'stops'} · ${Math.max(1, l.off - l.on)} min</span>`, 'ride' + (within(l.on, l.off) ? ' now' : ''), colour(l)));
+    // Getting off: the last walk, where there is one, said here; before a change, the change's own frame follows.
+    const lastWalk = next && next.kind === 'walk' && !(p.legs[k + 2] && p.legs[k + 2].kind === 'ride') ? next : null;
+    out.push(tl(l.off, next ? 'ring' : 'end', html`<span class="name">${next ? 'Get off at ' : ''}${stopWords(l.to)}</span>${addrLine(l.to)}${q(l.to)}${lastWalk ? html`<span class="sub">${icon('walk', 14)} Walk ${metres(lastWalk.d)} · about ${lastWalk.mins} min</span>` : ''}`,
+      (next ? 'off' : 'end') + (lastWalk && within(l.off, p.arrive) ? ' now' : ''), next && next.kind === 'walk' && p.legs[k + 2] ? colour(p.legs[k + 2]) : next && next.kind === 'ride' ? colour(next) : ''));
   });
-  return legs;
+  // The end: where you're going, at the arrival, after the last walk.
+  const lastLeg = p.legs[p.legs.length - 1];
+  if (lastLeg.kind === 'walk') out.push(tl(p.arrive, 'end', html`<span class="name">${J ? J.destName : lastLeg.label || 'Where you’re going'}</span>${lastLeg.to !== undefined ? addrLine(lastLeg.to) : ''}`, 'end'));
+  return html`<div class="tline">${out}</div>`;
 }
 /** Where a bus is heading, in words: 'Toward L.R. Hospital', 'Around the loop'. */
 function toward(l) {
@@ -400,29 +452,33 @@ function whereabouts(l) {
 }
 
 function mount(el, _app, inCard = false) {
-  // Quickest or least walking: the same ways, re-sorted, the first drawn; kept for next time.
-  for (const c of el.querySelectorAll('.gosort .chip')) c.onclick = () => {
+  // Least walking, on or off: the same ways re-sorted, the first drawn; in the address, so it keeps.
+  for (const c of el.querySelectorAll('.chip[data-sort]')) c.onclick = () => {
     kept = null;
     const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
-    q.delete('plan'); if (c.dataset.sort === 'walk') q.set('sort', 'walk'); else q.delete('sort');   // the first of the new order is drawn; a time picked stays
+    q.delete('plan'); if (c.getAttribute('aria-pressed') !== 'true') q.set('sort', 'walk'); else q.delete('sort');
     location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
   };
+  // Where I am: the phone asked for its fix now, and the directions from it (the time picked kept).
   const b = el.querySelector('#go-near');
-  if (b) b.onclick = () => nearMe(() => window.dispatchEvent(new HashChangeEvent('hashchange')), true);
+  if (b) b.onclick = () => nearMe(g => {
+    if (!g) return;
+    const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query), seg = path.replace(/^#\//, '').split('/');
+    q.delete('plan'); q.delete('sort');
+    location.replace(location.href.split('#')[0] + '#/go/' + seg[1] + (q.toString() ? '?' + q.toString() : ''));
+  }, true);
   // From a spot to where the rider is: their fix is the end.
   const h = el.querySelector('#go-home');
   if (h) h.onclick = () => nearMe(g => { if (g) location.hash = `#/go/${spotKey(g.lat, g.lon, 'where you are')}/${h.dataset.from}`; }, true);
-  // Leave now, at a time, or arrive by one: the button opens the pickers; Set puts the time in the address (the ways
-  // worked out afresh from it), Now takes it out. A way picked before goes: it was a way from another time.
+  // Leave or arrive by, and when: the button opens the pickers; Set puts the time in the address (the ways worked out
+  // afresh from it), Now takes it out. Arrive by, switched to, opens the pickers: it needs a time.
   const fb = el.querySelector('#go-from'), fa = el.querySelector('.fromacts');
   const w = el.querySelector('#go-when'), pick = el.querySelector('.gowhen-pick');
-  fitTrip(fb, w);
-  // One open at a time: both open under the row, and two there at once didn't say which was whose.
   const setFrom = on => { fromOpen = on; if (fa) fa.hidden = !on; if (fb) fb.setAttribute('aria-expanded', String(on)); };
   const setPick = on => { pickOpen = on; if (pick) pick.hidden = !on; if (w) w.setAttribute('aria-expanded', String(on)); };
   if (fb && fa) fb.onclick = () => { const on = fa.hidden; setFrom(on); if (on) setPick(false); };
   if (w && pick) w.onclick = () => { const on = pick.hidden; setPick(on); if (on) setFrom(false); };
-  for (const b of el.querySelectorAll('.gowhen-pick [data-by]')) b.onclick = () => { pickBy = b.dataset.by === '1'; for (const x of el.querySelectorAll('.gowhen-pick [data-by]')) x.setAttribute('aria-pressed', String(x === b)); };
+  for (const b of el.querySelectorAll('.whenrow [data-by]')) b.onclick = () => { pickBy = b.dataset.by === '1'; for (const x of el.querySelectorAll('.whenrow [data-by]')) x.setAttribute('aria-pressed', String(x === b)); if (pickBy && pick && pick.hidden) { setPick(true); setFrom(false); } };
   const set = el.querySelector('#go-set');
   if (set) set.onclick = () => {
     const d = el.querySelector('#go-date').value.replace(/-/g, ''), tm = el.querySelector('#go-time').value.replace(':', '');
