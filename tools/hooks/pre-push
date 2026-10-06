@@ -7,13 +7,17 @@
 #   git config core.hooksPath tools/hooks
 # Run it by hand any time: cd tools/smoke && npm test. A push that must go regardless: git push --no-verify.
 root="$(git rev-parse --show-toplevel)"
-touched=0
+touched=0; lines=0
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ -z "$local_sha" ] && continue
+  lines=$((lines + 1))
   case "$local_sha" in 0000000000000000000000000000000000000000) continue ;; esac   # a branch deleted: nothing to test
   case "$remote_sha" in 0000000000000000000000000000000000000000) range="$local_sha" ;; *) range="$remote_sha..$local_sha" ;; esac
-  if git -C "$root" diff --name-only $range 2>/dev/null | grep -qE '^(app/|css/|data/|vendor/|tiles/|index\.html$|sw\.js$|manifest\.webmanifest$)'; then touched=1; fi
+  hits="$(git -C "$root" diff --name-only $range 2>/dev/null | grep -E '^(app/|css/|data/|vendor/|tiles/|index\.html$|sw\.js$|manifest\.webmanifest$)' | head -5 | tr '\n' ' ')"
+  [ -n "$hits" ] && { touched=1; echo "Smoke test: this push touches $hits"; }
 done
+# No ref lines at all (a push once went up untested with the app changed, the hook having read nothing): tested, not waved through.
+[ "$lines" = 0 ] && { touched=1; echo "Smoke test: no refs read from git; testing the lot."; }
 if [ "$touched" = 0 ]; then echo "Smoke test skipped: nothing a rider gets is in this push."; exit 0; fi
 cd "$root/tools/smoke" || exit 1
 [ -d node_modules ] || npm ci --silent || exit 1
