@@ -338,10 +338,13 @@ function planLegs(p, J) {
     // are its buses' estimates, no timetable behind them, and say so.
     const on = !l.u && l === rides[0] && l.t.live ? whereabouts(l) : '';
     // An unannounced detour may take the bus round the stop to board or leave at: asked, with where it does stop.
+    // A shuttle leg's stops aren't Connect's (looked up first, one threw, and every way with a shuttle ride was 'Something
+    // went wrong'); nor are its detours.
     const q = si => {
-      const id = stop(si).id, u = !l.u && skipsAt(id).find(u => u.ri.includes(l.r));
+      if (l.u || !stop(si)) return '';
+      const id = stop(si).id, u = skipsAt(id).find(u => u.ri.includes(l.r));
       if (!u) return '';
-      const s0 = stop(si), alt = u.on.map(x => stop(stopIndex(x))).sort((a, b) => distance(s0.lat, s0.lon, a.lat, a.lon) - distance(s0.lat, s0.lon, b.lat, b.lon))[0];
+      const s0 = stop(si), alt = u.on.map(x => stop(stopIndex(x))).filter(Boolean).sort((a, b) => distance(s0.lat, s0.lon, a.lat, a.lon) - distance(s0.lat, s0.lon, b.lat, b.lon))[0];
       return html`<span class="sub qnote">Skipped by the last ${u.n} of these buses<span class="qmark">?</span>${alt ? html` · they came past <a href="#/stop/${alt.id}">${alt.name}</a> instead` : ''}</span>`;
     };
     legs.push(html`<div class="leg ride">${l.u ? chip(l.r, 36) : badge(l.r, 36)}<div class="mid"><span class="name">${toward(l)}</span>
