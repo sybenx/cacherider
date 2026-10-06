@@ -214,9 +214,12 @@ function summary(p, J, clockNow, fixed) {
   const at = [...new Set(changes.map(l => where(l.from).hub ? 'the ' + D.hub.name : stopWords(l.from)))];
   const left = p.leave - clockNow.min;
   const eye = fixed ? (p.day === 0 ? 'Today' : dayWord(p.ymd).replace(/^./, c => c.toUpperCase())) : p.day === 0 ? (left <= 0 ? 'Leaving now' : left === 1 ? 'Leave in a minute' : `Leave in ${left} min`) : p.day === 1 ? 'Tomorrow' : dayName(p.ymd);
+  // Its buses as badges first: on a phone the card opens at this block, the timeline a swipe below, and the times
+  // alone didn't say which bus (a rider at the Center read the hospital's way as having no Route 2 in it).
+  const rides = p.legs.filter(l => l.kind === 'ride').map(l => l.u ? chip(l.r, 22) : badge(l.r, 22));
   return html`<div class="jrow picked jsum" data-go="${J.hrefs[J.i]}" aria-current="true" role="listitem link" tabindex="0"><span class="eyebrow">${eye}</span>
     <div class="js-t">${time(p.leave, 36, live)}<span class="to">→</span>${time(p.arrive, 36, live)}<span class="dur">${p.arrive - p.leave} min</span></div>
-    <span class="sub">${changes.length ? `${changes.length === 1 ? 'One change' : changes.length + ' changes'}, at ${at.join(' and ')}` : 'No change'}${walk ? ` · ${walk} min walking` : ''}</span></div>`;
+    <span class="sub js-legs">${rides.map((b, i) => html`${i ? html`<span class="sep">›</span>` : ''}${b}`)}<span>${changes.length ? `${changes.length === 1 ? 'One change' : changes.length + ' changes'}, at ${at.join(' and ')}` : 'No change'}${walk ? ` · ${walk} min walking` : ''}</span></span></div>`;
 }
 /** Another way as a row, one a route: its legs as badges (the walker for a walk) with minutes, how long and how much
  *  on foot, and when it leaves, large, with when it arrives; its later times, where there are any. */

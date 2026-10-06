@@ -1158,6 +1158,8 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .jsum .js-t .to { color: var(--cr-muted); font-size: 1.25rem; }
 .jsum .js-t .dur { margin-left: auto; font-size: 0.9375rem; color: var(--cr-muted); }
 .jsum .sub { font-size: 0.875rem; color: var(--cr-muted); }
+.jsum .js-legs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.jsum .js-legs .sep { color: var(--cr-line-strong, var(--cr-muted)); }
 .tline { padding: 6px 0 2px; }
 .tl { display: grid; grid-template-columns: 44px 22px minmax(0, 1fr); gap: 0 10px; --c: var(--cr-muted); }
 .tl-t { font-family: var(--font-heading); font-weight: 600; font-size: 1.0625rem; font-variant-numeric: tabular-nums; line-height: 1; padding-top: 3px; text-align: right; }
