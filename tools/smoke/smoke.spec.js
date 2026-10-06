@@ -31,6 +31,11 @@ async function mapReady(page) {
   await page.waitForFunction(() => document.querySelectorAll('.maplibregl-marker').length > 0 || document.querySelector('#mapcard.open'), null, { timeout: 20_000, polling: 500 }).catch(() => {});
   await page.waitForTimeout(800);
 }
+/** A Connect bus on the map, once the live feed has placed one (up to 15 s); null when none is out. */
+async function someBus(page) {
+  const bus = page.locator('.maplibregl-marker.bus:not(.shuttle)').first();
+  try { await bus.waitFor({ state: 'attached', timeout: 15_000 }); return bus; } catch { return null; }
+}
 /** A real stop's id, from the home page's rows. */
 async function someStop(page) {
   await go(page, '#/');
@@ -46,6 +51,56 @@ test('home: the Center line, the shuttle line, the routes', async ({ page }, inf
   if (phone(info)) await expect(page.locator('a[href="#/routes"]')).toBeVisible();
   else await expect(page.locator('a[href^="#/map/route/"]').filter({ visible: true }).first()).toBeVisible();   // wide: the chips
   await expect(page.getByRole('link', { name: /Settings & about/ })).toBeVisible();
+});
+
+test('home: the Routes line opens every route', async ({ page }, info) => {
+  test.skip(!phone(info), 'a phone\'s line; a wide screen has the chips');
+  await open(page);
+  await page.locator('a[href="#/routes"]').filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/#\/routes$/);
+  await expect(page.locator('a.row[href^="#/map/route/"]').filter({ visible: true }).first()).toBeVisible();
+});
+
+/** A click on the map where nothing is: zoomed out to the valley (the routes drawn small, in town), then the fields at
+ *  the edge of the map that shows: clear of a wide screen's panel, the search bar, and a phone's card over the map's
+ *  foot (a click there was on the card). */
+async function clickNothing(page) {
+  const map = await page.locator('#map').boundingBox(), side = await page.locator('#side').boundingBox();
+  const open = page.locator('#mapcard.open'), card = (await open.count()) ? await open.boundingBox() : null;
+  const left = side && side.width < map.width * 0.6 && side.x <= map.x + 1 ? side.x + side.width : map.x;   // beside the panel
+  const top = map.y + 80, bottom = card && card.width > map.width * 0.6 ? card.y - 10 : map.y + map.height - 60;
+  const mid = (top + bottom) / 2;
+  for (let i = 0; i < 6; i++) { await page.mouse.move((left + map.x + map.width) / 2, mid); await page.mouse.wheel(0, 600); await page.waitForTimeout(150); }
+  await page.waitForTimeout(900);
+  await page.mouse.click(left + 30, mid);
+  await page.waitForTimeout(900);
+}
+
+test('bus click-off: back where the rider was', async ({ page }, info) => {
+  if (phone(info)) {
+    // The Map tab: a bus's card, and a click off it puts the card away, the Map tab still up.
+    await open(page, '#/map');
+    await mapReady(page);
+    const bus = await someBus(page);
+    test.skip(!bus, 'no Connect bus out');
+    await bus.evaluate(el => el.click());
+    await expect(page.getByText(/^Bus \d+/).filter({ visible: true }).first()).toBeVisible();
+    await clickNothing(page);
+    await expect(page).toHaveURL(/#\/map$/);
+    await expect(page.getByText(/^Bus \d+/).filter({ visible: true })).toHaveCount(0);
+    return;
+  }
+  // Beside a wide screen's panel: from a stop's page, a bus opens its route there; a click off it goes back to the stop.
+  await open(page);
+  const id = await someStop(page);
+  await go(page, '#/stop/' + id);
+  await mapReady(page);
+  const bus = await someBus(page);
+  test.skip(!bus, 'no Connect bus out');
+  await bus.evaluate(el => el.click());
+  await expect(page).toHaveURL(/#\/map\/route\/.+\?bus=/);
+  await clickNothing(page);
+  await expect(page).toHaveURL(new RegExp('#/stop/' + id + '$'));
 });
 
 test('search: a route, every route, a street, a place, an address', async ({ page }) => {
@@ -100,8 +155,8 @@ test('stop: its page, a route badge, a run, the whole day, saved and unsaved', a
 test('map: town view, a bus and its route', async ({ page }) => {
   await open(page, '#/map');
   await mapReady(page);
-  const bus = page.locator('.maplibregl-marker.bus:not(.shuttle)').filter({ visible: true }).first();
-  test.skip(!(await bus.count()), 'no Connect bus out');
+  const bus = await someBus(page);
+  test.skip(!bus, 'no Connect bus out');
   await bus.evaluate(el => el.click());
   await expect(page.getByText(/^Bus \d+/).filter({ visible: true }).first()).toBeVisible();
   await page.getByRole('link', { name: 'Open route' }).filter({ visible: true }).first().evaluate(a => a.click());
