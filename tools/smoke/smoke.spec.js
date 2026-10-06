@@ -200,7 +200,7 @@ test('directions: each way in, a plan, no way, from only', async ({ page }) => {
   await open(page);
   const id = await someStop(page);
   await go(page, '#/go/' + id);
-  await expect(page.getByText(/From a spot on the map/)).toBeVisible();
+  await expect(page.getByText(/A spot on the map/).first()).toBeVisible();
   await go(page, '#/go/-/at/41.73790,-111.83457/Main%20St');
   await expect(page.getByText(/To a spot on the map/)).toBeVisible();
   await go(page, '#/map/to/@41.73790,-111.83457:Main%20St');
