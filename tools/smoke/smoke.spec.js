@@ -216,6 +216,7 @@ test('directions: each way in, a plan, no way, from only', async ({ page }) => {
 
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {
   test.skip(phone(info), 'the planner is the same at any size');
+  test.setTimeout(240_000);   // 160 trips planned and drawn in the page, with the hub's own way worked out for each start picker: minutes on a loaded machine
   await open(page);
   const out = await page.evaluate(async () => {
     const go = await import('/app/views/go.js'), t = await import('/app/time.js'), geo = await import('/app/geo.js'), { D } = await import('/app/data.js');

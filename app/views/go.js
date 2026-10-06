@@ -58,7 +58,9 @@ function headOf(to, e, at, t, clockNow = now()) {
   const from = origin ? {
     pair: html`<div class="pair"><div class="pr"><span class="pr-k">From</span><button type="button" class="pr-v" id="go-from" aria-expanded="${fromOpen ? 'true' : 'false'}">${icon(at ? 'pin' : fromSi !== undefined ? 'stops' : 'near', 16)}<span>${fromName}</span>${icon('down', 14)}</button></div>
       <div class="pr"><span class="pr-k">To</span><span class="pr-v">${icon(spot ? 'pin' : 'stops', 16)}<span>${name}</span></span></div>${swap}</div>`,
-    picker: html`<div class="fromacts"${fromOpen ? '' : ' hidden'}>${startPicker(to, e, key, hubBay, clockNow)}</div>`,
+    // The picker only once it's opened (mount redraws the page for it): built on every redraw, hidden, it planned the
+    // way from the Center each minute and each feed, for nothing.
+    picker: fromOpen ? html`<div class="fromacts">${startPicker(to, e, key, hubBay, clockNow)}</div>` : html`<div class="fromacts" hidden></div>`,
   } : null;
   return { parts, key, hubBay, from };
 }
@@ -476,7 +478,7 @@ function mount(el, _app, inCard = false) {
   const w = el.querySelector('#go-when'), pick = el.querySelector('.gowhen-pick');
   const setFrom = on => { fromOpen = on; if (fa) fa.hidden = !on; if (fb) fb.setAttribute('aria-expanded', String(on)); };
   const setPick = on => { pickOpen = on; if (pick) pick.hidden = !on; if (w) w.setAttribute('aria-expanded', String(on)); };
-  if (fb && fa) fb.onclick = () => { const on = fa.hidden; setFrom(on); if (on) setPick(false); };
+  if (fb && fa) fb.onclick = () => { const on = fa.hidden; setFrom(on); if (on) { setPick(false); if (!fa.firstElementChild) window.dispatchEvent(new HashChangeEvent('hashchange')); } };   // opened empty: drawn with the picker in
   if (w && pick) w.onclick = () => { const on = pick.hidden; setPick(on); if (on) setFrom(false); };
   for (const b of el.querySelectorAll('.whenrow [data-by]')) b.onclick = () => { pickBy = b.dataset.by === '1'; for (const x of el.querySelectorAll('.whenrow [data-by]')) x.setAttribute('aria-pressed', String(x === b)); if (pickBy && pick && pick.hidden) { setPick(true); setFrom(false); } };
   const set = el.querySelector('#go-set');
