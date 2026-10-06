@@ -26,6 +26,7 @@ module.exports = defineConfig({
     command: `python3 ../serve.py ${PORT}`,
     url: `http://localhost:${PORT}/`,
     reuseExistingServer: false,
+    stdout: 'ignore',   // the server's log of every request, not wanted in a push's output
     timeout: 30_000,
   },
 });
