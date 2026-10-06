@@ -6,7 +6,7 @@ const PORT = 8795;   // not the preview's 8794
 
 module.exports = defineConfig({
   testDir: '.',
-  timeout: 60_000,
+  timeout: 120_000,   // a map test's own waits (the map settled, a bus placed by the feed) come to forty seconds before it does anything; a minute was up on a busy machine
   expect: { timeout: 15_000 },
   fullyParallel: true,
   workers: 2,   // two browsers with a map each is what a laptop takes in its stride; four, with anything else running, timed out
