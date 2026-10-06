@@ -516,8 +516,13 @@ export function nextTrip(ti, ymd) {
   for (const sv of servicesOn(ymd)) { const n = D.next && D.next[sv] && D.next[sv][ti]; if (n !== undefined) return n; }
 }
 /** The trip a bus ran before this one today; undefined at the start of its day. */
+const prevIdx = new Map();   // service → { trip: the trip before it }, built once (a scan of every trip, per ask, was the planner's second cost)
 export function prevTrip(ti, ymd) {
-  for (const sv of servicesOn(ymd)) for (const [k, v] of Object.entries((D.next && D.next[sv]) || {})) if (v === ti) return +k;
+  for (const sv of servicesOn(ymd)) {
+    if (!prevIdx.has(sv)) { const m = new Map(); for (const [k, v] of Object.entries((D.next && D.next[sv]) || {})) m.set(v, +k); prevIdx.set(sv, m); }
+    const p = prevIdx.get(sv).get(ti);
+    if (p !== undefined) return p;
+  }
 }
 /** A route's last trip today, one way when `dir` is given: of its trips today, the one that ends last. Not simply the last to leave the Transit
  *  Center: the feed cuts a loop's trips elsewhere, so its last run may not pass the Transit Center at all. */
@@ -580,12 +585,16 @@ export function runEnd(ti) {
   return m ? { partial: m.partial, end: m.end } : null;
 }
 /** A trip's stops in the order it calls, each [minute, stop], for the line of stops a bus runs to this one. */
+const tripStopsOf = new Map();   // once a trip: the timetable doesn't move, and the planner asks for a trip's stops thousands of times a search
 export function tripStops(ti) {
+  if (tripStopsOf.has(ti)) return tripStopsOf.get(ti);
   const m = metaOf(ti);
   if (!m) return [];
   // two stops in the same minute go in the order the route calls at them
   const order = (D.routes[m.r].stops || {})[m.d] || [], at = si => { const i = order.indexOf(si); return i < 0 ? 1e4 : i; };
-  return m.seq.slice().sort((a, b) => a[0] - b[0] || at(a[1]) - at(b[1]));
+  const out = m.seq.slice().sort((a, b) => a[0] - b[0] || at(a[1]) - at(b[1]));
+  tripStopsOf.set(ti, out);
+  return out;
 }
 /** A route's stops in the order its buses call at them. A numbered route's from its fullest trip (the stored order
  *  can be off), any that trip misses slotted in before the stop that follows them in the stored order. A loop's is

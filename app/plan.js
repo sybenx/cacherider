@@ -169,7 +169,18 @@ function rideTo(t, seq, i, wanted, best = false) {
  * few, sorted by arrival: none is kept that another beats on leaving, arriving and walking all at once. Nothing
  * today: the first day with a way.
  */
+const asked = new Map();   // the last asks, by their words and a twenty-second beat: the page asks twice a redraw, a redraw a feed, five seconds apart
 export function journeys(origin, dest, clockNow, days = 8, sh = null, live = true, by = null) {
+  // Answered from memory within twenty seconds for the same ask: a far destination (home, out past the stops) took
+  // a second or more to search, twice every feed, and the page stuttered with it.
+  const key = JSON.stringify([origin.si !== undefined ? origin.si : [+origin.lat.toFixed(5), +origin.lon.toFixed(5)], typeof dest === 'object' ? [+dest.lat.toFixed(5), +dest.lon.toFixed(5)] : dest, clockNow.ymd, clockNow.min, days, sh ? sh.now : null, live, by, Math.floor(Date.now() / 20000)]);
+  if (asked.has(key)) return asked.get(key);
+  if (asked.size > 40) asked.clear();
+  const out = journeys0(origin, dest, clockNow, days, sh, live, by);
+  asked.set(key, out);
+  return out;
+}
+function journeys0(origin, dest, clockNow, days, sh, live, by) {
   SH = sh; SERVED = new Set(sh ? sh.loops.flatMap(l => l.stops) : []);
   if (SH) SH.now = clockNow.min;
   const spot = typeof dest === 'object', d = spot ? dest : stop(dest), o = origin.si !== undefined ? stop(origin.si) : origin;
@@ -196,6 +207,9 @@ export function journeys(origin, dest, clockNow, days = 8, sh = null, live = tru
   // Standing at the stop wanted, or within its walk: no bus to catch.
   const apart = Math.round(distance(o.lat, o.lon, d.lat, d.lon));
   if (origin.si === dest || apart <= WALK_FROM) return { walk: apart, plans: [] };
+  // No stop within a walk of where they're going, or of where they are: no bus goes, and nothing to search (a
+  // search with nowhere to arrive ran every day of the week through every first stop before saying so).
+  if (!wanted.size || !starts.length) return apart <= WALK_TO ? { walk: apart, plans: [] } : { plans: [] };
   // Arriving by a minute (`by`) on clockNow's day, leaving no earlier than clockNow: that day only, the ways that get
   // there by then, the latest leaving first; the last few buses before it from each first stop, however early (a
   // route that runs mornings and evenings). Nothing among those (a connection that only runs mornings): the few before

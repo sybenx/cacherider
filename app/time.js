@@ -17,21 +17,33 @@ function parts(date) {
   return o;
 }
 
-/** The agency's wall clock right now: { ymd: '20260924', dow: 0-6, min, sec }. */
-export function now(date = new Date()) {
-  const p = parts(date);
-  return {
+/** The agency's wall clock right now: { ymd: '20260924', dow: 0-6, min, sec }. Worked out once a second: the planner
+ *  asks thousands of times in a search (every departure weighed asks), and Intl's formatting was half its time. */
+let nowAt = 0, nowWas = null;
+export function now(date) {
+  const own = date === undefined, ms = own ? Date.now() : date.getTime();
+  if (own && nowWas && ms - nowAt < 1000 && ms >= nowAt) return nowWas;
+  const p = parts(own ? new Date(ms) : date);
+  const c = {
     ymd: p.year + p.month + p.day,
     dow: DAY_SHORT.indexOf(p.weekday),
     min: parseInt(p.hour, 10) * 60 + parseInt(p.minute, 10),
     sec: parseInt(p.second, 10),
   };
+  if (own) { nowAt = ms; nowWas = c; }
+  return c;
 }
 
 /** A calendar day as a plain object, shifted by whole days without any time zone drama. */
+const days = new Map();   // by day and shift: asked for on every departure the planner weighs
 export function dayFrom(ymd, offset = 0) {
+  const key = ymd + ':' + offset;
+  if (days.has(key)) return days.get(key);
+  if (days.size > 2000) days.clear();
   const d = new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8) + offset));
-  return { ymd: d.toISOString().slice(0, 10).replace(/-/g, ''), dow: d.getUTCDay(), date: d };
+  const out = { ymd: d.toISOString().slice(0, 10).replace(/-/g, ''), dow: d.getUTCDay(), date: d };
+  days.set(key, out);
+  return out;
 }
 
 export function dayDiff(fromYmd, toYmd) {
