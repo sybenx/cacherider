@@ -17,7 +17,7 @@ import { watchStart, watchStep, watchEnd, detoursJSON, inService } from './detou
 const UPSTREAM = 'https://mycvtdbus.org/gtfs-rt/';
 const RTPI = 'https://mycvtdbus.org/api/rtpi?path=';
 const UA = { 'User-Agent': 'cacherider-live/1.0 (+https://cacherider.com)' };
-const ORIGINS = ['https://cacherider.com', 'https://sybenx.github.io', 'http://localhost:8794'];
+const ORIGINS = ['https://cacherider.com', 'https://sybenx.github.io', 'http://localhost:8794', 'http://localhost:8795'];   // 8795: the smoke test (tools/smoke)
 const PREVIEW = /^https:\/\/[a-z0-9-]+\.cacherider\.pages\.dev$/;   // Cloudflare's preview of each push
 const TTL = 5;   // seconds at the edge, the agency's feed asked no oftener than this; each bus reports every 3 to 8 seconds
 const ALERT_TTL = 300;   // a notice posted at the agency reaches riders within five minutes

@@ -8,3 +8,7 @@ android/build/
 android/app/build/
 android/local.properties
 worker/.wrangler/
+
+# the smoke test
+tools/smoke/test-results/
+tools/smoke/playwright-report/

@@ -1,0 +1,11 @@
+{
+  "name": "cacherider-smoke",
+  "private": true,
+  "description": "Every flow in the app, driven in a real browser before a release (tools/hooks/pre-push, the nightly jobs). Dev-only: the app itself has no dependencies.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

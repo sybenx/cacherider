@@ -44,4 +44,7 @@ class Handler(SimpleHTTPRequestHandler):
 Handler.extensions_map.update({'.mjs': 'text/javascript', '.js': 'text/javascript', '.webmanifest': 'application/manifest+json', '.pmtiles': 'application/octet-stream', '.pbf': 'application/x-protobuf', '.woff2': 'font/woff2'})
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 8794
 print('serving', os.path.normpath(ROOT), 'on http://127.0.0.1:%d' % port)
+# A queue a browser's burst of tile requests fits in (the default, 5, refused some: the map logged 'xn' and a page
+# waiting on its timetable never loaded), several at once in the smoke test.
+ThreadingHTTPServer.request_queue_size = 128
 ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
