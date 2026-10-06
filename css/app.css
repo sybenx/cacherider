@@ -713,7 +713,6 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .mapcard .gohead .head.tight h1 { font-size: 1.375rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .journeysheet { padding: 8px 16px 8px; }
 .legs { display: flex; flex-direction: column; position: relative; }
-.legs::before { content: ''; position: absolute; left: 17px; top: 20px; bottom: 20px; width: 2px; background: var(--cr-line); }
 .leg { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; padding: 8px 0; }
 .leg > svg, .leg > .badge { position: relative; justify-self: center; background: var(--color-bg); }
 .leg > svg { color: var(--color-accent-700); padding: 4px 0; box-sizing: content-box; }
