@@ -1,7 +1,7 @@
 // Every flow in the app, one test a flow, at a phone's size and a desktop's (playwright.config.js). Each checks that
 // its screens come up and that nothing on the way said 'Something went wrong' or threw. The data is the real feed's,
 // whatever the hour, so a check that needs a bus out (a bus's card) is skipped when none is.
-// Run: npm test (here), or tools/hooks/pre-push before every push.
+// Run: npm test (here), or tools/hooks/pre-push before every push. On this machine only, never on GitHub.
 const { test: base, expect } = require('@playwright/test');
 
 // Errors a page raised, and console errors that aren't a network miss (the relay or a tile now and then).

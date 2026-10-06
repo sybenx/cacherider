@@ -1,10 +1,14 @@
 #!/bin/sh
 # Before every push to GitHub (every push redeploys the site): the smoke test, every flow in a real browser at a
-# phone's size and a desktop's (tools/smoke). A failure stops the push. Installed by
+# phone's size and a desktop's (tools/smoke). A failure stops the push. This is the one place it runs: on this
+# machine, before a push, not on GitHub (the nightly jobs commit their data unchecked, and are checked here next). Installed by
 #   git config core.hooksPath tools/hooks
 # A push that must go regardless: git push --no-verify.
 cd "$(git rev-parse --show-toplevel)/tools/smoke" || exit 1
 [ -d node_modules ] || npm ci --silent || exit 1
+# A test server left behind by a run that was cut short (its port, 8795, still held) stopped the next run before it
+# began: 'Process from config.webServer was not able to start'. Freed first.
+for p in $(lsof -ti tcp:8795 2>/dev/null); do kill "$p" 2>/dev/null; done
 npx --no-install playwright install chromium >/dev/null 2>&1
 echo "Smoke test before the push…"
 if ! npx --no-install playwright test --reporter=dot; then

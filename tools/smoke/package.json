@@ -1,7 +1,7 @@
 {
   "name": "cacherider-smoke",
   "private": true,
-  "description": "Every flow in the app, driven in a real browser before a release (tools/hooks/pre-push, the nightly jobs). Dev-only: the app itself has no dependencies.",
+  "description": "Every flow in the app, driven in a real browser before a push (tools/hooks/pre-push), on this machine. Dev-only: the app itself has no dependencies.",
   "scripts": {
     "test": "playwright test"
   },

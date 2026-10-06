@@ -1,5 +1,5 @@
 // The smoke test: every flow, at a phone's size and a desktop's, against the app served as the hosts serve it
-// (tools/serve.py: byte ranges for the tiles, nothing cached). Live data is the real feed's, so the checks are the
+// (tools/serve.py: byte ranges for the tiles, nothing cached). Run here, before a push (tools/hooks/pre-push); not on GitHub. Live data is the real feed's, so the checks are the
 // ones that hold at any hour: each screen comes up, nothing says 'Something went wrong', nothing throws.
 const { defineConfig, devices } = require('@playwright/test');
 const PORT = 8795;   // not the preview's 8794
@@ -9,7 +9,7 @@ module.exports = defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: true,
-  workers: process.env.CI ? 2 : 4,
+  workers: 2,   // two browsers with a map each is what a laptop takes in its stride; four, with anything else running, timed out
   retries: 1,   // the live feed and the relay now and then miss a beat; twice is a failure
   reporter: [['list']],
   use: {

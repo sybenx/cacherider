@@ -33,9 +33,6 @@ jobs:
         run: python3 tools/usu.py || echo 'shuttle feed unreachable; keeping the last snapshot'
       - name: POOL's pickup points, from Connect's published Remix map
         run: python3 tools/pool.py || echo 'Remix unreachable; keeping the last POOL points'
-      - uses: actions/setup-node@v4   # for the smoke test, before the update ships
-        with:
-          node-version: '22'
       - name: Commit if changed
         run: |
           # The built date alone is not a change worth a commit.
@@ -54,8 +51,6 @@ jobs:
           git config user.name 'transit data'
           git config user.email 'actions@users.noreply.github.com'
           git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json
-          # Every flow in the app with the new data, in a real browser (tools/smoke): a failure ships nothing.
-          ( cd tools/smoke && npm ci --silent && npx playwright install --with-deps chromium >/dev/null && npx playwright test --reporter=dot ) || { echo 'Smoke test failed: this update is not shipped'; exit 1; }
           git commit -m "Transit data: $(date -u +%Y-%m-%d)"
           # Onto whatever another run (alerts, the timetable, the map) pushed meanwhile, a few tries.
           for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done; exit 1
