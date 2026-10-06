@@ -1581,8 +1581,6 @@ function hubBadges() {
       m = { el, marker: new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([b.lon, b.lat]).addTo(map), at: [b.lon, b.lat] };
       hubMarks.set(b.k, m);
     }
-    // At its bay, or on its bus standing in the Center (bays()): moved as the bus is.
-    if (m.at[0] !== b.lon || m.at[1] !== b.lat) { m.at = [b.lon, b.lat]; m.marker.setLngLat(m.at); }
     m.el.classList.add('hbay');   // toggled, not set: the marker's own classes place it
     for (const [c, on] of [['on', b.on], ['dim', b.dim], ['off', b.off]]) m.el.classList.toggle(c, on);
     m.el.href = b.on ? '#/hub' : '#/hub/' + b.k;
@@ -1610,9 +1608,9 @@ function easeBays() {
   }
   ms.forEach((m, i) => m.marker.setOffset([p[i].x - p[i].x0, p[i].y - p[i].y0]));
 }
-/** At the Center: a bus its route's badge stands on (standing in the Center, bays()) is put away, the badge being
- *  the mark; any other standing bus is under the badges (their numbers are what a rider reads), a moving one over
- *  them, its arrow showing the way it goes. */
+/** At the Center: a bus standing in it whose route's badge says HERE (bays()) is put away, the badge at the bay being
+ *  the mark (the GPS is noise in there); any other standing bus is under the badges (their numbers are what a rider
+ *  reads), a moving one over them, its arrow showing the way it goes. */
 let onBadges = new Set();
 function hubBuses() {
   for (const [id, m] of busMarkers) {
