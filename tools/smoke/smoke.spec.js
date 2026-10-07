@@ -275,7 +275,7 @@ test('directions: each way in, a plan, no way, from only', async ({ page }) => {
   }
 });
 
-test('directions, no bus goes there: the answer in view, and it stays put', async ({ page }, info) => {
+test('directions, no stop a walk off: the nearest starts in view, one picked, and it stays put', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s card over the map');
   // From far out of the valley's routes: no way by bus.
   await open(page, '#/go/@41.74321,-111.81488:Logan/at/41.90000,-112.00000/Far%20away');
@@ -289,6 +289,14 @@ test('directions, no bus goes there: the answer in view, and it stays put', asyn
   const h = (await card.boundingBox()).height;
   await page.waitForTimeout(12_000);
   expect(Math.round((await card.boundingBox()).height), 'the card\'s height after the feed\'s ticks').toBe(Math.round(h));
+  // No stop a walk off: the nearest stops a bus there leaves from, one picked giving the way from it.
+  const start = card.locator('.farstarts a.row').first();
+  if (await start.count()) {
+    const href = await start.getAttribute('href');
+    await start.click();
+    await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$'));
+    await expect(page.getByText(/leaves|Leave/).filter({ visible: true }).first()).toBeVisible();
+  }
 });
 
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {

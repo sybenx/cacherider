@@ -1100,8 +1100,8 @@ function fitPeek(card) {
   if (last) { card.style.setProperty('--peek', Math.min(last.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.6 * map.getContainer().clientHeight) + 'px'); return; }
   // No way by bus: down to the answer ('No bus goes there', how far, what does go), not its head alone (66 px, the answer
   // a swipe up out of sight).
-  const none = card.querySelector('.gonone .empty');
-  if (none) { card.style.setProperty('--peek', Math.min(none.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 8, 0.6 * map.getContainer().clientHeight) + 'px'); return; }
+  const starts = card.querySelectorAll('.gonone .farstarts .row'), none = starts[starts.length - 1] || card.querySelector('.gonone .empty');   // down to the last start, when there's a list of them
+  if (none) { card.style.setProperty('--peek', Math.min(none.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 8, (starts.length ? 0.75 : 0.6) * map.getContainer().clientHeight) + 'px'); return; }   // the starts are the answer, the map above has only the two ends: more room for them
   // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it).
   const h = card.querySelector('.head');
   if (h) card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2) + 'px');

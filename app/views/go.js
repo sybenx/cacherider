@@ -1,6 +1,6 @@
 // Directions to a stop or a spot: from where the rider is, or from a stop they name. Each way there is one card: the walk
 // to the first stop, the bus, where to change, where to get off, in order, with when.
-import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent } from '../data.js';
+import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, clock, relative, metres, fmtDay, dayName, now, dayFrom } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
@@ -320,11 +320,50 @@ const stopHref = x => isU(x) ? '#/usu/' + where(x).id : '#/stop/' + where(x).id;
 /** No way there by bus: far off, the maps app for the rest; within a walk's reach of the stops, no way in the week. */
 function noWay(e, to, hubBay, also) {
   const { origin, d, name } = e, o = origin.si !== undefined ? stop(origin.si) : origin, apart = distance(o.lat, o.lon, d.lat, d.lon);
+  // From a spot with no stop a walk off (out past the routes, Cove or Benson): not 'no bus goes there', which was
+  // false; the nearest stops a bus there leaves from, to get to by car or bike.
+  if (origin.si === undefined) { const far = farStarts(o, e, to); if (far) return [far]; }
   if (apart > 1000) return [noBus(d, name, apart)];
   const out = also ? [also] : [];
   out.push(html`<div class="empty"><h2>No way there by bus</h2><p>Nothing in the timetable joins these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
   if (hubBay && origin.si !== D.hub.bays[0].stop) out.push(html`<div class="chips"><a class="chip" href="#/go/${to}/${hubBay}">Try from the ${D.hub.name}</a></div>`);
   return out;
+}
+/** Out of a walk of any stop: the nearest stops a way there leaves from, each with its next way and how much more runs
+ *  from it today. A farther one is listed only when it has clearly more buses left today than every nearer one (a stop on a
+ *  route that runs all day, Richmond's, past one with a bus or two left, Lewiston's): near, or more often, the rider
+ *  picks. Three at most. Null when a stop is within a walk (the ways' own 'no way' then) or none has a way. */
+const WALK_REACH = 1000;
+const farKept = new Map();   // worked out once a minute, not on every feed tick's redraw (six searches each)
+function farStarts(o, e, to) {
+  const k = [o.lat.toFixed(4), o.lon.toFixed(4), to, now().min].join('|');
+  if (!farKept.has(k)) { if (farKept.size > 8) farKept.clear(); farKept.set(k, farStarts0(o, e, to)); }
+  return farKept.get(k);
+}
+function farStarts0(o, e, to) {
+  const near = D.stops.map((s, si) => ({ s, si, d: distance(o.lat, o.lon, s.lat, s.lon) })).filter(x => !x.s.out && !x.s.hub).sort((a, b) => a.d - b.d);
+  if (!near.length || near[0].d <= WALK_REACH) return null;
+  // The nearest stop of each set of routes (a town's stops are mostly the same routes; one each is enough).
+  const seen = new Set(), cands = [];
+  for (const x of near) { const k = x.s.routes.slice().sort().join(','); if (seen.has(k)) continue; seen.add(k); cands.push(x); if (cands.length === 6) break; }
+  const c = now(), rows = [];
+  let most = -1;
+  for (const x of cands) {
+    const p = (journeys({ si: x.si }, e.dest, c, 2).plans || [])[0];
+    if (!p) continue;
+    const ride = p.legs.find(l => l.kind === 'ride');
+    const left = p.day === 0 && ride && !ride.u ? timesOn(ride.from, c.ymd).filter(t => t.r === ride.r && t.min >= c.min).map(t => t.min) : [];
+    if (rows.length && (left.length < most * 1.5 || left.length < most + 3)) continue;   // farther and not clearly more often (half again, three more): not a better choice
+    most = Math.max(most, left.length);
+    rows.push({ x, p, ride, left });
+    if (rows.length === 3) break;
+  }
+  if (!rows.length) return null;
+  const when = (p, m) => (p.day === 0 ? '' : p.day === 1 ? 'tomorrow ' : dayName(p.ymd) + ' ') + clockText(m);
+  return html`<div class="farstarts"><div class="empty"><h2>No stop within a walk of you</h2><p>The nearest a bus there leaves from:</p></div>
+    <div class="list">${rows.map(({ x, p, ride, left }) => html`<a class="row" href="#/go/${to}/${x.s.id}">${ride ? (ride.u ? chip(ride.r, 30) : badge(ride.r, 30)) : ''}<div class="mid"><span class="name">${stopTitle(x.si)}</span>
+      <span class="sub">${metres(x.d)} away · leaves ${when(p, p.leave)}, there ${when(p, p.arrive)}</span>
+      ${left.length ? html`<span class="sub">${left.length === 1 ? 'The last bus today' : `${left.length} buses left today, the last ${clockText(left[left.length - 1])}`}</span>` : ''}</div>${icon('fwd', 20)}</a>`)}</div></div>`;
 }
 /** The map's side of it: just the two ends, framed, and the page as its card. */
 function noWayJourney(e, to, parts, hubBay, also) {
