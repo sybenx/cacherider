@@ -3,7 +3,7 @@
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes } from '../data.js';
-import { relative, fmtDay, metres, clock, clockText, dayName, now } from '../time.js';
+import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
@@ -180,7 +180,7 @@ function stopHeroBlock(si, why, clockNow) {
     return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span><div class="hero-none">Nothing scheduled${resume && resume !== clockNow.ymd ? html`<span class="sub">Buses resume ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;
   }
   const first = next[0];
-  const left = first.day === 0 ? first.min - clockNow.min : null;
+  const left = first.day === 0 ? minsTo(first, clockNow) : null;   // due ('NOW') from its minute's start: time.js
   const arrival = loopArrival(first);   // a loop spacing its buses: minutes out, never a clock time
   const countdown = left !== null && (left <= 10 || arrival);
   const big = countdown

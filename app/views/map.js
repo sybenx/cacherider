@@ -3,7 +3,7 @@
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pref } from '../data.js';
-import { now, relative, fmtDay, dayName, clock, clockText, metres, dayFrom } from '../time.js';
+import { now, relative, fmtDay, dayName, clock, clockText, metres, dayFrom, isGone, isDue } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
@@ -859,7 +859,7 @@ function routeSheet({ short, dir, at, full, bus }, clockNow) {
   const chipsRow = html`<div class="rs-ways">${dirs.length > 1 ? dirs.map((k, i) => html`<a class="chip${k === d ? ' on' : ''}" href="${base}/${k}">${apart ? names[i] : r.dirs[+k] || (k === '0' ? 'Outbound' : 'Return')}</a>`) : ''}<span class="rs-count">${count}</span></div>`;
   // The route's other half (16 PM from 16 AM), a tap away, with when it next leaves today: one route to a rider.
   const also = family(ri).filter(x => x !== ri).map(x => {
-    const next = Object.keys(D.routes[x].stops || {}).flatMap(k => runsOn(x, clockNow.ymd, k)).filter(t => t.min > clockNow.min).sort((p, q) => p.min - q.min)[0];
+    const next = Object.keys(D.routes[x].stops || {}).flatMap(k => runsOn(x, clockNow.ymd, k)).filter(t => !isGone(t, clockNow)).sort((p, q) => p.min - q.min)[0];
     const lt = next ? null : lastTripOn(x, clockNow.ymd), out = lt && lt.start[0] <= clockNow.min && lt.end[0] >= clockNow.min;
     return html`<a class="rs-also" href="#/map/route/${encodeURIComponent(D.routes[x].short)}">${badge(x, 22)}<span class="rs-also-t">Also ${routeName(x, false)}${next ? ` · next run ${clockText(next.min)}` : out ? ' · its last run on the road now' : ' · no more runs today'}</span>${icon('fwd', 16)}</a>`;
   });
@@ -1052,7 +1052,8 @@ function lastRun(ri, d, seq, clockNow, dirWord) {
   const far = turn ? (town(turn.si) && town(turn.si) !== D.hub.town ? town(turn.si) : stop(turn.si).name) : '';
   const where = partial ? html`only part of the route, ending at <b>${stop(re.end).name}</b>${about}`
     : onward.length ? html`out to ${far} and back, ending at ${ends}${about}` : html`the whole route, ending at ${ends}${about}`;
-  const lead = t.min > clockNow.min ? html`Today's last run${dirWord} leaves ${from}at <b>${clockText(t.min)}</b> and runs ${where}.`
+  const lv = lively({ ...t, day: 0 });   // by the feed's word: a late last run is still to leave, as its own row says
+  const lead = !isGone(lv, clockNow) ? html`Today's last run${dirWord} leaves ${from}at <b>${clockText(lv.min)}</b> and runs ${where}.`
     : html`Today's last run${dirWord} left ${from}at ${clockText(t.min)}${bus ? html` and is on the road now, bus ${bus.label}` : ''}. It runs ${where}.`;
   return { note: html`<div class="notice lastrun-note">${icon('moon', 16)}<span>${lead}</span></div>`, out: t.min <= clockNow.min, endSi, endAt, endMin: endAt ?? endMin, turnSi: turn ? turn.si : null };
 }
@@ -2367,7 +2368,7 @@ function connectCard(b, app, bare = false) {
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : r.long}</span></div></div>
-    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${n.min - clockNow.min <= 0 ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
+    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));

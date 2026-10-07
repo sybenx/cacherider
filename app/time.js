@@ -89,9 +89,21 @@ export function clockList(mins) {
   return same ? (cs.map(c => c.h).join(', ') + ' ' + cs[0].ap).trim() : cs.map(c => c.h + ' ' + c.ap).join(', ');
 }
 
+// ---- The one clock rule for a bus's time, on every screen (2026-10-07: nine had grown, and a late bus said 'left' on
+// the route sheet while its own row said 'now'). Whole minutes, a minute running from its start: a time is due
+// ('now') from the start of its minute (a bus at 8:05:59 is 'now' from 8:05:00), and gone from the start of the next.
+// Its minute is the feed's where it has one (a late bus is still coming), the timetable's where not. 'Here' is the
+// other question, a bus at the stop by where it is (usu.js, rt.js, hub.js), never decided by the clock.
+/** Minutes until a time (`day` days on): 0 or less, it's due. */
+export const minsTo = (t, clockNow) => t.min - clockNow.min + (t.day || 0) * 1440;
+/** Due now: its minute has begun. */
+export const isDue = (t, clockNow) => minsTo(t, clockNow) <= 0;
+/** Gone: the feed says it left, or the minute after its own has begun. */
+export const isGone = (t, clockNow) => !!t.gone || minsTo(t, clockNow) < 0;
+
 /** 'in 14 min', 'in 1 h 14 min', 'later today', 'this evening', 'tomorrow', 'tomorrow, Fri', 'Monday'. */
 export function relative(dep, clockNow, opts = {}) {
-  const diff = dep.min - clockNow.min + dep.day * 1440;
+  const diff = minsTo(dep, clockNow);
   if (dep.day === 0 || diff < 180) {
     if (diff <= 0) return 'now';
     if (diff < 60) return 'in ' + diff + ' min';

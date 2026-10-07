@@ -2,7 +2,7 @@
 import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { pointerMark } from './pointer.js';
-import { clock, clockText, relative, now, metres } from './time.js';
+import { clock, clockText, relative, now, metres, minsTo, isDue } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
@@ -139,8 +139,8 @@ export const liveWord = t => isLoop(t.r) ? (t.live.est ? 'Estimated' : 'Live') :
 export const loopArrival = t => !!t.live && isLoop(t.r) && !D.stops[t.si]?.hub && loopSpacing(t.r);
 /** '4 MIN' in a time's place, or 'NOW'. */
 export function minsOut(t, size = 26, clockNow = now()) {
-  const m = t.min - clockNow.min;
-  return raw(`<span class="t t-${size} est">${m <= 0 ? 'NOW' : m + `<small>MIN</small>`}</span>`);
+  const m = minsTo(t, clockNow);
+  return raw(`<span class="t t-${size} est">${isDue(t, clockNow) ? 'NOW' : m + `<small>MIN</small>`}</span>`);
 }
 /** A departure's time: the timetable's in black, or the feed's estimate in blue, with the timetable's crossed out
  *  beside it when the feed has moved it. A spacing loop's, away from the Transit Center, is minutes out. */

@@ -12,7 +12,7 @@ export function render({ id }) {
   parts.push(notice());
   const rows = r.stops.map(si => {
     const s = U.stops[si], e = hasData() ? estimate(si, ri) : null;
-    const end = e ? `<div class="end"><span class="t t-22">${e.here ? 'Here' : e.stops === null ? e.min + ' min' : e.stops + (e.stops === 1 ? ' stop' : ' stops')}</span><span class="rel">${isStale() ? 'at ' + lastSeen() : 'about ' + e.min + ' min'}</span></div>` : `<div class="end"><span class="rel">${hasData() ? '—' : ''}</span></div>`;
+    const end = e ? `<div class="end"><span class="t t-22">${e.here ? 'Here' : e.stops === null ? e.min + ' min' : e.stops + (e.stops === 1 ? ' stop' : ' stops')}</span><span class="rel">${isStale() ? 'at ' + lastSeen() : e.here ? 'now' : 'about ' + e.min + ' min'}</span></div>` : `<div class="end"><span class="rel">${hasData() ? '—' : ''}</span></div>`;
     return html.raw(`<a class="row" href="#/usu/${s.id}"><span class="usq" style="background:${r.color}"></span><div class="mid"><span class="name">${s.name}</span>${e ? liveTag(isStale() ? 'Last seen ' + lastSeen() : 'Live').s : ''}</div>${end}</a>`);
   });
   parts.push(html`<div class="list">${rows}</div>`, offNote([ri]));

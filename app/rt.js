@@ -433,9 +433,10 @@ export function busStops(b, n = 5) {
   const u = rt.trips[b.trip];
   if (!u) return [];
   const h = u.hub && !(isLoop(b.ri) && loopSpacing(b.ri)) ? u.hub : null, sched = h && tripInfo[u.ti] ? h.seq : null;
-  // Past the Transit Center it hasn't left yet, no sooner than it leaves there and keeps to the timetable (predict()).
+  // At the Transit Center it hasn't left yet, and past it, no sooner than it leaves there and keeps to the timetable
+  // (predict()): its bay too, so its card says what the bay's row says, never 'now' for a bus in early.
   const held = (si, min) => {
-    const k = sched ? sched.findIndex(([, x], i) => x === si && i > h.k) : -1;
+    const k = sched ? sched.findIndex(([, x], i) => x === si && i >= h.k) : -1;
     if (k < 0) return min;
     const leaves = isLoop(b.ri) ? Math.max(h.at, Math.min(h.sched, h.at + 10)) : Math.max(h.at, h.sched);
     return Math.max(min, leaves + sched[k][0] - h.sched);

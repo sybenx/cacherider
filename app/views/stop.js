@@ -1,7 +1,7 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
-import { relative, fmtDay, dayName, clockText, dayFrom } from '../time.js';
+import { relative, fmtDay, dayName, clockText, dayFrom, isGone } from '../time.js';
 import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
@@ -149,7 +149,7 @@ export function render({ id, full, run, on }, clockNow) {
     // The whole day by the timetable, past departures muted, grouped by day if we had to roll over. Past is the feed's
     // word where it has one: a late bus whose minute has gone by is still coming.
     const all = nextDay || todayAll;
-    const past = t => t.day === 0 && (t.gone || t.min < clockNow.min);
+    const past = t => t.day === 0 && isGone(t, clockNow);
     const label = all[0].day === 0 ? fmtDay(clockNow.ymd, true) : fmtDay(all[0].ymd, true);
     parts.push(html`<div class="dayhead">${label} · ${all.length} departures${alertLink(all[0].ymd)}</div>`);
     parts.push(html`<div class="list">${all.map(t => html.raw(t.cancelled && t.min >= clockNow.min ? cancelledRow(t).s : `<div style="${past(t) ? 'opacity:.45' : ''}">${depRow(t, clockNow, { rel: past(t) ? 'gone' : relative(t, clockNow) }).s}</div>`))}</div>`);

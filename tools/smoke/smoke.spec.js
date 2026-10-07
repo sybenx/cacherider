@@ -170,6 +170,16 @@ test('search: a route, every route, a street, a place, an address', async ({ pag
   await expect(page.getByText(/Show on map/).filter({ visible: true }).first()).toBeVisible();
 });
 
+test('one clock rule: due from its minute\'s start, gone from the next', async ({ page }) => {
+  await open(page);
+  const r = await page.evaluate(async () => {
+    const t = await import('/app/time.js'), c = { min: 600, sec: 59, ymd: '20261007' };
+    return [t.isDue({ min: 600 }, c), t.isDue({ min: 601 }, c), t.isGone({ min: 599 }, c), t.isGone({ min: 600 }, c), t.isGone({ min: 605, gone: true }, c),
+      t.relative({ min: 600, day: 0 }, c), t.relative({ min: 601, day: 0 }, c), t.minsTo({ min: 10, day: 1 }, c)];
+  });
+  expect(r).toEqual([true, false, true, false, true, 'now', 'in 1 min', 850]);
+});
+
 test('routes list: every route, one opened', async ({ page }) => {
   await open(page, '#/routes');
   await expect(page.locator('a.row[href^="#/map/route/"]')).not.toHaveCount(0);

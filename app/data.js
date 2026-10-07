@@ -1,5 +1,5 @@
 // The schedule, loaded once, and the questions the screens ask of it.
-import { now, dayFrom, dayDiff, setZone, dayName, clockText } from './time.js';
+import { now, dayFrom, dayDiff, setZone, dayName, clockText, isGone } from './time.js';
 
 export let D = null;           // the reduced feed
 export const BASE = new URL('..', import.meta.url).href;   // the app's root, wherever it is served from
@@ -756,7 +756,7 @@ export function nextAt(si, n = 7, clockNow = now(), days = 8, filter = null) {
     // A late bus is still coming: today's rows from an hour and a half back, each with the feed's word. Only those, and
     // only the route asked for: every row of the day through the feed made the Transit Center's board, a bay's day of
     // every route's departures for each route's next three, a beat on a phone.
-    if (day === 0) rows = rows.filter(t => t.min >= clockNow.min - 90 && (!filter || filter(t))).map(live).filter(t => !t.gone && t.min >= clockNow.min).sort((a, b) => a.min - b.min);
+    if (day === 0) rows = rows.filter(t => t.min >= clockNow.min - 90 && (!filter || filter(t))).map(live).filter(t => !isGone(t, clockNow)).sort((a, b) => a.min - b.min);
     for (const t of rows) {
       if (filter && !filter(t)) continue;
       out.push({ ...t, day, ymd });

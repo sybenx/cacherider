@@ -2,7 +2,7 @@
 // to the first stop, the bus, where to change, where to get off, in order, with when.
 import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
-import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, dayFrom } from '../time.js';
+import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, dayFrom, isGone } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
@@ -503,7 +503,7 @@ function timeline(p, J, clockNow) {
     // The bus gone (today, its time past): the next one of its route from the same stop, so a rider who missed it
     // has the answer in the same place.
     let missed = '';
-    if (today && !l.u && m > l.on + 1 && first) {
+    if (today && !l.u && isGone({ min: l.on }, clockNow) && first) {   // gone as the stop's own list drops it (time.js), not a minute later
       const n = nextAt(l.from, 6, clockNow).find(t => t.r === l.r && t.min > l.on && t.day === 0);
       missed = html`<span class="sub missed">Missed it? ${n ? html`The next ${badge(l.r, 18)} leaves at <b>${clockText(n.min)}</b>` : 'No more today on this route'}</span>`;
     }

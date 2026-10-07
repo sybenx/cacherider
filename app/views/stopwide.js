@@ -1,7 +1,7 @@
 // A stop's day hour by hour, and a run from it: its stops from here on, in a sheet over the page, drawn on the big
 // map beside the page where there is one, else on a small map of the sheet's own.
 import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest, timed } from '../data.js';
-import { clock, clockText, clockShort, fmtDay } from '../time.js';
+import { clock, clockText, clockShort, fmtDay, isGone } from '../time.js';
 import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark } from '../ui.js';
 import { isWide } from '../wide.js';
 
@@ -93,7 +93,7 @@ function dayOf(si, next, clockNow) {
   rows = rows.filter(t => Math.floor(t.min / 60) >= from).sort((a, b) => a.min - b.min);
   return rows.length ? { rows, head, from, today, ymd } : null;
 }
-const depBtn = (t, d, clockNow, on) => `<button type="button" class="hr-dep${d.today && t.min < clockNow.min ? ' past' : ''}${on ? ' on' : ''}" data-trip="${t.trip}" data-on="${d.ymd}" aria-pressed="${on ? 'true' : 'false'}">${badge(t.r, 20).s}<span class="${t.live ? 'est' : ''}">${esc(clock(t.min).h)}</span></button>`;
+const depBtn = (t, d, clockNow, on) => `<button type="button" class="hr-dep${d.today && isGone(t, clockNow) ? ' past' : ''}${on ? ' on' : ''}" data-trip="${t.trip}" data-on="${d.ymd}" aria-pressed="${on ? 'true' : 'false'}">${badge(t.r, 20).s}<span class="${t.live ? 'est' : ''}">${esc(clock(t.min).h)}</span></button>`;
 
 /** The day at a stop, an hour to a column, from the current hour; the next day with buses once today's are done.
  *  A time is a button for its run, which opens in a sheet over the page (`pick.trip` the one open). */
@@ -123,7 +123,7 @@ export function runSheet(si, next, clockNow, trip, on) {
   const p = runParts(t, si, on);
   const row = d && d.ymd === on ? d.rows : next.filter(x => x.ymd === on);
   const i = row.findIndex(x => x.trip === trip), today = on === clockNow.ymd;
-  const stepBtn = (x, dir) => x ? `<button type="button" class="rs-step${today && x.min < clockNow.min ? ' past' : ''}" data-trip="${x.trip}" data-on="${on}" data-step="${dir}" aria-label="The ${esc(clockText(x.min))}">${dir < 0 ? icon('back', 18).s : ''}<span>${esc(clock(x.min).h)}</span>${dir > 0 ? icon('fwd', 18).s : ''}</button>`
+  const stepBtn = (x, dir) => x ? `<button type="button" class="rs-step${today && isGone(x, clockNow) ? ' past' : ''}" data-trip="${x.trip}" data-on="${on}" data-step="${dir}" aria-label="The ${esc(clockText(x.min))}">${dir < 0 ? icon('back', 18).s : ''}<span>${esc(clock(x.min).h)}</span>${dir > 0 ? icon('fwd', 18).s : ''}</button>`
     : `<span class="rs-step none"></span>`;
   const step = i < 0 ? '' : `<div class="rs-steps">${stepBtn(row[i - 1], -1)}${stepBtn(row[i + 1], 1)}</div>`;
   return `<div class="rs-scrim" data-rs-close></div>
