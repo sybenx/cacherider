@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="Theme.CacheRider" parent="android:Theme.Material.NoActionBar" />
+  <!-- Android 12 and later show their own start screen first (the launcher icon on a colour), which an app can't
+       remove: on the splash's own #101214, so the hand-over to the bus splash is no flash of another colour. -->
+  <style name="Theme.CacheRider.Launcher">
+    <item name="android:windowBackground">@color/splash</item>
+    <item name="android:windowSplashScreenBackground">@color/splash</item>
+    <item name="android:windowSplashScreenIconBackgroundColor">@color/splash</item>
+    <item name="android:statusBarColor">@color/bars</item>
+    <item name="android:navigationBarColor">@color/bars</item>
+    <item name="android:windowNoTitle">true</item>
+  </style>
+</resources>
