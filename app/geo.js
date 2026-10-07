@@ -138,6 +138,20 @@ export function climb(lat1, lon1, lat2, lon2) {
   }
   return up;
 }
+/** A walk's lie of the land, straight from one point to another: metres up and down (each only where it's steep
+ *  enough to feel, as climb() counts it) and its steepest grade over a cell (0.08, 8%). Nothing off the grid. */
+export function slope(lat1, lon1, lat2, lon2) {
+  if (!E) return { up: 0, down: 0, steep: 0 };
+  const d = distance(lat1, lon1, lat2, lon2), n = Math.max(1, Math.ceil(d / E.cell)), step = d / n;
+  let prev = height(lat1, lon1), steep = 0;
+  for (let k = 1; k <= n && prev !== null; k++) {
+    const h = height(lat1 + (lat2 - lat1) * k / n, lon1 + (lon2 - lon1) * k / n);
+    if (h === null) continue;
+    steep = Math.max(steep, Math.abs(h - prev) / step);
+    prev = h;
+  }
+  return { up: climb(lat1, lon1, lat2, lon2), down: climb(lat2, lon2, lat1, lon1), steep };
+}
 /** Walking pace: metres a minute on the flat, crossings and all; and the climb that costs a minute more, by
  *  Naismith's rule (an hour for every 600 m of ascent, so 10 m a minute). Going down costs nothing extra. */
 export const PACE = 75, RISE = 10;

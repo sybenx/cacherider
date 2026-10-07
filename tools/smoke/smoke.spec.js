@@ -345,6 +345,8 @@ test('directions arriving by a time: the shuttle the way picked, when it is the 
   await expect(page.getByText(/A bus at least every \d+ min/).filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.jrow').filter({ hasText: 'Stadium' })).toHaveCount(0);
   await expect(page.locator('.sa-row')).toHaveCount(0);   // said as the way, not beside it
+  // Walking the whole way beside it: how long, how far, up the bench to campus.
+  await expect(page.locator('a.walkall').filter({ visible: true }).first()).toContainText(/\d+ min · .* (ft|m) up/);
 });
 
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {

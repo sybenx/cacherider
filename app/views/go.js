@@ -2,11 +2,11 @@
 // to the first stop, the bus, where to change, where to get off, in order, with when.
 import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
-import { clockText, clock, relative, metres, fmtDay, dayName, now, dayFrom } from '../time.js';
+import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, dayFrom } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { spotOf, spotKey, atPath, climb, RISE } from '../geo.js';
+import { spotOf, spotKey, atPath, climb, RISE, slope, walkMins } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, planNetBy, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
@@ -187,7 +187,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
   const { found, c, lateBy, sh } = waysFor(origin, dest, fixed, clockNow);   // the shuttle too, while it runs
   const also = shuttleNote(origin.si !== undefined ? stop(origin.si) : origin, d, fixed || c, sh, lateBy ? [] : found.plans);
   if (found.walk !== undefined) {
-    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div></div></div>`);
+    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk${hillWords(origin.si !== undefined ? stop(origin.si) : origin, d)}` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div></div></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
   }
   if (!found.plans.length) return { html: parts.concat(noWay(e, to, hubBay, also)).join(''), mount, title: 'Directions', journey: noWayJourney(e, to, parts, hubBay, also) };
@@ -212,7 +212,7 @@ function sheet(J, head, clockNow, fixed = false, also = '') {
   const later = same.length ? html`<div class="later"><span class="k">Same way, ${same.every(([p]) => p.leave < P.leave) ? 'earlier' : 'later'}</span><span class="ts">${same.map(([p, k]) => html`<a class="chip" href="${J.hrefs[k]}">${clockText(p.leave)}</a>`)}</span></div>` : '';
   const sortRow = groups.size ? html`<div class="section between otherways"><span>Other ways</span><button type="button" class="chip" data-sort="walk" aria-pressed="${goSort() === 'walk' ? 'true' : 'false'}">Least walking</button></div>` : '';
   const rows = groups.size ? html`<div class="jrows" role="list">${[...groups.values()].map(g => planRow(g[0][0], J.hrefs[g[0][1]], g.slice(1), clockNow, fixed))}</div>` : '';
-  return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}</div>
+  return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}${walkAll(J, P, clockNow)}</div>
     <div class="journeysheet legs">${timeline(P, J, clockNow)}${later}${sortRow}${rows}</div>
     <div class="fine">From the timetable and the live feed, worked out on this phone. Walks are as the crow flies.</div>`.s;
 }
@@ -459,6 +459,7 @@ function timeline(p, J, clockNow) {
   const rides = p.legs.filter(l => l.kind === 'ride'), today = p.day === 0, m = clockNow.min;
   const colour = l => l.u ? U.routes[l.r].color : '#' + D.routes[l.r].color;
   const within = (a, b) => today && m >= a && m < b;
+  const at = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x);   // a leg's end, Connect's or the shuttle's
   const tl = (t, node, body, cls = '', c = '') => html`<div class="tl ${cls}"${c ? html.raw(` style="--c:${c}"`) : ''}><span class="tl-t">${t === null ? '' : clock(t).h}</span><span class="tl-n ${node}"><i></i></span><div class="tl-b">${body}</div></div>`;
   const out = [];
   const origin = J ? (J.from && J.fromName) || null : null;
@@ -472,12 +473,12 @@ function timeline(p, J, clockNow) {
         return;
       }
       if (l.to !== undefined && !prev) {   // from the start to the first stop
-        out.push(tl(p.leave, 'ring', html`<span class="name">${J ? J.fromName : 'Where you are'}</span><span class="sub">${icon('walk', 14)} Walk ${metres(l.d)} · about ${l.mins} min</span>`, 'walk' + (within(p.leave, next ? next.on : p.arrive) ? ' now' : '')));
+        out.push(tl(p.leave, 'ring', html`<span class="name">${J ? J.fromName : 'Where you are'}</span><span class="sub">${icon('walk', 14)} Walk ${metres(l.d)} · about ${l.mins} min${hillWords(J && J.from, at(l.to))}</span>`, 'walk' + (within(p.leave, next ? next.on : p.arrive) ? ' now' : '')));
         return;
       }
       // On from the last stop to where you're going: said under the get-off row (below); nothing of its own.
       if (prev && prev.kind === 'ride') return;
-      out.push(tl(p.leave, 'ring', html`<span class="name">${J ? J.fromName : 'Where you are'}</span><span class="sub">${icon('walk', 14)} Walk ${metres(l.d)} · about ${l.mins} min</span>`, 'walk' + (within(p.leave, p.arrive) ? ' now' : '')));
+      out.push(tl(p.leave, 'ring', html`<span class="name">${J ? J.fromName : 'Where you are'}</span><span class="sub">${icon('walk', 14)} Walk ${metres(l.d)} · about ${l.mins} min${hillWords(J && J.from, at(l.to))}</span>`, 'walk' + (within(p.leave, p.arrive) ? ' now' : '')));
       return;
     }
     if (prev && prev.kind === 'ride') {   // the change, staying put
@@ -505,7 +506,7 @@ function timeline(p, J, clockNow) {
       <span class="sub">${l.t.every ? `A bus at least every ${l.t.every} min · then ${Math.max(1, l.off - l.on - l.t.every)} min, ${l.n} ${l.n === 1 ? 'stop' : 'stops'}` : `Ride ${l.n} ${l.n === 1 ? 'stop' : 'stops'} · ${Math.max(1, l.off - l.on)} min`}</span>`, 'ride' + (within(l.on, l.off) ? ' now' : ''), colour(l)));
     // Getting off: the last walk, where there is one, said here; before a change, the change's own frame follows.
     const lastWalk = next && next.kind === 'walk' && !(p.legs[k + 2] && p.legs[k + 2].kind === 'ride') ? next : null;
-    out.push(tl(l.t.every ? null : l.off, next ? 'ring' : 'end', html`<span class="name">${next ? 'Get off at ' : ''}${stopWords(l.to)}</span>${addrLine(l.to)}${q(l.to)}${lastWalk ? html`<span class="sub">${icon('walk', 14)} Walk ${metres(lastWalk.d)} · about ${lastWalk.mins} min</span>` : ''}`,
+    out.push(tl(l.t.every ? null : l.off, next ? 'ring' : 'end', html`<span class="name">${next ? 'Get off at ' : ''}${stopWords(l.to)}</span>${addrLine(l.to)}${q(l.to)}${lastWalk ? html`<span class="sub">${icon('walk', 14)} Walk ${metres(lastWalk.d)} · about ${lastWalk.mins} min${hillWords(at(l.to), J && J.to)}</span>` : ''}`,
       (next ? 'off' : 'end') + (lastWalk && within(l.off, p.arrive) ? ' now' : ''), next && next.kind === 'walk' && p.legs[k + 2] ? colour(p.legs[k + 2]) : next && next.kind === 'ride' ? colour(next) : ''));
   });
   // The end: where you're going, at the arrival, after the last walk.
@@ -513,6 +514,29 @@ function timeline(p, J, clockNow) {
   const atWorst = worstOf(p);
   if (lastLeg.kind === 'walk') out.push(tl(atWorst ? null : p.arrive, 'end', html`<span class="name">${J ? J.destName : lastLeg.label || 'Where you’re going'}</span>${lastLeg.to !== undefined ? addrLine(lastLeg.to) : ''}${atWorst ? html`<span class="sub">There by <b>${clockText(p.arrive)}</b> at the latest</span>` : ''}`, 'end'));
   return html`<div class="tline">${out}</div>`;
+}
+/** A walk's ups and downs in words, where there are any to feel: ' · 130 ft up, steep', ' · 40 ft down',
+ *  ' · 60 ft up, 20 ft down'. Steep: 8% or more somewhere along it (the bench below Old Main is over 10). */
+const STEEP = 0.08;
+function hillWords(a, b) {
+  if (!a || !b) return '';
+  const s = slope(a.lat, a.lon, b.lat, b.lon), w = [];
+  if (s.up >= 4) w.push(heightOf(s.up) + ' up');
+  if (s.down >= 4) w.push(heightOf(s.down) + ' down');
+  return w.length ? ' · ' + w.join(', ') + (s.steep >= STEEP ? ', steep' : '') : '';
+}
+/** Walking the whole way, beside the ways by bus: how long (the climb counted), how far, its ups and downs, and its
+ *  steepest; lit when it's sooner there (or, arriving by a time, a later start) than the way picked. A tap, the
+ *  phone's own walking directions. Not past an hour and a half on foot. */
+function walkAll(J, P, c) {
+  if (!J || !J.from || !J.to) return '';
+  const mins = walkMins(J.from.lat, J.from.lon, J.to.lat, J.to.lon);
+  if (mins > 90) return '';
+  const d = distance(J.from.lat, J.from.lon, J.to.lat, J.to.lon), s = slope(J.from.lat, J.from.lon, J.to.lat, J.to.lon);
+  const better = P && (c.by ? c.min - mins > P.leave : c.min + mins < P.arrive);
+  const hill = [s.up >= 4 ? heightOf(s.up) + ' up' : '', s.down >= 4 ? heightOf(s.down) + ' down' : ''].filter(Boolean).join(', ');
+  return html`<a class="jrow walkall${better ? ' better' : ''}" href="${walkHref(J.to.lat, J.to.lon, J.destName)}" target="_blank" rel="noopener">${icon('walk', 22)}<div class="mid"><b>${better ? 'Quicker on foot' : 'Walk the whole way'}</b>
+    <span class="sub">${mins} min · ${metres(d)}${hill ? ' · ' + hill : ' · on the flat'}${s.steep >= STEEP ? ` · steep in places (${Math.round(s.steep * 100)}%)` : ''}${better && c.by ? ` · leave by ${clockText(c.min - mins)}` : ''}</span></div>${icon('fwd', 18)}</a>`;
 }
 /** A way with the shuttle at a time picked: its arrival the latest it could be, not a time it's due. */
 const worstOf = p => p.legs.some(l => l.kind === 'ride' && l.u && l.t.every);

@@ -194,6 +194,13 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 /* The shuttle when it's the better way: said as the way, not a footnote */
 .sa-row.better { margin: 0 -16px; padding: 12px 16px; background: var(--color-accent-100); box-shadow: inset 4px 0 0 var(--color-accent); }
 .sa-row.better b { color: var(--color-accent-700); }
+/* Walking the whole way, under the way picked */
+.jrow.walkall { display: flex; flex-direction: row; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+.jrow.walkall .mid { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.jrow.walkall > svg { flex: none; color: var(--cr-muted); }
+/* Quicker on foot: said in the words, not lit as a second answer beside the way picked */
+.jrow.walkall { background: var(--color-bg); }
+.jrow.walkall.better b { color: var(--color-accent-700); }
 .sa-row .col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sa-row .sub { font-size: 0.8125rem; line-height: 1.4; color: var(--cr-muted); }
 .gowhen { display: flex; flex-direction: column; gap: 8px; padding: 4px 16px 10px; }

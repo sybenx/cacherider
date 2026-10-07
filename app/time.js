@@ -123,6 +123,8 @@ let km = (() => { try { return localStorage.getItem('cr-units') === 'km'; } catc
 export const isKm = () => km;
 export function setKm(on) { km = on; try { localStorage.setItem('cr-units', on ? 'km' : 'mi'); } catch { /* kept for this visit only */ } }
 
+/** A height in the rider's units: '130 ft', or '40 m'. */
+export const heightOf = m => km ? Math.max(1, Math.round(m)) + ' m' : Math.max(10, Math.round(m / 0.3048 / 10) * 10) + ' ft';
 /** A distance in the rider's units: '130 ft', '0.4 mi', or '40 m', '1.2 km'. */
 export function metres(m) {
   if (km) return m < 950 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toFixed(1) + ' km';
