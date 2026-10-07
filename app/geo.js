@@ -84,7 +84,7 @@ export function whereabouts(lat, lon) {
 export function nearestTo(lat, lon, n = 4) {
   const all = nearest(lat, lon, n + 4);   // a few more than asked: a stop up the hill can give way to one past it
   const close = all.filter(s => s.d <= 4000);
-  return close.length ? byWalk(close, lat, lon).slice(0, n) : all.slice(0, 1);
+  return close.length ? byWalk(close, lat, lon, true).slice(0, n) : all.slice(0, 1);   // a spot: walked to and from
 }
 
 export const townState = t => /preston|franklin|whitney|dayton|weston|clifton/i.test(t) ? ', Idaho' : '';
@@ -147,7 +147,13 @@ export function walkMins(lat1, lon1, lat2, lon2, d = distance(lat1, lon1, lat2, 
   return Math.max(1, Math.ceil(d / PACE + climb(lat1, lon1, lat2, lon2) / RISE));
 }
 /** Stops nearest a point, as nearest() gives them ({ i, d }), in the order a walk to them takes: the climb counted,
- *  so the stop down the hill comes before the one as far up it. Each with its minutes. */
-export function byWalk(list, lat, lon) {
-  return list.map(x => ({ ...x, mins: walkMins(lat, lon, D.stops[x.i].lat, D.stops[x.i].lon, x.d) })).sort((a, b) => a.mins - b.mins || a.d - b.d);
+ *  so the stop down the hill comes before the one as far up it. Each with its minutes. `both`, for a place rather than
+ *  the rider: it's walked to from the bus and back to it after, so the climb either way counts (the Scotsman's stop
+ *  below the Institute of Religion is down the hill leaving it, and 30 m up it arriving). `at`, the stop's point,
+ *  for stops not Connect's (the shuttle's). */
+export function byWalk(list, lat, lon, both = false, at = x => D.stops[x.i]) {
+  return list.map(x => {
+    const s = at(x), mins = walkMins(lat, lon, s.lat, s.lon, x.d);
+    return { ...x, mins, cost: both ? mins + walkMins(s.lat, s.lon, lat, lon, x.d) : mins };
+  }).sort((a, b) => a.cost - b.cost || a.d - b.d);
 }

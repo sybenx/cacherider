@@ -2479,8 +2479,9 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   // The Aggie Shuttle's stops a short walk off too, on a road's card as anywhere, in among Connect's by distance: on
   // campus they're the nearer buses. One at the same pole as a Connect stop is listed as well, its loops and their
   // buses being what its row says (the Connect stop's row says only Connect's).
-  const ushare = !U ? [] : nearestUSU(at.lat, at.lon, 6).filter(x => x.d <= 400 && U.stops[x.i].routes.length).slice(0, 3).map(x => ({ ...x, u: true }));
-  const rows = [...near, ...ushare].sort((a, b) => a.d - b.d);
+  const ushare = !U ? [] : byWalk(nearestUSU(at.lat, at.lon, 6).filter(x => x.d <= 400 && U.stops[x.i].routes.length), at.lat, at.lon, true, x => U.stops[x.i]).slice(0, 3).map(x => ({ ...x, u: true }));
+  // By the walk, there and back, the climb counted (a road's stops, along it, by distance)
+  const rows = [...near, ...ushare].sort((a, b) => road ? a.d - b.d : (a.cost ?? a.d / 75) - (b.cost ?? b.d / 75) || a.d - b.d);
   const card = col.querySelector('#mapcard');
   // A start picked for directions: the way there from this spot is the card's one button, the nearest stops under it.
   // Otherwise (a place found, a long press) the spot either end of a journey: to it from where the rider is, or from it

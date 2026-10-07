@@ -9,7 +9,7 @@ Each gets its area, the town of its nearest stop, and where a name repeats in a 
 same), the stop it's by. Where the same name sits twice within a block (a shop mapped as a point and a building),
 it's kept once. The pamphlet's places (data/places.json) are searched first and win over these.
 """
-import json, math, os, sys, urllib.parse, urllib.request
+import json, math, os, re, sys, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'osm-places.json')
@@ -23,6 +23,7 @@ QUERY = f"""[out:json][timeout:120];
   nwr["name"]["building"~"school|university|college|hospital|civic|public|stadium|government|retail|commercial"]({BOX});
   nwr["name"]["man_made"="works"]({BOX}); nwr["name"]["landuse"~"industrial|commercial|retail"]({BOX});
   nwr["name"]["place"~"^(neighbourhood|suburb|quarter)$"]({BOX});
+  way["highway"]["loc_name"]({BOX}); way["highway"]["nickname"]({BOX});
 );
 out center bb tags;"""
 
@@ -125,6 +126,36 @@ for e in els:
     near = min(stops, key=lambda s: dist((box[1] + box[3]) / 2, (box[0] + box[2]) / 2, s['lat'], s['lon']))
     if dist((box[1] + box[3]) / 2, (box[0] + box[2]) / 2, near['lat'], near['lon']) > 3000: continue   # out past the buses
     areas.append({'name': name, 'names': list(dict.fromkeys(names)), 'box': [round(x, 5) for x in box]})
-json.dump({'from': 'OpenStreetMap contributors', 'campus': campus, 'places': out, 'areas': areas}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+# What the town calls a street ('10th West', 'Sixth South', 'the Dugway', 'Yonk Loop'), from its loc_name or nickname.
+# One that's a long stretch of a single grid street (10th West is 1000 West across Logan) is that street: a search for
+# it is a search for '1000 West', addresses on it and all ('10th west 400 north'). Any other (a hill, a bend, a loop
+# of several streets) is a place, where its stretch of road is.
+GRID = re.compile(r'^(?:(?:north|south|east|west)\s+)?(\d+ (?:north|south|east|west))$', re.I)
+nick = {}
+for e in els:
+    t = e.get('tags', {})
+    if 'highway' not in t or not e.get('bounds'): continue
+    for k in ('loc_name', 'nickname'):
+        for alias in (t.get(k) or '').split(';'):
+            alias = alias.strip()
+            if alias and alias.lower() != (t.get('name') or '').lower(): nick.setdefault(alias, []).append(e)
+streets = {}
+for alias, ways in sorted(nick.items()):
+    box = [min(w['bounds']['minlon'] for w in ways), min(w['bounds']['minlat'] for w in ways), max(w['bounds']['maxlon'] for w in ways), max(w['bounds']['maxlat'] for w in ways)]
+    names = [(w['tags'].get('name') or '').strip() for w in ways]
+    grid = {GRID.match(n).group(1).title() for n in names if GRID.match(n)}
+    clat, clon = (box[1] + box[3]) / 2, (box[0] + box[2]) / 2
+    if len(grid) == 1 and all(GRID.match(n) for n in names if n) and dist(box[1], box[0], box[3], box[2]) >= 1200:
+        streets[alias] = [grid.pop(), min(stops, key=lambda s: dist(clat, clon, s['lat'], s['lon']))['town']]   # its town's: Logan's 600 South, not Hyrum's
+        continue
+    at = lambda w: {'lat': (w['bounds']['minlat'] + w['bounds']['maxlat']) / 2, 'lon': (w['bounds']['minlon'] + w['bounds']['maxlon']) / 2}
+    mid = min(map(at, ways), key=lambda c: dist(clat, clon, c['lat'], c['lon']))   # a piece of the road, not a loop's middle
+    near = min(stops, key=lambda s: dist(mid['lat'], mid['lon'], s['lat'], s['lon']))
+    if dist(mid['lat'], mid['lon'], near['lat'], near['lon']) > WALK: continue
+    of = max(set(n for n in names if n), key=names.count, default='')
+    out.append([alias, round(mid['lat'], 5), round(mid['lon'], 5), of or 'Road', near['town']])
+out.sort(key=lambda p: p[0].lower())
+print('streets: ' + ', '.join(f'{a} = {s}, {w}' for a, (s, w) in streets.items()), file=sys.stderr)
+json.dump({'from': 'OpenStreetMap contributors', 'campus': campus, 'places': out, 'areas': areas, 'streets': streets}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(f'{len(areas)} areas: ' + ', '.join(a['name'] for a in areas), file=sys.stderr)
 print(f'{len(out)} places, {os.path.getsize(OUT) // 1024} KB, campus {campus or "none"}', file=sys.stderr)

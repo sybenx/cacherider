@@ -152,6 +152,15 @@ test('search: a route, every route, a street, a place, an address', async ({ pag
   // A place on campus by 'USU' and a word: the Institute of Religion by campus (a church in the map's data).
   await go(page, '#/search?q=' + encodeURIComponent('USU Institute'));
   await expect(page.getByText(/Institute of Religion/).filter({ visible: true }).first()).toBeVisible();
+  // Its stops by the walk there and back, the climb counted: up on the bench, not the Scotsman's at the hill's foot
+  // (nearer on the flat map; first while the elevation grid was drawn over the wrong ground).
+  await expect(page.locator('a.stoprow[href^="#/stop/"] .name').filter({ visible: true }).first()).not.toHaveText(/590 North 600 East/);
+  // A street by what the town calls it: 10th West is 1000 West's stops; the Dugway a place.
+  await go(page, '#/search?q=' + encodeURIComponent('10th west'));
+  await expect(page.getByText(/10th West is 1000 West/).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('a[href^="#/stop/"]').filter({ visible: true }).first()).toContainText('1000 West');
+  await go(page, '#/search?q=dugway');
+  await expect(page.getByText(/600 East/).filter({ visible: true }).first()).toBeVisible();
   // A chapel by what the town calls it (OSM's loc_name), 'chapel' for 'church'; an area named with a kind in it.
   await go(page, '#/search?q=' + encodeURIComponent('Middle Earth Chapel'));
   await expect(page.getByText(/Middle Earth Building/).filter({ visible: true }).first()).toBeVisible();

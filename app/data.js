@@ -112,6 +112,21 @@ export async function loadPlaces() {
   O = (oj.places || []).map(([name, lat, lon, word, area, also]) => ({ name, lat, lon, word, area, also: also || '', osm: true }));   // `also`: names it goes by, searched, not shown
   O.campus = oj.campus || '';   // the university's initials, the word its buildings are listed under
   AREAS = (oj.areas || []).map(a => ({ ...a, forms: a.names.map(n => wordsOf(n).filter(w => !AREA_FILLER.includes(w))).filter(f => f.length) }));
+  STREETS = Object.entries(oj.streets || {}).map(([said, [is, town]]) => ({ said, is, town, re: new RegExp('\\b' + said.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i') })).sort((a, b) => b.said.length - a.said.length);
+}
+/** What the town calls a long stretch of a grid street (tools/osmplaces.py, from OpenStreetMap's loc_name): '10th West'
+ *  is Logan's 1000 West, 'Mendon Road' Logan's 600 South. */
+let STREETS = [];
+/** A search in the grid's words: '10th west 400 north' → '1000 West Logan 400 North', for the stops and addresses on
+ *  it (a place called by it, the 10th West Scarehouse, is found by the words as typed). Its town, unless one's named.
+ *  And which were said, for the results to say what they were taken as. */
+export function sayStreets(q) {
+  const said = [];
+  for (const s of STREETS) if (s.re.test(q)) {
+    const named = q.replace(s.re, ' ').split(/[\s,]+/).some(w => w && townish(w));
+    q = q.replace(s.re, s.is + (named ? '' : ' ' + s.town)); said.push(s);
+  }
+  return { q: q.replace(/\s+/g, ' ').trim(), said };
 }
 /** Areas a search can name (tools/osmplaces.py): USU's campus, a college, a hospital's grounds, a mall, a neighbourhood,
  *  each by its names, as words. A name's 'the' and 'neighborhood' aren't needed to name it ('island', 'hillcrest'). */

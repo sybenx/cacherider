@@ -1,10 +1,10 @@
 // Search: one list for a street, a stop, a place, an address, a route or the shuttle, the same wherever it's asked
 // (the Stops tab's page, the Map tab's box, the header's box on a wide screen). Only where a result leads differs:
 // on the map it shows there (forMap), and while one end of a journey is being chosen it's that end (forPick).
-import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish } from '../data.js';
+import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets } from '../data.js';
 import { metres } from '../time.js';
 import { routeName, html, icon, badge, badges, stopRow, esc } from '../ui.js';
-import { parseAddress, geocode, townState, spotKey, spotOf, atPath } from '../geo.js';
+import { parseAddress, geocode, townState, spotKey, spotOf, atPath, byWalk } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, live, hasData } from '../usu.js';
 import { myPlaces } from '../places.js';
 
@@ -41,8 +41,9 @@ export function results(q, clockNow, pick = null, later = false) {
 }
 function resultsOf(q, clockNow, pick, later) {
   const nx = i => later ? null : nextAt(i, 1, clockNow)[0];
-  let hits = search(q);
-  const addr = parseAddress(q);
+  const st = sayStreets(q);   // '10th West': the stops and addresses on 1000 West, Logan
+  let hits = search(st.q);
+  const addr = parseAddress(st.q);
   const places = addr ? geocode(addr, 4) : [];
   // Choosing where to start from, the whole heading of a place or an address is the start: a small link beside
   // it was missed on a phone, the tap landing on the words.
@@ -77,8 +78,9 @@ function resultsOf(q, clockNow, pick, later) {
   const where = towns.length === 1 ? ' in ' + towns[0] : '';
   if (!hits.length) return html`${html.raw(routeHtml)}${html.raw(spotHtml)}${html.raw(campusHtml)}${html.raw(addrHtml)}${places.length ? html`<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>` : ''}`;
   // A street or a number is after stops: they come first, the places on that street after. A name is after a place.
-  const street = streetish(q) || townish(q);
-  const stopsHtml = html`<div class="${street && !places.length ? 'notice' : 'section'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}</span></div>
+  const street = streetish(st.q) || townish(q);
+  const taken = st.said.map(s => `${s.said} is ${s.is}`).join(' · ');
+  const stopsHtml = html`<div class="${street && !places.length ? 'notice' : 'section'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}${taken ? html`<span class="note"> · ${taken}</span>` : ''}</span></div>
     <div class="list">${hits.map(i => stop(i).hub ? hubRow() : stopRow(i, nx(i), clockNow, { later }))}</div>`.s;
   const blocks = street ? [addrHtml, stopsHtml, campusHtml, spotHtml] : [spotHtml, campusHtml, addrHtml, stopsHtml];
   return html`${html.raw(routeHtml)}${html.raw(blocks.join(''))}
@@ -96,7 +98,7 @@ const POOL = 'https://rideconnectutah.gov/pool/';
 /** A place from the pamphlet: its nearest stops with their next buses; the Transit Center when it's a short walk from it;
  *  and Pool, where Connect's on-demand ride serves it. */
 function placeBlock(p, clockNow, pick = null, later = false) {
-  const near = nearest(p.lat, p.lon, 8).filter(x => !stop(x.i).hub);
+  const near = byWalk(nearest(p.lat, p.lon, 8).filter(x => !stop(x.i).hub), p.lat, p.lon, true);   // walked to and from, the climb counted
   const close = near.filter(x => x.d <= 600).slice(0, 3);
   const shown = close.length ? close : near.slice(0, 2);   // nothing close: the nearest two anyway, their distance says it
   const hub = p.hub ? html`<a class="stoprow" href="#/hub"><div class="mid"><span class="name">${D.hub.name}</span><span class="dist">A short walk · every route</span>${badges(D.routes.map((_, ri) => ri).filter(ri => D.hub.bays.some(b => b.routes.includes(ri))), 24)}</div><div class="end"><span class="muted">${icon('fwd', 20)}</span></div></a>` : '';

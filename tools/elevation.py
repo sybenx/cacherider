@@ -38,10 +38,16 @@ def stops_bounds():
 
 
 def fetch(w, s, e, n, cols, rows):
-    """The DEM over the box as rows of floats, north row first: one uncompressed float32 GeoTIFF, its pixels the
-    cells' centres (the service resamples its best source to the size asked)."""
-    q = f'?bbox={w},{s},{e},{n}&bboxSR=4326&imageSR=4326&size={cols},{rows}&format=tiff&pixelType=F32&compression=None&interpolation=RSP_BilinearInterpolation&f=image'
-    b = urllib.request.urlopen(SERVICE + q, timeout=180).read()
+    """The DEM over the box as rows of floats, north row first, and the box the service actually drew it over: one
+    uncompressed float32 GeoTIFF, its pixels the cells' centres (the service resamples its best source to the size
+    asked). The service keeps its pixels square in the image's degrees, stretching the box to fit when the size asked
+    doesn't (the first grid, 2026-09-28, was drawn 0.6° tall for 0.5°, and every height was read from the wrong row:
+    the Institute of Religion by USU 41 m low, under the bench it sits on). So the box is asked for by its answer."""
+    q = f'?bbox={w},{s},{e},{n}&bboxSR=4326&imageSR=4326&size={cols},{rows}&format=tiff&pixelType=F32&compression=None&interpolation=RSP_BilinearInterpolation'
+    ans = json.load(urllib.request.urlopen(SERVICE + q + '&f=json', timeout=180))
+    ext = ans['extent']
+    assert (ans['width'], ans['height']) == (cols, rows), (ans['width'], ans['height'])
+    b = urllib.request.urlopen(ans['href'], timeout=180).read()
     bo = '<' if b[:2] == b'II' else '>'
     ifd = struct.unpack(bo + 'I', b[4:8])[0]
     tags = {}
@@ -77,7 +83,7 @@ def fetch(w, s, e, n, cols, rows):
                 y = k * per + r
                 if y >= H: break
                 grid[y] = list(struct.unpack_from(bo + f'{W}f', b, off + r * W * 4))
-    return grid
+    return grid, (ext['xmin'], ext['ymin'], ext['xmax'], ext['ymax'])
 
 
 def main():
@@ -85,12 +91,13 @@ def main():
     cell = 100
     if '--cell' in args: cell = float(args[args.index('--cell') + 1])
     w, s, e, n = [float(x) for x in args[args.index('--bounds') + 1:args.index('--bounds') + 5]] if '--bounds' in args else stops_bounds()
-    lat = (s + n) / 2
-    dlon, dlat = cell / (111320 * math.cos(math.radians(lat))), cell / 110540
+    # Square in degrees, as the service draws them: `cell` metres north to south, less across (75 m at 42°N for 100).
+    dlat = dlon = cell / 110540
     cols, rows = math.ceil((e - w) / dlon), math.ceil((n - s) / dlat)
     e, s = w + cols * dlon, n - rows * dlat   # whole cells
     print(f'{cols} × {rows} cells of {cell:g} m over {w:.4f},{s:.4f} – {e:.4f},{n:.4f}', file=sys.stderr)
-    grid = fetch(w, s, e, n, cols, rows)
+    grid, (w, s, e, n) = fetch(w, s, e, n, cols, rows)
+    dlon, dlat = (e - w) / cols, (n - s) / rows   # the box as drawn
     # No data (a gap in the source): the nearest cell before it in the row, or the row above.
     out = []
     for y, row in enumerate(grid):
@@ -104,8 +111,30 @@ def main():
     deltas = [[r[0]] + [r[i] - r[i - 1] for i in range(1, len(r))] for r in out]
     doc = {'source': 'USGS 3DEP bare-earth DEM, via the National Map', 'built': datetime.date.today().isoformat(),
            'lat0': round(n, 6), 'lon0': round(w, 6), 'dlat': round(dlat, 8), 'dlon': round(dlon, 8), 'rows': rows, 'cols': cols, 'cell': cell, 'd': deltas}
+    check(doc, out)
     with open(OUT, 'w') as f: json.dump(doc, f, separators=(',', ':'))
     print(f'wrote {os.path.relpath(OUT, ROOT)}: {os.path.getsize(OUT) // 1024} KB', file=sys.stderr)
+
+
+POINT = 'https://epqs.nationalmap.gov/v1/json?x={lon}&y={lat}&units=Meters&wkid=4326'
+def check(doc, z, k=12):
+    """The grid read back at a dozen stops against the point service's heights there: off by more than a few metres
+    on the flat, it's drawn over the wrong ground (as the first was), and that's said, not kept."""
+    stops = json.load(open(os.path.join(ROOT, 'data', 'cvtd.json')))['stops']
+    errs = []
+    for st in stops[::max(1, len(stops) // k)][:k]:
+        y, x = (doc['lat0'] - st['lat']) / doc['dlat'] - 0.5, (st['lon'] - doc['lon0']) / doc['dlon'] - 0.5
+        y0, x0 = int(y), int(x)
+        if not (0 <= y0 < doc['rows'] - 1 and 0 <= x0 < doc['cols'] - 1): continue
+        fy, fx = y - y0, x - x0
+        g = z[y0][x0] * (1 - fx) * (1 - fy) + z[y0][x0 + 1] * fx * (1 - fy) + z[y0 + 1][x0] * (1 - fx) * fy + z[y0 + 1][x0 + 1] * fx * fy
+        try: t = float(json.load(urllib.request.urlopen(POINT.format(lat=st['lat'], lon=st['lon']), timeout=30))['value'])
+        except Exception: continue
+        errs.append(abs(g - t))
+    if not errs: print('check: the point service unreachable', file=sys.stderr); return
+    mean = sum(errs) / len(errs)
+    print(f'check: {len(errs)} stops, {mean:.1f} m off on average, {max(errs):.1f} at most', file=sys.stderr)
+    if mean > 6: sys.exit('the grid is off the ground it should be over; not kept')
 
 
 if __name__ == '__main__':
