@@ -92,6 +92,17 @@ function runOf(ti, ymd) {
 function deps(si, ymd, from, live, cache, until = null) {
   // A shuttle stop: every loop that calls there, each bus's estimate a departure. Today's only: tomorrow has no buses yet.
   if (isU(si)) {
+    if (SH && SH.every) {
+      // A time picked: every five minutes the loop runs through, the ride (rideOf) counting a whole lap's wait first.
+      const out = [];
+      for (const l of SH.loops) if (l.stops.includes(uOf(si))) {
+        const lap = SH.lap(l.ri), ok = m => SH.runs(l.ri, ymd, m) && SH.runs(l.ri, ymd, m + lap);
+        if (until === null) { for (let m = from, n = 0; n < MAX_ON && m < from + AHEAD; m += 5) if (ok(m)) { out.push({ u: true, every: lap, r: l.ri, si, min: m, secs: 0 }); n++; } }
+        else for (let m = until, n = 0; n < MAX_ON && m >= from; m -= 5) if (ok(m)) { out.push({ u: true, every: lap, r: l.ri, si, min: m, secs: 0 }); n++; }
+      }
+      out.sort((a, b) => a.min - b.min);
+      return until === null ? out.slice(0, MAX_ON) : out.slice(-MAX_ON);
+    }
     if (!SH || !live) return [];
     const out = [];
     for (const l of SH.loops) if (l.stops.includes(uOf(si))) for (const w of SH.waits(uOf(si), l.ri)) if (SH.now + w.min >= from && (until === null || SH.now + w.min <= until)) out.push({ u: true, r: l.ri, si, min: SH.now + w.min, secs: w.secs });
@@ -119,7 +130,7 @@ function rideOf(t, ymd) {
   if (t.u) {
     const l = SH.loops.find(x => x.ri === t.r), a = uOf(t.si), k = l.stops.indexOf(a), n = l.stops.length;
     const seq = [[t.min, t.si]];
-    for (let j = 1; j < n; j++) { const b = l.stops[(k + j) % n]; if (b !== a) seq.push([Math.max(t.min + 1, SH.now + Math.round((t.secs + SH.ride(t.r, a, b)) / 60)), 'u' + b]); }
+    for (let j = 1; j < n; j++) { const b = l.stops[(k + j) % n]; if (b !== a) seq.push([t.every ? t.min + t.every + Math.round(SH.ride(t.r, a, b) / 60) : Math.max(t.min + 1, SH.now + Math.round((t.secs + SH.ride(t.r, a, b)) / 60)), 'u' + b]); }
     return [seq, 0];
   }
   if (t.trip === undefined) return null;

@@ -209,6 +209,16 @@ export function planNet(clockNow = now()) {
   return { stops: U.stops.map(s => ({ lat: s.lat, lon: s.lon })), loops: loops.map(ri => ({ ri, stops: U.routes[ri].stops })), waits, ride: rideSecs };
 }
 
+/** The shuttle for a time picked (an hour off, another day): no buses to go by and no timetable, so each loop by its
+ *  hours and its longest wait, a bus once round (`lap`, minutes): the planner's departures a few minutes apart, each
+ *  ride counting that whole wait (`every`), so a way by the shuttle is one that works whenever its bus comes. */
+export function planNetBy() {
+  if (!U || !U.service) return null;
+  const loops = U.routes.map((r, ri) => ri).filter(ri => U.routes[ri].stops.length >= 2);
+  return { stops: U.stops.map(s => ({ lat: s.lat, lon: s.lon })), loops: loops.map(ri => ({ ri, stops: U.routes[ri].stops })), ride: rideSecs,
+    every: true, lap: ri => Math.ceil(lapSecs(ri) / 60), runs: (ri, ymd, min) => !offHours([ri], { ymd, min }) };
+}
+
 /** A bus's next stops along its loop, with minutes. */
 export function busNext(b, n = 5) {
   const r = U.routes[b.ri];

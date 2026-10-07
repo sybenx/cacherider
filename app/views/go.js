@@ -9,7 +9,7 @@ import { walkHref } from '../pointer.js';
 import { spotOf, spotKey, atPath, climb, RISE } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
-import { U, planNet, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
+import { U, planNet, planNetBy, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
 import { nearMe, app } from '../main.js';
 
 /** Where to and where from, from the address: the stop or spot, its name, and the origin (null till one's chosen). */
@@ -118,8 +118,9 @@ function leaveAt(t, clockNow) {
 /** The ways for a time picked, or for now: arriving by, the latest leaving that get there in time, from now on if it's
  *  today (from the day's start if later); none, the first way there, said so (lateBy). */
 function waysFor(origin, dest, fixed, clockNow) {
-  const c = fixed || clockNow, live = liveFor(fixed, clockNow), sh = live ? planNet(clockNow) : null;
-  if (!fixed || !fixed.by) { const sh2 = live ? planNet(c) : null; return { found: journeys(origin, dest, c, 8, sh2, live), c, live, sh: sh2 }; }
+  // The shuttle by its buses while they're out, by its hours and longest wait for a time further off (planNetBy).
+  const c = fixed || clockNow, live = liveFor(fixed, clockNow), sh = live ? planNet(clockNow) : planNetBy();
+  if (!fixed || !fixed.by) { const sh2 = live ? planNet(c) : planNetBy(); return { found: journeys(origin, dest, c, 8, sh2, live), c, live, sh: sh2 }; }
   const from = fixed.ymd === clockNow.ymd ? clockNow : { ...fixed, min: 0 };
   const found = journeys(origin, dest, from, 8, sh, live, fixed.min);
   if (found.walk !== undefined || found.plans.length) return { found, c, live, sh };
@@ -208,7 +209,7 @@ function sheet(J, head, clockNow, fixed = false, also = '') {
   // One row a route among the other ways: the first of each, the rest of its times said on it.
   const groups = new Map();
   for (const [p, k] of others) { const g = sigOf(p); if (!groups.has(g)) groups.set(g, []); groups.get(g).push([p, k]); }
-  const later = same.length ? html`<div class="later"><span class="k">Same way, later</span><span class="ts">${same.map(([p, k]) => html`<a class="chip" href="${J.hrefs[k]}">${clockText(p.leave)}</a>`)}</span></div>` : '';
+  const later = same.length ? html`<div class="later"><span class="k">Same way, ${same.every(([p]) => p.leave < P.leave) ? 'earlier' : 'later'}</span><span class="ts">${same.map(([p, k]) => html`<a class="chip" href="${J.hrefs[k]}">${clockText(p.leave)}</a>`)}</span></div>` : '';
   const sortRow = groups.size ? html`<div class="section between otherways"><span>Other ways</span><button type="button" class="chip" data-sort="walk" aria-pressed="${goSort() === 'walk' ? 'true' : 'false'}">Least walking</button></div>` : '';
   const rows = groups.size ? html`<div class="jrows" role="list">${[...groups.values()].map(g => planRow(g[0][0], J.hrefs[g[0][1]], g.slice(1), clockNow, fixed))}</div>` : '';
   return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}</div>
@@ -220,7 +221,7 @@ function sheet(J, head, clockNow, fixed = false, also = '') {
 const sigOf = p => p.legs.filter(l => l.kind === 'ride').map(l => (l.u ? 'u' : '') + l.r + '@' + l.from).join('_');
 /** The way picked, summed up: when it leaves and gets there, how long, and the change if there is one. */
 function summary(p, J, clockNow, fixed) {
-  const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || l.u));
+  const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || (l.u && !l.t.every)));
   const walk = p.legs.filter(l => l.kind === 'walk').reduce((m, l) => m + (l.mins || 0), 0);
   const changes = p.legs.filter((l, k) => l.kind === 'ride' && p.legs.slice(0, k).some(x => x.kind === 'ride'));
   const at = [...new Set(changes.map(l => where(l.from).hub ? 'the ' + D.hub.name : stopWords(l.from)))];
@@ -236,7 +237,7 @@ function summary(p, J, clockNow, fixed) {
 /** Another way as a row, one a route: its legs as badges (the walker for a walk) with minutes, how long and how much
  *  on foot, and when it leaves, large, with when it arrives; its later times, where there are any. */
 function planRow(p, href, more, clockNow, fixed = false) {
-  const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || l.u));
+  const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || (l.u && !l.t.every)));
   const walk = p.legs.filter(l => l.kind === 'walk').reduce((m, l) => m + (l.mins || 0), 0);
   const rel = fixed ? dayWord(p.ymd) : p.day === 0 ? '' : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
   const legs = p.legs.filter(l => l.kind === 'ride' || l.mins >= 1).map(l => l.kind === 'walk' ? html`<span class="jleg">${icon('walk', 16)}${l.mins}m</span>`
@@ -288,9 +289,15 @@ function walkOf(p, o, d) {
   return m;
 }
 export const goSort = () => new URLSearchParams(location.hash.split('?')[1] || '').get('sort') === 'walk' ? 'walk' : 'quick';
-const sortPlans = (plans, o, d) => plans.slice().sort((a, b) => goSort() === 'walk' ? (a.day - b.day) || (walkOf(a, o, d) - walkOf(b, o, d)) || (a.arrive - b.arrive) : (a.day - b.day) || (a.arrive - b.arrive) || (b.leave - a.leave));   // quickest there (then leaving latest), the first opened; or by the walk
+// Quickest there (then leaving latest), the first opened; arriving by a time, leaving latest that makes it (then
+// there soonest): to the Institute by 7, the Evening Express at 6:29, not the Green Loop at 6:25 to wait 16 minutes.
+// Or by the walk.
+const sortPlans = (plans, o, d, by = false) => plans.slice().sort((a, b) => goSort() === 'walk' ? (a.day - b.day) || (walkOf(a, o, d) - walkOf(b, o, d)) || (a.arrive - b.arrive)
+  : by ? (a.day - b.day) || (b.leave - a.leave) || (a.arrive - b.arrive) : (a.day - b.day) || (a.arrive - b.arrive) || (b.leave - a.leave));
 function pickPlan(plans0, key, e, clockNow, t = null) {
-  const plans = sortPlans(plans0, e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d);
+  // Arriving by: when they all make it (none does, and they're the first ways there after, quickest first)
+  const by = /^a\d{8}-(\d{2})(\d{2})$/.exec(t || ''), byMin = by ? +by[1] * 60 + +by[2] : -1;
+  const plans = sortPlans(plans0, e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d, !!by && plans0.every(p => p.arrive <= byMin));
   const base = location.hash.split('?')[0];
   let list = plans, i = key ? findPlan(plans, key) : -1, own = i >= 0;
   // Kept only for a way picked (not the first of whatever's listed, which then showed twice), and for the same time.
@@ -492,8 +499,8 @@ function timeline(p, J, clockNow) {
       missed = html`<span class="sub missed">Missed it? ${n ? html`The next ${badge(l.r, 18)} leaves at <b>${clockText(n.min)}</b>` : 'No more today on this route'}</span>`;
     }
     out.push(tl(l.on, 'on', html`<span class="name">${stopWords(l.from)}</span>${addrLine(l.from)}
-      <span class="tl-bus">${l.u ? chip(l.r, 28) : badge(l.r, 28)}<span>${toward(l)}</span>${l.u ? liveMark('Estimated') : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${q(l.from)}${on ? html`<span class="sub">${on}</span>` : ''}${missed}
-      <span class="sub">Ride ${l.n} ${l.n === 1 ? 'stop' : 'stops'} · ${Math.max(1, l.off - l.on)} min</span>`, 'ride' + (within(l.on, l.off) ? ' now' : ''), colour(l)));
+      <span class="tl-bus">${l.u ? chip(l.r, 28) : badge(l.r, 28)}<span>${toward(l)}</span>${l.u ? (l.t.every ? '' : liveMark('Estimated')) : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${q(l.from)}${on ? html`<span class="sub">${on}</span>` : ''}${missed}
+      <span class="sub">${l.t.every ? `A bus at least every ${l.t.every} min · then ${Math.max(1, l.off - l.on - l.t.every)} min, ${l.n} ${l.n === 1 ? 'stop' : 'stops'}` : `Ride ${l.n} ${l.n === 1 ? 'stop' : 'stops'} · ${Math.max(1, l.off - l.on)} min`}</span>`, 'ride' + (within(l.on, l.off) ? ' now' : ''), colour(l)));
     // Getting off: the last walk, where there is one, said here; before a change, the change's own frame follows.
     const lastWalk = next && next.kind === 'walk' && !(p.legs[k + 2] && p.legs[k + 2].kind === 'ride') ? next : null;
     out.push(tl(l.off, next ? 'ring' : 'end', html`<span class="name">${next ? 'Get off at ' : ''}${stopWords(l.to)}</span>${addrLine(l.to)}${q(l.to)}${lastWalk ? html`<span class="sub">${icon('walk', 14)} Walk ${metres(lastWalk.d)} · about ${lastWalk.mins} min</span>` : ''}`,
