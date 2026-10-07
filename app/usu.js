@@ -325,7 +325,8 @@ export function stopRowU(si, opts = {}) {
   const rows = opts.bare ? [] : board(si);   // bare: the map's, no estimate (its page has them)
   const first = rows.find(r => r.est);
   const shared = U.shared[si];
-  const also = shared ? `<span class="dist">Also Connect · ${esc(D.stops[shared.j].name)}</span>` : (opts.dist != null ? `<span class="dist">${esc(opts.dist)}</span>` : '');
+  const steep = opts.steep ? ' · <b class="hill steep">Steep</b> walk' : '';
+  const also = shared ? `<span class="dist">Also Connect · ${esc(D.stops[shared.j].name)}${steep}</span>` : (opts.dist != null ? `<span class="dist">${esc(opts.dist)}${steep}</span>` : '');
   const end = opts.bare ? '' : first
     ? `<div class="end"><div class="when">${chip(first.ri, 20).s}<span class="t t-22">${first.est.here ? 'Here' : first.est.stops === null ? first.est.min + ' min' : first.est.stops + (first.est.stops === 1 ? ' stop' : ' stops')}</span></div><span class="rel">${isStale() ? 'at ' + lastSeen() : 'about ' + first.est.min + ' min'}</span>${liveTag(isStale() ? 'Last seen' : 'Live').s}</div>`
     : `<div class="end"><span class="rel">${hasData() ? 'No shuttles running' : 'Live'}</span></div>`;

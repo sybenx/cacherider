@@ -6,7 +6,7 @@ import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextSer
 import { now, relative, fmtDay, dayName, clock, clockText, metres, dayFrom } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
-import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk } from '../geo.js';
+import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
@@ -2463,6 +2463,8 @@ function setSpot(at) {
   const apply = () => map.getSource('spot') && map.getSource('spot').setData(at ? circle(at.lat, at.lon) : { type: 'FeatureCollection', features: [] });
   if (ready) apply(); else map.once('load', apply);
 }
+/** A spot's walk to a stop or back up from it, steep either way (a place is walked to and from). */
+const steepBoth = (a, b) => steepWalk(a, b) || steepWalk(b, a);
 function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   selected = null; uHilite = ''; hiLoops = []; selectedBus = null; selectedU = null;   // a bus picked before is put down: the spot's card is the card
   hiLines = road && road.length === 1 ? [road[0]] : [];   // a road with one route: that route lit, with its times
@@ -2494,7 +2496,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   const lines = () => by.length || uby.length ? html`<div class="roadroutes">${by.map(ri => { const r = D.routes[ri]; return html`<button type="button" class="roadroute" data-ri="${ri}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</button>`; })}${uby.map(ri => html`<a class="roadroute" href="#/map/uroute/${encodeURIComponent(U.routes[ri].id)}">${chip(ri, 30)}<span class="mid"><span class="name">${U.routes[ri].name}</span><span class="sub">Aggie Shuttle · ${U.routes[ri].stops.length} stops</span></span>${icon('fwd', 18)}</a>`)}</div>` : '';
   // The stops at once, their next buses (and a road's route times on the map) the moment after.
   const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span>${road ? '' : placeStar(at)}</div>${lines()}</div>${go}
-    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`.s;
+    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare, steep: steepBoth(at, U.stops[x.i]) }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare, steep: !road && steepBoth(at, D.stops[x.i]) })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`.s;
   card.innerHTML = markup(true);
   const spotKeyNow = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
   afterPaint(() => {

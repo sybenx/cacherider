@@ -6,7 +6,7 @@ import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, day
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { spotOf, spotKey, atPath, climb, RISE, slope, walkMins } from '../geo.js';
+import { spotOf, spotKey, atPath, climb, RISE, slope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, planNetBy, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
@@ -150,6 +150,7 @@ function shuttleNote(o, d, c, sh, plans = []) {
     <span class="sub">${U.routes[x.ri].name}: ${how(x)}. ${hrs(x.ri)}. Its times show here while its buses are out.</span></div>${icon('fwd', 18)}</a>`)}</div>`;
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const steepAnyway = html`<div class="callout">${icon('info', 20)}<div><b>Every way here has a steep walk</b><div class="sub">You asked to avoid steep walks; these are the ways there are.</div></div></div>`;
 const tooLate = c => html`<div class="callout">${icon('info', 20)}<div><b>No bus gets there by ${clockText(c.min)}</b><div class="sub">The first way there:</div></div></div>`;
 const liveFor = (c, clockNow) => !c || (c.ymd === clockNow.ymd && c.min - clockNow.min <= 90);
 const hashWith = t => location.hash.split('?')[0] + (t ? '?t=' + t : '');
@@ -194,6 +195,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
   // Directions are the map: the first way (or the one the address names) drawn, and this, the sheet under it (beside
   // it on a wide screen), with the ways as rows to draw another.
   if (lateBy) parts.push(tooLate(fixed));
+  if (found.steep) parts.push(steepAnyway);
   const J = pickPlan(found.plans, plan, e, c, fixed ? t : null);
   return { html: sheet(J, parts, c, !!fixed, also), mount, title: 'Directions', keepScroll: true, journey: J };
 }
@@ -210,8 +212,10 @@ function sheet(J, head, clockNow, fixed = false, also = '') {
   const groups = new Map();
   for (const [p, k] of others) { const g = sigOf(p); if (!groups.has(g)) groups.set(g, []); groups.get(g).push([p, k]); }
   const later = same.length ? html`<div class="later"><span class="k">Same way, ${same.every(([p]) => p.leave < P.leave) ? 'earlier' : 'later'}</span><span class="ts">${same.map(([p, k]) => html`<a class="chip" href="${J.hrefs[k]}">${clockText(p.leave)}</a>`)}</span></div>` : '';
-  const sortRow = groups.size ? html`<div class="section between otherways"><span>Other ways</span><button type="button" class="chip" data-sort="walk" aria-pressed="${goSort() === 'walk' ? 'true' : 'false'}">Least walking</button></div>` : '';
-  const rows = groups.size ? html`<div class="jrows" role="list">${[...groups.values()].map(g => planRow(g[0][0], J.hrefs[g[0][1]], g.slice(1), clockNow, fixed))}</div>` : '';
+  // Avoid steep: offered where a way has a steep walk in it (or it's on), kept for every trip after (Settings too).
+  const steepChip = avoidSteep() || J.plans.some(p => steepIn(p, J)) ? html`<button type="button" class="chip" data-steep aria-pressed="${avoidSteep() ? 'true' : 'false'}">Avoid steep</button>` : '';
+  const sortRow = groups.size || steepChip ? html`<div class="section between otherways"><span>${groups.size ? 'Other ways' : ''}</span><span class="chips-inline">${groups.size ? html`<button type="button" class="chip" data-sort="walk" aria-pressed="${goSort() === 'walk' ? 'true' : 'false'}">Least walking</button>` : ''}${steepChip}</span></div>` : '';
+  const rows = groups.size ? html`<div class="jrows" role="list">${[...groups.values()].map(g => planRow(g[0][0], J.hrefs[g[0][1]], g.slice(1), clockNow, fixed, steepIn(g[0][0], J)))}</div>` : '';
   return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}${walkAll(J, P, clockNow)}</div>
     <div class="journeysheet legs">${timeline(P, J, clockNow)}${later}${sortRow}${rows}</div>
     <div class="fine">From the timetable and the live feed, worked out on this phone. Walks are as the crow flies.</div>`.s;
@@ -237,7 +241,7 @@ function summary(p, J, clockNow, fixed) {
 }
 /** Another way as a row, one a route: its legs as badges (the walker for a walk) with minutes, how long and how much
  *  on foot, and when it leaves, large, with when it arrives; its later times, where there are any. */
-function planRow(p, href, more, clockNow, fixed = false) {
+function planRow(p, href, more, clockNow, fixed = false, steep = false) {
   const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || (l.u && !l.t.every)));
   const walk = p.legs.filter(l => l.kind === 'walk').reduce((m, l) => m + (l.mins || 0), 0);
   const rel = fixed ? dayWord(p.ymd) : p.day === 0 ? '' : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
@@ -245,7 +249,7 @@ function planRow(p, href, more, clockNow, fixed = false) {
     : html`<span class="jleg">${l.u ? chip(l.r, 20) : badge(l.r, 20)}${l.off - l.on}m</span>`);
   return html`<div class="jrow" role="listitem link" tabindex="0" data-go="${href}">
     <div class="jr-top"><span class="jlegs">${legs.map((x, i) => html`${i ? html`<span class="sep">›</span>` : ''}${x}`)}</span><span class="jr-time">${time(p.leave, 26, live)}<small>${rel || (worstOf(p) ? 'by ' + clockText(p.arrive) + ' at latest' : 'arr ' + clockText(p.arrive))}</small></span></div>
-    <span class="sub">${p.arrive - p.leave} min${walk ? ` · ${walk} min walking` : ''}${more.length ? ` · then ${more.map(([q]) => clockText(q.leave)).join(', ')}` : ''}</span></div>`;
+    <span class="sub">${p.arrive - p.leave} min${walk ? ` · ${walk} min walking` : ''}${steep ? html`, <b class="hill steep">Steep</b>` : ''}${more.length ? ` · then ${more.map(([q]) => clockText(q.leave)).join(', ')}` : ''}</span></div>`;
 }
 
 /** A way's name in the address: its rides, a Connect bus by its trip and where it's boarded, a shuttle's (no trips)
@@ -327,7 +331,7 @@ export function journey({ to, from, at, t }, key, clockNow) {
     parts.push(tripRow(from, whenControl(fixed, clockNow)));
     return noWayJourney(e, to, parts, hubBay, also);
   }
-  if (J) { const { parts, from } = headOf(to, e, at, t); parts.push(tripRow(from, whenControl(fixed, clockNow))); if (lateBy) parts.push(tooLate(fixed)); J.sheet = () => sheet(J, parts, c, !!fixed, also); J.mount = el => mount(el, null, true); }
+  if (J) { const { parts, from } = headOf(to, e, at, t); parts.push(tripRow(from, whenControl(fixed, clockNow))); if (lateBy) parts.push(tooLate(fixed)); if (found.steep) parts.push(steepAnyway); J.sheet = () => sheet(J, parts, c, !!fixed, also); J.mount = el => mount(el, null, true); }
   return J;
 }
 
@@ -518,12 +522,11 @@ function timeline(p, J, clockNow) {
 /** A walk's lie of the land, a word first so it isn't missed: <b>Steep</b> (6% somewhere, or 30 m and more up: the
  *  bench from 600 East to Old Main is 17%), <b>Uphill</b>, Downhill, then its feet up and down. Nothing to feel: ''
  *  (`flat`, 'on the flat' for the whole way's line). */
-const STEEP = 0.06;
 function hillOf(a, b, flat = '') {
   if (!a || !b) return '';
   const s = slope(a.lat, a.lon, b.lat, b.lon), ft = [s.up >= 4 ? heightOf(s.up) + ' up' : '', s.down >= 4 ? heightOf(s.down) + ' down' : ''].filter(Boolean).join(', ');
   if (!ft) return flat;
-  const word = s.up >= 4 && (s.steep >= STEEP || s.up >= 30) ? html`<b class="hill steep">Steep</b>` : s.up >= 10 ? html`<b class="hill">Uphill</b>` : s.down >= 10 ? html`<b class="hill">${s.steep >= STEEP ? 'Steep downhill' : 'Downhill'}</b>` : '';
+  const word = isSteep(s) ? html`<b class="hill steep">Steep</b>` : s.up >= 10 ? html`<b class="hill">Uphill</b>` : s.down >= 10 ? html`<b class="hill">${s.steepDown >= STEEP ? 'Steep downhill' : 'Downhill'}</b>` : '';
   return html`${word}${word ? ', ' : ''}${ft}`;
 }
 const hillWords = (a, b) => { const h = hillOf(a, b); return h ? html` · ${h}` : ''; };
@@ -538,6 +541,11 @@ function walkAll(J, P, c) {
   const better = P && (c.by ? c.min - mins > P.leave : c.min + mins < P.arrive);
   return html`<a class="jrow walkall${better ? ' better' : ''}" href="${walkHref(J.to.lat, J.to.lon, J.destName)}" target="_blank" rel="noopener">${icon('walk', 22)}<div class="mid"><b>${better ? 'Quicker on foot' : 'Walk the whole way'}</b>
     <span class="sub">${mins} min · ${metres(d)} · ${hillOf(J.from, J.to, 'on the flat')}${better && c.by ? ` · leave by ${clockText(c.min - mins)}` : ''}</span></div>${icon('fwd', 18)}</a>`;
+}
+/** Whether a way has a steep walk up in it (geo.js's one rule): its walks' ends, a stop's or the trip's own. */
+function steepIn(p, J) {
+  const at = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x);
+  return p.legs.some((l, k) => l.kind === 'walk' && steepWalk(at(l.from) || (k === 0 ? J.from : null), at(l.to) || (k === p.legs.length - 1 ? J.to : null)));
 }
 /** A way with the shuttle at a time picked: its arrival the latest it could be, not a time it's due. */
 const worstOf = p => p.legs.some(l => l.kind === 'ride' && l.u && l.t.every);
@@ -594,6 +602,14 @@ function mount(el, _app, inCard = false) {
     const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
     q.delete('plan'); if (c.getAttribute('aria-pressed') !== 'true') q.set('sort', 'walk'); else q.delete('sort');
     location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
+  };
+  // Avoid steep, on or off: the rider's choice for every trip (Settings has it too), the ways worked out again.
+  for (const c of el.querySelectorAll('.chip[data-steep]')) c.onclick = () => {
+    kept = null; setAvoidSteep(c.getAttribute('aria-pressed') !== 'true');
+    const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
+    q.delete('plan');
+    location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   };
   // Where I am: the phone asked for its fix now, and the directions from it (the time picked kept).
   const b = el.querySelector('#go-near');

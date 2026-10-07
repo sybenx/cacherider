@@ -207,7 +207,8 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : skipsAt(s.id).length ? `<span class="qnote">${esc(skipsAt(s.id).map(u => u.who).join(', '))} skipped last ${Math.max(...skipsAt(s.id).map(u => u.n))}<span class="qmark">?</span></span>` : '';
   const way = opts.point ? pointerMark(s.lat, s.lon, opts.point) + (num ? ' · ' : '') : '';
-  const dist = `<span class="dist">${way}${esc([opts.dist, s.by, num].filter(Boolean).join(' · '))}${alert ? (opts.dist || num || way ? ' · ' : '') + alert : ''}</span>`;
+  // `steep`: the walk to it (or, for a place's stops, either way) has a steep climb: said in a word, bold
+  const dist = `<span class="dist">${way}${esc([opts.dist, s.by, num].filter(Boolean).join(' · '))}${opts.steep ? ' · <b class="hill steep">Steep</b> walk' : ''}${alert ? (opts.dist || num || way ? ' · ' : '') + alert : ''}</span>`;
   // `dest`: where the next bus goes (a road's stops, both sides: which side is which way)
   const go = opts.dest && next ? `<span class="go">${badge(next.r, 20).s}${esc(headsign(next))}</span>` : '';
   return raw(`<a class="stoprow${opts.here ? ' here' : ''}"${opts.here ? ' id="here"' : ''} href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${go}${dist}${go ? '' : badges(s.routes, 24).s}</div>${end}</a>`);

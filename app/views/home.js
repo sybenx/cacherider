@@ -11,7 +11,7 @@ import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasDat
 import { results, pickOf, forPick, placeRows } from './find.js';
 import { placeNamed } from '../places.js';
 import { hubHero, mount as hubMount } from './hub.js';
-import { byWalk, spotOf, spotKey, walkMins } from '../geo.js';
+import { byWalk, spotOf, spotKey, walkMins, steepWalk } from '../geo.js';
 import { isWide } from '../wide.js';
 
 export function render({ q, page, pick, from }, clockNow) {
@@ -79,7 +79,7 @@ function landing(clockNow, app) {
     const rowsU = U ? nearestShuttles(geo, 6).filter(x => x.i !== heroU && !sv.includes('u:' + U.stops[x.i].id) && x.d <= 800).map(x => ({ ...x, u: true })) : [];
     const rows = [...rowsC, ...rowsU].sort((a, b) => a.mins - b.mins || a.d - b.d).slice(0, 3);
     for (const r of rows) if (!r.u) yours.push([r.i, 'near']);
-    if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy.startsWith('Nearest') ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d, u }) => u ? stopRowU(i, { dist: metres(d) }) : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
+    if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy.startsWith('Nearest') ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d, u }) => u ? stopRowU(i, { dist: metres(d), steep: steepWalk(geo, U.stops[i]) }) : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo, steep: steepWalk(geo, stop(i)) }))}</div>`);
   }
   // Where to: the box on the page whichever way it opened (a stop's rider got an icon in the header, the question
   // three of the list a tap harder to find). Beside a wide screen's map, the top bar's box is this one.
@@ -348,7 +348,7 @@ function nearestSection(geo, clockNow) {
       rows.push(stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: a === 'This side' ? 'Nearer side' : a + ' side' }));
       rows.push(stopRow(ti, nextAt(ti, 1, clockNow)[0], clockNow, { dist: (b === 'Across the road' ? b : b + ' side · across the road') }));
     } else {
-      rows.push(stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) }));
+      rows.push(stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d), steep: steepWalk(geo, s) }));
     }
     shown.add(i);
     if (++count >= 5) break;

@@ -4,8 +4,8 @@
 import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets } from '../data.js';
 import { metres } from '../time.js';
 import { routeName, html, icon, badge, badges, stopRow, esc } from '../ui.js';
-import { parseAddress, geocode, townState, spotKey, spotOf, atPath, byWalk } from '../geo.js';
-import { U, searchUSU, stopRowU, chip, live, hasData } from '../usu.js';
+import { parseAddress, geocode, townState, spotKey, spotOf, atPath, byWalk, steepWalk } from '../geo.js';
+import { U, searchUSU, stopRowU, chip, live, hasData, nearestUSU } from '../usu.js';
 import { myPlaces } from '../places.js';
 
 /** One end of a journey being asked for: `to`, a stop or spot being gone to (a result is the start), or `from`, a spot
@@ -50,7 +50,7 @@ function resultsOf(q, clockNow, pick, later) {
   const addrHtml = places.map(pl => html`
     ${pick ? html`<a class="section between pick" href="${endHref(pick, null, { lat: pl.lat, lon: pl.lon, label: pl.label + ', ' + pl.town })}"><span>${pl.label} · ${pl.town}${townState(pl.town)}</span><span class="note">${endWord(pick)} ${icon('fwd', 16)}</span></a>`
     : html`<div class="section between"><span>${pl.label} · ${pl.town}${townState(pl.town)}${pl.near ? html.raw(`<span class="note"> · near ${esc(pl.near)}</span>`) : ''}</span><a class="note" href="#/map/at/${pl.lat.toFixed(5)},${pl.lon.toFixed(5)}/${encodeURIComponent(pl.label + ', ' + pl.town)}">Show on map</a></div>`}
-    <div class="list">${pl.stops.length ? pl.stops.map(({ i, d }) => stopRow(i, nx(i), clockNow, { dist: metres(d) + ' away', later })) : html`<div class="empty"><p>No stops near there.</p></div>`}</div>`).join('');
+    <div class="list">${pl.stops.length ? pl.stops.map(({ i, d }) => stopRow(i, nx(i), clockNow, { dist: metres(d) + ' away', later, steep: steepWalk(stop(i), pl) || steepWalk(pl, stop(i)) })) : html`<div class="empty"><p>No stops near there.</p></div>`}</div>`).join('');
   const found = searchPlaces(q), spots = found.list;
   const spotHtml = spots.map(p => placeBlock(p, clockNow, pick, later)).join('')
     + (found.more ? html`<div class="fine">${found.more} more ${found.more === 1 ? 'place matches' : 'places match'}: add a word, a town say, to narrow it.</div>`.s : '');
@@ -99,8 +99,12 @@ const POOL = 'https://rideconnectutah.gov/pool/';
  *  and Pool, where Connect's on-demand ride serves it. */
 function placeBlock(p, clockNow, pick = null, later = false) {
   const near = byWalk(nearest(p.lat, p.lon, 8).filter(x => !stop(x.i).hub), p.lat, p.lon, true);   // walked to and from, the climb counted
-  const close = near.filter(x => x.d <= 600).slice(0, 3);
+  // The shuttle's stops a short walk off too, among Connect's by the same walk (on campus they're the nearer buses),
+  // marked as the shuttle's: few of its stops are Connect's too.
+  const nearU = !U || pick ? [] : byWalk(nearestUSU(p.lat, p.lon, 6).filter(x => x.d <= 400 && U.stops[x.i].routes.length && !U.shared[x.i]), p.lat, p.lon, true, x => U.stops[x.i]).slice(0, 2).map(x => ({ ...x, u: true }));
+  const close = [...near.filter(x => x.d <= 600).slice(0, 3), ...nearU].sort((a, b) => a.cost - b.cost || a.d - b.d);
   const shown = close.length ? close : near.slice(0, 2);   // nothing close: the nearest two anyway, their distance says it
+  const steep = x => { const s = x.u ? U.stops[x.i] : stop(x.i); return steepWalk(s, p) || steepWalk(p, s); };   // a place: walked to and back
   const hub = p.hub ? html`<a class="stoprow" href="#/hub"><div class="mid"><span class="name">${D.hub.name}</span><span class="dist">A short walk · every route</span>${badges(D.routes.map((_, ri) => ri).filter(ri => D.hub.bays.some(b => b.routes.includes(ri))), 24)}</div><div class="end"><span class="muted">${icon('fwd', 20)}</span></div></a>` : '';
   const pool = p.pickup ? html`<div class="notice">${icon('info', 16)}<span>A <b>POOL</b> pickup point: Connect's on-demand ride, zero fare, booked in their app or by phone. <a href="${POOL}" target="_blank" rel="noopener">How POOL works</a></span></div>`
     : p.pool ? html`<div class="notice">${icon('info', 16)}<span>${close.length ? 'Also served by' : 'Served by'} POOL, Connect's on-demand ride: zero fare, booked in their app. <a href="${POOL}" target="_blank" rel="noopener">How POOL works</a></span></div>` : '';
@@ -108,7 +112,7 @@ function placeBlock(p, clockNow, pick = null, later = false) {
   const head = pick ? html`<a class="section between pick" href="${endHref(pick, null, { lat: p.lat, lon: p.lon, label: p.name })}"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><span class="note">${endWord(pick)} ${icon('fwd', 16)}</span></a>`
     : html`<div class="section between"><span>${p.name}${what ? html`<span class="note"> · ${what}</span>` : ''}</span><a class="note" href="#/map/at/${p.lat.toFixed(5)},${p.lon.toFixed(5)}/${encodeURIComponent(p.name)}">Show on map</a></div>`;
   return html`${head}
-    ${pool}<div class="list">${hub}${shown.map(({ i, d }) => stopRow(i, later ? null : nextAt(i, 1, clockNow)[0], clockNow, { dist: metres(d) + ' away', later }))}</div>`.s;
+    ${pool}<div class="list">${hub}${shown.map(x => x.u ? stopRowU(x.i, { dist: 'Aggie Shuttle · ' + metres(x.d) + ' away', steep: steep(x), bare: later }) : stopRow(x.i, later ? null : nextAt(x.i, 1, clockNow)[0], clockNow, { dist: metres(x.d) + ' away', later, steep: steep(x) }))}</div>`.s;
 }
 
 /** The results made the start or the end of a journey: each stop, the Transit Center and each place leads to it. */

@@ -5,7 +5,7 @@
 import { stop, timesOn, tripStops, tripEnd, nextTrip, distance, nearest, servicesOn } from './data.js';
 import { lively, isLoop } from './ui.js';
 import { dayFrom } from './time.js';
-import { walkMins } from './geo.js';
+import { walkMins, steepWalk, avoidSteep } from './geo.js';
 
 const WALK_TO = 1000;     // how far a rider is sent on foot to a first stop
 const WALK_FROM = 350;    // a stop this near the one asked for is as good, with the walk said
@@ -16,7 +16,10 @@ const CHANGE_WALK = 250;  // a change can be to a stop this near: the Transit Ce
 const WALK_LESS = 3;      // minutes on foot a way must spare to be kept for walking less: a minute or two is no reason to ride round a loop
 // Every walk is timed by geo.js's walkMins: distance at a walking pace, and the climb (a minute for each 10 m up,
 // Naismith's rule), from where the rider is to where they're going, so up the bench costs what down it doesn't.
-const walkTo = (a, b, d) => walkMins(a.lat, a.lon, b.lat, b.lon, d);
+// Avoiding steep walks (the rider's choice, geo.js): a walk with a steep climb in it is no walk (null), and left out.
+let FLAT = false;
+const walkTo = (a, b, d) => FLAT && steepWalk(a, b) ? null : walkMins(a.lat, a.lon, b.lat, b.lon, d);
+const walkable = x => x.walk !== null;
 
 // ---- the Aggie Shuttle. `SH`, for the search under way, is what usu.js's planNet() gives while the shuttle runs:
 // { stops: [{ lat, lon }], loops: [{ ri, stops }], waits(si, ri) → each bus's { min, secs } to a stop, ride(ri, a, b)
@@ -40,18 +43,18 @@ function nearU(lat, lon, max) {
  *  Connect's, and the shuttle's while it runs. */
 const nears = new Map();
 function connectNear(si) {
-  let n = nears.get(si);
+  let n = nears.get(si + '|' + FLAT);
   if (!n) {
     const s = stop(si);
-    n = [{ si, walk: 0 }, ...nearest(s.lat, s.lon, 16).filter(x => x.i !== si && x.d <= CHANGE_WALK).map(x => ({ si: x.i, walk: walkTo(s, stop(x.i), x.d) }))];
-    nears.set(si, n);
+    n = [{ si, walk: 0 }, ...nearest(s.lat, s.lon, 16).filter(x => x.i !== si && x.d <= CHANGE_WALK).map(x => ({ si: x.i, walk: walkTo(s, stop(x.i), x.d) })).filter(walkable)];
+    nears.set(si + '|' + FLAT, n);
   }
   return n;
 }
 function nearOf(x) {
   const p = pt(x);
-  const base = isU(x) ? [{ si: x, walk: 0 }, ...nearest(p.lat, p.lon, 16).filter(y => y.d <= CHANGE_WALK).map(y => ({ si: y.i, walk: walkTo(p, stop(y.i), y.d) }))] : connectNear(x);
-  return SH ? [...base, ...nearU(p.lat, p.lon, CHANGE_WALK).filter(y => y.x !== x).map(y => ({ si: y.x, walk: walkTo(p, pt(y.x), y.d) }))] : base;
+  const base = isU(x) ? [{ si: x, walk: 0 }, ...nearest(p.lat, p.lon, 16).filter(y => y.d <= CHANGE_WALK).map(y => ({ si: y.i, walk: walkTo(p, stop(y.i), y.d) })).filter(walkable)] : connectNear(x);
+  return SH ? [...base, ...nearU(p.lat, p.lon, CHANGE_WALK).filter(y => y.x !== x).map(y => ({ si: y.x, walk: walkTo(p, pt(y.x), y.d) })).filter(walkable)] : base;
 }
 
 /** A trip's stops in order with the minute at each, its last stop (drop-off only, which the departures leave out) included. */
@@ -184,10 +187,15 @@ const asked = new Map();   // the last asks, by their words and a twenty-second 
 export function journeys(origin, dest, clockNow, days = 8, sh = null, live = true, by = null) {
   // Answered from memory within twenty seconds for the same ask: a far destination (home, out past the stops) took
   // a second or more to search, twice every feed, and the page stuttered with it.
-  const key = JSON.stringify([origin.si !== undefined ? origin.si : [+origin.lat.toFixed(5), +origin.lon.toFixed(5)], typeof dest === 'object' ? [+dest.lat.toFixed(5), +dest.lon.toFixed(5)] : dest, clockNow.ymd, clockNow.min, days, sh ? sh.now : null, live, by, Math.floor(Date.now() / 20000)]);
+  const flat = avoidSteep();
+  const key = JSON.stringify([flat, origin.si !== undefined ? origin.si : [+origin.lat.toFixed(5), +origin.lon.toFixed(5)], typeof dest === 'object' ? [+dest.lat.toFixed(5), +dest.lon.toFixed(5)] : dest, clockNow.ymd, clockNow.min, days, sh ? sh.now : null, live, by, Math.floor(Date.now() / 20000)]);
   if (asked.has(key)) return asked.get(key);
   if (asked.size > 40) asked.clear();
-  const out = journeys0(origin, dest, clockNow, days, sh, live, by);
+  // Avoiding steep walks: those ways; none at all without one, the ways there are, said as steep (`steep`).
+  FLAT = flat;
+  let out = journeys0(origin, dest, clockNow, days, sh, live, by);
+  if (flat && out.walk === undefined && !out.plans.length) { FLAT = false; out = { ...journeys0(origin, dest, clockNow, days, sh, live, by), steep: true }; }
+  FLAT = false;
   asked.set(key, out);
   return out;
 }
@@ -205,8 +213,8 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   // The stops that count as arriving, each with its walk from the stop to where the rider's going (off the bus and
   // up the hill, or down it).
   const wanted = new Map(spot ? [] : [[dest, 0]]);
-  for (const { i, d: dd } of around(d, spot ? undefined : dest, WALK_FROM)) wanted.set(i, walkTo(stop(i), d, dd));
-  for (const { x, d: dd } of nearU(d.lat, d.lon, WALK_TO).slice(0, 6)) wanted.set(x, walkTo(pt(x), d, dd));
+  for (const { i, d: dd } of around(d, spot ? undefined : dest, WALK_FROM)) { const w = walkTo(stop(i), d, dd); if (w !== null) wanted.set(i, w); }
+  for (const { x, d: dd } of nearU(d.lat, d.lon, WALK_TO).slice(0, 6)) { const w = walkTo(pt(x), d, dd); if (w !== null) wanted.set(x, w); }
   // The stops close enough to the one asked for to be it (a first stop among them is no journey, just the walk).
   const at = new Set([...wanted].filter(([x]) => x === dest || distance(pt(x).lat, pt(x).lon, d.lat, d.lon) <= WALK_FROM).map(([x]) => x));
   // Where to start: the stop named at no walk, and the stops within a walk of it or of the rider, each with its walk.
@@ -215,6 +223,7 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   // nearest bays left Route 2's out, the ninth, and the way to the hospital was the 5, or the Green Loop to a 2.
   for (const { i, d: dd } of around(o, origin.si, CHANGE_WALK)) starts.push({ si: i, walk: walkTo(o, stop(i), dd), d: Math.round(dd) });
   for (const { x, d: dd } of nearU(o.lat, o.lon, WALK_TO).slice(0, 6)) starts.push({ si: x, walk: walkTo(o, pt(x), dd), d: Math.round(dd) });
+  for (let k = starts.length - 1; k >= 0; k--) if (starts[k].walk === null) starts.splice(k, 1);
   // Standing at the stop wanted, or within its walk: no bus to catch.
   const apart = Math.round(distance(o.lat, o.lon, d.lat, d.lon));
   if (origin.si === dest || apart <= WALK_FROM) return { walk: apart, plans: [] };

@@ -350,6 +350,31 @@ test('directions arriving by a time: the shuttle the way picked, when it is the 
   await expect(page.locator('a.walkall b.hill').filter({ visible: true }).first()).toHaveText(/steep/i);   // the word first, not the feet alone
 });
 
+test('directions: avoid steep walks, on and off, and in Settings', async ({ page }) => {
+  // West of campus up to the Institute: the quickest way walks up the bench. Avoiding steep: a way without (or, with
+  // none, the ways there are, said so); the chip kept as the rider's choice, Settings showing it.
+  await open(page);
+  await go(page, '#/go/@41.74335,-111.81510:Institute/at/41.74245,-111.83000/West%20of%20campus');
+  const chip = page.locator('.chip[data-steep]').filter({ visible: true }).first();
+  await expect(chip).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.tl b.hill.steep').filter({ visible: true }).first()).toBeVisible();
+  await chip.click();
+  await expect(page.locator('.chip[data-steep]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(async () => {
+    const steep = await page.locator('.tl b.hill.steep').filter({ visible: true }).count();
+    const said = await page.getByText('Every way here has a steep walk').filter({ visible: true }).count();
+    expect(steep === 0 || said > 0).toBe(true);
+  }).toPass();
+  await go(page, '#/about');
+  await expect(page.locator('[data-steep="avoid"]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('[data-steep="allow"]').filter({ visible: true }).first().click();
+  await expect(page.locator('[data-steep="allow"]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
+  // A place's stops: the shuttle's among them, marked as the shuttle's; one up the hill said STEEP.
+  await go(page, '#/search?q=' + encodeURIComponent('USU Institute'));
+  await expect(page.locator('a.stoprow[href^="#/usu/"]').filter({ visible: true }).first()).toContainText('Aggie Shuttle');
+  await expect(page.locator('a.stoprow b.hill.steep').filter({ visible: true }).first()).toBeVisible();
+});
+
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {
   test.skip(phone(info), 'the planner is the same at any size');
   test.setTimeout(240_000);   // 160 trips planned and drawn in the page, with the hub's own way worked out for each start picker: minutes on a loaded machine

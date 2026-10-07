@@ -139,19 +139,28 @@ export function climb(lat1, lon1, lat2, lon2) {
   return up;
 }
 /** A walk's lie of the land, straight from one point to another: metres up and down (each only where it's steep
- *  enough to feel, as climb() counts it) and its steepest grade over a cell (0.08, 8%). Nothing off the grid. */
+ *  enough to feel, as climb() counts it) and its steepest grades over a cell, up and down (0.08, 8%). Nothing off the grid. */
 export function slope(lat1, lon1, lat2, lon2) {
-  if (!E) return { up: 0, down: 0, steep: 0 };
+  if (!E) return { up: 0, down: 0, steepUp: 0, steepDown: 0 };
   const d = distance(lat1, lon1, lat2, lon2), n = Math.max(1, Math.ceil(d / E.cell)), step = d / n;
-  let prev = height(lat1, lon1), steep = 0;
+  let prev = height(lat1, lon1), steepUp = 0, steepDown = 0;
   for (let k = 1; k <= n && prev !== null; k++) {
     const h = height(lat1 + (lat2 - lat1) * k / n, lon1 + (lon2 - lon1) * k / n);
     if (h === null) continue;
-    steep = Math.max(steep, Math.abs(h - prev) / step);
+    steepUp = Math.max(steepUp, (h - prev) / step); steepDown = Math.max(steepDown, (prev - h) / step);
     prev = h;
   }
-  return { up: climb(lat1, lon1, lat2, lon2), down: climb(lat2, lon2, lat1, lon1), steep };
+  return { up: climb(lat1, lon1, lat2, lon2), down: climb(lat2, lon2, lat1, lon1), steepUp, steepDown };
 }
+/** Steep, for a walk: a stretch of it climbing 6% or more (the grid's 100 m cells soften a short pitch, so not 8), or
+ *  30 m and more up all told. The one rule for the word STEEP and for avoiding steep walks. */
+export const STEEP = 0.06;
+export const isSteep = s => s.up >= 4 && (s.steepUp >= STEEP || s.up >= 30);
+export const steepWalk = (a, b) => !!(a && b && E) && isSteep(slope(a.lat, a.lon, b.lat, b.lon));
+/** The rider's choice (Settings, or the chip on directions): ways without a steep walk up, where there are any. */
+let flat = (() => { try { return localStorage.getItem('cr-steep') === 'avoid'; } catch { return false; } })();
+export const avoidSteep = () => flat;
+export function setAvoidSteep(on) { flat = !!on; try { localStorage.setItem('cr-steep', on ? 'avoid' : 'allow'); } catch { /* this visit only */ } }
 /** Walking pace: metres a minute on the flat, crossings and all; and the climb that costs a minute more, by
  *  Naismith's rule (an hour for every 600 m of ascent, so 10 m a minute). Going down costs nothing extra. */
 export const PACE = 75, RISE = 10;
