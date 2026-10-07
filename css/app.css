@@ -820,6 +820,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .tc-together .tc-seg.in b { color: var(--color-text); }
 .tc-together .tc-seg { color: inherit; text-decoration: none; }
 .tc-together .tc-seg em { font-family: var(--font-heading); font-style: normal; font-weight: 600; font-size: 0.6875rem; line-height: 1; color: var(--cr-late); white-space: nowrap; }   /* when a late one leaves */
+.land-alert.mine .mine-list { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }   /* a detour at the rider's own stop, at the top of home */
+.land-alert.mine .mine-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: inherit; text-decoration: none; }
 .tc-note b.late { color: var(--cr-late); }
 .tc-late { display: block; font-family: var(--font-heading); font-weight: 600; font-size: 1.25rem; line-height: 1.2; color: var(--cr-late); }   /* a picked route leaving late: first thing said */
 .tc-note { font-size: 0.8125rem; color: var(--cr-muted); }

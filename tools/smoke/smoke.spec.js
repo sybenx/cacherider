@@ -53,6 +53,25 @@ test('home: the Center line, the shuttle line, the routes', async ({ page }, inf
   await expect(page.getByRole('link', { name: /Settings & about/ })).toBeVisible();
 });
 
+test('home: a detour at one of your stops, at the top', async ({ page }) => {
+  await open(page);
+  // A stop a notice in force names today, saved: whichever the agency has up (none, and there's nothing to show).
+  const id = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js');
+    const a = d.activeAlerts(t.now().ymd).find(a => (a.stops || []).some(id => d.D.stopById[id] !== undefined));
+    const id = a && a.stops.find(id => d.D.stopById[id] !== undefined);
+    if (id) localStorage.setItem('cr-saved', JSON.stringify([id]));
+    return id || null;
+  });
+  test.skip(!id, 'no notice in force names a stop');
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  const row = page.locator('.mine-row').filter({ visible: true }).first();
+  await expect(row).toContainText('one of your stops');
+  await row.click();
+  await expect(page).toHaveURL(new RegExp('#/stop/' + id));
+});
+
 test('home: the Routes line opens every route', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s line; a wide screen has the chips');
   await open(page);

@@ -2,9 +2,9 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords } from '../data.js';
+import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName, now } from '../time.js';
-import { routeName, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
@@ -49,6 +49,8 @@ function landing(clockNow, app) {
     <button class="btn btn-ghost btn-icon" id="near" type="button" aria-label="${geo ? 'Location on · turn off' : 'Sort stops by distance'}" aria-pressed="${geo ? 'true' : 'false'}" title="${geo ? 'Location on' : 'Near me'}">${icon('near', 22)}</button>
 </span></div>`];   // the page's own box is the way in to search, always there: one search, not two
   for (const a of systemAlerts(clockNow.ymd)) parts.push(html`<div class="callout alert land-alert">${icon('info', 20)}<div><b>${a.title}</b><div class="sub">${a.text}</div></div></div>`);
+  const yoursAt = parts.length;   // a detour at one of the rider's own stops goes here, at the top, once they're known (below)
+  const yours = [];   // [stop index, why it's theirs]
 
   // What the page answers, in the order a rider asks it (the question list): the next bus from their stop (nearest, or
   // saved), and the stops beside it; then where to (search, directions); then the Center, whose own tab has the rest;
@@ -61,6 +63,8 @@ function landing(clockNow, app) {
   else if (stopHero) parts.push(stopHeroBlock(heroSi, heroWhy, clockNow));
 
   const heroId = heroU !== undefined ? 'u:' + U.stops[heroU].id : heroSi !== undefined ? stop(heroSi).id : null;
+  if (!atHub && heroU === undefined && heroSi !== undefined) yours.push([heroSi, heroWhy === 'Saved' ? 'saved' : 'near']);
+  for (const id of sv) if (!id.startsWith('u:') && D.stopById[id] !== undefined) yours.push([D.stopById[id], 'saved']);
   const others = sv.filter(id => id !== heroId);
   if (others.length || (sv.length && app && app.editSaved)) {
     // Only when there's something beneath: one saved stop is the big one above, star and all.
@@ -74,6 +78,7 @@ function landing(clockNow, app) {
     const rowsC = byWalk(nearest(geo.lat, geo.lon, 24).filter(x => x.i !== heroSi && !stop(x.i).hub && !sv.includes(stop(x.i).id)), geo.lat, geo.lon);
     const rowsU = U ? nearestShuttles(geo, 6).filter(x => x.i !== heroU && !sv.includes('u:' + U.stops[x.i].id) && x.d <= 800).map(x => ({ ...x, u: true })) : [];
     const rows = [...rowsC, ...rowsU].sort((a, b) => a.mins - b.mins || a.d - b.d).slice(0, 3);
+    for (const r of rows) if (!r.u) yours.push([r.i, 'near']);
     if (rows.length) parts.push(html`<div class="land-eye"><span>${heroWhy.startsWith('Nearest') ? 'Also near you' : 'Nearest to you'}</span></div><div class="list">${rows.map(({ i, d, u }) => u ? stopRowU(i, { dist: metres(d) }) : stopRow(i, nextAt(i, 1, clockNow)[0], clockNow, { point: geo }))}</div>`);
   }
   // Where to: the box on the page whichever way it opened (a stop's rider got an icon in the header, the question
@@ -96,7 +101,28 @@ function landing(clockNow, app) {
   parts.push(detourNotice(clockNow));
   if (sv.length) parts.push(installCard());   // the offer waits until a rider has saved a stop: proof it's their app
   parts.push(html`<div class="fine">Unofficial. Made by a rider, not by ${D.agency.brand}. Times come from ${D.agency.brand}'s published schedule, refreshed nightly. <a href="#/about">Settings &amp; about</a></div>`);
+  const mine = yoursNotice(yours, clockNow);
+  if (mine) parts.splice(yoursAt, 0, mine);
   return { html: html`<div class="land">${html.raw(parts.join(''))}</div>`.s, mount, title: '' };
+}
+
+/** A detour or closure at one of the rider's own stops (the big card's, a saved one, one near them), at the top of the
+ *  page, a line each, to the stop's page (the agency's words, and where to wait instead). Every detour went into one
+ *  line at the foot of the page ('8 detours on routes…'), and one that skipped the rider's own stop was found there or
+ *  not at all; that line stays, for the rest. */
+function yoursNotice(yours, clockNow) {
+  const seen = new Set(), lines = [];
+  for (const [si, why] of yours) {
+    if (seen.has(si)) continue;
+    seen.add(si);
+    if (!stopAlerts(si, clockNow.ymd).length) continue;
+    const s = stop(si), closed = [...closedRoutes(si, clockNow.ymd)].filter(ri => s.routes.includes(ri));
+    const all = closed.length && s.routes.every(ri => closed.includes(ri));
+    const what = all ? `No buses stop at ${s.name}` : closed.length ? `${routeNames(closed)} ${closed.length > 1 ? 'skip' : 'skips'} ${s.name}` : `Service alert at ${s.name}`;
+    lines.push(html`<a class="mine-row" href="#/stop/${s.id}"><span><b>${what}</b> <span class="muted">· ${why === 'saved' ? 'one of your stops' : 'near you'}</span></span>${icon('fwd', 18)}</a>`);
+    if (lines.length === 3) break;
+  }
+  return lines.length ? html`<div class="callout alert land-alert mine">${icon('ban', 20)}<div class="mine-list">${lines}</div></div>`.s : '';
 }
 
 /** Every route as a chip: Connect's badges, then the shuttle's in their own colours. Each lights its route on the map. */
