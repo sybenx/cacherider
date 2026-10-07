@@ -1098,6 +1098,10 @@ function fitPeek(card) {
   // never more than 60% of it. (Down to the way picked, the ways after it were a swipe up away each time.)
   const rows = card.querySelectorAll('.gohead .jrow'), last = rows[rows.length - 1];
   if (last) { card.style.setProperty('--peek', Math.min(last.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 1, 0.6 * map.getContainer().clientHeight) + 'px'); return; }
+  // No way by bus: down to the answer ('No bus goes there', how far, what does go), not its head alone (66 px, the answer
+  // a swipe up out of sight).
+  const none = card.querySelector('.gonone .empty');
+  if (none) { card.style.setProperty('--peek', Math.min(none.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 8, 0.6 * map.getContainer().clientHeight) + 'px'); return; }
   // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it).
   const h = card.querySelector('.head');
   if (h) card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2) + 'px');
@@ -3204,7 +3208,9 @@ async function mainJourney(J, app) {
 function journeyCard(J, app) {
   const card = col.querySelector('#mapcard');
   const markup = `<div class="grip"></div>` + J.sheet();
-  const again = !!card.querySelector(':scope > .journeysheet') && card.classList.contains('open') && card.dataset.way === J.base;
+  // The same directions drawn again (the feed's tick, every few seconds): the card as the rider left it. A 'no bus goes
+  // there' card has no ways' sheet, and was taken for a new one on every tick: shut down to its head each time.
+  const again = !!card.querySelector(':scope > .journeysheet, :scope > .gonone') && card.classList.contains('open') && card.dataset.way === J.base;
   // From way to way, the card keeps its height, so the rows stay under the thumb: a longer way scrolls in it.
   if (again) { if (!card.classList.contains('peek')) card.style.setProperty('--jh', card.offsetHeight + 'px'); morph(card, markup); }
   else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }

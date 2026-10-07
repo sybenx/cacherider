@@ -275,6 +275,22 @@ test('directions: each way in, a plan, no way, from only', async ({ page }) => {
   }
 });
 
+test('directions, no bus goes there: the answer in view, and it stays put', async ({ page }, info) => {
+  test.skip(!phone(info), 'a phone\'s card over the map');
+  // From far out of the valley's routes: no way by bus.
+  await open(page, '#/go/@41.74321,-111.81488:Logan/at/41.90000,-112.00000/Far%20away');
+  const card = page.locator('#mapcard');
+  const answer = card.locator('.gonone .empty h2');
+  await expect(answer).toBeVisible();
+  const inCard = async () => { const a = await answer.boundingBox(), c = await card.boundingBox(); return a && c && a.y >= c.y && a.y + a.height <= c.y + c.height + 1; };
+  expect(await inCard(), 'the answer inside the card as it opens').toBe(true);
+  // Opened out, the feed's ticks leave it so (each shut it to its head: 66 px).
+  await card.evaluate(c => c.classList.remove('peek'));
+  const h = (await card.boundingBox()).height;
+  await page.waitForTimeout(12_000);
+  expect(Math.round((await card.boundingBox()).height), 'the card\'s height after the feed\'s ticks').toBe(Math.round(h));
+});
+
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {
   test.skip(phone(info), 'the planner is the same at any size');
   test.setTimeout(240_000);   // 160 trips planned and drawn in the page, with the hub's own way worked out for each start picker: minutes on a loaded machine
