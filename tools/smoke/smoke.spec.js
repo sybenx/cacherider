@@ -319,6 +319,8 @@ test('directions up: a tap on the map changes nothing, a long press or right cli
   await expect(page.locator('#mapcard.open .eyebrow', { hasText: 'Change directions' })).toBeVisible();
   const start = page.locator('#mapcard a', { hasText: 'Start from here' });
   await expect(start).toBeVisible();
+  await page.waitForTimeout(7000);   // a feed tick or two: on a phone the directions' redraw took the card back
+  await expect(start).toBeVisible();
   await expect(page.locator('#mapcard a', { hasText: 'Go here instead' })).toHaveAttribute('href', /^#\/go\/@[-\d.,]+.*\/at\/41\.75484,-111\.81505\/Aztec$/);
   await start.click();
   await expect(page).toHaveURL(/#\/go\/@41\.74335,-111\.81510:Institute\/at\/[-\d.]+,[-\d.]+\//);

@@ -2487,7 +2487,11 @@ function goEnds() {
   const [path, q = ''] = location.hash.split('?'), m = /^#\/go\/([^/]+)\/(.+)$/.exec(path);
   return m && m[1] !== '-' ? { to: m[1], from: m[2], q: q ? '?' + q.split('&').filter(x => !x.startsWith('plan=')).join('&') : '' } : null;
 }
+/** The directions whose card a long press has put a 'Change directions' card over (a phone's one card): until the
+ *  rider goes somewhere, the feed's redraws of the directions leave it up (it went in seconds). */
+let swapUp = null;
 function showAt(at, app, clockNow, forId = null, toFrom = null, road = null, swap = null) {
+  swapUp = swap ? location.hash.split('?')[0] : null;
   selected = null; uHilite = ''; hiLoops = []; selectedBus = null; selectedU = null;   // a bus picked before is put down: the spot's card is the card
   hiLines = road && road.length === 1 ? [road[0]] : [];   // a road with one route: that route lit, with its times
   applySelection();
@@ -2696,6 +2700,7 @@ function busIn(id, app) {
 }
 async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
   await init(app);
+  if (!tick) swapUp = null;   // any page arrived at: the directions' own card again
   // A spot's disc and pin go with its card: gone to another page (the Center, a stop, Stops) the card was replaced and
   // the dashed disc stayed on the map. Kept for a spot's own address and for picking one; not by the minute's redraw.
   if (!tick && spotUp && !at && !goPick && !from && !to) clearSpot();
@@ -3250,6 +3255,7 @@ async function mainJourney(J, app) {
 /** A phone's card for the directions: the page's own sheet (where to and from, the ways as rows, the drawn way told
  *  leg by leg), under the map with the way drawn. A row tapped draws that way; a swipe across, the next. */
 function journeyCard(J, app) {
+  if (swapUp === J.base) return;   // a long press's 'Change directions' card is up over these directions: the feed's tick leaves it
   const card = col.querySelector('#mapcard');
   const markup = `<div class="grip"></div>` + J.sheet();
   // The same directions drawn again (the feed's tick, every few seconds): the card as the rider left it. A 'no bus goes
