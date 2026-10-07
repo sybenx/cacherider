@@ -515,28 +515,29 @@ function timeline(p, J, clockNow) {
   if (lastLeg.kind === 'walk') out.push(tl(atWorst ? null : p.arrive, 'end', html`<span class="name">${J ? J.destName : lastLeg.label || 'Where you’re going'}</span>${lastLeg.to !== undefined ? addrLine(lastLeg.to) : ''}${atWorst ? html`<span class="sub">There by <b>${clockText(p.arrive)}</b> at the latest</span>` : ''}`, 'end'));
   return html`<div class="tline">${out}</div>`;
 }
-/** A walk's ups and downs in words, where there are any to feel: ' · 130 ft up, steep', ' · 40 ft down',
- *  ' · 60 ft up, 20 ft down'. Steep: 8% or more somewhere along it (the bench below Old Main is over 10). */
-const STEEP = 0.08;
-function hillWords(a, b) {
+/** A walk's lie of the land, a word first so it isn't missed: <b>Steep</b> (6% somewhere, or 30 m and more up: the
+ *  bench from 600 East to Old Main is 17%), <b>Uphill</b>, Downhill, then its feet up and down. Nothing to feel: ''
+ *  (`flat`, 'on the flat' for the whole way's line). */
+const STEEP = 0.06;
+function hillOf(a, b, flat = '') {
   if (!a || !b) return '';
-  const s = slope(a.lat, a.lon, b.lat, b.lon), w = [];
-  if (s.up >= 4) w.push(heightOf(s.up) + ' up');
-  if (s.down >= 4) w.push(heightOf(s.down) + ' down');
-  return w.length ? ' · ' + w.join(', ') + (s.steep >= STEEP ? ', steep' : '') : '';
+  const s = slope(a.lat, a.lon, b.lat, b.lon), ft = [s.up >= 4 ? heightOf(s.up) + ' up' : '', s.down >= 4 ? heightOf(s.down) + ' down' : ''].filter(Boolean).join(', ');
+  if (!ft) return flat;
+  const word = s.up >= 4 && (s.steep >= STEEP || s.up >= 30) ? html`<b class="hill steep">Steep</b>` : s.up >= 10 ? html`<b class="hill">Uphill</b>` : s.down >= 10 ? html`<b class="hill">${s.steep >= STEEP ? 'Steep downhill' : 'Downhill'}</b>` : '';
+  return html`${word}${word ? ', ' : ''}${ft}`;
 }
-/** Walking the whole way, beside the ways by bus: how long (the climb counted), how far, its ups and downs, and its
- *  steepest; lit when it's sooner there (or, arriving by a time, a later start) than the way picked. A tap, the
- *  phone's own walking directions. Not past an hour and a half on foot. */
+const hillWords = (a, b) => { const h = hillOf(a, b); return h ? html` · ${h}` : ''; };
+/** Walking the whole way, beside the ways by bus: how long (the climb counted), how far, its lie of the land; 'Quicker
+ *  on foot' when it's sooner there (or, arriving by a time, a later start) than the way picked, in words, not lit as a
+ *  second answer. A tap, the phone's own walking directions. Not past an hour and a half on foot. */
 function walkAll(J, P, c) {
   if (!J || !J.from || !J.to) return '';
   const mins = walkMins(J.from.lat, J.from.lon, J.to.lat, J.to.lon);
   if (mins > 90) return '';
-  const d = distance(J.from.lat, J.from.lon, J.to.lat, J.to.lon), s = slope(J.from.lat, J.from.lon, J.to.lat, J.to.lon);
+  const d = distance(J.from.lat, J.from.lon, J.to.lat, J.to.lon);
   const better = P && (c.by ? c.min - mins > P.leave : c.min + mins < P.arrive);
-  const hill = [s.up >= 4 ? heightOf(s.up) + ' up' : '', s.down >= 4 ? heightOf(s.down) + ' down' : ''].filter(Boolean).join(', ');
   return html`<a class="jrow walkall${better ? ' better' : ''}" href="${walkHref(J.to.lat, J.to.lon, J.destName)}" target="_blank" rel="noopener">${icon('walk', 22)}<div class="mid"><b>${better ? 'Quicker on foot' : 'Walk the whole way'}</b>
-    <span class="sub">${mins} min · ${metres(d)}${hill ? ' · ' + hill : ' · on the flat'}${s.steep >= STEEP ? ` · steep in places (${Math.round(s.steep * 100)}%)` : ''}${better && c.by ? ` · leave by ${clockText(c.min - mins)}` : ''}</span></div>${icon('fwd', 18)}</a>`;
+    <span class="sub">${mins} min · ${metres(d)} · ${hillOf(J.from, J.to, 'on the flat')}${better && c.by ? ` · leave by ${clockText(c.min - mins)}` : ''}</span></div>${icon('fwd', 18)}</a>`;
 }
 /** A way with the shuttle at a time picked: its arrival the latest it could be, not a time it's due. */
 const worstOf = p => p.legs.some(l => l.kind === 'ride' && l.u && l.t.every);

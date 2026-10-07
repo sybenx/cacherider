@@ -347,6 +347,7 @@ test('directions arriving by a time: the shuttle the way picked, when it is the 
   await expect(page.locator('.sa-row')).toHaveCount(0);   // said as the way, not beside it
   // Walking the whole way beside it: how long, how far, up the bench to campus.
   await expect(page.locator('a.walkall').filter({ visible: true }).first()).toContainText(/\d+ min · .* (ft|m) up/);
+  await expect(page.locator('a.walkall b.hill').filter({ visible: true }).first()).toHaveText(/steep/i);   // the word first, not the feet alone
 });
 
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {

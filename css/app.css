@@ -200,7 +200,10 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 .jrow.walkall > svg { flex: none; color: var(--cr-muted); }
 /* Quicker on foot: said in the words, not lit as a second answer beside the way picked */
 .jrow.walkall { background: var(--color-bg); }
-.jrow.walkall.better b { color: var(--color-accent-700); }
+.jrow.walkall.better .mid > b { color: var(--color-accent-700); }
+/* A walk's hill: the word first, bold, in the text's own colour (red is a late bus's); STEEP in capitals */
+.sub b.hill { font-weight: 700; color: var(--color-text, currentColor); }
+.sub b.hill.steep { text-transform: uppercase; letter-spacing: 0.04em; }
 .sa-row .col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sa-row .sub { font-size: 0.8125rem; line-height: 1.4; color: var(--cr-muted); }
 .gowhen { display: flex; flex-direction: column; gap: 8px; padding: 4px 16px 10px; }
