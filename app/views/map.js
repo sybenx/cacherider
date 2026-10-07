@@ -636,9 +636,12 @@ async function made(app) {
   const spotAt = e => {
     if (Date.now() - pressedAt < 800) return;   // Android sends a long press as a context menu too: once
     pressedAt = Date.now(); clearTimeout(tapTimer);
-    const { lat, lng } = e.lngLat;
-    if (JR) { location.hash = '#/map/' + atPath({ lat, lon: lng, label: whereabouts(lat, lng) }); return; }   // off the way, to the spot: Back comes back
-    showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), pickFor, pickTo);
+    const { lat, lng } = e.lngLat, at = { lat, lon: lng, label: whereabouts(lat, lng) };
+    // Directions up: the spot as either end instead, a card asking which (a tap changes nothing there).
+    const ends = goEnds();
+    if (ends) { showAt(at, app, now(), null, null, null, ends); return; }
+    if (JR) { location.hash = '#/map/' + atPath(at); return; }   // off the way, to the spot: Back comes back
+    showAt(at, app, now(), pickFor, pickTo);
   };
   const unpress = () => { clearTimeout(pressTimer); pressFrom = null; };
   map.on('touchstart', e => { unpress(); if (e.originalEvent.touches.length !== 1) return; pressFrom = e.point; pressTimer = setTimeout(() => { pressFrom = null; spotAt(e); }, 550); });
@@ -677,6 +680,13 @@ async function made(app) {
       const { lat, lng } = e.lngLat, g = { lat, lon: lng, at: Date.now(), acc: 0, stale: false, kept: true, picked: true };
       app.geo = g; pref('near', 'on'); pref('lastgeo', JSON.stringify({ lat: g.lat, lon: g.lon, at: g.at, acc: 0 }));
       pickMe = false; location.hash = '#/';
+      return;
+    }
+    // Directions up, both ends set: a tap changes neither (a long press or a right click does, asked: spotAt). A stop
+    // tapped is that stop's page, as on the way; anything else, nothing.
+    if (goEnds()) {
+      const st = hits.filter(f => f.layer.id !== 'pool-stops').map(f => { const q = map.project(f.geometry.coordinates); return { f, d: Math.hypot(q.x - e.point.x, q.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0];
+      if (st) location.hash = st.f.layer.id === 'usu-stops' ? (wide() ? '#/usu/' : '#/map/usu/') + st.f.properties.id : (wide() ? '#/stop/' : '#/map/') + st.f.properties.id;
       return;
     }
     if (pickNow && (pickFor || pickTo) && !ofWay) {
@@ -2465,7 +2475,13 @@ function setSpot(at) {
 }
 /** A spot's walk to a stop or back up from it, steep either way (a place is walked to and from). */
 const steepBoth = (a, b) => steepWalk(a, b) || steepWalk(b, a);
-function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
+/** Directions up with both ends (#/go/<to>/<from…>), as the address has them: { to, from, q }, or null (none up, or
+ *  one end still being picked, where a tap on the map is the pick). */
+function goEnds() {
+  const [path, q = ''] = location.hash.split('?'), m = /^#\/go\/([^/]+)\/(.+)$/.exec(path);
+  return m && m[1] !== '-' ? { to: m[1], from: m[2], q: q ? '?' + q.split('&').filter(x => !x.startsWith('plan=')).join('&') : '' } : null;
+}
+function showAt(at, app, clockNow, forId = null, toFrom = null, road = null, swap = null) {
   selected = null; uHilite = ''; hiLoops = []; selectedBus = null; selectedU = null;   // a bus picked before is put down: the spot's card is the card
   hiLines = road && road.length === 1 ? [road[0]] : [];   // a road with one route: that route lit, with its times
   applySelection();
@@ -2476,8 +2492,8 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   const near = road ? roadStops(at, road) : nearestTo(at.lat, at.lon, 4);
   // A spot very near a route's line (a long press at the kerb, a place on the route): the route is an option too, as
   // a road tapped gives it, before the stops. Not when the spot is one end of directions being picked.
-  const by = road ? [...road] : forId || toFrom ? [] : routesBy(at);
-  const uby = road || forId || toFrom ? [] : loopsBy(at);   // the shuttle's loops by it too, each opening its loop
+  const by = road ? [...road] : forId || toFrom || swap ? [] : routesBy(at);
+  const uby = road || forId || toFrom || swap ? [] : loopsBy(at);   // the shuttle's loops by it too, each opening its loop
   // The Aggie Shuttle's stops a short walk off too, on a road's card as anywhere, in among Connect's by distance: on
   // campus they're the nearer buses. One at the same pole as a Connect stop is listed as well, its loops and their
   // buses being what its row says (the Connect stop's row says only Connect's).
@@ -2488,14 +2504,16 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null) {
   // A start picked for directions: the way there from this spot is the card's one button, the nearest stops under it.
   // Otherwise (a place found, a long press) the spot either end of a journey: to it from where the rider is, or from it
   // to a stop, place or address asked for next.
-  const go = forId ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${forId}/${atPath(at)}">${corners()}Directions from here</a></div>`
+  // Directions up, a long press: this spot as the start instead, or as where to (the time picked kept).
+  const go = swap ? html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${swap.to}/${atPath(at)}${swap.q === '?' ? '' : swap.q}">${corners()}Start from here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}/${swap.from}${swap.q === '?' ? '' : swap.q}">Go here instead</a></div>`
+    : forId ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${forId}/${atPath(at)}">${corners()}Directions from here</a></div>`
     : toFrom ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}/${atPath(spotOf(toFrom))}">${corners()}Directions to here</a></div>`
     : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath(at)}">From here</a></div>`;
   // On a road, its routes' next buses only, each with where it's going, and the routes as rows that open them.
   const next = i => nextAt(i, 1, clockNow, 8, road ? t => road.includes(t.r) : undefined)[0];
   const lines = () => by.length || uby.length ? html`<div class="roadroutes">${by.map(ri => { const r = D.routes[ri]; return html`<button type="button" class="roadroute" data-ri="${ri}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</button>`; })}${uby.map(ri => html`<a class="roadroute" href="#/map/uroute/${encodeURIComponent(U.routes[ri].id)}">${chip(ri, 30)}<span class="mid"><span class="name">${U.routes[ri].name}</span><span class="sub">Aggie Shuttle · ${U.routes[ri].stops.length} stops</span></span>${icon('fwd', 18)}</a>`)}</div>` : '';
   // The stops at once, their next buses (and a road's route times on the map) the moment after.
-  const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span>${road ? '' : placeStar(at)}</div>${lines()}</div>${go}
+  const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${swap ? 'Change directions' : forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span>${road ? '' : placeStar(at)}</div>${lines()}</div>${go}
     ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare, steep: steepBoth(at, U.stops[x.i]) }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare, steep: !road && steepBoth(at, D.stops[x.i]) })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`.s;
   card.innerHTML = markup(true);
   const spotKeyNow = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);

@@ -292,6 +292,27 @@ test('directions: each way in, a plan, no way, from only', async ({ page }) => {
   }
 });
 
+test('directions up: a tap on the map changes nothing, a long press or right click asks which end', async ({ page }) => {
+  await open(page);
+  const h = '#/go/@41.74335,-111.81510:Institute/at/41.75484,-111.81505/Aztec';
+  await go(page, h);
+  await mapReady(page);
+  await expect(page.getByText(/Leave|walk/i).filter({ visible: true }).first()).toBeVisible();
+  await clickNothing(page);   // zoomed out off the stops, a click on the map
+  expect(decodeURIComponent(await page.evaluate(() => location.hash))).toBe(decodeURIComponent(h));
+  // The same spot, a right click (a long press on a phone): this spot as either end, asked.
+  const map = await page.locator('#map').boundingBox(), side = await page.locator('#side').boundingBox();
+  const open_ = page.locator('#mapcard.open'), card = (await open_.count()) ? await open_.boundingBox() : null;
+  const left = side && side.width < map.width * 0.6 && side.x <= map.x + 1 ? side.x + side.width : map.x;
+  const top = map.y + 80, bottom = card && card.width > map.width * 0.6 ? card.y - 10 : map.y + map.height - 60;
+  await page.mouse.click(left + 30, (top + bottom) / 2, { button: 'right' });
+  const start = page.locator('#mapcard a', { hasText: 'Start from here' });
+  await expect(start).toBeVisible();
+  await expect(page.locator('#mapcard a', { hasText: 'Go here instead' })).toHaveAttribute('href', /^#\/go\/@[-\d.,]+.*\/at\/41\.75484,-111\.81505\/Aztec$/);
+  await start.click();
+  await expect(page).toHaveURL(/#\/go\/@41\.74335,-111\.81510:Institute\/at\/[-\d.]+,[-\d.]+\//);
+});
+
 test('directions, no stop a walk off: the nearest starts in view, one picked, and it stays put', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s card over the map');
   // From far out of the valley's routes: no way by bus.
