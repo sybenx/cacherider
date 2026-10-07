@@ -168,7 +168,7 @@ let townSet = null;
 export const townish = q => { townSet = townSet || new Set(D.stops.map(s => norm(s.town))); return townSet.has(norm(q)); };
 export const streetish = q => /\d/.test(q) || /\b(main|center|st|street|ave|avenue|rd|road|dr|drive|blvd|hwy|highway|north|south|east|west|n|s|e|w)\b/i.test(q);
 export function searchPlaces(q, limit = 8, within = null) {
-  const words = wordsOf(q);
+  const words = wordsOf(q.replace(/\bbook\s+(store|shop)\b/gi, 'book$1'));   // 'book store', as 'bookstore': a shop of books
   if (!words.length) return { list: [], more: 0 };
   // A word may stand for its kind: 'chapel' or 'ward' for a church ('Middle Earth Chapel', the Middle Earth Building).
   const alts = words.map(w => [w, ...(SAME_AS[w] || [])]);
@@ -206,7 +206,7 @@ export function searchPlaces(q, limit = 8, within = null) {
   }
   return { list: all.slice(0, limit), more: Math.max(0, all.length - limit) };
 }
-const SAME_AS = { chapel: ['church'], ward: ['church'], meetinghouse: ['church'], stake: ['church'] };
+const SAME_AS = { chapel: ['church'], ward: ['church'], meetinghouse: ['church'], stake: ['church'], bookstore: ['books'], bookshop: ['books'], food: ['restaurant', 'cafe', 'bakery'] };   // 'food': somewhere to eat, as a rider means it
 /** The live relay, which serves the agency's notices minutes after they're posted; data/alerts.json (fetched by
  *  GitHub every so often) stands in when it can't be reached. The first page is drawn from the file alone, kept on
  *  the phone, and never waits on the relay: `relay: false`. */

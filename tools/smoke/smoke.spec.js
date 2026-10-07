@@ -164,6 +164,12 @@ test('search: a route, every route, a street, a place, an address', async ({ pag
   // A chapel by what the town calls it (OSM's loc_name), 'chapel' for 'church'; an area named with a kind in it.
   await go(page, '#/search?q=' + encodeURIComponent('Middle Earth Chapel'));
   await expect(page.getByText(/Middle Earth Building/).filter({ visible: true }).first()).toBeVisible();
+  // A building's places, said to be in it, by the building's names ('tsc', 'taggart'), and USU by what its places are
+  // called ('Aggie'): the Campus Store as a bookstore.
+  await go(page, '#/search?q=' + encodeURIComponent('tsc subway'));
+  await expect(page.getByText(/in Taggart Student Center/).filter({ visible: true }).first()).toBeVisible();
+  await go(page, '#/search?q=' + encodeURIComponent('aggie bookstore'));
+  await expect(page.getByText(/USU Campus Store/).filter({ visible: true }).first()).toBeVisible();
   await go(page, '#/search?q=' + encodeURIComponent('logan regional pharmacy'));
   await expect(page.getByText(/Pharmacy/i).filter({ visible: true }).first()).toBeVisible();
   await go(page, '#/search?q=' + encodeURIComponent('500 North 100 East'));
