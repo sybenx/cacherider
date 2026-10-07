@@ -22,12 +22,13 @@ QUERY = f"""[out:json][timeout:120];
   nwr["name"]["office"]({BOX}); nwr["name"]["tourism"]({BOX}); nwr["name"]["healthcare"]({BOX});
   nwr["name"]["building"~"school|university|college|hospital|civic|public|stadium|government|retail|commercial"]({BOX});
   nwr["name"]["man_made"="works"]({BOX}); nwr["name"]["landuse"~"industrial|commercial|retail"]({BOX});
+  nwr["name"]["place"~"^(neighbourhood|suburb|quarter)$"]({BOX});
 );
-out center tags;"""
+out center bb tags;"""
 
 KEYS = ['amenity', 'shop', 'leisure', 'healthcare', 'tourism', 'office', 'building', 'man_made', 'landuse']
 # Names a place also goes by (a brand, an old name, what's on the sign): searched, never shown.
-ALSO = ['alt_name', 'short_name', 'old_name', 'brand', 'operator', 'official_name']
+ALSO = ['alt_name', 'short_name', 'old_name', 'brand', 'operator', 'official_name', 'loc_name', 'nickname']   # loc_name: what the town calls it ('Aztec Building', 'First Dam')
 # Kinds nobody takes a bus to find.
 SKIP = {
     'amenity': {'parking', 'parking_space', 'parking_entrance', 'bench', 'waste_basket', 'bicycle_parking', 'fire_hydrant',
@@ -76,10 +77,12 @@ found = []
 for e in els:
     t = e.get('tags', {})
     name = (t.get('name') or '').strip()
-    lat = e.get('lat') or (e.get('center') or {}).get('lat')
-    lon = e.get('lon') or (e.get('center') or {}).get('lon')
-    if not name or lat is None: continue
+    b = e.get('bounds') or {}   # asked for with the boxes (areas, below), an outline comes with its box and no centre
+    lat = e.get('lat') or (e.get('center') or {}).get('lat') or (b and (b['minlat'] + b['maxlat']) / 2)
+    lon = e.get('lon') or (e.get('center') or {}).get('lon') or (b and (b['minlon'] + b['maxlon']) / 2)
+    if not name or not lat: continue
     key = next((k for k in KEYS if k in t), None)
+    if key is None: continue   # a neighbourhood: an area (below), not a place to go to
     kind = t.get(key, '')
     if kind in SKIP.get(key, ()): continue
     near = min(stops, key=lambda s: dist(lat, lon, s['lat'], s['lon']))
@@ -87,17 +90,41 @@ for e in els:
     word = WORDS.get(kind, kind.replace('_', ' ').capitalize())
     if kind == 'university' and campus: word = campus
     also = ' '.join(dict.fromkeys(w for k in ALSO for w in [(t.get(k) or '').strip()] if w and w.lower() != name.lower()))
-    found.append({'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'word': word, 'rank': rank[key], 'town': near['town'], 'stop': near['name'], 'also': also})
+    found.append({'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'word': word, 'rank': rank[key], 'town': near['town'], 'stop': near['name'], 'also': also, 'loc': (t.get('loc_name') or '').strip()})
 
 # Once each: the same name within 150 m is one place (a point and its building); the better-described is kept.
 found.sort(key=lambda p: (p['rank'], p['name']))
 kept = []
 for p in found:
-    if any(q['name'].lower() == p['name'].lower() and dist(p['lat'], p['lon'], q['lat'], q['lon']) < 150 for q in kept): continue
+    # Not two chapels a block apart called the same but known apart (the Aztec Building and the Middle Earth Building).
+    if any(q['name'].lower() == p['name'].lower() and dist(p['lat'], p['lon'], q['lat'], q['lon']) < 150 and not (p['also'] and q['also'] and p['also'] != q['also']) for q in kept): continue
     kept.append(p)
 # A name that repeats in a town says which one: the stop it's by.
 count = {}
 for p in kept: count[(p['name'].lower(), p['town'])] = count.get((p['name'].lower(), p['town']), 0) + 1
-out = [[p['name'], p['lat'], p['lon'], p['word'], p['town'] + (' · by ' + p['stop'] if count[(p['name'].lower(), p['town'])] > 1 else '')] + ([p['also']] if p['also'] else []) for p in sorted(kept, key=lambda p: p['name'].lower())]
-json.dump({'from': 'OpenStreetMap contributors', 'campus': campus, 'places': out}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+# (or what the town calls it, where it's known apart that way: 'Logan · Aztec Building', not 'by 1200 North 800 East' twice)
+out = [[p['name'], p['lat'], p['lon'], p['word'], p['town'] + ((' · ' + p['loc'] if p['loc'] else ' · by ' + p['stop']) if count[(p['name'].lower(), p['town'])] > 1 else '')] + ([p['also']] if p['also'] else []) for p in sorted(kept, key=lambda p: p['name'].lower())]
+# Areas a search can name ('USU institute', 'Island pizza', 'BTech library'): a campus, a college, a hospital's grounds,
+# a mall, a neighbourhood, by its outline's box (a neighbourhood mapped as a point, a few blocks round it). Each by every
+# name it goes by; the university by its initials too, and 'campus'. The search finds the rest of the words inside.
+AREA = {('amenity', 'university'), ('amenity', 'college'), ('amenity', 'hospital'), ('shop', 'mall'), ('landuse', 'retail'),
+        ('place', 'neighbourhood'), ('place', 'suburb'), ('place', 'quarter')}
+areas = []
+for e in els:
+    t = e.get('tags', {})
+    name = (t.get('name') or '').strip()
+    if not name or not any(t.get(k) == v for k, v in AREA): continue
+    b = e.get('bounds')
+    if b: box = [b['minlon'], b['minlat'], b['maxlon'], b['maxlat']]
+    else:
+        lat, lon = e.get('lat') or (e.get('center') or {}).get('lat'), e.get('lon') or (e.get('center') or {}).get('lon')
+        if lat is None: continue
+        box = [lon - 0.0055, lat - 0.0045, lon + 0.0055, lat + 0.0045]   # about 450 m round it
+    names = [name] + [(t.get(k) or '').strip() for k in ('short_name', 'loc_name', 'alt_name', 'official_name') if t.get(k)]
+    if t.get('amenity') == 'university' and campus: names += [campus, 'campus']
+    near = min(stops, key=lambda s: dist((box[1] + box[3]) / 2, (box[0] + box[2]) / 2, s['lat'], s['lon']))
+    if dist((box[1] + box[3]) / 2, (box[0] + box[2]) / 2, near['lat'], near['lon']) > 3000: continue   # out past the buses
+    areas.append({'name': name, 'names': list(dict.fromkeys(names)), 'box': [round(x, 5) for x in box]})
+json.dump({'from': 'OpenStreetMap contributors', 'campus': campus, 'places': out, 'areas': areas}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+print(f'{len(areas)} areas: ' + ', '.join(a['name'] for a in areas), file=sys.stderr)
 print(f'{len(out)} places, {os.path.getsize(OUT) // 1024} KB, campus {campus or "none"}', file=sys.stderr)

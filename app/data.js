@@ -111,7 +111,13 @@ export async function loadPlaces() {
   P = pj.places || [];
   O = (oj.places || []).map(([name, lat, lon, word, area, also]) => ({ name, lat, lon, word, area, also: also || '', osm: true }));   // `also`: names it goes by, searched, not shown
   O.campus = oj.campus || '';   // the university's initials, the word its buildings are listed under
+  AREAS = (oj.areas || []).map(a => ({ ...a, forms: a.names.map(n => wordsOf(n).filter(w => !AREA_FILLER.includes(w))).filter(f => f.length) }));
 }
+/** Areas a search can name (tools/osmplaces.py): USU's campus, a college, a hospital's grounds, a mall, a neighbourhood,
+ *  each by its names, as words. A name's 'the' and 'neighborhood' aren't needed to name it ('island', 'hillcrest'). */
+let AREAS = [];
+// and what kind of place it is ('Logan Regional' is the hospital, 'Bridgerland' the college).
+const AREA_FILLER = ['the', 'neighborhood', 'neighbourhood', 'at', 'of', 'hospital', 'medical', 'center', 'college', 'technical', 'applied', 'technology', 'university', 'estates'];
 // ---- POOL, Connect's on-demand ride: its zone and its pickup points (tools/pool.py), an optional file; the app
 // is whole without it. A pickup that is also a bus stop is marked on that stop.
 export let POOL = null;
@@ -146,40 +152,46 @@ let townSet = null;
 /** A town's name alone ('Smithfield', 'hyde park'): the search puts the town's stops first, as it does a street's. */
 export const townish = q => { townSet = townSet || new Set(D.stops.map(s => norm(s.town))); return townSet.has(norm(q)); };
 export const streetish = q => /\d/.test(q) || /\b(main|center|st|street|ave|avenue|rd|road|dr|drive|blvd|hwy|highway|north|south|east|west|n|s|e|w)\b/i.test(q);
-export function searchPlaces(q, limit = 8) {
+export function searchPlaces(q, limit = 8, within = null) {
   const words = wordsOf(q);
   if (!words.length) return { list: [], more: 0 };
-  // Its name and its town ('church hyrum'); not the stop it's by, or '500 north' would find the shops there. Then its
-  // kind ('dentist', 'pharmacy'), after the places named so.
-  const hit = text => { const nw = wordsOf(text); return words.every(w => nw.some(x => x.startsWith(w))); };
+  // A word may stand for its kind: 'chapel' or 'ward' for a church ('Middle Earth Chapel', the Middle Earth Building).
+  const alts = words.map(w => [w, ...(SAME_AS[w] || [])]);
+  const hit = text => { const nw = wordsOf(text); return alts.every(a => a.some(w => nw.some(x => x.startsWith(w)))); };
   const town = p => (p.area || '').split(' · ')[0];
-  const mine = P.filter(p => hit(p.name));
+  const inside = p => !within || (p.lat >= within[1] && p.lat <= within[3] && p.lon >= within[0] && p.lon <= within[2]);
+  // Its name and its town ('church hyrum'); not the stop it's by, or '500 north' would find the shops there. Then its
+  // kind ('dentist', 'pharmacy'), after the places named so. A church's kind goes with its name ('aztec church').
+  const mine = P.filter(p => inside(p) && hit(p.name));
   const fresh = p => !mine.some(m => distance(m.lat, m.lon, p.lat, p.lon) < 150);
-  const named = O.filter(p => hit(p.name + ' ' + town(p) + ' ' + p.also) && fresh(p));
-  const kind = O.filter(p => !named.includes(p) && hit(p.word + ' ' + town(p)) && fresh(p));
+  const named = O.filter(p => inside(p) && hit(p.name + ' ' + town(p) + ' ' + p.also + (p.word === 'Church' ? ' church' : '')) && fresh(p));
+  // A place that goes by its initials ('IDRPP') is found by them; by its long name, after the rest ('USU Institute'
+  // is the Institute of Religion, not the Institute for Disability Research, Policy & Practice).
+  const initials = p => (p.also.match(/\b[A-Z]{3,6}\b/g) || []).some(a => !words.includes(a.toLowerCase()));
+  named.sort((a, b) => initials(a) - initials(b));
+  const kind = O.filter(p => inside(p) && !named.includes(p) && hit(p.word + ' ' + town(p)) && fresh(p));
   // POOL's pickup points by name, after the pamphlet's places: each a place served by POOL, with its nearest stops.
-  const pool = POOL ? POOL.stops.filter(s => hit(s.name)).map(s => ({ name: s.name, lat: s.lat, lon: s.lon, word: 'POOL pickup', area: '', osm: true, pool: true, pickup: true })) : [];
+  const pool = POOL ? POOL.stops.filter(s => inside(s) && hit(s.name)).map(s => ({ name: s.name, lat: s.lat, lon: s.lon, word: 'POOL pickup', area: '', osm: true, pool: true, pickup: true })) : [];
   const all = [...mine, ...pool, ...named, ...kind];
-  // 'USU' (or 'campus') with other words: those words on campus, after whatever has every word in it. 'USU Institute'
-  // found nothing: the Institute of Religion by campus is a church in the map's data, not one of USU's, and USU's own
-  // places carry the word as their kind, not their name.
-  const rest = words.filter(w => !CAMPUS_WORDS.includes(w));
-  if (rest.length && rest.length < words.length) {
-    const box = campusBox(), on = p => p.word === 'USU' || (box && p.lat >= box[1] && p.lat <= box[3] && p.lon >= box[0] && p.lon <= box[2]);
-    for (const p of searchPlaces(rest.join(' '), 40).list) if (on(p) && !all.some(q => q.name === p.name && distance(q.lat, q.lon, p.lat, p.lon) < 150)) all.push(p);
+  // An area named with other words ('USU institute', 'island pizza', 'hillcrest park'): those words inside it, after
+  // whatever has every word in it. The longest name it's called by that the words hold, and the rest searched within.
+  if (!within) {
+    let best = null;
+    // Two of a name (Hillcrest as a point and as its outline): the bigger.
+    const size = a => (a.box[2] - a.box[0]) * (a.box[3] - a.box[1]);
+    for (const a of AREAS) for (const f of a.forms) if (f.every(w => words.includes(w)) && (!best || f.length > best.f.length || (f.length === best.f.length && size(a) > size(best.a)))) best = { a, f };
+    // The rest: the words not in any of its names ('university' of University Village, though it isn't needed to name it).
+    const areaWords = best ? new Set(best.a.names.flatMap(wordsOf)) : null;
+    const rest = best ? words.filter(w => !areaWords.has(w)) : [];
+    if (rest.length) {
+      const own = O.campus && best.f.includes(O.campus.toLowerCase());   // USU's own places, wherever they are
+      for (const p of searchPlaces(rest.join(' '), 40, best.a.box).list.concat(own ? searchPlaces(rest.join(' '), 40).list.filter(p => p.word === O.campus) : []))
+        if (!all.some(x => x.name === p.name && distance(x.lat, x.lon, p.lat, p.lon) < 150)) all.push(p);
+    }
   }
   return { list: all.slice(0, limit), more: Math.max(0, all.length - limit) };
 }
-const CAMPUS_WORDS = ['usu', 'campus'];
-/** USU's campus, as the box round its own places (the map's, tagged 'USU'), and a block more: [w, s, e, n]. */
-let campusB;
-function campusBox() {
-  if (campusB !== undefined) return campusB;
-  const ps = O.filter(p => p.word === 'USU');
-  if (!ps.length) return null;   // not loaded yet: asked again next time
-  const m = 0.002;   // about 200 m
-  return campusB = [Math.min(...ps.map(p => p.lon)) - m, Math.min(...ps.map(p => p.lat)) - m, Math.max(...ps.map(p => p.lon)) + m, Math.max(...ps.map(p => p.lat)) + m];
-}
+const SAME_AS = { chapel: ['church'], ward: ['church'], meetinghouse: ['church'], stake: ['church'] };
 /** The live relay, which serves the agency's notices minutes after they're posted; data/alerts.json (fetched by
  *  GitHub every so often) stands in when it can't be reached. The first page is drawn from the file alone, kept on
  *  the phone, and never waits on the relay: `relay: false`. */
