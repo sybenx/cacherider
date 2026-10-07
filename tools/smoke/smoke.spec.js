@@ -333,6 +333,7 @@ test('directions: a walk over a busy road goes by its crossing, said', async ({ 
   await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.74061,-111.83124/Transit%20Center');
   await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/Cross .*Main Street.* at the (light|crosswalk)/);
   await expect(page.getByText(/crow flies, but over a busy road/).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('a.walkall')).toHaveCount(0);   // three miles: not a walk worth offering beside the bus
   // From the Wolf Pack Way stop itself: the light 480 m out of the way, so both said, and the Crosswalks chip turns it.
   await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.78315,-111.83096/Wolf%20Pack');
   const chip = page.locator('.chip[data-xing]').filter({ visible: true }).first();

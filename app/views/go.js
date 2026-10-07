@@ -535,13 +535,15 @@ function hillOf(a, b, flat = '') {
 const hillWords = (a, b) => { const h = hillOf(a, b); return h ? html` · ${h}` : ''; };
 /** Walking the whole way, beside the ways by bus: how long (the climb counted), how far, its lie of the land; 'Quicker
  *  on foot' when it's sooner there (or, arriving by a time, a later start) than the way picked, in words, not lit as a
- *  second answer. A tap, the phone's own walking directions. Not past an hour and a half on foot. */
+ *  second answer. A tap, the phone's own walking directions. Only a walk a rider might take: half an hour or less,
+ *  or three quarters where it's the quicker way (66 min across town beside a 19-minute bus was noise). */
 function walkAll(J, P, c) {
   if (!J || !J.from || !J.to) return '';
   const mins = walkMins(J.from.lat, J.from.lon, J.to.lat, J.to.lon);
-  if (mins > 90) return '';
+  if (mins > 45) return '';
   const w = wayOf(J.from, J.to), d = w.d;
   const better = P && (c.by ? c.min - mins > P.leave : c.min + mins < P.arrive);
+  if (mins > 30 && !better) return '';
   return html`<a class="jrow walkall${better ? ' better' : ''}" href="${walkHref(J.to.lat, J.to.lon, J.destName)}" target="_blank" rel="noopener">${icon('walk', 22)}<div class="mid"><b>${better ? 'Quicker on foot' : 'Walk the whole way'}</b>
     <span class="sub">${mins} min · ${metres(d)} · ${hillOf(J.from, J.to, 'on the flat')}${better && c.by ? ` · leave by ${clockText(c.min - mins)}` : ''}</span>${crossNote(w)}</div>${icon('fwd', 18)}</a>`;
 }
