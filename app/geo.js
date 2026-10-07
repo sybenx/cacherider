@@ -217,14 +217,20 @@ function roadsCrossed(a, b) {
       }
   return out.sort((p, q) => p.t - q.t);
 }
+/** The rider's choice (the Crosswalks chip on directions): walks over a busy road by its crossings (on, the default),
+ *  or straight across as the crow flies, for where the map's crossings are wrong or a rider knows better. Either way
+ *  the other is said beside it. `any` in walkWay: the way by the crossings whatever the choice, to say it. */
+let xing = (() => { try { return localStorage.getItem('cr-xing') !== 'off'; } catch { return true; } })();
+export const useCrossings = () => xing;
+export function setUseCrossings(on) { xing = !!on; try { localStorage.setItem('cr-xing', on ? 'on' : 'off'); } catch { /* this visit only */ } }
 const FAR = 1500;   // metres: a crossing further off than this from where the line crosses isn't the way over
 /** A walk from one point to another as it's walked: straight, or across each busy road it meets by a crossing on that
  *  road (the light or crosswalk that makes the walk shortest), { d (metres), via: [{ lat, lon, kind ('s' a light,
  *  'm' a crosswalk), road }] }; one with `none` where the road has no crossing within reach (the walk straight,
  *  said). */
-export function walkWay(lat1, lon1, lat2, lon2) {
+export function walkWay(lat1, lon1, lat2, lon2, any = false) {
   const straight = { d: distance(lat1, lon1, lat2, lon2), via: [] };
-  if (!WK) return straight;
+  if (!WK || !(any || xing)) return straight;   // crossings off (the rider's choice): straight, as the crow flies
   const key = lat1.toFixed(5) + ',' + lon1.toFixed(5) + '>' + lat2.toFixed(5) + ',' + lon2.toFixed(5);
   if (WK.memo.has(key)) return WK.memo.get(key);
   if (WK.memo.size > 20000) WK.memo.clear();

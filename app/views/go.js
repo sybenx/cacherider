@@ -6,7 +6,7 @@ import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, day
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { spotOf, spotKey, atPath, climb, RISE, slope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords } from '../geo.js';
+import { spotOf, spotKey, atPath, climb, RISE, slope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, planNetBy, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
@@ -214,7 +214,9 @@ function sheet(J, head, clockNow, fixed = false, also = '') {
   const later = same.length ? html`<div class="later"><span class="k">Same way, ${same.every(([p]) => p.leave < P.leave) ? 'earlier' : 'later'}</span><span class="ts">${same.map(([p, k]) => html`<a class="chip" href="${J.hrefs[k]}">${clockText(p.leave)}</a>`)}</span></div>` : '';
   // Avoid steep: offered where a way has a steep walk in it (or it's on), kept for every trip after (Settings too).
   const steepChip = avoidSteep() || J.plans.some(p => steepIn(p, J)) ? html`<button type="button" class="chip" data-steep aria-pressed="${avoidSteep() ? 'true' : 'false'}">Avoid steep</button>` : '';
-  const sortRow = groups.size || steepChip ? html`<div class="section between otherways"><span>${groups.size ? 'Other ways' : ''}</span><span class="chips-inline">${groups.size ? html`<button type="button" class="chip" data-sort="walk" aria-pressed="${goSort() === 'walk' ? 'true' : 'false'}">Least walking</button>` : ''}${steepChip}</span></div>` : '';
+  // Crosswalks: offered where a way's walk is much longer by them (or they're off), kept for every trip after.
+  const xingChip = !useCrossings() || J.plans.some(p => crossMatters(p, J)) ? html`<button type="button" class="chip" data-xing aria-pressed="${useCrossings() ? 'true' : 'false'}">Crosswalks</button>` : '';
+  const sortRow = groups.size || steepChip || xingChip ? html`<div class="section between otherways"><span>${groups.size ? 'Other ways' : ''}</span><span class="chips-inline">${groups.size ? html`<button type="button" class="chip" data-sort="walk" aria-pressed="${goSort() === 'walk' ? 'true' : 'false'}">Least walking</button>` : ''}${steepChip}${xingChip}</span></div>` : '';
   const rows = groups.size ? html`<div class="jrows" role="list">${[...groups.values()].map(g => planRow(g[0][0], J.hrefs[g[0][1]], g.slice(1), clockNow, fixed, steepIn(g[0][0], J)))}</div>` : '';
   return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}${walkAll(J, P, clockNow)}</div>
     <div class="journeysheet legs">${timeline(P, J, clockNow)}${later}${sortRow}${rows}</div>
@@ -543,10 +545,31 @@ function walkAll(J, P, c) {
   return html`<a class="jrow walkall${better ? ' better' : ''}" href="${walkHref(J.to.lat, J.to.lon, J.destName)}" target="_blank" rel="noopener">${icon('walk', 22)}<div class="mid"><b>${better ? 'Quicker on foot' : 'Walk the whole way'}</b>
     <span class="sub">${mins} min · ${metres(d)} · ${hillOf(J.from, J.to, 'on the flat')}${better && c.by ? ` · leave by ${clockText(c.min - mins)}` : ''}</span>${crossNote(w)}</div>${icon('fwd', 18)}</a>`;
 }
-/** A walk as it's walked (geo.js walkWay): over a busy road by a crossing on it, its distance with the detour. */
-const wayOf = (a, b) => a && b ? walkWay(a.lat, a.lon, b.lat, b.lon) : { d: 0, via: [] };
-/** Its crossings, said under the walk: 'Cross Main Street at the light by 3100 North'. */
-const crossNote = w => w.via.length ? html`<span class="sub cross"><b>${crossWords(w.via)}</b></span>` : '';
+/** A walk as it's walked (geo.js walkWay): over a busy road by a crossing on it, its distance with the detour; with
+ *  crossings off, straight. `.alt`, the other of the two where they differ enough to matter (XING_MORE). */
+const XING_MORE = 150;   // metres: a crossing this much out of the way is worth the choice, and said
+function wayOf(a, b) {
+  if (!a || !b) return { d: 0, via: [] };
+  const by = walkWay(a.lat, a.lon, b.lat, b.lon, true), straight = { d: distance(a.lat, a.lon, b.lat, b.lon), via: [] };
+  const real = by.via.some(v => !v.none), far = real && by.d - straight.d >= XING_MORE;
+  return useCrossings() ? { ...by, alt: far ? straight : null, over: by.via } : { ...straight, alt: far ? by : null, over: by.via };
+}
+/** Its crossings, said under the walk, and the other way where it's much shorter or longer: 'Cross Main Street and
+ *  Airport Road at the light by 2500 North · or straight across, 6 min less (no crosswalk)'; crossings off, 'Straight
+ *  across Main Street (no crosswalk) · or at the light by 3100 North, 6 min more'. Never called jaywalking: the rider
+ *  knows the road. */
+function crossNote(w) {
+  if (!w.over || !w.over.length) return '';
+  const mins = w.alt ? Math.max(1, Math.round(Math.abs(w.alt.d - w.d) / PACE)) : 0;
+  if (useCrossings()) return w.via.length ? html`<span class="sub cross"><b>${crossWords(w.via)}</b>${w.alt ? ` · or straight across, ${mins} min less (no crosswalk)` : ''}</span>` : '';
+  const roads = [...new Set(w.over.map(v => v.road))].join(' and ');
+  return html`<span class="sub cross"><b>Straight across ${roads}</b> (no crosswalk)${w.alt ? ` · or ${crossWords(w.alt.via).replace(/(^|; then )Cross .+? (at the )/g, '$1$2')}, ${mins} min more` : ''}</span>`;
+}
+/** Whether a way has a walk the crossings make much longer (or would), for offering the Crosswalks chip at all. */
+function crossMatters(p, J) {
+  const at = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x);
+  return p.legs.some((l, k) => l.kind === 'walk' && wayOf(at(l.from) || (k === 0 ? J.from : null), at(l.to) || (k === p.legs.length - 1 ? J.to : null)).alt);
+}
 /** Whether a way has a steep walk up in it (geo.js's one rule): its walks' ends, a stop's or the trip's own. */
 function steepIn(p, J) {
   const at = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x);
@@ -607,6 +630,14 @@ function mount(el, _app, inCard = false) {
     const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
     q.delete('plan'); if (c.getAttribute('aria-pressed') !== 'true') q.set('sort', 'walk'); else q.delete('sort');
     location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
+  };
+  // Crosswalks, on or off: the rider's choice for every trip, the ways worked out again.
+  for (const c of el.querySelectorAll('.chip[data-xing]')) c.onclick = () => {
+    kept = null; setUseCrossings(c.getAttribute('aria-pressed') !== 'true');
+    const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
+    q.delete('plan');
+    location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   };
   // Avoid steep, on or off: the rider's choice for every trip (Settings has it too), the ways worked out again.
   for (const c of el.querySelectorAll('.chip[data-steep]')) c.onclick = () => {

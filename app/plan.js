@@ -5,7 +5,7 @@
 import { stop, timesOn, tripStops, tripEnd, nextTrip, distance, nearest, servicesOn } from './data.js';
 import { lively, isLoop } from './ui.js';
 import { dayFrom } from './time.js';
-import { walkMins, steepWalk, avoidSteep } from './geo.js';
+import { walkMins, steepWalk, avoidSteep, useCrossings } from './geo.js';
 
 const WALK_TO = 1000;     // how far a rider is sent on foot to a first stop
 const WALK_FROM = 350;    // a stop this near the one asked for is as good, with the walk said
@@ -188,7 +188,7 @@ export function journeys(origin, dest, clockNow, days = 8, sh = null, live = tru
   // Answered from memory within twenty seconds for the same ask: a far destination (home, out past the stops) took
   // a second or more to search, twice every feed, and the page stuttered with it.
   const flat = avoidSteep();
-  const key = JSON.stringify([flat, origin.si !== undefined ? origin.si : [+origin.lat.toFixed(5), +origin.lon.toFixed(5)], typeof dest === 'object' ? [+dest.lat.toFixed(5), +dest.lon.toFixed(5)] : dest, clockNow.ymd, clockNow.min, days, sh ? sh.now : null, live, by, Math.floor(Date.now() / 20000)]);
+  const key = JSON.stringify([flat, useCrossings(), origin.si !== undefined ? origin.si : [+origin.lat.toFixed(5), +origin.lon.toFixed(5)], typeof dest === 'object' ? [+dest.lat.toFixed(5), +dest.lon.toFixed(5)] : dest, clockNow.ymd, clockNow.min, days, sh ? sh.now : null, live, by, Math.floor(Date.now() / 20000)]);
   if (asked.has(key)) return asked.get(key);
   if (asked.size > 40) asked.clear();
   // Avoiding steep walks: those ways; none at all without one, the ways there are, said as steep (`steep`).

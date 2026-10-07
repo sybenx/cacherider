@@ -321,6 +321,15 @@ test('directions: a walk over a busy road goes by its crossing, said', async ({ 
   await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.74061,-111.83124/Transit%20Center');
   await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/Cross .*Main Street.* at the (light|crosswalk)/);
   await expect(page.getByText(/crow flies, but over a busy road/).filter({ visible: true }).first()).toBeVisible();
+  // From the Wolf Pack Way stop itself: the light 480 m out of the way, so both said, and the Crosswalks chip turns it.
+  await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.78315,-111.83096/Wolf%20Pack');
+  const chip = page.locator('.chip[data-xing]').filter({ visible: true }).first();
+  await expect(chip).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/or straight across, \d+ min less/);
+  await chip.click();
+  await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/Straight across Main Street.*or at the light/);
+  await page.locator('.chip[data-xing]').filter({ visible: true }).first().click();
+  await expect(page.locator('.chip[data-xing]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('directions, no stop a walk off: the nearest starts in view, one picked, and it stays put', async ({ page }, info) => {

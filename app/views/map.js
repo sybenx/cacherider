@@ -136,7 +136,7 @@ function style(sat = true) {
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
       { id: 'trk-path', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3, 17, 5], 'line-dasharray': [0, 1.6], 'line-opacity': ['get', 'sure'] } },   // dots, closer than a notice's, and never the shuttle's dashes
       { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
-      { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': 0.9 } },
+      { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': ['coalesce', ['get', 'sure'], 0.9] } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 1, 1.8], 15, ['case', ['get', 'approx'], 1.8, 3.5], 17, ['case', ['get', 'approx'], 2.5, 6]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.95], 'line-dasharray': [3, 1.5] } },
       { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
@@ -195,6 +195,10 @@ function closedSegments(fc) {
   const ymd = now().ymd;
   const byRoute = {};   // route index → set of closed stop ids
   for (const a of activeAlerts(ymd)) for (const ri of a.ri || []) for (const id of a.stops || []) (byRoute[ri] ||= new Set()).add(id);
+  // And a detour seen from the buses and not announced: the stretch they've been leaving out dotted as a notice's is,
+  // its stops with their '?'; lighter while only two in a row have gone round (u.n), as its way round is.
+  const unsure = new Set();
+  for (const u of A.seen || []) if (!u.announced) for (const ri of u.ri) for (const id of u.gone) if (!(byRoute[ri] && byRoute[ri].has(id))) { (byRoute[ri] ||= new Set()).add(id); if (u.n < 3) unsure.add(ri + ':' + id); }
   const cuts = [];
   for (const [ri, ids] of Object.entries(byRoute)) {
     const r = D.routes[+ri];
@@ -210,7 +214,8 @@ function closedSegments(fc) {
         i = j;
         if (done.has(key)) continue;
         done.add(key);
-        for (const cut of cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]))) cuts.push({ ...cut, ri: +ri, r });
+        const sure = !seq.slice(i, j + 1).some(si => unsure.has(ri + ':' + D.stops[si].id));
+        for (const cut of cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]))) cuts.push({ ...cut, ri: +ri, r, sure });
       }
     }
   }
@@ -223,7 +228,7 @@ function closedSegments(fc) {
   const out = [], gaps = {};
   for (const c of cuts) {
     for (const [d0, d1] of unvouched(c, grid)) {
-      out.push({ type: 'Feature', properties: { color: sinkLine('#' + c.r.color), dcolor: lift('#' + c.r.color), route: c.ri }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
+      out.push({ type: 'Feature', properties: { color: sinkLine('#' + c.r.color), dcolor: lift('#' + c.r.color), route: c.ri, sure: c.sure ? 0.9 : 0.55 }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
       (gaps[c.shape] ||= []).push([(c.base + d0) % c.total, (c.base + d1) % c.total]);
     }
   }
@@ -3098,12 +3103,25 @@ let JR = null, jrKey = null, jrFramed = null, jrBounds = null;
 const frameWay = (duration = 600) => { if (JR && jrBounds) frame(jrBounds, { margin: wide() ? 40 : 28, maxZoom: 16.5, bearing: 0, duration }); };
 const ink = () => dark() ? '#eef0f2' : '#1d1f20', paperInk = () => dark() ? '#101214' : '#f2f2f3';
 const jpt = x => typeof x === 'string' ? U.stops[+x.slice(1)] : D.stops[x];
+/** A crosswalk's mark for the map: a dark rounded square with white zebra stripes, 2× for sharpness. */
+function xwalkImage() {
+  const s = 40, c = document.createElement('canvas'); c.width = c.height = s;
+  const g = c.getContext('2d');
+  g.fillStyle = '#1d1f20'; g.strokeStyle = '#ffffff'; g.lineWidth = 3;
+  g.beginPath(); g.roundRect(2, 2, s - 4, s - 4, 8); g.fill(); g.stroke();
+  g.fillStyle = '#ffffff';
+  for (let k = 0; k < 4; k++) g.fillRect(9 + k * 6.5, 10, 3.5, 20);
+  return g.getImageData(0, 0, s, s);
+}
 /** The layers a way adds, once (and again after a restyle, which drops them): its walks, its ring and its ends. */
 function addJourneyLayers(m) {
   addRunLayers(m);
   if (m.getSource('jr')) return;
   m.addSource('jr', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   m.addLayer({ id: 'jr-walk', type: 'line', source: 'jr', filter: ['==', ['get', 'k'], 'walk'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ink(), 'line-width': 3, 'line-dasharray': [0.1, 2] } }, 'stops');
+  // A crossing a walk takes: a zebra-striped mark, its words beside it.
+  if (!m.hasImage('xwalk')) m.addImage('xwalk', xwalkImage(), { pixelRatio: 2 });
+  m.addLayer({ id: 'jr-cross', type: 'symbol', source: 'jr', filter: ['==', ['get', 'k'], 'cross'], layout: { 'icon-image': 'xwalk', 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-anchor': 'left', 'text-offset': [1.3, 0], 'text-optional': true }, paint: { 'text-color': ink(), 'text-halo-color': paperInk(), 'text-halo-width': 2 } });
   m.addLayer({ id: 'jr-ring', type: 'circle', source: 'jr', filter: ['==', ['get', 'k'], 'change'], paint: { 'circle-radius': 13, 'circle-opacity': 0, 'circle-stroke-width': 3, 'circle-stroke-color': ink() } });
   m.addLayer({ id: 'jr-ends', type: 'circle', source: 'jr', filter: ['in', ['get', 'k'], ['literal', ['start', 'end']]], paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'k'], 'end'], ink(), paperInk()], 'circle-stroke-width': 3, 'circle-stroke-color': ['case', ['==', ['get', 'k'], 'end'], paperInk(), ink()] } });
 }
@@ -3199,8 +3217,10 @@ async function mainJourney(J, app) {
     if (l.kind === 'walk') {
       const a = k === 0 ? [J.from.lon, J.from.lat] : ll(l.from), b = k === p.legs.length - 1 ? [J.to.lon, J.to.lat] : ll(l.to);
       // By its crossings where it goes over a busy road (geo.js walkWay), not straight across it.
-      const via = walkWay(a[1], a[0], b[1], b[0]).via.filter(v => !v.none).map(v => [v.lon, v.lat]);
-      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: [a, ...via, b] } });
+      const xs = walkWay(a[1], a[0], b[1], b[0]).via.filter(v => !v.none);
+      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: [a, ...xs.map(v => [v.lon, v.lat]), b] } });
+      // Where to cross, marked: a light or a crosswalk, said beside it.
+      for (const v of xs) marks.push({ type: 'Feature', properties: { k: 'cross', label: v.kind === 's' ? 'Cross at the light' : 'Cross here' }, geometry: { type: 'Point', coordinates: [v.lon, v.lat] } });
     } else if (k > 0 && p.legs[k - 1].kind === 'ride') marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(l.from) } });
     else if (k > 1 && p.legs[k - 1].kind === 'walk' && p.legs[k - 2].kind === 'ride') {
       marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(p.legs[k - 2].to) } });
