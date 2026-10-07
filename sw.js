@@ -3,7 +3,7 @@
 // The phone answers from what it keeps, never waiting on the network: the app
 // as this version installed it (a deploy is a new version, and the page offers
 // a reload), the data files as last fetched, each checked behind the page.
-const VERSION = 'cr-v385';
+const VERSION = 'cr-v386';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js',
@@ -23,7 +23,16 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'no-cache' }))))
     // the data only where the phone hasn't it yet (a first install, or the old shared cache's from before)
     .then(() => caches.open(DATA_CACHE)).then(async d => { for (const u of DATA) if (!await d.match(u, { ignoreSearch: true })) { const res = await fetch(new Request(u, { cache: 'no-cache' })); if (res.ok) await d.put(u, res); } })
-    .then(() => self.skipWaiting()));
+    // Not taking over: a page open on the old version keeps running it, whole, till it reloads (its Reload, or the app
+    // opened afresh: main.js). Taking over at once left an open page with half of each, its map code loaded after the
+    // switch from the new version and the rest from the old; POOL's pickups went missing on a phone until it was closed.
+  );
+});
+// The page's word to take over: its Reload tapped, or the app just opened with this version waiting.
+self.addEventListener('message', e => {
+  if (e.data === 'skip-waiting') self.skipWaiting();
+  // The version this worker serves, for Settings: the one the page is running, not the newest on the phone.
+  else if (e.data === 'version' && e.ports[0]) e.ports[0].postMessage(VERSION);
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'cr-map' && k !== 'cr-assets' && k !== DATA_CACHE).map(k => caches.delete(k))))

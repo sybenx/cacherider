@@ -643,27 +643,36 @@ async function boot() {
   onLive(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   onRt(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').then(reg => {
-    // A new worker taking over means what's running is the old app: the page is served from what the phone keeps,
-    // so even a fresh load is the last version until the new one is in. A quiet bar offers a reload. Not on the very
-    // first visit, when there was no worker and the page came from the network. The check runs on coming back to the
-    // app and hourly, since the browser's own only runs on a navigation.
-    const hadWorker = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadWorker) updateBar(); });
+    // A new version waits (sw.js) and never takes over a page that's running: this one runs one version whole, start
+    // to finish. It took over at once, and a page open then ran its map code from the new version and the rest from
+    // the old (POOL's pickups gone till the app was closed). Waiting, it's offered by the quiet bar, its Reload the word
+    // to take over; and the app opened afresh with one waiting (the first seconds, nothing done yet) takes it at once.
+    // The check runs on coming back to the app and hourly, since the browser's own only runs on a navigation.
+    const opened = Date.now();
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) location.reload(); });
+    const take = w => { reloading = true; w.postMessage('skip-waiting'); };
+    const waiting = w => { if (!navigator.serviceWorker.controller) return; if (Date.now() - opened < 4000) take(w); else updateBar(() => take(w)); };
+    if (reg.waiting) waiting(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') waiting(w); });
+    });
     const check = () => reg.update().catch(() => {});
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
     setInterval(check, 3600e3);
   }).catch(() => {});
 }
 /** 'Cache Rider has updated', with a reload: once, above the tabs. */
-/** A new version has taken over: a strip in the layout, above the tabs (a wide screen's bottom edge), the page and
+/** A new version is in, waiting: a strip in the layout, above the tabs (a wide screen's bottom edge), the page and
  *  the map drawn smaller to make room, so it covers nothing. Put away with its ×, it comes back with the next update. */
-function updateBar() {
+function updateBar(go = () => location.reload()) {
   if (document.querySelector('.updatebar')) return;
   const bar = document.createElement('div');
   bar.className = 'updatebar'; bar.setAttribute('role', 'status');
-  bar.innerHTML = html`<span>Cache Rider has updated</span><button class="btn btn-primary" type="button" data-reload>Reload</button><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Not now">${icon('close', 20)}</button>`;
+  bar.innerHTML = html`<span>A new version of Cache Rider is ready</span><button class="btn btn-primary" type="button" data-reload>Reload</button><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Not now">${icon('close', 20)}</button>`;
   const fit = () => window.dispatchEvent(new Event('resize'));   // the map measures its new room
-  bar.querySelector('[data-reload]').onclick = () => location.reload();
+  bar.querySelector('[data-reload]').onclick = () => go();   // the waiting version told to take over; the page reloads when it has
   bar.querySelector('[data-close]').onclick = () => { bar.remove(); fit(); };
   document.getElementById('tabs').before(bar);
   fit();

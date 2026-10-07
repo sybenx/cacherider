@@ -113,7 +113,7 @@ function style(sat = true) {
       // pickup is never read as a bus stop (round, and the Blue Loop's and Route 2's blue too). Grey when it's closed. One
       // at a Connect stop stands off its dot, up and right, the stop still seen and tapped. Its area isn't drawn: a wash
       // of the walk round the pickups read as a cloud the stops were in, not as which were POOL's.
-      { id: 'pool-stops', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 12, layout: { 'icon-image': ['case', ['get', 'closed'], 'poolp-off', 'poolp-on'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 15, 0.85, 17, 1], 'icon-offset': ['case', ['>=', ['get', 'stop'], 0], ['literal', [11, -11]], ['literal', [0, 0]]], 'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: {} },
+      { id: 'pool-stops', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 11.5, layout: { 'icon-image': ['case', ['get', 'closed'], 'poolp-off', 'poolp-on'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 11.5, 0.6, 15, 0.85, 17, 1], 'icon-offset': ['case', ['>=', ['get', 'stop'], 0], ['literal', [11, -11]], ['literal', [0, 0]]], 'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: {} },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
       // A route under the pointer on a desktop (on the map, or its badge in the panel): drawn up, over the rest.
@@ -1491,7 +1491,9 @@ function quiet() {
   map.getContainer().classList.toggle('u-lines', lines);   // its arrows tappable where its lines are (app.css)
   // its buses to arrows with its lines put away, and a zoom further in than its lines: at the lines' first zoom its
   // squared markers crowded the campus streets
-  show(POOL_LAYERS, near(poolBox, 12));   // from the zoom Connect's stops come in at, 12: the two sets of stops together
+  // From just under the zoom Connect's stops come in at: a phone's town view lands at 11.99, and the pickups were hidden
+  // there by a hundredth (POOL's whole area is in that view; its pickups are what it's for).
+  show(POOL_LAYERS, near(poolBox, POOL_Z));
   hubCheck();
 }
 
@@ -2866,7 +2868,8 @@ let ratioWait = 0;
  *  bare where a phone's would be busy. One zoom level at most, by the screen's shorter side against a phone's. */
 let zoomBias = 0;
 const biasOf = box => Math.max(0, Math.min(1, Math.round(Math.log2(Math.min(box.clientWidth, box.clientHeight) / 390) * 4) / 4));
-const ZOOMS = { stops: [12, null], 'stops-maybe': [13.5, null], 'pool-stops': [12, null], 'usu-stops': [12.5, null], 'usu-lines': [12, null], 'usu-labels': [15.5, null], 'stop-labels': [15, null], 'place-labels': [15, null], 'route-arrows': [14, null], 'runs-arrows': [14, null], 'stops-lit': [null, 12], 'stops-near': [null, 12], 'stops-near-labels': [0, 15] };
+const POOL_Z = 11.5;   // POOL's pickups from here (quiet())
+const ZOOMS = { stops: [12, null], 'stops-maybe': [13.5, null], 'pool-stops': [POOL_Z, null], 'usu-stops': [12.5, null], 'usu-lines': [12, null], 'usu-labels': [15.5, null], 'stop-labels': [15, null], 'place-labels': [15, null], 'route-arrows': [14, null], 'runs-arrows': [14, null], 'stops-lit': [null, 12], 'stops-near': [null, 12], 'stops-near-labels': [0, 15] };
 function applyBias(m = map) {
   if (!m || !m.getLayer('stops')) return;
   for (const [id, [lo, hi]] of Object.entries(ZOOMS)) if (m.getLayer(id)) m.setLayerZoomRange(id, lo === null ? 0 : Math.max(0, lo - zoomBias), hi === null ? 24 : hi - zoomBias);

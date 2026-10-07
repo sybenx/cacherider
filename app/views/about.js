@@ -70,9 +70,11 @@ const MARK = BASE + 'tiles/.saved', INDEX = BASE + 'tiles/tiles.json';   // the 
 
 async function mount(el) {
   fillQRs(el);
-  // Which build this phone is running (the service worker's cache is named for it): an update's easier to check than guess.
-  const bd = el.querySelector('#build');
-  if (bd && window.caches) caches.keys().then(ks => { bd.textContent = ks.find(k => /^cr-v\d+$/.test(k)) || 'not installed for offline use'; }).catch(() => {});
+  // Which build this page is running: asked of the service worker serving it. It was the newest build kept on the
+  // phone (its cache's name), which said v385 while a page open since before ran part of an older one.
+  const bd = el.querySelector('#build'), sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+  if (bd && sw) { const ch = new MessageChannel(); ch.port1.onmessage = e => { bd.textContent = e.data; }; sw.postMessage('version', [ch.port2]); }
+  else if (bd) bd.textContent = 'not installed for offline use';
   const th = el.querySelector('#theme');
   if (th) th.onclick = cycleTheme;
   for (const b of el.querySelectorAll('[data-clock]')) b.onclick = () => { if ((b.dataset.clock === '24') !== is24()) toggleClock(); };
