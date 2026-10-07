@@ -330,6 +330,21 @@ test('directions, no stop a walk off the place: the nearest a bus gets you, one 
   await expect(page).toHaveURL(new RegExp(href + '$'));
 });
 
+test('directions arriving by a time: the shuttle, when it is the better way, first and a tap', async ({ page }) => {
+  // The Aztec Building's chapel to the Institute of Religion, by 7 PM on a weekday to come: the Evening Express (to
+  // 10 PM) beats the bus there an hour early; the Stadium Express (to 5 PM) isn't running and isn't offered.
+  await open(page);
+  const d = new Date(); do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6);
+  const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  await go(page, '#/go/@41.74335,-111.81510:Institute/at/41.75484,-111.81505/Aztec?t=a' + ymd + '-1900');
+  const row = page.locator('a.sa-row.better').filter({ visible: true }).first();
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(/leave by/);
+  await expect(page.locator('a.sa-row').filter({ hasText: 'Stadium' })).toHaveCount(0);
+  await row.click();
+  await expect(page).toHaveURL(/#\/(map\/)?usu\/\d+$/);
+});
+
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {
   test.skip(phone(info), 'the planner is the same at any size');
   test.setTimeout(240_000);   // 160 trips planned and drawn in the page, with the hub's own way worked out for each start picker: minutes on a loaded machine

@@ -172,6 +172,8 @@ export function rideSecs(ri, a, b) {
   for (const o of r.stops) { if (o === a || o === b) continue; const da = ((r.stopAlong[o] - r.stopAlong[a]) % r.length + r.length) % r.length; if (da > 0 && da < d) between++; }
   return d / SPEED + (between + 1) * DWELL;
 }
+/** Seconds for a bus to go once round its loop: the longest wait for one at a stop, with a bus on it. */
+export const lapSecs = ri => { const s = U.routes[ri].stops; return s.length < 2 ? 0 : rideSecs(ri, s[0], s[1]) + rideSecs(ri, s[1], s[0]); };
 /** The loops that go from near one place to near another, for directions when the shuttle isn't in them (no buses out,
  *  or a time picked: with no timetable there are no times to plan with). Each loop's best pair of stops, the walks to
  *  and from them as the crow flies, and the ride along the loop; only where that beats walking the whole way. */

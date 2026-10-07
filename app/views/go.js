@@ -9,7 +9,7 @@ import { walkHref } from '../pointer.js';
 import { spotOf, spotKey, atPath, climb, RISE } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
-import { U, planNet, chip, shuttleAlso, hours } from '../usu.js';
+import { U, planNet, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
 import { nearMe, app } from '../main.js';
 
 /** Where to and where from, from the address: the stop or spot, its name, and the origin (null till one's chosen). */
@@ -128,15 +128,27 @@ function waysFor(origin, dest, fixed, clockNow) {
 /** The feed's word counts for now and the next hour and a half today; a time further off is the timetable's alone
  *  (and the shuttle, whose times are its buses' whereabouts, only then). */
 /** The shuttle where the ways above couldn't have it (its buses not out, or a time picked: no timetable, no times),
- *  on a day it runs: the loops that go from near here to near there, how long the ride, and when it runs. */
-function shuttleNote(o, d, c, sh) {
+ *  on a day it runs and at the hour: the loops that go from near here to near there, how long the ride, and when it
+ *  runs; each its boarding stop, a tap. Where even its longest wait (a bus once round the loop) beats the best way by
+ *  bus (`plans`: arriving by a time, the leaving it takes; leaving at one, the getting there), it's said first, as the
+ *  better way: arriving by 7 on campus, the Evening Express a few minutes before, not Route 2 an hour early. */
+function shuttleNote(o, d, c, sh, plans = []) {
   if (sh || !U || !U.service || !U.service.days[(dayFrom(c.ymd).dow + 6) % 7]) return '';
-  const also = shuttleAlso(o, d);
+  const runs = (x, at) => !offHours([x.ri], { ...c, min: at });
+  const also = shuttleAlso(o, d).map(x => {
+    const worst = Math.ceil(x.mins + lapSecs(x.ri) / 60);   // the walks, the longest wait, the ride
+    return { ...x, worst, leave: c.by ? c.min - worst : c.min };
+  }).filter(x => runs(x, x.leave) && runs(x, x.leave + x.worst - Math.ceil(x.wb / 80)));   // running from boarding to getting off
   if (!also.length) return '';
+  const p = plans[0], bus = !p ? Infinity : c.by ? c.min - p.leave : p.arrive - c.min;
   const hrs = ri => { const h = hours(ri); return h.charAt(0).toUpperCase() + h.slice(1); };
-  return html`<div class="shuttle-also">${also.map(x => html`<div class="sa-row">${chip(x.ri, 24)}<div class="col"><b>The ${U.name} also goes there</b>
-    <span class="sub">${U.routes[x.ri].name}: on at ${U.stops[x.a].name}${x.wa >= 60 ? ` (${metres(x.wa)} walk)` : ''}, about ${Math.max(1, Math.round(x.secs / 60))} min to ${U.stops[x.b].name}. ${hrs(x.ri)}. Its times show here while its buses are out.</span></div></div>`)}</div>`;
+  const how = x => `on at ${U.stops[x.a].name}${x.wa >= 60 ? ` (${metres(x.wa)} walk)` : ''}, about ${Math.max(1, Math.round(x.secs / 60))} min to ${U.stops[x.b].name}`;
+  return html`<div class="shuttle-also">${also.map(x => x.worst < bus ? html`<a class="sa-row better" href="#/usu/${U.stops[x.a].id}">${chip(x.ri, 24)}<div class="col"><b>Quicker by the ${U.routes[x.ri].name}</b>
+    <span class="sub">${cap(how(x))}. A bus at least every ${Math.ceil(lapSecs(x.ri) / 60)} min: ${c.by ? `leave by ${clockText(x.leave)} to be there by ${clockText(c.min)}` : `there by ${clockText(c.min + x.worst)} at the latest`}.</span></div>${icon('fwd', 18)}</a>`
+    : html`<a class="sa-row" href="#/usu/${U.stops[x.a].id}">${chip(x.ri, 24)}<div class="col"><b>The ${U.name} also goes there</b>
+    <span class="sub">${U.routes[x.ri].name}: ${how(x)}. ${hrs(x.ri)}. Its times show here while its buses are out.</span></div>${icon('fwd', 18)}</a>`)}</div>`;
 }
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const tooLate = c => html`<div class="callout">${icon('info', 20)}<div><b>No bus gets there by ${clockText(c.min)}</b><div class="sub">The first way there:</div></div></div>`;
 const liveFor = (c, clockNow) => !c || (c.ymd === clockNow.ymd && c.min - clockNow.min <= 90);
 const hashWith = t => location.hash.split('?')[0] + (t ? '?t=' + t : '');
@@ -172,7 +184,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
   const fixed = leaveAt(t, clockNow);
   parts.push(tripRow(fromCtl, whenControl(fixed, clockNow)));
   const { found, c, lateBy, sh } = waysFor(origin, dest, fixed, clockNow);   // the shuttle too, while it runs
-  const also = shuttleNote(origin.si !== undefined ? stop(origin.si) : origin, d, c, sh);
+  const also = shuttleNote(origin.si !== undefined ? stop(origin.si) : origin, d, fixed || c, sh, lateBy ? [] : found.plans);
   if (found.walk !== undefined) {
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div></div></div>`);
     return { html: parts.join(''), mount, title: 'Directions' };
@@ -299,7 +311,7 @@ export function journey({ to, from, at, t }, key, clockNow) {
   if (e.dest === undefined || !e.origin) return null;
   const fixed = leaveAt(t, clockNow), { found, c, lateBy, sh } = waysFor(e.origin, e.dest, fixed, clockNow);
   const J = pickPlan(found.plans || [], key, e, c, fixed ? t : null);
-  const also = shuttleNote(e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d, c, sh);
+  const also = shuttleNote(e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d, fixed || c, sh, lateBy ? [] : found.plans);
   // No way by bus (and not a walk): the map all the same, the two ends on it, so a rider who knows the roads sees
   // the way by car or on foot; the card says there's no bus.
   if (!J && found.walk === undefined && !(found.plans || []).length) {
