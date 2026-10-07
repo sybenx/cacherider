@@ -6,7 +6,7 @@ import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextSer
 import { now, relative, fmtDay, dayName, clock, clockText, metres, dayFrom } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
 import { nearMe, morph } from '../main.js';
-import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk } from '../geo.js';
+import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
@@ -3198,7 +3198,9 @@ async function mainJourney(J, app) {
   p.legs.forEach((l, k) => {
     if (l.kind === 'walk') {
       const a = k === 0 ? [J.from.lon, J.from.lat] : ll(l.from), b = k === p.legs.length - 1 ? [J.to.lon, J.to.lat] : ll(l.to);
-      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: [a, b] } });
+      // By its crossings where it goes over a busy road (geo.js walkWay), not straight across it.
+      const via = walkWay(a[1], a[0], b[1], b[0]).via.filter(v => !v.none).map(v => [v.lon, v.lat]);
+      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: [a, ...via, b] } });
     } else if (k > 0 && p.legs[k - 1].kind === 'ride') marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(l.from) } });
     else if (k > 1 && p.legs[k - 1].kind === 'walk' && p.legs[k - 2].kind === 'ride') {
       marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(p.legs[k - 2].to) } });

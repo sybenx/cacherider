@@ -166,9 +166,98 @@ export function setAvoidSteep(on) { flat = !!on; try { localStorage.setItem('cr-
  *  Naismith's rule (an hour for every 600 m of ascent, so 10 m a minute). Going down costs nothing extra. */
 export const PACE = 75, RISE = 10;
 /** Minutes to walk from one point to another, the climb counted: the one reckoning for every walk the app
- *  times (the planner's legs, the stops nearest a rider). `d`, when the distance is already known. */
+ *  times (the planner's legs, the stops nearest a rider). `d`, when the distance is already known; across a busy
+ *  road, the way by its crossing instead (walkWay). */
 export function walkMins(lat1, lon1, lat2, lon2, d = distance(lat1, lon1, lat2, lon2)) {
-  return Math.max(1, Math.ceil(d / PACE + climb(lat1, lon1, lat2, lon2) / RISE));
+  const w = walkWay(lat1, lon1, lat2, lon2);
+  return Math.max(1, Math.ceil((w.via.length ? w.d : d) / PACE + climb(lat1, lon1, lat2, lon2) / RISE));
+}
+
+// ---- busy roads and their crossings, for walks. data/walks.json (tools/walks.py): the highways and wide or fast
+// roads from OpenStreetMap, and their lights and marked crossings. A walk is as the crow flies, but not across one of
+// these: off Route 5 on the east side of US 91 for the Rush FunPlex on its west, four lanes at 50 mph, the walk goes
+// by the light at 3100 North. Without the file, every walk straight, as before.
+let WK = null;
+const KY = 110540, KX = 111320 * Math.cos(41.75 * Math.PI / 180), CELL = 0.005;
+const cellOf = (lat, lon) => Math.floor(lat / CELL) + ':' + Math.floor(lon / CELL);
+export async function loadWalks() {
+  if (WK) return WK;
+  try {
+    const j = await (await fetch(BASE + 'data/walks.json')).json(), grid = new Map();
+    j.roads.forEach((r, ri) => {
+      for (let k = 0; k < r.p.length - 1; k++) {
+        const [a, b] = [r.p[k], r.p[k + 1]];
+        for (let y = Math.floor(Math.min(a[0], b[0]) / CELL); y <= Math.floor(Math.max(a[0], b[0]) / CELL); y++)
+          for (let x = Math.floor(Math.min(a[1], b[1]) / CELL); x <= Math.floor(Math.max(a[1], b[1]) / CELL); x++) {
+            const key = y + ':' + x; if (!grid.has(key)) grid.set(key, []); grid.get(key).push([ri, k]);
+          }
+      }
+    });
+    // Each crossing with the busy roads it's a way over, and the streets named at it (its corner's).
+    WK = { roads: j.roads, x: j.x.map(([lat, lon, kind, roads, at]) => ({ lat, lon, kind, roads, at: at || [] })), grid, memo: new Map() };
+  } catch { WK = null; }
+  return WK;
+}
+/** Where the straight line from a to b crosses a busy road, nearest a first: { t (0 to 1 along it), road } each;
+ *  none within a few metres of either end (a walk from a crossing, on the road's line, onward). */
+function roadsCrossed(a, b) {
+  const ax = a.lon * KX, ay = a.lat * KY, bx = b.lon * KX, by = b.lat * KY, len = Math.hypot(bx - ax, by - ay);
+  if (len < 1) return [];
+  const seen = new Set(), out = [];
+  for (let y = Math.floor(Math.min(a.lat, b.lat) / CELL); y <= Math.floor(Math.max(a.lat, b.lat) / CELL); y++)
+    for (let x = Math.floor(Math.min(a.lon, b.lon) / CELL); x <= Math.floor(Math.max(a.lon, b.lon) / CELL); x++)
+      for (const [ri, k] of WK.grid.get(y + ':' + x) || []) {
+        const key = ri + ',' + k; if (seen.has(key)) continue; seen.add(key);
+        const p = WK.roads[ri].p[k], q = WK.roads[ri].p[k + 1];
+        const cx = p[1] * KX, cy = p[0] * KY, dx = q[1] * KX, dy = q[0] * KY;
+        const den = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+        if (Math.abs(den) < 1e-9) continue;
+        const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / den, u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / den;
+        if (t * len > 4 && (1 - t) * len > 4 && u >= 0 && u <= 1) out.push({ t, road: WK.roads[ri].n });
+      }
+  return out.sort((p, q) => p.t - q.t);
+}
+const FAR = 1500;   // metres: a crossing further off than this from where the line crosses isn't the way over
+/** A walk from one point to another as it's walked: straight, or across each busy road it meets by a crossing on that
+ *  road (the light or crosswalk that makes the walk shortest), { d (metres), via: [{ lat, lon, kind ('s' a light,
+ *  'm' a crosswalk), road }] }; one with `none` where the road has no crossing within reach (the walk straight,
+ *  said). */
+export function walkWay(lat1, lon1, lat2, lon2) {
+  const straight = { d: distance(lat1, lon1, lat2, lon2), via: [] };
+  if (!WK) return straight;
+  const key = lat1.toFixed(5) + ',' + lon1.toFixed(5) + '>' + lat2.toFixed(5) + ',' + lon2.toFixed(5);
+  if (WK.memo.has(key)) return WK.memo.get(key);
+  if (WK.memo.size > 20000) WK.memo.clear();
+  const way = (a, b, depth) => {
+    const hit = depth < 3 && roadsCrossed(a, b)[0];
+    if (!hit) return { d: distance(a.lat, a.lon, b.lat, b.lon), via: [] };
+    const at = { lat: a.lat + (b.lat - a.lat) * hit.t, lon: a.lon + (b.lon - a.lon) * hit.t };
+    const c = WK.x.filter(x => x.roads.includes(hit.road) && distance(x.lat, x.lon, at.lat, at.lon) <= FAR)
+      .map(x => ({ x, d: distance(a.lat, a.lon, x.lat, x.lon) + distance(x.lat, x.lon, b.lat, b.lon) })).sort((p, q) => p.d - q.d)[0];
+    if (!c) return { d: distance(a.lat, a.lon, b.lat, b.lon), via: [{ ...at, none: true, road: hit.road }] };
+    const rest = way(c.x, b, depth + 1);
+    return { d: distance(a.lat, a.lon, c.x.lat, c.x.lon) + rest.d, via: [{ ...c.x, road: hit.road }, ...rest.via] };
+  };
+  const w = roadsCrossed({ lat: lat1, lon: lon1 }, { lat: lat2, lon: lon2 }).length ? way({ lat: lat1, lon: lon1 }, { lat: lat2, lon: lon2 }, 0) : straight;
+  if (w.via.length && w.via.every(v => v.none)) w.d = straight.d;
+  WK.memo.set(key, w);
+  return w;
+}
+/** A walk's crossings in words, those at one corner together: 'Cross Main Street and Airport Road at the light by
+ *  2500 North', 'Cross 400 North at the crosswalk'; with none in reach, 'No crosswalk on US 91 near here'. The
+ *  street it's by is the corner's other street, from OpenStreetMap; none named, none said. */
+export function crossWords(via) {
+  const out = [];
+  for (const v of via) {
+    const last = out[out.length - 1];
+    if (last && !v.none && !last.none && distance(last.lat, last.lon, v.lat, v.lon) < 60) { if (!last.roads2.includes(v.road)) last.roads2.push(v.road); if (v.kind === 's') last.kind = 's'; last.at = [...new Set([...last.at, ...v.at])]; continue; }
+    out.push({ ...v, roads2: [v.road] });
+  }
+  return out.map(v => {
+    if (v.none) return `No crosswalk on ${v.road} near here`;
+    const by = v.at.find(n => !v.roads2.includes(n));   // the corner's other street (a light at two highways: the one not crossed)
+    return `Cross ${v.roads2.join(' and ')} ${v.kind === 's' ? 'at the light' : 'at the crosswalk'}${by ? ' by ' + by : ''}`;
+  }).join('; then ');
 }
 /** Stops nearest a point, as nearest() gives them ({ i, d }), in the order a walk to them takes: the climb counted,
  *  so the stop down the hill comes before the one as far up it. Each with its minutes. `both`, for a place rather than

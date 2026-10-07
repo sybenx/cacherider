@@ -306,11 +306,21 @@ test('directions up: a tap on the map changes nothing, a long press or right cli
   const left = side && side.width < map.width * 0.6 && side.x <= map.x + 1 ? side.x + side.width : map.x;
   const top = map.y + 80, bottom = card && card.width > map.width * 0.6 ? card.y - 10 : map.y + map.height - 60;
   await page.mouse.click(left + 30, (top + bottom) / 2, { button: 'right' });
+  await expect(page.locator('#mapcard.open .eyebrow', { hasText: 'Change directions' })).toBeVisible();
   const start = page.locator('#mapcard a', { hasText: 'Start from here' });
   await expect(start).toBeVisible();
   await expect(page.locator('#mapcard a', { hasText: 'Go here instead' })).toHaveAttribute('href', /^#\/go\/@[-\d.,]+.*\/at\/41\.75484,-111\.81505\/Aztec$/);
   await start.click();
   await expect(page).toHaveURL(/#\/go\/@41\.74335,-111\.81510:Institute\/at\/[-\d.]+,[-\d.]+\//);
+});
+
+test('directions: a walk over a busy road goes by its crossing, said', async ({ page }) => {
+  // The Transit Center to the Rush FunPlex: off Route 5 on the east side of US 91 (Main Street, 4 lanes, 50 mph),
+  // the FunPlex on the west. The walk goes over at the lights, and says so; the map's walk bends there too.
+  await open(page);
+  await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.74061,-111.83124/Transit%20Center');
+  await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/Cross .*Main Street.* at the (light|crosswalk)/);
+  await expect(page.getByText(/crow flies, but over a busy road/).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('directions, no stop a walk off: the nearest starts in view, one picked, and it stays put', async ({ page }, info) => {

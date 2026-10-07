@@ -3,7 +3,7 @@
 import { D, load, BASE, pref, loadAlerts, loadPlaces, loadPool, A, distance } from './data.js';
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
 import { html, icon } from './ui.js';
-import { loadGrid , loadElevation, spotKey } from './geo.js';
+import { loadGrid , loadElevation, loadWalks, spotKey } from './geo.js';
 import { WIDE_MQ, isWide } from './wide.js';
 import * as home from './views/home.js';
 import * as stopView from './views/stop.js';
@@ -594,7 +594,7 @@ async function boot() {
   // files for search, the shuttle, POOL and walks, which follow it.
   try {
     await Promise.all([load(), loadAlerts({ relay: false })]);
-    extras = Promise.all([loadGrid(), loadUSU(), loadPlaces(), loadPool(), loadElevation()]).catch(() => {}).then(() => { extrasReady = true; });   // the lie of the land, for timing walks; shared kerbs need the timetable's stops
+    extras = Promise.all([loadGrid(), loadUSU(), loadPlaces(), loadPool(), loadElevation(), loadWalks()]).catch(() => {}).then(() => { extrasReady = true; });   // the lie of the land, for timing walks; shared kerbs need the timetable's stops
     if (!lightFirst()) await extras;
   } catch (e) {
     side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;
