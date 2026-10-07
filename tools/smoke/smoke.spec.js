@@ -196,6 +196,29 @@ test('Transit Center: the board, a route picked from the strip, the bays', async
   if (phone(info)) await expect(page.locator('.hbay').filter({ visible: true }).first()).toBeVisible();
 });
 
+test('Transit Center on a wide screen: the map left where it is', async ({ page }, info) => {
+  test.skip(phone(info), 'on a phone the Center is the map, flown to');
+  // From the Stops page, its panel already beside the map: from the Map tab the panel comes in, and the map keeps the
+  // place looked at in the middle of what's left, half the panel over, whichever page it is.
+  await open(page, '#/');
+  await mapReady(page);
+  await someBus(page);   // markers on the map to measure it by, when buses are out
+  // Where each bus marker sits on the screen: flown to the Center, every one would be hundreds of pixels off; a live
+  // bus creeps a few. (No bus out: the bays not shown is the check.)
+  const spots = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.maplibregl-marker.bus')].map(e => { const r = e.getBoundingClientRect(); return [e.title, [r.x, r.y]]; })));
+  const moved = (a, b) => Math.max(0, ...Object.keys(a).filter(k => b[k]).map(k => Math.hypot(a[k][0] - b[k][0], a[k][1] - b[k][1])));
+  const before = await spots();
+  await page.locator('#topnav a[href="#/hub"]').click();
+  await expect(page.getByText(/Next departure|No buses today|Next buses/i).filter({ visible: true }).first()).toBeVisible();
+  await page.waitForTimeout(1500);
+  expect(moved(before, await spots()), 'pixels the map moved').toBeLessThan(60);
+  await expect(page.locator('.hbay')).toHaveCount(0);
+  await page.locator('#topnav a[href="#/hub"]').click();   // the tab again: still not moved
+  await page.waitForTimeout(1500);
+  expect(moved(before, await spots()), 'pixels the map moved, the tab again').toBeLessThan(60);
+  await expect(page.locator('.hbay')).toHaveCount(0);
+});
+
 test('directions: each way in, a plan, no way, from only', async ({ page }) => {
   await open(page);
   const id = await someStop(page);

@@ -2242,11 +2242,11 @@ function leaveHubKept() {
   const x = left + (box.clientWidth - left + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
   stayAt = map.unproject([x, y]); stayOff = true; location.hash = '#/map';
 }   // stayOff: the Center left by a tap off its board, the map kept
-export function leaveHub() { backDue = true; }
+export function leaveHub() { if (!wide()) backDue = true; }   // a wide screen's map was never moved for the Center: nothing to put back
 /** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
  *  out or panned off), and on a phone its board back up if it was put away. */
 export function hubAgain(app) {
-  if (!map) return;
+  if (!map || wide()) return;   // a wide screen's map isn't the Center's to move (showPage)
   fitHub();
   if (!wide() && app.route.name === 'map' && !col.querySelector('#mapcard.open > .hubsheet')) hubCard(now());
 }
@@ -2723,7 +2723,9 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
     if (app.route.name === 'map' && !wide()) hubCard(clockNow); else col.querySelector('#mapcard').classList.remove('open');
     // Framed whenever the tab opens; from one of its routes to another, or a route put away (a click on the map beside
     // a wide screen's board), the rider's zoom and turn are kept, even zoomed out past the bays.
-    if (!cameFrom.startsWith('#/hub')) fitHub(true, 700, wide() || /^#\/map(\/|$)/.test(cameFrom));
+    // Beside a wide screen's panel the board is the page and the map is left as the rider has it, not flown to the bays
+    // (the user's ask: the Transit Center tab neither zooms nor pans there); on a phone the bays are the map.
+    if (!cameFrom.startsWith('#/hub') && !wide()) fitHub(true, 700, /^#\/map(\/|$)/.test(cameFrom));
     lastFocused = 'hub';
     hubBadges();
     return;
