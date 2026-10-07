@@ -153,7 +153,7 @@ function style(sat = true) {
         'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, ['case', ['any', ['get', 'closed'], ['get', 'maybe']], 2.5, 1.5], 17, ['case', ['any', ['get', 'closed'], ['get', 'maybe']], 3.5, 1.5]],
         'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1] } },
       // A stop the buses have been going round, the detour not announced: a question mark in its ring, its times kept.
-      { id: 'stops-maybe', type: 'symbol', source: 'stops', minzoom: 13.5, filter: ['get', 'maybe'], layout: { 'text-field': '?', 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 13.5, 9, 17, 14, 19, 18], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': ['get', col] } },
+      { id: 'stops-maybe', type: 'symbol', source: 'stops', minzoom: 12, filter: ['get', 'maybe'], layout: { 'text-field': '?', 'text-font': ['Noto Sans Medium'], 'text-size': ['interpolate', ['linear'], ['zoom'], 12, 7, 13.5, 9, 17, 14, 19, 18], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': ['get', col] } },
       // A stop under the pointer in the panel (a row of the home page's lists): ringed, as a picked stop is, lighter.
       { id: 'stop-hover', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 10, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 2.5 } },
       { id: 'stop-selected', type: 'circle', source: 'stops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 11, 'circle-color': ['get', col], 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
@@ -2900,7 +2900,7 @@ let ratioWait = 0;
 let zoomBias = 0;
 const biasOf = box => Math.max(0, Math.min(1, Math.round(Math.log2(Math.min(box.clientWidth, box.clientHeight) / 390) * 4) / 4));
 const POOL_Z = 11.5;   // POOL's pickups from here (quiet())
-const ZOOMS = { stops: [12, null], 'stops-maybe': [13.5, null], 'pool-stops': [POOL_Z, null], 'usu-stops': [12.5, null], 'usu-lines': [12, null], 'usu-labels': [15.5, null], 'stop-labels': [15, null], 'place-labels': [15, null], 'route-arrows': [14, null], 'runs-arrows': [14, null], 'stops-lit': [null, 12], 'stops-near': [null, 12], 'stops-near-labels': [0, 15] };
+const ZOOMS = { stops: [12, null], 'stops-maybe': [12, null], 'pool-stops': [POOL_Z, null], 'usu-stops': [12.5, null], 'usu-lines': [12, null], 'usu-labels': [15.5, null], 'stop-labels': [15, null], 'place-labels': [15, null], 'route-arrows': [14, null], 'runs-arrows': [14, null], 'stops-lit': [null, 12], 'stops-near': [null, 12], 'stops-near-labels': [0, 15] };
 function applyBias(m = map) {
   if (!m || !m.getLayer('stops')) return;
   for (const [id, [lo, hi]] of Object.entries(ZOOMS)) if (m.getLayer(id)) m.setLayerZoomRange(id, lo === null ? 0 : Math.max(0, lo - zoomBias), hi === null ? 24 : hi - zoomBias);
