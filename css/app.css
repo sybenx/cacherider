@@ -856,7 +856,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 #map.hubon .bus.parked { z-index: 0; }
 .bus.athub { display: none; }   /* its route's badge stands on it */
 .maplibregl-marker.hbay { z-index: 1; }
-.hbay .tag.in { background: var(--color-accent-100); color: var(--color-accent-900); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent); }   /* in, its bus not on the badge */
+.hbay .tag.in { background: var(--color-accent-700); color: var(--color-bg); box-shadow: 0 0 0 1.5px var(--color-bg); }   /* in: solid, the live blue, as a late one's is red (it was a pale tint, missed) */
 .hbay .tag.late { background: var(--cr-late); color: #fff; box-shadow: 0 0 0 1.5px var(--color-bg); }   /* its bus in late, so out late */
 .hbay.off > * { opacity: .45; filter: grayscale(1); }   /* done for the day: no colour, nothing to board (on the contents: the marker's own opacity is MapLibre's) */
 .hbay.dim > * { opacity: .35; }
