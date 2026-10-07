@@ -323,6 +323,7 @@ function noWay(e, to, hubBay, also) {
   // From a spot with no stop a walk off (out past the routes, Cove or Benson): not 'no bus goes there', which was
   // false; the nearest stops a bus there leaves from, to get to by car or bike.
   if (origin.si === undefined) { const far = farStarts(o, e, to); if (far) return [far]; }
+  { const far = farEnds(e, to, e.fromSi !== undefined ? stop(e.fromSi).id : null, e.at); if (far) return [far]; }
   if (apart > 1000) return [noBus(d, name, apart)];
   const out = also ? [also] : [];
   out.push(html`<div class="empty"><h2>No way there by bus</h2><p>Nothing in the timetable joins these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
@@ -359,11 +360,48 @@ function farStarts0(o, e, to) {
     if (rows.length === 3) break;
   }
   if (!rows.length) return null;
+  return farList('No stop within a walk of you', 'The nearest a bus there leaves from:', rows, x => `#/go/${to}/${x.s.id}`, 'away');
+}
+/** A stop's row in either list: its route, where it is, the next way, and how much more runs today. */
+function farList(head, line, rows, href, rel) {
   const when = (p, m) => (p.day === 0 ? '' : p.day === 1 ? 'tomorrow ' : dayName(p.ymd) + ' ') + clockText(m);
-  return html`<div class="farstarts"><div class="empty"><h2>No stop within a walk of you</h2><p>The nearest a bus there leaves from:</p></div>
-    <div class="list">${rows.map(({ x, p, ride, left }) => html`<a class="row" href="#/go/${to}/${x.s.id}">${ride ? (ride.u ? chip(ride.r, 30) : badge(ride.r, 30)) : ''}<div class="mid"><span class="name">${stopTitle(x.si)}</span>
-      <span class="sub">${metres(x.d)} away · leaves ${when(p, p.leave)}, there ${when(p, p.arrive)}</span>
+  return html`<div class="farstarts"><div class="empty"><h2>${head}</h2><p>${line}</p></div>
+    <div class="list">${rows.map(({ x, p, ride, left }) => html`<a class="row" href="${href(x)}">${ride ? (ride.u ? chip(ride.r, 30) : badge(ride.r, 30)) : ''}<div class="mid"><span class="name">${stopTitle(x.si)}</span>
+      <span class="sub">${metres(x.d)} ${rel} · leaves ${when(p, p.leave)}, there ${when(p, p.arrive)}</span>
       ${left.length ? html`<span class="sub">${left.length === 1 ? 'The last bus today' : `${left.length} buses left today, the last ${clockText(left[left.length - 1])}`}</span>` : ''}</div>${icon('fwd', 20)}</a>`)}</div></div>`;
+}
+/** The other way round: the start's fine, the place is out of a walk of any stop (a farm road, a canyon). The nearest
+ *  stops to it a bus from here gets to, by the same choice (one of each set of routes, a farther one only when clearly
+ *  more often), each with its way and its distance from the place; a tap, the way to that stop. POOL, where the place
+ *  is in its zone. */
+const endKept = new Map();
+function farEnds(e, to, from, at) {
+  const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
+  const k = [o.lat.toFixed(4), o.lon.toFixed(4), to, now().min].join('|');
+  if (!endKept.has(k)) { if (endKept.size > 8) endKept.clear(); endKept.set(k, farEnds0(e, to, from, at)); }
+  return endKept.get(k);
+}
+function farEnds0(e, to, from, at) {
+  const d = e.d, near = D.stops.map((s, si) => ({ s, si, d: distance(d.lat, d.lon, s.lat, s.lon) })).filter(x => !x.s.out && !x.s.hub).sort((a, b) => a.d - b.d);
+  if (!near.length || near[0].d <= WALK_REACH) return null;
+  const seen = new Set(), cands = [];
+  for (const x of near) { const k = x.s.routes.slice().sort().join(','); if (seen.has(k)) continue; seen.add(k); cands.push(x); if (cands.length === 6) break; }
+  const c = now(), rows = [];
+  let most = -1;
+  for (const x of cands) {
+    const p = (journeys(e.origin, x.si, c, 2).plans || [])[0];
+    if (!p) continue;
+    const ride = p.legs.filter(l => l.kind === 'ride').pop();   // the bus that gets there: how often it runs
+    const left = p.day === 0 && ride && !ride.u ? timesOn(ride.from, c.ymd).filter(t => t.r === ride.r && t.min >= c.min).map(t => t.min) : [];
+    if (rows.length && (left.length < most * 1.5 || left.length < most + 3)) continue;
+    most = Math.max(most, left.length);
+    rows.push({ x, p, ride, left });
+    if (rows.length === 3) break;
+  }
+  if (!rows.length) return null;
+  // To that stop, from the same start: a stop named, a spot, or (neither) where the phone is.
+  const fromPart = from ? '/' + from : at ? '/' + atPath(at) : '';
+  return html`${farList(`No stop within a walk of ${e.name}`, 'The nearest a bus gets you:', rows, x => `#/go/${x.s.id}${fromPart}`, 'from there')}${poolCallout(d)}`;
 }
 /** The map's side of it: just the two ends, framed, and the page as its card. */
 function noWayJourney(e, to, parts, hubBay, also) {
@@ -371,14 +409,19 @@ function noWayJourney(e, to, parts, hubBay, also) {
   return { none: true, base: 'none:' + to, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon },
     sheet: () => html`<div class="gohead gonone">${parts}${noWay(e, to, hubBay, also)}</div>`, mount: el => mount(el, null, true) };
 }
+/** POOL, Connect's on-demand ride, where a place is in its zone: book it, or call. */
+function poolCallout(d) {
+  const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  return POOL && inPool(d.lat, d.lon) ? html`<div class="callout nobus-pool">${icon('info', 20)}<div><b>POOL goes there</b>
+      <div class="sub">${D.agency.brand}'s on-demand ride, zero fare: book it and a van picks you up within its zone. ${POOL.hours}.</div>
+      <div class="nobus-acts"><a class="btn btn-primary blueprint" href="${ios ? POOL.ios : POOL.android}" target="_blank" rel="noopener">${corners()}Book in the On-Demand app</a><a class="btn btn-secondary" href="tel:${POOL.phone}">Call ${POOL.phone}</a></div></div></div>` : '';
+}
 function noBus(d, name, apart) {
   const miles = apart / 1609.344, far = miles >= 10 ? Math.round(miles) + ' miles' : miles.toFixed(1) + ' miles';
   const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1), android = /Android/.test(ua);
   const ll = `${d.lat.toFixed(5)},${d.lon.toFixed(5)}`;
   const maps = android ? `geo:${ll}?q=${ll}(${encodeURIComponent(name)})` : ios ? `https://maps.apple.com/?daddr=${ll}&dirflg=d` : `https://www.google.com/maps/dir/?api=1&destination=${ll}&travelmode=driving`;
-  const pool = POOL && inPool(d.lat, d.lon) ? html`<div class="callout nobus-pool">${icon('info', 20)}<div><b>POOL goes there</b>
-      <div class="sub">${D.agency.brand}'s on-demand ride, zero fare: book it and a van picks you up within its zone. ${POOL.hours}.</div>
-      <div class="nobus-acts"><a class="btn btn-primary blueprint" href="${ios ? POOL.ios : POOL.android}" target="_blank" rel="noopener">${corners()}Book in the On-Demand app</a><a class="btn btn-secondary" href="tel:${POOL.phone}">Call ${POOL.phone}</a></div></div></div>` : '';
+  const pool = poolCallout(d);
   return html`<div class="empty"><h2>No bus goes there</h2><p>${name} is ${far} away, as the crow flies, and nothing in the timetable reaches within a walk of it.</p></div>
     ${pool}<p class="nobus-maps"><a href="${maps}" target="_blank" rel="noopener">Too far to walk. Open in your maps app</a></p>`;
 }

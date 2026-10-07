@@ -299,6 +299,20 @@ test('directions, no stop a walk off: the nearest starts in view, one picked, an
   }
 });
 
+test('directions, no stop a walk off the place: the nearest a bus gets you, one picked', async ({ page }) => {
+  // From a stop downtown to the fields west of Logan, out of a walk of any stop.
+  await open(page);
+  const id = await someStop(page);
+  await go(page, '#/go/@41.73000,-111.95000:West%20of%20Logan/' + id);
+  const row = page.locator('.farstarts a.row').filter({ visible: true }).first();
+  await expect(row).toBeVisible();
+  await expect(page.getByText(/No stop within a walk of West of Logan/).filter({ visible: true }).first()).toBeVisible();
+  const href = await row.getAttribute('href');
+  expect(href, 'a way to that stop, from the same start').toMatch(new RegExp('^#/go/\\d+/' + id + '$'));
+  await row.click();
+  await expect(page).toHaveURL(new RegExp(href + '$'));
+});
+
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {
   test.skip(phone(info), 'the planner is the same at any size');
   test.setTimeout(240_000);   // 160 trips planned and drawn in the page, with the hub's own way worked out for each start picker: minutes on a loaded machine
