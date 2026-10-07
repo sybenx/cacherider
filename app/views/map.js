@@ -2242,12 +2242,14 @@ function leaveHubKept() {
   const x = left + (box.clientWidth - left + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
   stayAt = map.unproject([x, y]); stayOff = true; location.hash = '#/map';
 }   // stayOff: the Center left by a tap off its board, the map kept
-export function leaveHub() { if (!wide()) backDue = true; }   // a wide screen's map was never moved for the Center: nothing to put back
+export function leaveHub() { if (!wide() || hubTurned) backDue = true; }   // a wide screen's map moved only by the tab again: else nothing to put back
 /** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
  *  out or panned off), and on a phone its board back up if it was put away. */
 export function hubAgain(app) {
-  if (!map || wide()) return;   // a wide screen's map isn't the Center's to move (showPage)
-  fitHub();
+  if (!map) return;
+  // Beside a wide screen's panel the first visit left the map alone (showPage); the tab again is the ask to see the
+  // bays: framed then, as an arrival, so leaving puts the map back where it was.
+  if (wide() && !hubTurned) fitHub(true); else fitHub();
   if (!wide() && app.route.name === 'map' && !col.querySelector('#mapcard.open > .hubsheet')) hubCard(now());
 }
 

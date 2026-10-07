@@ -196,7 +196,7 @@ test('Transit Center: the board, a route picked from the strip, the bays', async
   if (phone(info)) await expect(page.locator('.hbay').filter({ visible: true }).first()).toBeVisible();
 });
 
-test('Transit Center on a wide screen: the map left where it is', async ({ page }, info) => {
+test('Transit Center on a wide screen: the map left where it is, the bays on the tab again', async ({ page }, info) => {
   test.skip(phone(info), 'on a phone the Center is the map, flown to');
   // From the Stops page, its panel already beside the map: from the Map tab the panel comes in, and the map keeps the
   // place looked at in the middle of what's left, half the panel over, whichever page it is.
@@ -213,9 +213,11 @@ test('Transit Center on a wide screen: the map left where it is', async ({ page 
   await page.waitForTimeout(1500);
   expect(moved(before, await spots()), 'pixels the map moved').toBeLessThan(60);
   await expect(page.locator('.hbay')).toHaveCount(0);
-  await page.locator('#topnav a[href="#/hub"]').click();   // the tab again: still not moved
-  await page.waitForTimeout(1500);
-  expect(moved(before, await spots()), 'pixels the map moved, the tab again').toBeLessThan(60);
+  // The tab again: the ask to see the bays, framed then.
+  await page.locator('#topnav a[href="#/hub"]').click();
+  await expect(page.locator('.hbay').filter({ visible: true }).first()).toBeVisible();
+  // Left for the Map tab: back where the map was, the bays gone.
+  await page.locator('#topnav a[href="#/map"]').click();
   await expect(page.locator('.hbay')).toHaveCount(0);
 });
 
