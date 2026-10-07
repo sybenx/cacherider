@@ -152,10 +152,11 @@ export function slope(lat1, lon1, lat2, lon2) {
   }
   return { up: climb(lat1, lon1, lat2, lon2), down: climb(lat2, lon2, lat1, lon1), steepUp, steepDown };
 }
-/** Steep, for a walk: a stretch of it climbing 6% or more (the grid's 100 m cells soften a short pitch, so not 8), or
- *  30 m and more up all told. The one rule for the word STEEP and for avoiding steep walks. */
+/** Steep, for a walk: a stretch of it climbing 6% or more (the grid's 100 m cells soften a short pitch, so not 8).
+ *  Not the climb all told: 30 m over two miles is Uphill, its feet said. The one rule for the word STEEP and for
+ *  avoiding steep walks. */
 export const STEEP = 0.06;
-export const isSteep = s => s.up >= 4 && (s.steepUp >= STEEP || s.up >= 30);
+export const isSteep = s => s.up >= 4 && s.steepUp >= STEEP;
 export const steepWalk = (a, b) => !!(a && b && E) && isSteep(slope(a.lat, a.lon, b.lat, b.lon));
 /** The rider's choice (Settings, or the chip on directions): ways without a steep walk up, where there are any. */
 let flat = (() => { try { return localStorage.getItem('cr-steep') === 'avoid'; } catch { return false; } })();

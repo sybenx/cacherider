@@ -519,7 +519,7 @@ function timeline(p, J, clockNow) {
   if (lastLeg.kind === 'walk') out.push(tl(atWorst ? null : p.arrive, 'end', html`<span class="name">${J ? J.destName : lastLeg.label || 'Where you’re going'}</span>${lastLeg.to !== undefined ? addrLine(lastLeg.to) : ''}${atWorst ? html`<span class="sub">There by <b>${clockText(p.arrive)}</b> at the latest</span>` : ''}`, 'end'));
   return html`<div class="tline">${out}</div>`;
 }
-/** A walk's lie of the land, a word first so it isn't missed: <b>Steep</b> (6% somewhere, or 30 m and more up: the
+/** A walk's lie of the land, a word first so it isn't missed: <b>Steep</b> (6% somewhere, geo.js isSteep: the
  *  bench from 600 East to Old Main is 17%), <b>Uphill</b>, Downhill, then its feet up and down. Nothing to feel: ''
  *  (`flat`, 'on the flat' for the whole way's line). */
 function hillOf(a, b, flat = '') {
