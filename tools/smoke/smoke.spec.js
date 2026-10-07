@@ -149,6 +149,9 @@ test('search: a route, every route, a street, a place, an address', async ({ pag
   await expect(page.locator('a[href^="#/stop/"]').filter({ visible: true }).first()).toBeVisible();
   await go(page, '#/search?q=USU');
   await expect(page.locator('#side a').filter({ visible: true }).first()).toBeVisible();
+  // A place on campus by 'USU' and a word: the Institute of Religion by campus (a church in the map's data).
+  await go(page, '#/search?q=' + encodeURIComponent('USU Institute'));
+  await expect(page.getByText(/Institute of Religion/).filter({ visible: true }).first()).toBeVisible();
   await go(page, '#/search?q=' + encodeURIComponent('500 North 100 East'));
   await expect(page.getByText(/Show on map/).filter({ visible: true }).first()).toBeVisible();
 });

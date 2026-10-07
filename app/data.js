@@ -160,7 +160,25 @@ export function searchPlaces(q, limit = 8) {
   // POOL's pickup points by name, after the pamphlet's places: each a place served by POOL, with its nearest stops.
   const pool = POOL ? POOL.stops.filter(s => hit(s.name)).map(s => ({ name: s.name, lat: s.lat, lon: s.lon, word: 'POOL pickup', area: '', osm: true, pool: true, pickup: true })) : [];
   const all = [...mine, ...pool, ...named, ...kind];
+  // 'USU' (or 'campus') with other words: those words on campus, after whatever has every word in it. 'USU Institute'
+  // found nothing: the Institute of Religion by campus is a church in the map's data, not one of USU's, and USU's own
+  // places carry the word as their kind, not their name.
+  const rest = words.filter(w => !CAMPUS_WORDS.includes(w));
+  if (rest.length && rest.length < words.length) {
+    const box = campusBox(), on = p => p.word === 'USU' || (box && p.lat >= box[1] && p.lat <= box[3] && p.lon >= box[0] && p.lon <= box[2]);
+    for (const p of searchPlaces(rest.join(' '), 40).list) if (on(p) && !all.some(q => q.name === p.name && distance(q.lat, q.lon, p.lat, p.lon) < 150)) all.push(p);
+  }
   return { list: all.slice(0, limit), more: Math.max(0, all.length - limit) };
+}
+const CAMPUS_WORDS = ['usu', 'campus'];
+/** USU's campus, as the box round its own places (the map's, tagged 'USU'), and a block more: [w, s, e, n]. */
+let campusB;
+function campusBox() {
+  if (campusB !== undefined) return campusB;
+  const ps = O.filter(p => p.word === 'USU');
+  if (!ps.length) return null;   // not loaded yet: asked again next time
+  const m = 0.002;   // about 200 m
+  return campusB = [Math.min(...ps.map(p => p.lon)) - m, Math.min(...ps.map(p => p.lat)) - m, Math.max(...ps.map(p => p.lon)) + m, Math.max(...ps.map(p => p.lat)) + m];
 }
 /** The live relay, which serves the agency's notices minutes after they're posted; data/alerts.json (fetched by
  *  GitHub every so often) stands in when it can't be reached. The first page is drawn from the file alone, kept on
