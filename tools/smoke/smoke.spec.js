@@ -414,17 +414,22 @@ test('directions: avoid steep walks, on and off, and in Settings', async ({ page
   // none, the ways there are, said so); the chip kept as the rider's choice, Settings showing it.
   await open(page);
   await go(page, '#/go/@41.74335,-111.81510:Institute/at/41.74245,-111.83000/West%20of%20campus');
+  // The quickest way walks up the bench at most hours (which way is quickest is the hour's): where it does, the chip.
+  await expect(page.locator('.jsum').filter({ visible: true }).first()).toBeVisible();
   const chip = page.locator('.chip[data-steep]').filter({ visible: true }).first();
-  await expect(chip).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.locator('.tl b.hill.steep').filter({ visible: true }).first()).toBeVisible();
-  await chip.click();
-  await expect(page.locator('.chip[data-steep]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(async () => {
-    const steep = await page.locator('.tl b.hill.steep').filter({ visible: true }).count();
-    const said = await page.getByText('Every way here has a steep walk').filter({ visible: true }).count();
-    expect(steep === 0 || said > 0).toBe(true);
-  }).toPass();
+  const steepNow = await page.locator('.tl b.hill.steep').filter({ visible: true }).count() > 0;
+  if (steepNow) {
+    await expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await chip.click();
+    await expect(page.locator('.chip[data-steep]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
+    await expect(async () => {
+      const steep = await page.locator('.tl b.hill.steep').filter({ visible: true }).count();
+      const said = await page.getByText('Every way here has a steep walk').filter({ visible: true }).count();
+      expect(steep === 0 || said > 0).toBe(true);
+    }).toPass();
+  }
   await go(page, '#/about');
+  if (!steepNow) await page.locator('[data-steep="avoid"]').filter({ visible: true }).first().click();   // nothing steep this hour: chosen in Settings instead
   await expect(page.locator('[data-steep="avoid"]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
   await page.locator('[data-steep="allow"]').filter({ visible: true }).first().click();
   await expect(page.locator('[data-steep="allow"]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
