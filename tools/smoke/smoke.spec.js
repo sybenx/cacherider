@@ -339,6 +339,9 @@ test('directions arriving by a time: the shuttle the way picked, when it is the 
   await go(page, '#/go/@41.74335,-111.81510:Institute/at/41.75484,-111.81505/Aztec?t=a' + ymd + '-1900');
   const picked = page.locator('.jsum').filter({ visible: true }).first();
   await expect(picked).toContainText('Evening');
+  await expect(picked).toContainText(/Leave by/);   // no timetable: a leave-by and a latest, not times it's due
+  await expect(picked).toContainText(/at the latest/);
+  await expect(page.getByText(/Be at the stop by/).filter({ visible: true }).first()).toBeVisible();
   await expect(page.getByText(/A bus at least every \d+ min/).filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.jrow').filter({ hasText: 'Stadium' })).toHaveCount(0);
   await expect(page.locator('.sa-row')).toHaveCount(0);   // said as the way, not beside it

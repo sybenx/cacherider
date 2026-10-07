@@ -231,7 +231,8 @@ function summary(p, J, clockNow, fixed) {
   // alone didn't say which bus (a rider at the Center read the hospital's way as having no Route 2 in it).
   const rides = p.legs.filter(l => l.kind === 'ride').map(l => l.u ? chip(l.r, 22) : badge(l.r, 22));
   return html`<div class="jrow picked jsum" data-go="${J.hrefs[J.i]}" aria-current="true" role="listitem link" tabindex="0"><span class="eyebrow">${eye}</span>
-    <div class="js-t">${time(p.leave, 36, live)}<span class="to">→</span>${time(p.arrive, 36, live)}<span class="dur">${p.arrive - p.leave} min</span></div>
+    ${worstOf(p) ? html`<div class="js-t"><span class="to">Leave by</span>${time(p.leave, 36, false)}</div><span class="sub">There by ${clockText(p.arrive)} at the latest, the shuttle's longest wait counted</span>`
+    : html`<div class="js-t">${time(p.leave, 36, live)}<span class="to">→</span>${time(p.arrive, 36, live)}<span class="dur">${p.arrive - p.leave} min</span></div>`}
     <span class="sub js-legs">${rides.map((b, i) => html`${i ? html`<span class="sep">›</span>` : ''}${b}`)}<span>${changes.length ? `${changes.length === 1 ? 'One change' : changes.length + ' changes'}, at ${at.join(' and ')}` : 'No change'}${walk ? ` · ${walk} min walking` : ''}</span></span></div>`;
 }
 /** Another way as a row, one a route: its legs as badges (the walker for a walk) with minutes, how long and how much
@@ -243,7 +244,7 @@ function planRow(p, href, more, clockNow, fixed = false) {
   const legs = p.legs.filter(l => l.kind === 'ride' || l.mins >= 1).map(l => l.kind === 'walk' ? html`<span class="jleg">${icon('walk', 16)}${l.mins}m</span>`
     : html`<span class="jleg">${l.u ? chip(l.r, 20) : badge(l.r, 20)}${l.off - l.on}m</span>`);
   return html`<div class="jrow" role="listitem link" tabindex="0" data-go="${href}">
-    <div class="jr-top"><span class="jlegs">${legs.map((x, i) => html`${i ? html`<span class="sep">›</span>` : ''}${x}`)}</span><span class="jr-time">${time(p.leave, 26, live)}<small>${rel || 'arr ' + clockText(p.arrive)}</small></span></div>
+    <div class="jr-top"><span class="jlegs">${legs.map((x, i) => html`${i ? html`<span class="sep">›</span>` : ''}${x}`)}</span><span class="jr-time">${time(p.leave, 26, live)}<small>${rel || (worstOf(p) ? 'by ' + clockText(p.arrive) + ' at latest' : 'arr ' + clockText(p.arrive))}</small></span></div>
     <span class="sub">${p.arrive - p.leave} min${walk ? ` · ${walk} min walking` : ''}${more.length ? ` · then ${more.map(([q]) => clockText(q.leave)).join(', ')}` : ''}</span></div>`;
 }
 
@@ -498,19 +499,23 @@ function timeline(p, J, clockNow) {
       const n = nextAt(l.from, 6, clockNow).find(t => t.r === l.r && t.min > l.on && t.day === 0);
       missed = html`<span class="sub missed">Missed it? ${n ? html`The next ${badge(l.r, 18)} leaves at <b>${clockText(n.min)}</b>` : 'No more today on this route'}</span>`;
     }
-    out.push(tl(l.on, 'on', html`<span class="name">${stopWords(l.from)}</span>${addrLine(l.from)}
+    // A shuttle at a time picked has no times, only its longest wait: be at the stop by a time, nothing claimed after.
+    out.push(tl(l.t.every ? null : l.on, 'on', html`<span class="name">${stopWords(l.from)}</span>${addrLine(l.from)}${l.t.every ? html`<span class="sub">Be at the stop by <b>${clockText(l.on)}</b></span>` : ''}
       <span class="tl-bus">${l.u ? chip(l.r, 28) : badge(l.r, 28)}<span>${toward(l)}</span>${l.u ? (l.t.every ? '' : liveMark('Estimated')) : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${q(l.from)}${on ? html`<span class="sub">${on}</span>` : ''}${missed}
       <span class="sub">${l.t.every ? `A bus at least every ${l.t.every} min · then ${Math.max(1, l.off - l.on - l.t.every)} min, ${l.n} ${l.n === 1 ? 'stop' : 'stops'}` : `Ride ${l.n} ${l.n === 1 ? 'stop' : 'stops'} · ${Math.max(1, l.off - l.on)} min`}</span>`, 'ride' + (within(l.on, l.off) ? ' now' : ''), colour(l)));
     // Getting off: the last walk, where there is one, said here; before a change, the change's own frame follows.
     const lastWalk = next && next.kind === 'walk' && !(p.legs[k + 2] && p.legs[k + 2].kind === 'ride') ? next : null;
-    out.push(tl(l.off, next ? 'ring' : 'end', html`<span class="name">${next ? 'Get off at ' : ''}${stopWords(l.to)}</span>${addrLine(l.to)}${q(l.to)}${lastWalk ? html`<span class="sub">${icon('walk', 14)} Walk ${metres(lastWalk.d)} · about ${lastWalk.mins} min</span>` : ''}`,
+    out.push(tl(l.t.every ? null : l.off, next ? 'ring' : 'end', html`<span class="name">${next ? 'Get off at ' : ''}${stopWords(l.to)}</span>${addrLine(l.to)}${q(l.to)}${lastWalk ? html`<span class="sub">${icon('walk', 14)} Walk ${metres(lastWalk.d)} · about ${lastWalk.mins} min</span>` : ''}`,
       (next ? 'off' : 'end') + (lastWalk && within(l.off, p.arrive) ? ' now' : ''), next && next.kind === 'walk' && p.legs[k + 2] ? colour(p.legs[k + 2]) : next && next.kind === 'ride' ? colour(next) : ''));
   });
   // The end: where you're going, at the arrival, after the last walk.
   const lastLeg = p.legs[p.legs.length - 1];
-  if (lastLeg.kind === 'walk') out.push(tl(p.arrive, 'end', html`<span class="name">${J ? J.destName : lastLeg.label || 'Where you’re going'}</span>${lastLeg.to !== undefined ? addrLine(lastLeg.to) : ''}`, 'end'));
+  const atWorst = worstOf(p);
+  if (lastLeg.kind === 'walk') out.push(tl(atWorst ? null : p.arrive, 'end', html`<span class="name">${J ? J.destName : lastLeg.label || 'Where you’re going'}</span>${lastLeg.to !== undefined ? addrLine(lastLeg.to) : ''}${atWorst ? html`<span class="sub">There by <b>${clockText(p.arrive)}</b> at the latest</span>` : ''}`, 'end'));
   return html`<div class="tline">${out}</div>`;
 }
+/** A way with the shuttle at a time picked: its arrival the latest it could be, not a time it's due. */
+const worstOf = p => p.legs.some(l => l.kind === 'ride' && l.u && l.t.every);
 /** Where a bus is heading, in words: 'Toward L.R. Hospital', 'Around the loop'. */
 function toward(l) {
   if (l.u) return 'Around the loop';
