@@ -48,12 +48,25 @@ jobs:
           "$ANDROID_HOME/build-tools/$apk/apksigner" verify --print-certs "cacherider-${{ steps.v.outputs.name }}.apk" | grep -i sha-256
       - uses: actions/upload-artifact@v4
         with: { name: 'cacherider-${{ steps.v.outputs.name }}', path: 'android/cacherider-*.a[ap][kb]' }
-      # Google Play: the signed bundle up to the testing track (the PLAY_TRACK variable, else closed testing's 'alpha')
-      # as a draft, for the Play Console's own review and roll out, a tap there. Only once a service account with
-      # release rights in the Play Console has its JSON key in the PLAY_SERVICE_ACCOUNT_JSON secret.
+      # Google Play: the signed bundle up to the testing track (the PLAY_TRACK variable, else closed testing's 'alpha'),
+      # rolled out to it (Google's review first, then the testers have it), no tap in the Play Console. Where Play
+      # won't take a release that way (an app not yet through its first review takes drafts only), a draft instead,
+      # to roll out from the Console. Only once a service account with release rights in the Play Console has its JSON
+      # key in the PLAY_SERVICE_ACCOUNT_JSON secret.
       - name: Up to Google Play
+        id: play
         if: github.event_name == 'push' && env.PLAY_JSON != ''
-        continue-on-error: true   # Play refusing (a key's rights not through yet) doesn't hold up the GitHub release
+        continue-on-error: true   # Play refusing doesn't hold up the GitHub release
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.cacherider.android
+          releaseFiles: android/cacherider-${{ steps.v.outputs.name }}.aab
+          tracks: ${{ vars.PLAY_TRACK || 'alpha' }}
+          status: completed
+      - name: Up to Google Play, as a draft
+        if: github.event_name == 'push' && env.PLAY_JSON != '' && steps.play.outcome == 'failure'
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}

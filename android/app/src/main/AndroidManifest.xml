@@ -28,8 +28,8 @@
       <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_DIVIDER_COLOR" android:resource="@color/bars_light" />
       <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_DIVIDER_COLOR_DARK" android:resource="@color/bars" />
       <!-- The splash: the bus over the road (android/splash/splash.svg, exported for each density by its export.js),
-           filling the screen on the same #101214 as Android 12's own start screen before it (values-v31), shown until
-           the page draws. SplashLauncher crops it to the screen. -->
+           centred at 300 dp on the same #101214 as Android 12's own start screen before it (values-v31), shown until
+           the page draws. -->
       <meta-data android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE" android:resource="@drawable/splash" />
       <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR" android:resource="@color/splash" />
       <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_FADE_OUT_DURATION" android:value="200" />
