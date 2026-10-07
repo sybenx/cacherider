@@ -334,6 +334,12 @@ test('directions: a walk over a busy road goes by its crossing, said', async ({ 
   await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/Cross .*Main Street.* at the (light|crosswalk)/);
   await expect(page.getByText(/crow flies, but over a busy road/).filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('a.walkall')).toHaveCount(0);   // three miles: not a walk worth offering beside the bus
+  // Straight over US 91 it's the stop across from the Eccles Ice Center instead, the same bus, sooner: said, and the
+  // Crosswalks chip there to take it. (Only while Route 5 runs: no way, nothing to compare.)
+  if (await page.locator('.jsum').filter({ visible: true }).count()) {
+    await expect(page.locator('.straightalt').filter({ visible: true }).first()).toContainText(/Straight across Main Street \(no crosswalk\).*min (sooner|later)/);
+    await expect(page.locator('.chip[data-xing]').filter({ visible: true }).first()).toBeVisible();
+  }
   // From the Wolf Pack Way stop itself: the light 480 m out of the way, so both said, and the Crosswalks chip turns it.
   await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.78315,-111.83096/Wolf%20Pack');
   const chip = page.locator('.chip[data-xing]').filter({ visible: true }).first();

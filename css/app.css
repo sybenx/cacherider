@@ -1218,3 +1218,6 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .jrow > .sub { font-size: 0.8438rem; color: var(--cr-muted); }
 .jrow .jlegs .uchip { font-size: 0.6875rem; padding: 0 6px; height: 20px; }
 .mapcard .gohead .gowhen { padding-top: 6px; }
+/* Directions: the way straight across a busy road, said under the way picked (not a row to pick: the chip does that) */
+.jrow.straightalt { cursor: default; background: var(--color-bg); }
+.jrow.straightalt:hover { background: var(--color-bg); }

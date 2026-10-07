@@ -223,6 +223,9 @@ function roadsCrossed(a, b) {
 let xing = (() => { try { return localStorage.getItem('cr-xing') !== 'off'; } catch { return true; } })();
 export const useCrossings = () => xing;
 export function setUseCrossings(on) { xing = !!on; try { localStorage.setItem('cr-xing', on ? 'on' : 'off'); } catch { /* this visit only */ } }
+/** Something worked out walking straight across (crossings off for its length only, the rider's choice untouched):
+ *  directions' look at what ignoring the crossings would give, a different stop maybe, to say it. */
+export function crossingsOff(fn) { const was = xing; xing = false; try { return fn(); } finally { xing = was; } }
 const FAR = 1500;   // metres: a crossing further off than this from where the line crosses isn't the way over
 /** A walk from one point to another as it's walked: straight, or across each busy road it meets by a crossing on that
  *  road (the light or crosswalk that makes the walk shortest), { d (metres), via: [{ lat, lon, kind ('s' a light,

@@ -6,7 +6,7 @@ import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, day
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { spotOf, spotKey, atPath, climb, RISE, slope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE } from '../geo.js';
+import { spotOf, spotKey, atPath, climb, RISE, slope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE, crossingsOff } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, planNetBy, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
@@ -197,6 +197,7 @@ export function render({ to, from, at, plan, t }, clockNow) {
   if (lateBy) parts.push(tooLate(fixed));
   if (found.steep) parts.push(steepAnyway);
   const J = pickPlan(found.plans, plan, e, c, fixed ? t : null);
+  if (J) J.straight = straightAlt(e, fixed, clockNow, J);
   return { html: sheet(J, parts, c, !!fixed, also), mount, title: 'Directions', keepScroll: true, journey: J };
 }
 /** The sheet: the head and the trip's settings; the way picked, summed up (leave, arrive, how long, the change) and
@@ -215,10 +216,13 @@ function sheet(J, head, clockNow, fixed = false, also = '') {
   // Avoid steep: offered where a way has a steep walk in it (or it's on), kept for every trip after (Settings too).
   const steepChip = avoidSteep() || J.plans.some(p => steepIn(p, J)) ? html`<button type="button" class="chip" data-steep aria-pressed="${avoidSteep() ? 'true' : 'false'}">Avoid steep</button>` : '';
   // Crosswalks: offered where a way's walk is much longer by them (or they're off), kept for every trip after.
-  const xingChip = !useCrossings() || J.plans.some(p => crossMatters(p, J)) ? html`<button type="button" class="chip" data-xing aria-pressed="${useCrossings() ? 'true' : 'false'}">Crosswalks</button>` : '';
+  const xingChip = !useCrossings() || J.straight || J.plans.some(p => crossMatters(p, J)) ? html`<button type="button" class="chip" data-xing aria-pressed="${useCrossings() ? 'true' : 'false'}">Crosswalks</button>` : '';
   const sortRow = groups.size || steepChip || xingChip ? html`<div class="section between otherways"><span>${groups.size ? 'Other ways' : ''}</span><span class="chips-inline">${groups.size ? html`<button type="button" class="chip" data-sort="walk" aria-pressed="${goSort() === 'walk' ? 'true' : 'false'}">Least walking</button>` : ''}${steepChip}${xingChip}</span></div>` : '';
   const rows = groups.size ? html`<div class="jrows" role="list">${[...groups.values()].map(g => planRow(g[0][0], J.hrefs[g[0][1]], g.slice(1), clockNow, fixed, steepIn(g[0][0], J)))}</div>` : '';
-  return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}${walkAll(J, P, clockNow)}</div>
+  // Straight across a busy road, a different way altogether (another stop): said under the way picked.
+  const st = J.straight;
+  const straight = st ? html`<div class="jrow straightalt" role="note"><span class="sub"><b>Straight across ${st.roads} (no crosswalk):</b> ${st.p.legs.filter(l => l.kind === 'ride').map(l => l.u ? chip(l.r, 18) : badge(l.r, 18))} to ${stopWords(st.p.legs.filter(l => l.kind === 'ride').pop().to)}, ${fixed && clockNow.by ? `leave at ${clockText(st.p.leave)}, ${st.gain} min later` : `there at ${clockText(st.p.arrive)}, ${st.gain} min sooner`}. Crosswalks off to see it.</span></div>` : '';
+  return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}${straight}${walkAll(J, P, clockNow)}</div>
     <div class="journeysheet legs">${timeline(P, J, clockNow)}${later}${sortRow}${rows}</div>
     <div class="fine">From the timetable and the live feed, worked out on this phone. Walks are as the crow flies, but over a busy road by its lights or a crosswalk.</div>`.s;
 }
@@ -325,6 +329,7 @@ export function journey({ to, from, at, t }, key, clockNow) {
   if (e.dest === undefined || !e.origin) return null;
   const fixed = leaveAt(t, clockNow), { found, c, lateBy, sh } = waysFor(e.origin, e.dest, fixed, clockNow);
   const J = pickPlan(found.plans || [], key, e, c, fixed ? t : null);
+  if (J) J.straight = straightAlt(e, fixed, clockNow, J);
   const also = shuttleNote(e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d, fixed || c, sh, lateBy ? [] : found.plans);
   // No way by bus (and not a walk): the map all the same, the two ends on it, so a rider who knows the roads sees
   // the way by car or on foot; the card says there's no bus.
@@ -567,6 +572,28 @@ function crossNote(w) {
   const roads = [...new Set(w.over.map(v => v.road))].join(' and ');
   return html`<span class="sub cross"><b>Straight across ${roads}</b> (no crosswalk)${w.alt ? ` · or ${crossWords(w.alt.via).replace(/(^|; then )Cross .+? (at the )/g, '$1$2')}, ${mins} min more` : ''}</span>`;
 }
+/** With crossings on, the way walking straight across would give, where it's another way (another stop, another
+ *  route) and better by 2 min or more: the Transit Center to the Rush FunPlex is Route 5 to 2470 North Main by the
+ *  lights, or to 2810 North Wolf Pack Way and straight over US 91. Only where a way's walks meet a busy road at all:
+ *  it's a second search. { p, gain, roads } or null. */
+function straightAlt(e, fixed, clockNow, J) {
+  if (!useCrossings() || !J.plans.length) return null;
+  const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin, P = J.plans[J.i];
+  if (!J.plans.some(p => crossesBusy(p, o, e.d))) return null;
+  const alt = crossingsOff(() => waysFor(e.origin, e.dest, fixed, clockNow));
+  const q = alt.lateBy ? null : (alt.found.plans || [])[0];
+  const rides = p => p.legs.filter(l => l.kind === 'ride').map(l => l.r + '@' + l.from + '>' + l.to).join('_');   // where it's left too: the same bus, off a stop sooner, is another way
+  if (!q || rides(q) === rides(P)) return null;
+  const gain = fixed && fixed.by ? q.leave - P.leave : P.arrive - q.arrive;
+  if (gain < 2) return null;
+  const roads = [...new Set(q.legs.flatMap((l, k) => l.kind !== 'walk' ? [] : walkWay(...walkEnds(l, k, q, o, e.d), true).via.map(v => v.road)))].join(' and ');
+  return roads ? { p: q, gain, roads } : null;
+}
+const legEnd = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x);
+/** A walk leg's two ends as lat, lon, lat, lon: its stops, or the trip's own ends. */
+function walkEnds(l, k, p, o, d) { const a = legEnd(l.from) || (k === 0 ? o : null) || o, b = legEnd(l.to) || (k === p.legs.length - 1 ? d : null) || d; return [a.lat, a.lon, b.lat, b.lon]; }
+/** Whether any walk of a way meets a busy road (by the crossings' reckoning, whatever the choice). */
+const crossesBusy = (p, o, d) => p.legs.some((l, k) => l.kind === 'walk' && walkWay(...walkEnds(l, k, p, o, d), true).via.length > 0);
 /** Whether a way has a walk the crossings make much longer (or would), for offering the Crosswalks chip at all. */
 function crossMatters(p, J) {
   const at = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x);
