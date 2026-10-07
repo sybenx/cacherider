@@ -115,9 +115,10 @@ function yoursNotice(yours, clockNow) {
   for (const [si, why] of yours) {
     if (seen.has(si)) continue;
     seen.add(si);
-    if (!stopAlerts(si, clockNow.ymd).length) continue;
-    const s = stop(si), closed = [...closedRoutes(si, clockNow.ymd)].filter(ri => s.routes.includes(ri));
-    const all = closed.length && s.routes.every(ri => closed.includes(ri));
+    const s = stop(si);
+    if (!s.out && !stopAlerts(si, clockNow.ymd).length) continue;
+    const closed = [...closedRoutes(si, clockNow.ymd)].filter(ri => s.routes.includes(ri));
+    const all = s.out || (closed.length && s.routes.every(ri => closed.includes(ri)));   // out of the timetable: no bus stops
     const what = all ? `No buses stop at ${s.name}` : closed.length ? `${routeNames(closed)} ${closed.length > 1 ? 'skip' : 'skips'} ${s.name}` : `Service alert at ${s.name}`;
     lines.push(html`<a class="mine-row" href="#/stop/${s.id}"><span><b>${what}</b> <span class="muted">· ${why === 'saved' ? 'one of your stops' : 'near you'}</span></span>${icon('fwd', 18)}</a>`);
     if (lines.length === 3) break;

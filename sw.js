@@ -3,7 +3,7 @@
 // The phone answers from what it keeps, never waiting on the network: the app
 // as this version installed it (a deploy is a new version, and the page offers
 // a reload), the data files as last fetched, each checked behind the page.
-const VERSION = 'cr-v387';
+const VERSION = 'cr-v388';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js',
@@ -14,7 +14,7 @@ const SHELL = [
 ];
 // The data, kept apart from the app, in a cache of its own that outlasts a version: a deploy brings new code, not
 // a megabyte of timetable the phone already has (each file's checked behind the page, as ever).
-const DATA = ['./data/cvtd.json', './data/cvtd-shapes.json', './data/crossings.json', './data/grid.json', './data/usu.json', './data/alerts.json', './data/places.json', './data/osm-places.json', './data/pool.json', './data/elevation.json'];
+const DATA = ['./data/cvtd.json', './data/cvtd-shapes.json', './data/crossings.json', './data/grid.json', './data/usu.json', './data/alerts.json', './data/places.json', './data/osm-places.json', './data/pool.json', './data/elevation.json', './data/gone-stops.json'];
 const DATA_CACHE = 'cr-data';
 const scope = new URL('./', self.location).href;
 

@@ -8,11 +8,22 @@ export const BASE = new URL('..', import.meta.url).href;   // the app's root, wh
 let loading = null;
 export function load() {
   return loading ??= (async () => {
+    const gone = fetch(BASE + 'data/gone-stops.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
     const r = await fetch(BASE + 'data/cvtd.json', { cache: 'no-cache' });
     if (!r.ok) throw new Error('schedule ' + r.status);
     D = await r.json(); requests = null;
     setZone(D.agency.tz);
     D.routeByShort = Object.fromEntries(D.routes.map((r, i) => [r.short, i]));
+    // Stops out of the timetable for a while (a detour's, tools/gone.py): kept as closed stops, after the timetable's
+    // own, with no departures. Taken out, a rider's saved one vanished from home, its notice marked nothing, and one
+    // standing at it found no stop at all. A route by its short name ('3'), or each half of one split by time ('16').
+    const g = await gone;
+    const have = new Set(D.stops.map(s => s.id));
+    for (const x of (g && g.stops) || []) if (!have.has(x.id)) {
+      const ris = x.routes.flatMap(sh => D.routeByShort[sh] !== undefined ? [D.routeByShort[sh]] : D.routes.map((r, i) => r.short.split(' ')[0] === sh ? i : -1).filter(i => i >= 0));
+      if (!ris.length) continue;   // no route of today's to draw it in or say it's skipped by
+      D.stops.push({ id: x.id, code: x.code || '', name: x.name, town: x.town || '', lat: x.lat, lon: x.lon, routes: ris, hub: false, by: '', twin: null, out: true });
+    }
     D.stopById = Object.fromEntries(D.stops.map((s, i) => [s.id, i]));
     apart(D.routes);
     for (const r of D.routes) r.tpSet = new Set(r.tp || []);

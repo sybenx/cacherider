@@ -72,6 +72,23 @@ test('home: a detour at one of your stops, at the top', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp('#/stop/' + id));
 });
 
+test('a stop out of the timetable: its page, saved, at the top of home', async ({ page }) => {
+  await open(page);
+  // One kept out (tools/gone.py: a detour's, while a notice names it and a week after), if any are.
+  const id = await page.evaluate(async () => { const d = await import('/app/data.js'); const s = d.D.stops.find(s => s.out); return s ? s.id : null; });
+  test.skip(!id, 'no stop is out of the timetable');
+  await go(page, '#/stop/' + id);
+  await expect(page.getByText(/No buses stop here/).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText(/out of .+ timetable for now/).filter({ visible: true }).first()).toBeVisible();
+  const nearest = page.locator('.callout.alert a[href^="#/stop/"]').filter({ visible: true }).first();
+  if (await nearest.count()) { await nearest.click(); await expect(page).not.toHaveURL(new RegExp('#/stop/' + id + '$')); }
+  await page.evaluate(i => localStorage.setItem('cr-saved', JSON.stringify([i])), id);
+  await go(page, '#/');
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await expect(page.locator('.mine-row').filter({ visible: true }).first()).toContainText(/No buses stop at .+ one of your stops/);
+});
+
 test('home: the Routes line opens every route', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s line; a wide screen has the chips');
   await open(page);

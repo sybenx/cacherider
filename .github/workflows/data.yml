@@ -33,6 +33,8 @@ jobs:
         run: python3 tools/usu.py || echo 'shuttle feed unreachable; keeping the last snapshot'
       - name: POOL's pickup points, from Connect's published Remix map
         run: python3 tools/pool.py || echo 'Remix unreachable; keeping the last POOL points'
+      - name: Stops out of the timetable for a detour, kept as closed stops a while
+        run: python3 tools/gone.py || echo 'kept stops not refreshed; keeping the last'
       - name: Commit if changed
         run: |
           # The built date alone is not a change worth a commit.
@@ -44,13 +46,19 @@ jobs:
           except Exception:
               old = None
           shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json', 'data/crossings.json', 'data/osm-places.json', 'data/pool.json']) != 0
-          print('yes' if new != old or shapes else 'no')
+          # The stops kept out of the timetable: a change when one comes or goes, not when its dates move on.
+          ids = lambda j: sorted(s['id'] for s in (j or {}).get('stops', []))
+          try:
+              gone = ids(json.load(open('data/gone-stops.json'))) != ids(json.loads(subprocess.check_output(['git', 'show', 'HEAD:data/gone-stops.json'])))
+          except Exception:
+              gone = True
+          print('yes' if new != old or shapes or gone else 'no')
           EOF
           )
           if [ "$changed" != yes ]; then echo 'no change'; git checkout -- data; exit 0; fi
           git config user.name 'transit data'
           git config user.email 'actions@users.noreply.github.com'
-          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json
+          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json data/gone-stops.json
           git commit -m "Transit data: $(date -u +%Y-%m-%d)"
           # Onto whatever another run (alerts, the timetable, the map) pushed meanwhile, a few tries.
           for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done; exit 1

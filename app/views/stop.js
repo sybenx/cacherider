@@ -47,7 +47,7 @@ export function render({ id, full, run, on }, clockNow) {
   // Detours that name this stop: which routes are skipping it, in the agency's words.
   const alerts = stopAlerts(si, clockNow.ymd);
   const closed = closedRoutes(si, clockNow.ymd);
-  const allClosed = closed.size && s.routes.every(ri => closed.has(ri));
+  const allClosed = s.out || (closed.size && s.routes.every(ri => closed.has(ri)));   // out of the timetable (data.js): every route skips it
   // Where its buses stop instead, seen from them on their way round (announced or not): the nearest such stop.
   const instead = list => {
     const alt = list.flatMap(u => u.on.map(id => ({ u, t: D.stops[stopIndex(id)] }))).map(x => ({ ...x, d: distance(s.lat, s.lon, x.t.lat, x.t.lon) })).sort((x, y) => x.d - y.d)[0];
@@ -59,6 +59,10 @@ export function render({ id, full, run, on }, clockNow) {
   if (dayAlert(clockNow.ymd)) parts.push(html`<div class="notice">${icon('info', 16)}<span>Service changes today · <a href="#/about/alerts">see alert</a></span></div>`);
   // A bus stop that is also a POOL pickup: the on-demand ride goes from here too.
   if (poolAt(si)) parts.push(html`<div class="notice">${icon('info', 16)}<span>Also a <b>POOL</b> pickup: ${D.agency.brand}'s on-demand ride around ${POOL.towns.slice(0, 3).join(', ')}, zero fare, booked in the On-Demand app or on <a href="tel:${POOL.phone}">${POOL.phone}</a>. <a href="${POOL.url}" target="_blank" rel="noopener">How it works</a></span></div>`);
+  // Out of the timetable (data.js, tools/gone.py): where its routes still stop nearest, notice or not.
+  const served = s.out ? D.stops.map((x, i) => ({ x, i, d: distance(s.lat, s.lon, x.lat, x.lon) })).filter(({ x, i }) => !x.out && !x.hub && x.routes.some(ri => s.routes.includes(ri)) && !closedRoutes(i, clockNow.ymd).size).sort((a, b) => a.d - b.d)[0] : null;
+  const outLine = s.out ? html`<div class="sub">It's out of ${D.agency.brand}'s timetable for now.${served ? html` The nearest stop ${routeNames(s.routes)} ${s.routes.length > 1 ? 'still serve' : 'still serves'}: <a href="#/stop/${served.x.id}">${served.x.name}</a>, ${m2(served.d)} away.` : ''}</div>` : '';
+  if (s.out && !alerts.length) parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">No buses stop here right now</b>${outLine}</div></div>`);
   if (alerts.length) {
     const who = routeNames([...closed]);
     // When it ends: the alert's day, and no hour (an alert 'ending Wednesday' ends some time that day, the feed's end
@@ -68,7 +72,7 @@ export function render({ id, full, run, on }, clockNow) {
     const ends = end && !onEnd ? ' · the detour ends ' + (end === dayFrom(clockNow.ymd, 1).ymd ? 'tomorrow' : fmtDay(end)) : '';
     const head = allClosed ? (onEnd ? 'No buses stop here until the detour ends, later today' : `No buses stop here${ends || ' during the detour'}`)
       : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}` : 'Service alert for this stop';
-    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size ? 'warnmark' : ''}">${head}</b>${instead((A.seen || []).filter(u => u.gone.includes(s.id)))}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}${a.stillOn ? html`<span class="muted"> ${D.agency.brand} took this notice down, but its buses are still going round (${a.stillOn.n} in a row, the latest at ${a.stillOn.last}).</span>` : ''}</div>`)}</div></div>`);
+    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size || s.out ? 'warnmark' : ''}">${head}</b>${outLine}${instead((A.seen || []).filter(u => u.gone.includes(s.id)))}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}${a.stillOn ? html`<span class="muted"> ${D.agency.brand} took this notice down, but its buses are still going round (${a.stillOn.n} in a row, the latest at ${a.stillOn.last}).</span>` : ''}</div>`)}</div></div>`);
   }
 
   // Unannounced detours, apart from the agency's notices and never in their red: a question, what it rests on, where

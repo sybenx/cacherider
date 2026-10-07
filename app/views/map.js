@@ -180,7 +180,7 @@ function style(sat = true) {
 /** A stop's state on the map: closed (a hollow ring) by the agency's notice, or only perhaps skipped (a '?') by an
  *  unannounced detour. */
 function closedOrMaybe(s, i, ymd) {
-  const closed = !!(A.byStop[s.id] && stopAlerts(i, ymd).length);
+  const closed = !!s.out || !!(A.byStop[s.id] && stopAlerts(i, ymd).length);   // out of the timetable (data.js): closed, notice or not
   return { closed, maybe: !closed && skipsAt(s.id).length > 0 };
 }
 function stopsGeo() {
