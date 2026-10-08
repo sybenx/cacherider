@@ -549,6 +549,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
    ARROW_A): far off drawn in strokes of its colour, close in a solid A on a marker squared where Connect's is round. */
 #map.bus-small .bus-marker path { fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3.5; stroke-linejoin: round; }
 #map.bus-small .bus.on .bus-marker path { stroke: var(--color-accent); }
+#map.bus-small .bus.edged .bus-marker path { fill: var(--bus-color); stroke: #e8eaed; }   /* a black shuttle by night: solid, outlined (map.js uedge) */
 .bus.shuttle .bus-marker { border-radius: 6px; }
 /* a bus on the lit route keeps its badge and its tap at any zoom, so tapping a stop finds its buses */
 #map.bus-small .bus.lit, #map.bus-small .bus.on { pointer-events: auto; }

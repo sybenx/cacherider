@@ -61,13 +61,20 @@ export function lightInks(routes) {
  *  lifted as the routes are, and a red lifted there came back to Route 2's red: kept apart there too, in the dark
  *  map's own colours. Light map, the loops come in already apart from the feed's colours (tools/usu.py). */
 const DARK_LAND = [0x10, 0x12, 0x14].map(x => x / 255), APART = 0.11;
+/** A colour with no hue: black, a grey. */
+export const hueless = hex => { const [, a, b] = oklab(hexRGB(hex)); return Math.hypot(a, b) < 0.02; };
+/** Too faint on its map's land to read as a line on its own (black on the dark map): drawn outlined. */
+export const faint = (hex, darkMap) => contrast(hexRGB(hex), darkMap ? DARK_LAND : LAND) < MIN_CONTRAST;
 export function apartInks(loops, routes, darkMap) {
   const land = darkMap ? DARK_LAND : LAND, placed = routes.map(hexRGB), out = [];
   const shows = v => v.every(x => x >= -0.002 && x <= 1.002);
-  const ok = v => shows(v) && contrast(v, land) >= MIN_CONTRAST && placed.every(p => dist(v, p) >= APART);
+  const apart = v => placed.every(p => dist(v, p) >= APART);
+  const ok = v => shows(v) && contrast(v, land) >= MIN_CONTRAST && apart(v);
   for (const hex of loops) {
     const v0 = hexRGB(hex), [L0, a0, b0] = oklab(v0), C0 = Math.hypot(a0, b0), H0 = Math.atan2(b0, a0);
-    let best = ok(v0) ? { v: v0, cost: 0 } : null;
+    // A loop with no hue (the Evening Express's black) keeps its own where it's apart: faint on its land, it's
+    // outlined (faint()), not given a colour it hasn't got (black came out a brown on the dark map).
+    let best = ok(v0) || hueless(hex) && apart(v0) ? { v: v0, cost: 0 } : null;
     if (!best) for (let dL = -0.3; dL <= 0.3; dL += 0.02) for (let dC = -0.12; dC <= 0.1; dC += 0.02) for (const dH of [0, -8, 8, -16, 16, -24, 24]) {
       const C = Math.max(0, C0 + dC), H = H0 + dH * Math.PI / 180, v = fromOklab([L0 + dL, C * Math.cos(H), C * Math.sin(H)]);
       if (!ok(v)) continue;
