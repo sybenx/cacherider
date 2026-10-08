@@ -2440,7 +2440,7 @@ export function hubAgain(app) {
   if (!map) return;
   // Beside a wide screen's panel the first visit left the map alone (showPage); the tab again is the ask to see the
   // bays: framed then, as an arrival, so leaving puts the map back where it was.
-  if (wide() && !hubTurned) fitHub(true); else fitHub();
+  if (wide() && !hubTurned) fitHub(true, 700, true); else fitHub();   // flown, as the Map tab flies a phone there (fitHub: not on a weak device, nor with less motion asked for)
   if (!wide() && app.route.name === 'map' && !col.querySelector('#mapcard.open > .hubsheet')) hubCard(now());
 }
 
