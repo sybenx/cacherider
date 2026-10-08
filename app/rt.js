@@ -375,8 +375,14 @@ function feedSays(t, u) {
     // on this trip a long way off has gone, whatever the listing says; a listing with no bus to check it against is
     // trusted only while the trip's word is fresh (three minutes). A feed whose trip updates froze while its positions
     // flowed had every bay of a pulse 'leaving now', the whole board late by however long the freeze.
+    // The trip's bus still on its trip before, as the feed often has it a minute or two after it pulls out: by where it
+    // is all the same. At the bay, it's boarding; still on its way in on that trip (inbound()), this waits for it;
+    // anywhere else it has gone. Only by the listing's freshness, every 3:00 was 'leaving now', 6 min late, its buses
+    // out on their runs (2026-10-08 3:06 PM), till the feed moved them onto their trips.
     const bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v), st = D.stops[t.si];
-    const there = bus && bus.trip === D.trips[t.trip] ? distance(bus.lat, bus.lon, st.lat, st.lon) < 110 : !(rt.t - u.ts > 180);   // no timestamp on the trip: trusted, as before
+    const atBay = bus && distance(bus.lat, bus.lon, st.lat, st.lon) < 110;
+    const there = !bus ? !(rt.t - u.ts > 180)   // no bus named, or not reporting: the listing, while it's fresh (no timestamp: trusted)
+      : bus.trip === D.trips[t.trip] ? atBay : atBay || inbound(u, D.trips[t.trip]) !== null;
     return there ? held(t, toMin(Math.floor(nowS)) - t.min) : { gone: true };
   }
   if (hit) return hit.skipped ? { gone: true } : u.est ? { ...held(t, toMin(hit.time) - t.min), est: true } : held(t, toMin(hit.time) - t.min);
