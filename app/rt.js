@@ -380,7 +380,7 @@ function feedSays(t, u) {
     // anywhere else it has gone. Only by the listing's freshness, every 3:00 was 'leaving now', 6 min late, its buses
     // out on their runs (2026-10-08 3:06 PM), till the feed moved them onto their trips.
     const bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v), st = D.stops[t.si];
-    const atBay = bus && distance(bus.lat, bus.lon, st.lat, st.lon) < 110;
+    const atBay = bus && distance(bus.lat, bus.lon, st.lat, st.lon) < 110 && !(bus.speed > HUB_STILL);   // standing, as the board's Here: one pulling out along the drive has gone
     const there = !bus ? !(rt.t - u.ts > 180)   // no bus named, or not reporting: the listing, while it's fresh (no timestamp: trusted)
       : bus.trip === D.trips[t.trip] ? atBay : atBay || inbound(u, D.trips[t.trip]) !== null;
     return there ? held(t, toMin(Math.floor(nowS)) - t.min) : { gone: true };
@@ -405,7 +405,7 @@ function feedSays(t, u) {
     // late bus leaves when it's ready. Now, until it pulls out. A Blue Loop 12:53, in at 1:00 (2026-09-30), was
     // dropped with its bus sitting there, and the bay's badge showed the 1:11's bus, 12 min out.
     const bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v), st = D.stops[t.si];
-    if (!homeward && bus && bus.trip === D.trips[t.trip] && distance(bus.lat, bus.lon, st.lat, st.lon) < 110) return held(t, toMin(Math.floor(Date.now() / 1000)) - t.min);
+    if (!homeward && bus && bus.trip === D.trips[t.trip] && distance(bus.lat, bus.lon, st.lat, st.lon) < 110 && !(bus.speed > HUB_STILL)) return held(t, toMin(Math.floor(Date.now() / 1000)) - t.min);
     return held(t, 0);
   }
   if (l >= 0 && i > l && u.lastDelay !== null) return { ...held(t, u.lastDelay), est: true };

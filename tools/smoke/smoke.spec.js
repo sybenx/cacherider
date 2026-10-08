@@ -251,10 +251,11 @@ test('the Center: a departure still listed past its minute, its bus on its trip 
     const dep = { min: c.min - 6, r: ri, dir: +dir, si: hubSi, trip: ti, day: 0 }, id = d.D.trips[ti], hub = d.D.stops[hubSi], nowS = Math.floor(Date.now() / 1000);
     rtm.tripOf(id);
     const trip = { v: 'X2', ts: nowS, at: new Map([[hub.id, { seq: 0, time: nowS - 360, skipped: false }]]), first: { sid: hub.id, seq: 0, time: nowS - 360 }, last: { sid: hub.id, seq: 0, time: nowS - 360 }, lastDelay: 0, ti, stops: [[hub.id, 0, nowS - 360, 0]], end: seq.length - 1 };
-    const at = (lat, lon) => { rtm.rt.trips = { [id]: trip }; rtm.rt.buses = [{ id: 'c:X2', label: 'X2', trip: 'the_one_before', ri, lat, lon, course: 0, speed: 8, ts: nowS, h: null, dir: +dir }]; rtm.rt.at = Date.now(); rtm.rt.t = nowS; const p = rtm.predict(dep); return p && p.gone ? 'gone' : 'leaving'; };
-    return [at(hub.lat + 0.03, hub.lon), at(hub.lat, hub.lon)];
+    const at = (lat, lon, speed) => { rtm.rt.trips = { [id]: trip }; rtm.rt.buses = [{ id: 'c:X2', label: 'X2', trip: 'the_one_before', ri, lat, lon, course: 0, speed, ts: nowS, h: null, dir: +dir }]; rtm.rt.at = Date.now(); rtm.rt.t = nowS; const p = rtm.predict(dep); return p && p.gone ? 'gone' : 'leaving'; };
+    // out on its run; standing at the bay; at the bay but moving, pulling out
+    return [at(hub.lat + 0.03, hub.lon, 8), at(hub.lat, hub.lon, 0), at(hub.lat, hub.lon, 6)];
   });
-  if (r !== null) expect(r).toEqual(['gone', 'leaving']);
+  if (r !== null) expect(r).toEqual(['gone', 'leaving', 'gone']);
 });
 
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
