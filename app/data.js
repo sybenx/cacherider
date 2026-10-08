@@ -435,6 +435,16 @@ export function stopAlerts(si, ymd) { return (A.byStop[D.stops[si].id] || []).fi
 export function routeAlerts(ri, ymd) { return (A.byRoute[ri] || []).filter(a => alertOn(a, ymd)); }
 export function systemAlerts(ymd) { return A.alerts.filter(a => !(a.stops || []).length && !(a.routes || []).length && !(a.routeIds || []).length && alertOn(a, ymd)); }
 export function activeAlerts(ymd) { return A.alerts.filter(a => alertOn(a, ymd)); }
+/** A stop every route of it skips today, by the agency's notices (closed for construction, a detour round it): the
+ *  last day the notices close it ('20261010', a notice to Sat 11:59 PM closed through Saturday), or '' where one has
+ *  no end or the buses are keeping to it past its end. Null when a route still stops. */
+export function closedThrough(si, ymd) {
+  const s = D.stops[si], shut = closedRoutes(si, ymd);
+  if (!s.routes.length || !s.routes.every(ri => shut.has(ri))) return null;
+  const alerts = stopAlerts(si, ymd);
+  if (alerts.some(a => a.stillOn || (!a.end && !a.names))) return '';
+  return alerts.reduce((m, a) => { const e = a.names || ymdOf(a.end); return e > m ? e : m; }, '');
+}
 /** Routes that skip a stop on a day: an alert naming both the route and the stop. */
 export function closedRoutes(si, ymd) {
   const out = new Set();

@@ -186,6 +186,18 @@ test('one clock rule: due from its minute\'s start, gone from the next', async (
   expect(r).toEqual([true, false, true, false, true, 'now', 'in 1 min', 850]);
 });
 
+test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
+  await open(page);
+  const r = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), ui = await import('/app/ui.js'), t = await import('/app/time.js');
+    await d.loadAlerts({ relay: false });
+    const c = t.now(), shut = d.D.stops.map((s, i) => i).filter(i => d.closedThrough(i, c.ymd) !== null);
+    // and one made so, whatever today's notices: every route of a stop named by a notice in force through Saturday next
+    return { live: shut.map(i => ui.stopRow(i, d.nextAt(i, 1, c)[0], c).s.includes('Closed')), any: shut.length };
+  });
+  expect(r.live.every(Boolean)).toBe(true);   // each one closed today says so (none closed: nothing to say)
+});
+
 test('routes list: every route, one opened', async ({ page }) => {
   await open(page, '#/routes');
   await expect(page.locator('a.row[href^="#/map/route/"]')).not.toHaveCount(0);

@@ -293,6 +293,8 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 /* yellow, and only for what changes a rider's trip: a route skipping a stop, a stop not served, a bus days off */
 .warnmark { display: inline-block; padding: 1px 6px; background: var(--warn-bg); color: var(--warn-ink); box-shadow: inset 3px 0 0 var(--warn-edge); font-weight: 600; }
 .stoprow .dist .alert { color: var(--color-accent-700); font-weight: 600; }
+/* A stop shut by notice: 'Closed · through Sat' in the time's place, in the notice's colour */
+.stoprow .end.closedend .t { color: var(--color-accent-700); }
 .eyebrow.alert { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; }
 .eyebrow.alert.warnmark { padding: 3px 7px; }
 .alertrow { padding: 12px 16px; border-bottom: 1px solid var(--cr-line); display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; }

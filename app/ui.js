@@ -1,8 +1,8 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt } from './data.js';
+import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { pointerMark } from './pointer.js';
-import { clock, clockText, relative, now, metres, minsTo, isDue } from './time.js';
+import { clock, clockText, relative, now, metres, minsTo, isDue, dayFrom, dayName, fmtDay } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
@@ -198,11 +198,20 @@ export function fillLater(el) {
   const c = now();
   for (const e of el.querySelectorAll('.end[data-later]')) { const n = nextAt(+e.dataset.later, 1, c)[0]; e.outerHTML = stopEnd(n ? lively(n) : n, c); }
 }
+/** 'Closed' / 'through Sat': a stop shut by notice, in its row's time place; 'for now' where no end is known. */
+function closedEnd(last, clockNow) {
+  const days = last ? Math.round((dayFrom(last).date - dayFrom(clockNow.ymd).date) / 864e5) : null;
+  const when = !last ? 'for now' : days <= 0 ? 'through today' : days === 1 ? 'through tomorrow' : days < 7 ? 'through ' + dayName(last, true) : 'through ' + fmtDay(last);
+  return `<div class="end closedend"><span class="t t-22">Closed</span><span class="rel">${when}</span></div>`;
+}
 export function stopRow(si, next0, clockNow, opts = {}) {
   const s = stop(si);
   const next = next0 ? lively(next0) : next0;
   // bare: no time at all; later: its place kept, the next bus put in after the list is on screen (fillLater)
-  const end = opts.bare ? '' : opts.later ? `<div class="end" data-later="${si}"></div>` : stopEnd(next, clockNow, opts);
+  // Closed for every route of it by the agency's notices: that, in the time's place, not the first bus after it (a
+  // Monday 5:49 AM on a Wednesday evening read as a mistake).
+  const shut = opts.bare ? null : closedThrough(si, clockNow.ymd);
+  const end = opts.bare ? '' : shut !== null ? closedEnd(shut, clockNow) : opts.later ? `<div class="end" data-later="${si}"></div>` : stopEnd(next, clockNow, opts);
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : skipsAt(s.id).length ? `<span class="qnote">${esc(skipsAt(s.id).map(u => u.who).join(', '))} skipped last ${Math.max(...skipsAt(s.id).map(u => u.n))}<span class="qmark">?</span></span>` : '';
