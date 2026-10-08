@@ -21,7 +21,8 @@ QUERY = f"""[out:json][timeout:120];
   nwr["name"]["amenity"]({BOX}); nwr["name"]["shop"]({BOX}); nwr["name"]["leisure"]({BOX});
   nwr["name"]["office"]({BOX}); nwr["name"]["tourism"]({BOX}); nwr["name"]["healthcare"]({BOX});
   nwr["name"]["building"~"school|university|college|hospital|civic|public|stadium|government|retail|commercial"]({BOX});
-  nwr["name"]["man_made"="works"]({BOX}); nwr["name"]["landuse"~"industrial|commercial|retail"]({BOX});
+  nwr["name"]["man_made"="works"]({BOX}); nwr["name"]["landuse"~"industrial|commercial|retail|residential"]({BOX});
+  nwr["name"]["building"~"^(apartments|dormitory)$"]({BOX});
   nwr["name"]["place"~"^(neighbourhood|suburb|quarter)$"]({BOX});
   way["highway"]["loc_name"]({BOX}); way["highway"]["nickname"]({BOX});
 );
@@ -56,6 +57,7 @@ WORDS = {
     'civic': 'Public building', 'public': 'Public building', 'retail': 'Shop', 'commercial': 'Business',
     'stadium': 'Stadium', 'yes': '', 'doityourself': 'Hardware', 'hardware': 'Hardware', 'car': 'Car dealer',
     'works': 'Plant', 'industrial': 'Industrial area',
+    'apartments': 'Apartments', 'dormitory': 'Dorm', 'residential': 'Neighborhood',
 }
 
 def dist(a, b, c, d):
@@ -99,10 +101,14 @@ for e in els:
     # An office known only as one ('office=yes') is no use to search for, but one mapped indoors, on its floor, was put
     # there for someone looking for it: the Admissions and Financial Aid offices in the Taggart Student Center.
     if kind in SKIP.get(key, ()) and not (key == 'office' and 'level' in t): continue
+    if kind in ('apartments', 'dormitory') and len(name) < 3: continue   # a complex's building by its letter ('B'): the complex is the place
     near = min(stops, key=lambda s: dist(lat, lon, s['lat'], s['lon']))
     if dist(lat, lon, near['lat'], near['lon']) > WALK: continue
     word = WORDS.get(kind, kind.replace('_', ' ').capitalize()) or ('Office' if key == 'office' else '')
     if kind == 'university' and campus: word = campus
+    # Where people live, by name: an apartment complex ('Pine View Apartments', mapped as its grounds), a dorm, a
+    # subdivision. Someone's way home, or to a friend's.
+    if key == 'landuse' and kind == 'residential' and t.get('residential') in ('apartments', 'student_housing'): word = 'Apartments'
     also = ' '.join(dict.fromkeys(w for k in ALSO for w in [(t.get(k) or '').strip()] if w and w.lower() != name.lower()))
     found.append({'name': name, 'lat': round(lat, 5), 'lon': round(lon, 5), 'word': word, 'rank': rank[key], 'town': near['town'], 'stop': near['name'], 'also': also, 'loc': (t.get('loc_name') or '').strip()})
 

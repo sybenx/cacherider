@@ -206,7 +206,7 @@ export function searchPlaces(q, limit = 8, within = null) {
   }
   return { list: all.slice(0, limit), more: Math.max(0, all.length - limit) };
 }
-const SAME_AS = { chapel: ['church'], ward: ['church'], meetinghouse: ['church'], stake: ['church'], bookstore: ['books'], bookshop: ['books'], food: ['restaurant', 'cafe', 'bakery'] };   // 'food': somewhere to eat, as a rider means it
+const SAME_AS = { chapel: ['church'], ward: ['church'], meetinghouse: ['church'], stake: ['church'], bookstore: ['books'], bookshop: ['books'], food: ['restaurant', 'cafe', 'bakery'], apts: ['apartments'], apt: ['apartments'], dorms: ['dorm'], dormitory: ['dorm'], housing: ['apartments', 'dorm'] };   // 'food': somewhere to eat, as a rider means it
 /** The live relay, which serves the agency's notices minutes after they're posted; data/alerts.json (fetched by
  *  GitHub every so often) stands in when it can't be reached. The first page is drawn from the file alone, kept on
  *  the phone, and never waits on the relay: `relay: false`. */
