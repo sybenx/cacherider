@@ -570,6 +570,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 #map:not(.u-lines) .bus.shuttle .bus-marker svg { width: 26px; height: 26px; overflow: visible; filter: drop-shadow(0 0 1px var(--color-bg)); }
 /* a black loop by night (map.js uedge): its A's strokes far off haloed in near-white, not the paper's dark */
 #map.bus-small .bus.shuttle.edged .bus-marker svg, #map:not(.u-lines) .bus.shuttle.edged .bus-marker svg { filter: drop-shadow(0 0 1px #e8eaed) drop-shadow(0 0 1px #e8eaed); }
+#map.bus-small .bus.shuttle.edged .bus-marker path.as, #map:not(.u-lines) .bus.shuttle.edged .bus-marker path.as { fill: #e8eaed; }   /* and inside it: an A outlined, its middle the outline's white, not the dark paper */
 #map .bus.shuttle.lit .bus-marker path.af, #map .bus.shuttle.on .bus-marker path.af { display: inline; }
 #map .bus.shuttle.lit .bus-marker path.as, #map .bus.shuttle.on .bus-marker path.as { display: none; }
 #map:not(.u-lines) .bus.shuttle.lit .bus-marker, #map:not(.u-lines) .bus.shuttle.on .bus-marker { transform: none; border-color: #fff; background: var(--bus-color); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); }
