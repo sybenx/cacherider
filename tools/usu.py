@@ -7,7 +7,7 @@ the phone; only what changes rarely is kept here.
 
 The endpoint is the one the Passio GO app uses, undocumented and unofficial.
 """
-import json, os, re, sys, urllib.request, urllib.parse
+import json, math, os, re, sys, urllib.request, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 SYSTEM = '3499'   # Utah State University
@@ -40,6 +40,52 @@ for r in routes_raw:
     ridx[rid] = len(routes)
     routes.append({'id': rid, 'name': r['name'].strip(), 'short': short(r['name']), 'color': r['color'], 'text': text_on(r['color']),
                    'outdated': r.get('outdated') == '1', 'stops': [], 'shape': []})
+
+# Each loop's colour apart from Connect's routes on the one map: the feed's are a chart palette (matplotlib's ten), and
+# South Campus's orange was Route 1's, Innovation's red Routes 12's and 2's, Housing's purple Route 6's. A loop too
+# near any route (or a loop before it) is moved the least it takes, in its own family of colour: the same hue, give or
+# take a little, lighter or darker, stronger or softer, till it's APART from all (CIELAB distance; under about 20 two
+# lines can't be told apart). The feed's own kept beside it.
+APART = 28
+def _lab(h):
+    h = h.lstrip('#'); c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    r, g, b = [((x + 0.055) / 1.055) ** 2.4 if x > 0.04045 else x / 12.92 for x in c]
+    X, Y, Z = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047, r * 0.2126 + g * 0.7152 + b * 0.0722, (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883
+    f = lambda v: v ** (1 / 3) if v > 0.008856 else 7.787 * v + 16 / 116
+    return (116 * f(Y) - 16, 500 * (f(X) - f(Y)), 200 * (f(Y) - f(Z)))
+def _hex(L, a, b):
+    fy = (L + 16) / 116; fx, fz = fy + a / 500, fy - b / 200
+    inv = lambda v: v ** 3 if v ** 3 > 0.008856 else (v - 16 / 116) / 7.787
+    X, Y, Z = inv(fx) * 0.95047, inv(fy), inv(fz) * 1.08883
+    rgb = [X * 3.2406 - Y * 1.5372 - Z * 0.4986, -X * 0.9689 + Y * 1.8758 + Z * 0.0415, X * 0.0557 - Y * 0.2040 + Z * 1.0570]
+    if any(v < -0.001 or v > 1.001 for v in rgb): return None   # outside what a screen shows
+    g = lambda v: 1.055 * max(0, v) ** (1 / 2.4) - 0.055 if v > 0.0031308 else 12.92 * max(0, v)
+    return '#' + ''.join('%02x' % round(min(1, max(0, g(v))) * 255) for v in rgb)
+def _apart(own, others):
+    L0, a0, b0 = _lab(own)
+    near = lambda c: min((math.dist(_lab(c), _lab(o)) for o in others), default=99)
+    if near(own) >= APART: return own
+    C0, H0 = math.hypot(a0, b0), math.atan2(b0, a0)
+    best = None
+    for dL in range(-40, 41, 2):
+        for dC in range(-40, 31, 4):
+            for dH in (0, -0.1, 0.1, -0.2, 0.2, -0.3, 0.3):
+                L, C, H = L0 + dL, max(0, C0 + dC), H0 + dH
+                if not 15 <= L <= 85: continue
+                c = _hex(L, C * math.cos(H), C * math.sin(H))
+                if not c or near(c) < APART: continue
+                cost = math.dist((L0, a0, b0), _lab(c))   # the least change that does it
+                if not best or cost < best[0]: best = (cost, c)
+    return best[1] if best else own
+try:
+    connect = ['#' + r['color'] for r in json.load(open(os.path.join(ROOT, 'data', 'cvtd.json')))['routes']]
+except Exception:
+    connect = []
+placed = []
+for r in routes:
+    c = _apart(r['color'], connect + placed)
+    if c != r['color']: r['feedColor'] = r['color']; r['color'] = c; r['text'] = text_on(c)
+    placed.append(r['color'])
 
 stops, sidx = [], {}
 for key, s in stops_raw['stops'].items():
