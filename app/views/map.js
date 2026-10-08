@@ -129,6 +129,9 @@ function style(sat = true) {
       // colour edged in the paper's. A lit route's sit a little to the right of the way they point, so two loops on one
       // street, or a route's out and back, show both ways side by side; a way on's ride its own strand. Never over a
       // stop's name or a time: placed after them, they give way, and they push nothing else aside.
+      // Every line's way, far in, with nothing picked: which way the buses go along the street the rider's on (a picked
+      // route's arrows, route-arrows, from 14).
+      { id: 'route-arrows-all', type: 'symbol', source: 'lines', minzoom: 16.5, layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['slice', ['get', col], 1], '-' + flavor[0]], 'icon-offset': [0, 3.5] } },
       { id: 'route-arrows', type: 'symbol', source: 'lines', minzoom: 14, filter: ['in', ['get', 'route'], ['literal', []]], layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['slice', ['get', col], 1], '-' + flavor[0]], 'icon-offset': [0, 3.5] } },
       { id: 'runs-arrows', type: 'symbol', source: 'runs', minzoom: 14, filter: ['to-boolean', ['get', 'arrow']], layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['get', 'hex'], '-' + flavor[0]], 'icon-offset': ['interpolate', ['linear'], ['zoom'], 14, ['array', 'number', 2, ['get', 'o14']], 17, ['array', 'number', 2, ['get', 'o17']]] }, paint: { 'icon-opacity': ['get', 'op'] } },
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
@@ -1522,7 +1525,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5;
-const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'route-arrows-all', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -1873,6 +1876,7 @@ function litLines(m, lines, loops, soft = false) {
   m.setFilter('route-arrows', ['in', ['get', 'route'], ['literal', soft ? [] : lines]]);   // a way on's strands carry the arrows then
   m.setFilter('usu-line-on', ['in', ['get', 'id'], ['literal', loops]]);
   const any = lines.length > 0 || loops.length > 0 || soft, dk = dark();
+  if (m.getLayer('route-arrows-all') && !hubOn && !MT.R) m.setLayoutProperty('route-arrows-all', 'visibility', any ? 'none' : 'visible');   // something picked: its own arrows
   m.setPaintProperty('route-on', 'line-color', ['get', soft ? (dk ? 'dsoft' : 'soft') : dk ? 'dcolor' : 'color']);
   // Nothing picked: the stretches the day's last bus has been by (passedRuns) drawn faded at the town's zoom, what's
   // still to be run tonight standing out; in at the streets, every line as ever.
@@ -2991,7 +2995,7 @@ function runBounds(R, o) {
 }
 // A run is drawn on the map through this: it keeps what's drawn, so a redraw of the same run changes nothing.
 const MT = { m: null, R: null, key: null, labels: null, ready: () => ready, pad: 60 };
-const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-stops'];
+const RUN_HIDE = ['stops-tp', 'stops-lit', 'place-labels', 'usu-lines', 'usu-line-on', 'usu-selected', 'usu-stops', 'usu-labels', 'stop-labels', 'route-on', 'route-arrows', 'route-arrows-all', ...RUN_STRANDS, 'runs-approx', 'runs-arrows', 'pool-stops'];
 /** The run's line, its lit stop and its times, added to a map once (and again after a restyle, which drops them). */
 function addRunLayers(m) {
   if (m.getSource('run')) return;
