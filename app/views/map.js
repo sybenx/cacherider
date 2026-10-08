@@ -13,7 +13,7 @@ import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
 import { openShare, siteLink } from '../share.js';
-import { lightInks } from '../ink.js';
+import { lightInks, apartInks } from '../ink.js';
 import { placeStar, openSave } from '../places.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
@@ -54,6 +54,14 @@ let lightOf = null;
 function sinkLine(hex) {
   lightOf ??= lightInks(D.routes.map(r => ({ color: r.color })));
   return lightOf.get(hex.slice(1).toUpperCase()) || hex;
+}
+/** A shuttle loop's colour as the map draws it, its lines, stop squares and buses alike: apart from Connect's lines as
+ *  drawn in this mode (ink.js apartInks), the dark map's worked out in its own colours. */
+let uInk = null;
+function uink(ri) {
+  const k = (dark() ? 'd' : 'l') + U.routes.length;
+  if (!uInk || uInk.k !== k) { const ds = dark(); uInk = { k, v: apartInks(U.routes.map(r => ds ? lift(r.color) : r.color), D.routes.map(r => lineInk('#' + r.color)), ds) }; }
+  return uInk.v[ri];
 }
 /** A route's colour as the map draws it: lifted on the dark map, sunk on the light. Badges keep the feed's own. */
 const lineInk = hex => dark() ? lift(hex) : sinkLine(hex);
@@ -408,7 +416,7 @@ function poolGeo() {
 }
 function usuStopsGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
-  return { type: 'FeatureCollection', features: U.stops.filter((s, i) => s.routes.length && !U.shared[i]).map(s => ({ type: 'Feature', properties: { id: s.id, name: s.name, icon: 'usq-' + U.routes[s.routes[0]].color.slice(1) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  return { type: 'FeatureCollection', features: U.stops.filter((s, i) => s.routes.length && !U.shared[i]).map(s => ({ type: 'Feature', properties: { id: s.id, name: s.name, icon: 'usq-' + uink(s.routes[0]).slice(1) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 function usuLinesGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
@@ -416,7 +424,7 @@ function usuLinesGeo() {
   // stop-to-stop line as a stand-in.
   return { type: 'FeatureCollection', features: U.routes.filter(r => r.shape.length || r.stops.length >= 3).map(r => {
     const coords = r.shape.length ? r.shape : [...r.stops, r.stops[0]].map(si => [U.stops[si].lon, U.stops[si].lat]);
-    return { type: 'Feature', properties: { id: r.id, color: r.color, approx: !r.shape.length }, geometry: { type: 'LineString', coordinates: coords } };
+    return { type: 'Feature', properties: { id: r.id, color: uink(U.routes.indexOf(r)), approx: !r.shape.length }, geometry: { type: 'LineString', coordinates: coords } };
   }) };
 }
 /** A small square, white-edged, in a route's colour, for the shuttle stops. */
@@ -484,7 +492,7 @@ function addUsuImages() {
   for (const [id, hex] of [['poolp-on', '#007AB8'], ['poolp-off', '#8a8d91']]) if (!map.hasImage(id)) { map.addImage(id, poolImage(hex, dark(), id === 'poolp-off'), { pixelRatio: 2 }); made = true; }
   if (made && map.getSource('pool')) map.getSource('pool').setData(poolGeo());
   if (!U) return;
-  for (const r of U.routes) { const name = 'usq-' + r.color.slice(1); if (!map.hasImage(name)) map.addImage(name, squareImage(r.color)); }
+  U.routes.forEach((r, ri) => { const c = uink(ri), name = 'usq-' + c.slice(1); if (!map.hasImage(name)) map.addImage(name, squareImage(c)); });
 }
 
 let shapesFC = null, XINGS = {};   // the route lines, fetched once for both maps; intersections along each, by shape id
@@ -2306,7 +2314,7 @@ export function liveUpdate(app) {
     m.el.classList.toggle('on', selectedBus === b.id || ringed === b.id);
     paintBus(m);
   };
-  if (U) for (const b of live.buses) place(b, 'u', dark() ? lift(U.routes[b.ri].color) : U.routes[b.ri].color, U.routes[b.ri].name + ' · bus ' + b.name);
+  if (U) for (const b of live.buses) place(b, 'u', uink(b.ri), U.routes[b.ri].name + ' · bus ' + b.name);
   if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label);
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
@@ -3205,7 +3213,7 @@ async function mainJourney(J, app) {
     return;
   }
   const p = J.plans[J.i], rides = p.legs.filter(l => l.kind === 'ride');
-  const colOf = l => l.u ? U.routes[l.r].color : lineInk('#' + D.routes[l.r].color);
+  const colOf = l => l.u ? uink(l.r) : lineInk('#' + D.routes[l.r].color);
   const tint = {}, ustops = new Set();
   for (const l of rides) for (const x of l.stops) {
     if (typeof x !== 'string') { tint[D.stops[x].id] ??= colOf(l); continue; }
@@ -3674,8 +3682,8 @@ async function drawRuns() {
     }
     if (path.length > 1) feats.push(...strand(path, D.routes[w.ri].color, lane(idx)), ...arrowLines(path, D.routes[w.ri].color, lane(idx)));
   }
-  for (const [k, w] of loops.entries()) { const hx = U.routes[w.ri].color.slice(1), ln = lane(wants.length + k);
-    feats.push(...(U.routes[w.ri].shape.length ? strand(w.path, hx, ln) : fadePieces(w.path, hx, { wf, lane: ln, approx: true })), ...arrowLines(w.path, U.routes[w.ri].color.slice(1), lane(wants.length + k))); }
+  for (const [k, w] of loops.entries()) { const hx = uink(w.ri).slice(1), ln = lane(wants.length + k);
+    feats.push(...(U.routes[w.ri].shape.length ? strand(w.path, hx, ln) : fadePieces(w.path, hx, { wf, lane: ln, approx: true })), ...arrowLines(w.path, uink(w.ri).slice(1), lane(wants.length + k))); }
   feats.sort((x, y) => (x.properties.a ?? 0) - (y.properties.a ?? 0));   // the brightest pieces drawn last, on top, where ways share a road
   runsKey = key;
   map.getSource('runs').setData({ type: 'FeatureCollection', features: feats });
