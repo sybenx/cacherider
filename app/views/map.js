@@ -1430,10 +1430,11 @@ function northControl() {
       // On the Center, always there: the bays turned between south up (as its benches face, the way it opens) and north
       // up, and the turn kept for next time; a desktop has no turn of the fingers to find. Elsewhere, north again.
       const atHub = () => /^#\/hub/.test(location.hash);
-      // At the Center: north up, and from north up back to south (as its benches face); any other turn is the fingers'.
+      // At the Center: north up and south up (as its benches face), one to the other; east or west is the fingers' alone.
+      // It went a quarter turn a press, round by east and west, three presses from south to north.
       b.onclick = () => {
         if (!atHub()) { m.resetNorth({ duration: 400 }); return; }
-        const q = (Math.round((((m.getBearing() % 360) + 360) % 360) / 90) * 90 + 90) % 360;   // the next cardinal turn round
+        const a = ((m.getBearing() % 360) + 360) % 360, q = Math.abs(a - 180) < 90 ? 0 : 180;   // facing south-ish: north; else south
         pref('hub-bearing', String(q > 180 ? q - 360 : q));
         frame(hubBounds(), { ...hubFit(), duration: 500 });
       };

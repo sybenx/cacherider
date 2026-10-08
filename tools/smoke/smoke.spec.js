@@ -258,6 +258,19 @@ test('the Center: a departure still listed past its minute, its bus on its trip 
   if (r !== null) expect(r).toEqual(['gone', 'leaving', 'gone']);
 });
 
+test('the Center\'s compass: north up and south up, one to the other', async ({ page }) => {
+  await open(page, '#/hub');
+  await mapReady(page);
+  const btn = page.locator('.northbtn').filter({ visible: true }).first();
+  await expect(btn).toBeVisible();
+  const said = [];
+  for (let i = 0; i < 3; i++) { await btn.click(); await page.waitForTimeout(900); said.push(await btn.getAttribute('aria-label')); }
+  // from whichever it opened on, it goes to the other and back: never east or west
+  expect(said.every(x => /^(North up|South up)/.test(x))).toBe(true);
+  expect(said[0]).not.toBe(said[1]);
+  expect(said[0]).toBe(said[2]);
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
