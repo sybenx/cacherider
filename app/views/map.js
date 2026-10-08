@@ -48,6 +48,17 @@ function mix(hex, paper, k) {
   const c = i => Math.round(parseInt(hex.slice(i, i + 2), 16) * k + parseInt(paper.slice(i, i + 2), 16) * (1 - k));
   return '#' + [1, 3, 5].map(i => c(i).toString(16).padStart(2, '0')).join('');
 }
+/** The map's paper, what a colour fades back into. */
+const paperOf = (dk = dark()) => dk ? '#101214' : '#f2f2f3';
+/** A colour faded back: what's done for the day, and the rest when a route or bus is picked. Every route line, stop,
+ *  shuttle loop and POOL pickup alike. */
+const faded = (hex, dk = dark()) => mix(hex, paperOf(dk), 0.3);
+/** Done for the day (doneToday), drawn: at the town's zoom in its faded colour, in at the streets its own, blended
+ *  between; `own` and `gone` expressions, the feature's `done` saying which. A marker drawn from an image can't blend,
+ *  so it turns at the middle of that (townIcon), its faded image made beside its own. */
+const DONE = ['==', ['get', 'done'], true];
+const townFade = (own, gone) => ['interpolate', ['linear'], ['zoom'], 13, ['case', DONE, gone, own], 15, own];
+const townIcon = (far, near) => ['step', ['zoom'], far, 14, near];
 let darkOf = null;   // a Connect route's colour → its dark map shade, drawn apart where two are alike (data.js)
 /** A route's line on the light map: pale ones sunk to show, and a pair that came out alike parted (ink.js). */
 let lightOf = null;
@@ -121,7 +132,7 @@ function style(sat = true) {
       // pickup is never read as a bus stop (round, and the Blue Loop's and Route 2's blue too). Grey when it's closed. One
       // at a Connect stop stands off its dot, up and right, the stop still seen and tapped. Its area isn't drawn: a wash
       // of the walk round the pickups read as a cloud the stops were in, not as which were POOL's.
-      { id: 'pool-stops', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 11.5, layout: { 'icon-image': ['case', ['get', 'closed'], 'poolp-off', 'poolp-on'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 11.5, 0.6, 15, 0.85, 17, 1], 'icon-offset': ['case', ['>=', ['get', 'stop'], 0], ['literal', [11, -11]], ['literal', [0, 0]]], 'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: {} },
+      { id: 'pool-stops', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 11.5, layout: { 'icon-image': townIcon(['case', ['get', 'closed'], 'poolp-off', DONE, 'poolp-done', 'poolp-on'], ['case', ['get', 'closed'], 'poolp-off', 'poolp-on']), 'icon-size': ['interpolate', ['linear'], ['zoom'], 11.5, 0.6, 15, 0.85, 17, 1], 'icon-offset': ['case', ['>=', ['get', 'stop'], 0], ['literal', [11, -11]], ['literal', [0, 0]]], 'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: {} },
       { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
       // A route under the pointer on a desktop (on the map, or its badge in the panel): drawn up, over the rest.
@@ -149,11 +160,11 @@ function style(sat = true) {
       { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
       { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': ['coalesce', ['get', 'sure'], 0.9] } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
-      { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['interpolate', ['linear'], ['zoom'], 13, ['case', ['==', ['get', 'done'], true], ['get', 'gone'], ['get', 'color']], 15, ['get', 'color']], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 1, 1.8], 15, ['case', ['get', 'approx'], 1.8, 3.5], 17, ['case', ['get', 'approx'], 2.5, 6]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.95], 'line-dasharray': [3, 1.5] } },
+      { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': townFade(['get', 'color'], ['get', 'gone']), 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 1, 1.8], 15, ['case', ['get', 'approx'], 1.8, 3.5], 17, ['case', ['get', 'approx'], 2.5, 6]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.95], 'line-dasharray': [3, 1.5] } },
       { id: 'usu-line-on', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5.5, 17, 9], 'line-opacity': 1 } },
       { id: 'usu-hover', type: 'line', source: 'ulines', filter: ['in', ['get', 'id'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 6.5, 17, 10], 'line-opacity': 1 } },
       { id: 'usu-selected', type: 'circle', source: 'ustops', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 12, 'circle-opacity': 0, 'circle-stroke-color': flavor === 'dark' ? '#94bce3' : '#5980a6', 'circle-stroke-width': 3 } },
-      { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': ['step', ['zoom'], ['get', 'far'], 15, ['get', 'icon']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
+      { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': townIcon(['get', 'far'], ['get', 'icon']), 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
       // Stops from the streets in (z14); further out only the lit route's, in the layer after, so a stop is there because it was asked for.
       { id: 'stops', type: 'circle', source: 'stops', minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
@@ -196,20 +207,20 @@ function closedOrMaybe(s, i, ymd) {
 }
 function stopsGeo() {
   const ymd = now().ymd;
-  passedRuns();
-  return { type: 'FeatureCollection', features: D.stops.map((s, i) => { const c = sinkLine('#' + route(s.routes[0]).color), dc = lift('#' + route(s.routes[0]).color); return { type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: c, dcolor: dc, gone: mix(c, '#f2f2f3', 0.3), dgone: mix(dc, '#101214', 0.3), done: passedStops.has(i), ...closedOrMaybe(s, i, ymd) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } }; }) };
+  const done = doneToday().stops;
+  return { type: 'FeatureCollection', features: D.stops.map((s, i) => { const c = sinkLine('#' + route(s.routes[0]).color), dc = lift('#' + route(s.routes[0]).color); return { type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: c, dcolor: dc, gone: faded(c, false), dgone: faded(dc, true), done: done.has(i), ...closedOrMaybe(s, i, ymd) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } }; }) };
 }
 /** A stop's fill and edge: a closed one (or an unannounced detour's) a ring; its route's colour when a route's in
  *  view; else its first route's, faded at the town's zoom once its last bus has been, as the lines are. */
 function stopInks(dk, ri) {
-  const own = ['get', dk ? 'dcolor' : 'color'], paperC = dk ? '#101214' : '#f2f2f3', edge = dk ? '#101214' : '#ffffff';
+  const own = ['get', dk ? 'dcolor' : 'color'], paperC = paperOf(dk), edge = dk ? '#101214' : '#ffffff';
   const ring = ['any', ['get', 'closed'], ['get', 'maybe']];
   if (ri !== undefined) {
     const fill = ['case', ['in', ri, ['get', 'routes']], lineInk('#' + D.routes[ri].color), own];
     return { fill: ['case', ring, paperC, fill], stroke: ['case', ring, fill, edge], sel: fill };
   }
-  const faded = ['case', ['==', ['get', 'done'], true], ['get', dk ? 'dgone' : 'gone'], own];
-  return { fill: ['interpolate', ['linear'], ['zoom'], 13, ['case', ring, paperC, faded], 15, ['case', ring, paperC, own]], stroke: ['interpolate', ['linear'], ['zoom'], 13, ['case', ring, faded, edge], 15, ['case', ring, own, edge]], sel: own };
+  const gone = ['get', dk ? 'dgone' : 'gone'];
+  return { fill: townFade(['case', ring, paperC, own], ['case', ring, paperC, gone]), stroke: townFade(['case', ring, own, edge], ['case', ring, gone, edge]), sel: own };
 }
 
 /** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes:
@@ -368,13 +379,13 @@ function trimWalk(f, best, from, to, closed) {
   let end = [...xs].reverse().find(w => w > lastClosed + 5); end = end === undefined ? toAt : end;
   return { coords: slice(walk, start, end), shape: f.properties.shape, s0: (f._cum[a] + start) % total, s1: (f._cum[a] + end) % total, walk, start, end, base: f._cum[a], total };
 }
-/** The passed stretches (passedRuns) cut from their route's shapes as the detours' are: the lines left open there,
+/** The passed stretches (doneToday) cut from their route's shapes as the detours' are: the lines left open there,
  *  and each stretch drawn as its own feature, done (faded at the town's zoom). The stretch a last bus is on, cut up
  *  to the bus. */
 const stretchCuts = new Map();   // 'route:from:to' → its cuts
 function passedSegments(fc) {
   const done = [], gaps = {};
-  for (const [ri, a, b, at, f] of passedRuns()) {
+  for (const [ri, a, b, at, f] of doneToday().stretches) {
     const k = ri + ':' + a + ':' + b;
     if (!stretchCuts.has(k)) {   // a stretch's shape never changes: cut once
       const shapes = fc.features.filter(f => f.properties.route === ri);
@@ -450,13 +461,13 @@ function poolGeo() {
     // deepest and the edge fades out where most riders stop walking. Remix's outline, a planning line, without them.
     ...(POOL.tiers ? POOL.tiers.map((t, i) => ({ type: 'Feature', properties: { kind: 'zone', outer: i === POOL.tiers.length - 1 }, geometry: { type: 'MultiPolygon', coordinates: t.area } }))
       : [{ type: 'Feature', properties: { kind: 'zone', outer: true }, geometry: POOL.area ? { type: 'MultiPolygon', coordinates: POOL.area } : { type: 'Polygon', coordinates: [POOL.zone] } }]),
-    ...POOL.stops.map(s => ({ type: 'Feature', properties: { kind: 'stop', id: s.id, name: s.name, stop: s.stop === null || s.stop === undefined ? -1 : s.stop, closed: !!s.gone || poolClosed(s) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
+    ...POOL.stops.map(s => ({ type: 'Feature', properties: { kind: 'stop', id: s.id, name: s.name, stop: s.stop === null || s.stop === undefined ? -1 : s.stop, closed: !!s.gone || poolClosed(s), done: doneToday().pool }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
   ] };
 }
 function usuStopsGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
-  passedRuns();
-  return { type: 'FeatureCollection', features: U.stops.filter((s, i) => s.routes.length && !U.shared[i]).map(s => ({ type: 'Feature', properties: { id: s.id, name: s.name, icon: 'usq-' + uink(s.routes[0]).slice(1), far: s.routes.every(ri => loopsDone.has(ri)) ? 'usqf-' + ugone(s.routes[0]).slice(1) : 'usq-' + uink(s.routes[0]).slice(1) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  const done = doneToday().loops;
+  return { type: 'FeatureCollection', features: U.stops.filter((s, i) => s.routes.length && !U.shared[i]).map(s => ({ type: 'Feature', properties: { id: s.id, name: s.name, icon: 'usq-' + uink(s.routes[0]).slice(1), far: s.routes.every(ri => done.has(ri)) ? 'usqf-' + faded(uink(s.routes[0])).slice(1) : 'usq-' + uink(s.routes[0]).slice(1) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 function usuLinesGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
@@ -465,11 +476,11 @@ function usuLinesGeo() {
   return { type: 'FeatureCollection', features: U.routes.filter(r => r.shape.length || r.stops.length >= 3).map(r => {
     const coords = r.shape.length ? r.shape : [...r.stops, r.stops[0]].map(si => [U.stops[si].lon, U.stops[si].lat]);
     const ri = U.routes.indexOf(r), c = uink(ri);
-    return { type: 'Feature', properties: { id: r.id, color: c, gone: ugone(ri), done: loopsDone.has(ri), approx: !r.shape.length }, geometry: { type: 'LineString', coordinates: coords } };
+    return { type: 'Feature', properties: { id: r.id, color: c, gone: faded(c), done: doneToday().loops.has(ri), approx: !r.shape.length }, geometry: { type: 'LineString', coordinates: coords } };
   }) };
 }
 /** A loop's square, its day done: its edge faded with it, not a bright frame round a dark square (a closed stop's look). */
-const fadedSquare = hex => squareImage(hex, mix('#ffffff', dark() ? '#101214' : '#f2f2f3', 0.4));
+const fadedSquare = hex => squareImage(hex, mix('#ffffff', paperOf(), 0.4));
 /** A small square, white-edged, in a route's colour, for the shuttle stops. */
 function squareImage(hex, edgeHex = '#ffffff') {
   const n = 20, d = new Uint8ClampedArray(n * n * 4);
@@ -483,14 +494,16 @@ function squareImage(hex, edgeHex = '#ffffff') {
 }
 /** POOL's pickup badge: a rounded square in its colour, edged white, a white van (the ride that comes); drawn at twice
  *  the size for a sharp screen. It was a P, and a white P on a blue square is a parking sign. */
-function poolImage(hex, darkPaper = dark(), hollow = false) {
+/** Its three: running, closed (hollow, grey), and done for the day (faded, as a stop is). */
+const poolBadge = id => poolImage(id === 'poolp-off' ? '#8a8d91' : '#007AB8', dark(), id === 'poolp-off', id === 'poolp-done');
+function poolImage(hex, darkPaper = dark(), hollow = false, done = false) {
   const n = 36, c = document.createElement('canvas'); c.width = c.height = n;
   const g = c.getContext('2d');
   // Edged as a stop is: white on the light map, the paper's dark on the dark one (a white frame there was the
   // brightest thing on the map, louder than any stop), and its blue lifted there as a route's colour is. A closed
   // pickup is hollow, as a closed stop is: the paper inside a grey edge, the van in grey.
-  const paper = darkPaper ? '#101214' : '#f2f2f3', fill = darkPaper ? lift(hex) : hex;
-  const ink = hollow ? fill : '#fff', ground = hollow ? paper : fill;
+  const paper = paperOf(darkPaper), lit = darkPaper ? lift(hex) : hex, fill = done ? faded(lit, darkPaper) : lit;
+  const ink = hollow ? fill : done ? mix('#ffffff', paper, 0.45) : '#fff', ground = hollow ? paper : fill;   // done: its van faded with it
   g.fillStyle = darkPaper ? '#101214' : '#fff'; g.beginPath(); g.roundRect(0, 0, n, n, 9); g.fill();
   g.fillStyle = fill; g.beginPath(); g.roundRect(3, 3, n - 6, n - 6, 7); g.fill();
   if (hollow) { g.fillStyle = paper; g.beginPath(); g.roundRect(5, 5, n - 10, n - 10, 5.5); g.fill(); }
@@ -533,26 +546,24 @@ function addUsuImages() {
   // layout of its pickups had none, and kept that, 6 of 27 drawn over the town until a zoom laid them out again.
   // Its data is in the style from the start, so laid out once before this: laid out again with them.
   let made = false;
-  for (const [id, hex] of [['poolp-on', '#007AB8'], ['poolp-off', '#8a8d91']]) if (!map.hasImage(id)) { map.addImage(id, poolImage(hex, dark(), id === 'poolp-off'), { pixelRatio: 2 }); made = true; }
+  for (const id of ['poolp-on', 'poolp-off', 'poolp-done']) if (!map.hasImage(id)) { map.addImage(id, poolBadge(id), { pixelRatio: 2 }); made = true; }
   if (made && map.getSource('pool')) map.getSource('pool').setData(poolGeo());
   if (!U) return;
   // each loop's square, and its faded one (its day done): made before they're asked for, as POOL's are
   U.routes.forEach((r, ri) => {
-    const own = 'usq-' + uink(ri).slice(1), gone = 'usqf-' + ugone(ri).slice(1);
+    const own = 'usq-' + uink(ri).slice(1), gone = 'usqf-' + faded(uink(ri)).slice(1);
     if (!map.hasImage(own)) map.addImage(own, squareImage(uink(ri)));
-    if (!map.hasImage(gone)) map.addImage(gone, fadedSquare(ugone(ri)));
+    if (!map.hasImage(gone)) map.addImage(gone, fadedSquare(faded(uink(ri))));
   });
   if (map.getSource('ustops')) map.getSource('ustops').setData(usuStopsGeo());   // laid out again with them
 }
-/** A shuttle loop's colour faded back, its day done: as a Connect line's is. */
-const ugone = ri => mix(uink(ri), dark() ? '#101214' : '#f2f2f3', 0.3);
 
 let shapesFC = null, XINGS = {};   // the route lines, fetched once for both maps; intersections along each, by shape id
 function shapes() {
   if (!shapesFC) shapesFC = Promise.all([
     fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json()),
     fetch(BASE + 'data/crossings.json').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => { const raw = '#' + route(l.route).color, c = sinkLine(raw), dc = lift(raw); return { type: 'Feature', properties: { color: c, dcolor: dc, fade: mix(c, '#f2f2f3', 0.3), dfade: mix(dc, '#101214', 0.3), soft: mix(c, '#f2f2f3', 0.35), dsoft: mix(dc, '#101214', 0.35), gone: mix(c, '#f2f2f3', 0.3), dgone: mix(dc, '#101214', 0.3), route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }; }) }; })
+  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => { const raw = '#' + route(l.route).color, c = sinkLine(raw), dc = lift(raw); return { type: 'Feature', properties: { color: c, dcolor: dc, soft: mix(c, paperOf(false), 0.35), dsoft: mix(dc, paperOf(true), 0.35), gone: faded(c, false), dgone: faded(dc, true), route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }; }) }; })
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
@@ -588,7 +599,7 @@ function detourCard(u) {
 /** The ways round the buses have been seen to take (data.js's A.seen, announced or not), along the streets, dashed
  *  in the route's colour, fainter while only two buses have gone that way. */
 function trackedPaths() {
-  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), fade: mix(sinkLine('#' + D.routes[ri].color), '#f2f2f3', 0.3), dfade: mix(lift('#' + D.routes[ri].color), '#101214', 0.3), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
+  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), gone: faded(sinkLine('#' + D.routes[ri].color), false), dgone: faded(lift('#' + D.routes[ri].color), true), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
@@ -597,7 +608,8 @@ const drawn = { lines: null, closed: null, key: null };
  *  were fetched, so a refetch saying the same thing (every ten minutes, and the relay's just after launch) redraws
  *  nothing, and a detour whose day's buses are done is dropped when it is. */
 function closedKeyOf(clockNow) {
-  return clockNow.ymd + JSON.stringify(passedRuns(clockNow)) + [...passedStops].join() + '|' + [...loopsDone].join() + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
+  const d = doneToday(clockNow);
+  return clockNow.ymd + JSON.stringify(d.stretches) + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
 }
 async function loadShapes(m = map) {
   const fc = await shapes();
@@ -633,7 +645,7 @@ function squaresOnDemand(m) {
   m.on('styleimagemissing', e => {
     if (e.id.startsWith('usq-') && !m.hasImage(e.id)) m.addImage(e.id, squareImage('#' + e.id.slice(4)));
     if (e.id.startsWith('usqf-') && !m.hasImage(e.id)) m.addImage(e.id, fadedSquare('#' + e.id.slice(5)));
-    if ((e.id === 'poolp-on' || e.id === 'poolp-off') && !m.hasImage(e.id)) m.addImage(e.id, poolImage(e.id === 'poolp-on' ? '#007AB8' : '#8a8d91', dark(), e.id === 'poolp-off'), { pixelRatio: 2 });
+    if (/^poolp-(on|off|done)$/.test(e.id) && !m.hasImage(e.id)) m.addImage(e.id, poolBadge(e.id), { pixelRatio: 2 });
     const a = /^arw-([0-9a-f]{6})-([dl])$/i.exec(e.id);
     if (a && !m.hasImage(e.id)) m.addImage(e.id, arrowImage(a[1], a[2] === 'd'), { pixelRatio: 2 });
   });
@@ -1900,25 +1912,26 @@ function tintStops(m, ri) {
   m.setPaintProperty('stop-selected', 'circle-color', k.sel);
 }
 
-/** The stretches of each route the day's last bus has been by: for each way, each stop's last call today (the
- *  timetable's, the feed's where its bus is out), and a stretch between two stops passed once that last bus has left
- *  the far one. Per stop, not per route: a last run that turns back partway (16, 12) leaves the rest to the run
- *  before it, and each part fades when its own last bus has gone. Each passed stretch, as [route, from, to] stop
- *  indices; the one a last bus is on as [route, from, to, where the bus is (or null), the timetable's share of the
- *  way], faded up to the bus, not all at once when it gets to the next stop. None once the night's last bus is done
- *  (NIGHT_OVER after its last call), nor from midnight on: the lines are tomorrow's then. */
+/** What's done for the day, the one answer every fade on the map draws from (townFade, townIcon):
+ *  - `stretches`: Connect's, each route's way by way. Each stop's last call today (the timetable's, the feed's where
+ *    its bus is out), and a stretch between two stops passed once that last bus has left the far one. Per stop, not
+ *    per route: a last run that turns back partway (16, 12) leaves the rest to the run before it, and each part fades
+ *    when its own last bus has gone. As [route, from, to] stop indices; the one a last bus is on as [route, from, to,
+ *    where the bus is (or null), the timetable's share of the way], faded up to the bus as it drives.
+ *  - `stops`: those whose every bus today has been (a stop shut by notice with its routes; one a shuttle loop shares
+ *    while the loop runs).
+ *  - `loops`: the shuttle's past their listed hours (USU's page: no timetable, so a loop all at once).
+ *  - `pool`: POOL past its hours.
+ *  One reset for the lot: NIGHT_OVER after the last of them ends (the Evening Express's 10 PM on a weeknight), and
+ *  from midnight: the map is tomorrow's then. A kind not running today (the shuttle at the weekend) isn't faded. */
 const NIGHT_OVER = 10;   // minutes
-let passedAt = '', passed = [], lastDay = null, lastRows = [];
-/** And with them: the stops whose every bus today has been (their own last calls, a shuttle loop's at a shared
- *  pole too), faded as the lines are; and the shuttle's loops past their listed hours (USU's page: no timetable, so a
- *  loop all at once). The one reset for the lot: NIGHT_OVER after the last bus of either, the Evening Express's 10
- *  PM on a weeknight. */
-let passedStops = new Set(), loopsDone = new Set();
-export function passedRuns(c = now()) {
+const NONE = { stretches: [], stops: new Set(), loops: new Set(), pool: false };
+let dayAt = '', day = NONE, lastDay = null, lastRows = [];
+export function doneToday(c = now()) {
   const key = c.ymd + ':' + c.min + ':' + rt.at;   // once a minute and at each word from the feed: where the last buses are
-  if (key === passedAt) return passed;
-  passedAt = key; passed = [];
-  const stopsBy = new Set(), stopsDue = new Set(), ran = new Set(), running = new Set();   // routes: out today; still to run
+  if (key === dayAt) return day;
+  dayAt = key;
+  const stretches = [], stopsBy = new Set(), stopsDue = new Set(), ran = new Set(), running = new Set();   // routes: out today; still to run
   // The timetable's last calls worked out once a day; only the feed's word on them each minute.
   if (lastDay !== c.ymd) {
     lastDay = c.ymd;
@@ -1939,31 +1952,38 @@ export function passedRuns(c = now()) {
     for (let i = 1; i < seq.length; i++) {
       for (const k of i === 1 ? [0, 1] : [i]) if (last[k] !== null) { ran.add(ri); if (c.min > last[k]) stopsBy.add(seq[k]); else { stopsDue.add(seq[k]); running.add(ri); } }
       if (last[i] === null || last[i - 1] === null || seq[i] === seq[i - 1]) continue;
-      if (c.min > last[i]) { passed.push([ri, seq[i - 1], seq[i]]); continue; }
+      if (c.min > last[i]) { stretches.push([ri, seq[i - 1], seq[i]]); continue; }
       over = false;
       // left the near stop on its way to the far one, the same trip's last call at both
       if (c.min > last[i - 1] && rows[i].trip === rows[i - 1].trip) {
         const b = busOn(rows[i].trip), from = lv[i - 1].min, to = last[i];
         const f = to > from ? Math.max(0, Math.min(1, (c.min + c.sec / 60 - from - 1) / (to - from))) : 0;
-        passed.push([ri, seq[i - 1], seq[i], b ? { lat: +b.bus.lat.toFixed(5), lon: +b.bus.lon.toFixed(5) } : null, +f.toFixed(2)]);
+        stretches.push([ri, seq[i - 1], seq[i], b ? { lat: +b.bus.lat.toFixed(5), lon: +b.bus.lon.toFixed(5) } : null, +f.toFixed(2)]);
       }
     }
   }
-  const ends = shuttleEnds(c);
+  // The shuttle and POOL by their listed hours, each loop's end and POOL's in the night's too.
+  const ends = shuttleEnds(c), poolEnd = poolEndOn(c);
   if (ends) latest = Math.max(latest, ...ends);
-  loopsDone = new Set(ends ? ends.flatMap((e, ri) => c.min >= e ? [ri] : []) : []);
-  const loopOn = si => { const u = ends && U.sharedByCvtd[si]; return !!u && U.stops[u.i].routes.some(ri => !loopsDone.has(ri)); };
-  passedStops = new Set([...stopsBy].filter(si => !stopsDue.has(si) && !loopOn(si)));
+  if (poolEnd !== null) latest = Math.max(latest, poolEnd);
+  const loops = new Set(ends ? ends.flatMap((e, ri) => c.min >= e ? [ri] : []) : []);
+  const loopOn = si => { const u = ends && U.sharedByCvtd[si]; return !!u && U.stops[u.i].routes.some(ri => !loops.has(ri)); };
+  const stops = new Set([...stopsBy].filter(si => !stopsDue.has(si) && !loopOn(si)));
   // a stop with no call today (shut by a notice): with its routes, once every one of them out today is done
-  D.stops.forEach((s, si) => { if (!stopsBy.has(si) && !stopsDue.has(si) && s.routes.some(ri => ran.has(ri)) && !s.routes.some(ri => running.has(ri)) && !loopOn(si)) passedStops.add(si); });
-  if (over && latest >= 0 && c.min >= latest + NIGHT_OVER) { passed = []; passedStops = new Set(); loopsDone = new Set(); }
-  return passed;
+  D.stops.forEach((s, si) => { if (!stopsBy.has(si) && !stopsDue.has(si) && s.routes.some(ri => ran.has(ri)) && !s.routes.some(ri => running.has(ri)) && !loopOn(si)) stops.add(si); });
+  day = over && latest >= 0 && c.min >= latest + NIGHT_OVER ? NONE : { stretches, stops, loops, pool: poolEnd !== null && c.min >= poolEnd };
+  return day;
 }
 /** Each shuttle loop's end today by USU's listed hours; null on a day it doesn't run. */
 function shuttleEnds(c) {
   const svc = U && U.service;
   if (!svc || !svc.days[(dayFrom(c.ymd).dow + 6) % 7]) return null;
   return U.routes.map(r => Math.max(svc.end, (svc.late || {})[r.name] || 0));
+}
+/** POOL's end today by its hours (poolRunning's); null on a day it doesn't run. */
+function poolEndOn(c) {
+  const span = POOL && POOL.week && POOL.week[(dayFrom(c.ymd).dow + 6) % 7];
+  return span && servicesOn(c.ymd).size > 0 ? span[1] : null;
 }
 /** A picked route, or a bus's loop, drawn on top at full strength; every other line faded back. With a way on drawn
  *  from a bus or stop (`soft`), everything fades back, the lit route too, so the way stands out from the road. */
@@ -1974,13 +1994,15 @@ function litLines(m, lines, loops, soft = false) {
   const any = lines.length > 0 || loops.length > 0 || soft, dk = dark();
   if (m.getLayer('route-arrows-all') && !hubOn && !MT.R) m.setLayoutProperty('route-arrows-all', 'visibility', any ? 'none' : 'visible');   // something picked: its own arrows
   m.setPaintProperty('route-on', 'line-color', ['get', soft ? (dk ? 'dsoft' : 'soft') : dk ? 'dcolor' : 'color']);
-  // Nothing picked: the stretches the day's last bus has been by (passedRuns) drawn faded at the town's zoom, what's
+  // Nothing picked: the stretches the day's last bus has been by (doneToday) drawn faded at the town's zoom, what's
   // still to be run tonight standing out; in at the streets, every line as ever.
   const own = dk ? 'dcolor' : 'color', gone = dk ? 'dgone' : 'gone';
-  m.setPaintProperty('route-lines', 'line-color', any ? ['get', dk ? 'dfade' : 'fade'] : ['interpolate', ['linear'], ['zoom'], 13, ['case', ['==', ['get', 'done'], true], ['get', gone], ['get', own]], 15, ['get', own]]);
+  m.setPaintProperty('route-lines', 'line-color', any ? ['get', gone] : townFade(['get', own], ['get', gone]));
   m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : 0.75);
-  if (m.getLayer('trk-path')) m.setPaintProperty('trk-path', 'line-color', ['get', any ? (dk ? 'dfade' : 'fade') : own]);   // a detour the buses showed us fades with its route
-  m.setPaintProperty('usu-lines', 'line-opacity', any ? 0.25 : ['case', ['get', 'approx'], 0.35, 0.9]);
+  if (m.getLayer('trk-path')) m.setPaintProperty('trk-path', 'line-color', ['get', any ? gone : own]);   // a detour the buses showed us fades with its route
+  // the shuttle's loops faded back by colour too, not see-through: two on one road didn't add up the way Connect's don't
+  m.setPaintProperty('usu-lines', 'line-color', any ? ['get', 'gone'] : townFade(['get', 'color'], ['get', 'gone']));
+  m.setPaintProperty('usu-lines', 'line-opacity', ['case', ['get', 'approx'], 0.35, 0.9]);
 }
 
 /** `go`: to the stop's page (a tap); false, the stop picked on the map alone (a page already up, a shuttle stop's at

@@ -192,12 +192,13 @@ test('the map\'s lines: faded behind the last buses, every one in colour ten min
     const d = await import('/app/data.js'), t = await import('/app/time.js'), m = await import('/app/views/map.js'), u = await import('/app/usu.js');
     const c = t.now(), ends = d.D.routes.map((_, ri) => d.lastTripOn(ri, c.ymd)).filter(Boolean).map(l => l.end[0]);
     if (!ends.length) return null;   // no buses today: nothing to fade
-    // the shuttle's last loop too, on a day it runs (USU's listed hours): one reset for the whole map
-    const svc = u.U && u.U.service, runs = svc && svc.days[(t.dayFrom(c.ymd).dow + 6) % 7];
-    const E = Math.max(...ends, ...(runs ? [svc.end, ...Object.values(svc.late || {})] : []));
-    return { during: m.passedRuns({ ymd: c.ymd, min: E - 20, sec: 0 }).length, after: m.passedRuns({ ymd: c.ymd, min: Math.min(1439, E + 30), sec: 0 }).length };
+    // the shuttle's last loop and POOL's end too, on a day they run (their listed hours): one reset for the whole map
+    const svc = u.U && u.U.service, runs = svc && svc.days[(t.dayFrom(c.ymd).dow + 6) % 7], pool = d.POOL && d.POOL.week && d.POOL.week[(t.dayFrom(c.ymd).dow + 6) % 7];
+    const E = Math.max(...ends, ...(runs ? [svc.end, ...Object.values(svc.late || {})] : []), ...(pool ? [pool[1]] : []));
+    const at = min => m.doneToday({ ymd: c.ymd, min, sec: 0 }), during = at(E - 20), after = at(Math.min(1439, E + 30));
+    return { during: [during.stretches.length, during.stops.size], after: [after.stretches.length, after.stops.size, after.loops.size, after.pool] };
   });
-  if (r) { expect(r.during).toBeGreaterThan(0); expect(r.after).toBe(0); }
+  if (r) { expect(r.during[0]).toBeGreaterThan(0); expect(r.during[1]).toBeGreaterThan(0); expect(r.after).toEqual([0, 0, 0, false]); }
 });
 
 test('search: where people live, an apartment complex and a dorm by name', async ({ page }) => {
