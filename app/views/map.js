@@ -8,7 +8,7 @@ import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, 
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN } from '../rt.js';
+import { rt, findBus, tripOf, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
@@ -215,8 +215,10 @@ function closedOrMaybe(s, i, ymd) {
 }
 function stopsGeo() {
   const ymd = now().ymd;
-  const done = doneToday().stops;
-  return { type: 'FeatureCollection', features: D.stops.map((s, i) => { const c = sinkLine('#' + route(s.routes[0]).color), dc = lift('#' + route(s.routes[0]).color); return { type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: c, dcolor: dc, gone: faded(c, false), dgone: faded(dc, true), done: done.has(i), ...closedOrMaybe(s, i, ymd) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } }; }) };
+  const { stops: done, wears } = doneToday();
+  return { type: 'FeatureCollection', features: D.stops.map((s, i) => {
+    const w = wears.get(i), raw = '#' + route(w && w[0] === 'c' ? w[1] : s.routes[0]).color;
+    const c = w && w[0] === 'u' ? uline(w[1]) : sinkLine(raw), dc = w && w[0] === 'u' ? uline(w[1]) : lift(raw); return { type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: c, dcolor: dc, gone: faded(c, false), dgone: faded(dc, true), done: done.has(i), ...closedOrMaybe(s, i, ymd) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } }; }) };
 }
 /** A stop's fill and edge: a closed one (or an unannounced detour's) a ring; its route's colour when a route's in
  *  view; else its first route's, faded at the town's zoom once its last bus has been, as the lines are. */
@@ -617,7 +619,7 @@ const drawn = { lines: null, closed: null, key: null };
  *  nothing, and a detour whose day's buses are done is dropped when it is. */
 function closedKeyOf(clockNow) {
   const d = doneToday(clockNow);
-  return clockNow.ymd + JSON.stringify(d.stretches) + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
+  return clockNow.ymd + JSON.stringify(d.stretches) + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify([...d.wears]) + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
 }
 async function loadShapes(m = map) {
   const fc = await shapes();
@@ -1930,16 +1932,20 @@ function tintStops(m, ri) {
  *    while the loop runs).
  *  - `loops`: the shuttle's past their listed hours (USU's page: no timetable, so a loop all at once).
  *  - `pool`: POOL past its hours.
+ *  - `wears`: a stop's colour where it isn't its first route's: the first of its routes still to come there today
+ *    (the Blue Loop's at Route 1's stops once the 1 is done), else a shuttle loop still serving its pole. A stop's
+ *    colour says which bus still comes.
  *  One reset for the lot: NIGHT_OVER after the last of them ends (the Evening Express's 10 PM on a weeknight), and
  *  from midnight: the map is tomorrow's then. A kind not running today (the shuttle at the weekend) isn't faded. */
 const NIGHT_OVER = 10;   // minutes
-const NONE = { stretches: [], stops: new Set(), loops: new Set(), pool: false };
+const NONE = { stretches: [], stops: new Set(), loops: new Set(), pool: false, wears: new Map() };
 let dayAt = '', day = NONE, lastDay = null, lastRows = [];
 export function doneToday(c = now()) {
   const key = c.ymd + ':' + c.min + ':' + rt.at;   // once a minute and at each word from the feed: where the last buses are
   if (key === dayAt) return day;
   dayAt = key;
   const stretches = [], stopsBy = new Set(), stopsDue = new Set(), ran = new Set(), running = new Set();   // routes: out today; still to run
+  const dueAt = new Map();   // stop → its routes still to come today
   // The timetable's last calls worked out once a day; only the feed's word on them each minute.
   if (lastDay !== c.ymd) {
     lastDay = c.ymd;
@@ -1958,7 +1964,7 @@ export function doneToday(c = now()) {
     for (const l of lv) if (l) latest = Math.max(latest, l.min);
     // stop to stop: a run passed end to end on a round trip starts and ends at the Center, a cut of nothing
     for (let i = 1; i < seq.length; i++) {
-      for (const k of i === 1 ? [0, 1] : [i]) if (last[k] !== null) { ran.add(ri); if (c.min > last[k]) stopsBy.add(seq[k]); else { stopsDue.add(seq[k]); running.add(ri); } }
+      for (const k of i === 1 ? [0, 1] : [i]) if (last[k] !== null) { ran.add(ri); if (c.min > last[k]) stopsBy.add(seq[k]); else { stopsDue.add(seq[k]); running.add(ri); (dueAt.get(seq[k]) || dueAt.set(seq[k], new Set()).get(seq[k])).add(ri); } }
       if (last[i] === null || last[i - 1] === null || seq[i] === seq[i - 1]) continue;
       if (c.min > last[i]) { stretches.push([ri, seq[i - 1], seq[i]]); continue; }
       over = false;
@@ -1979,7 +1985,13 @@ export function doneToday(c = now()) {
   const stops = new Set([...stopsBy].filter(si => !stopsDue.has(si) && !loopOn(si)));
   // a stop with no call today (shut by a notice): with its routes, once every one of them out today is done
   D.stops.forEach((s, si) => { if (!stopsBy.has(si) && !stopsDue.has(si) && s.routes.some(ri => ran.has(ri)) && !s.routes.some(ri => running.has(ri)) && !loopOn(si)) stops.add(si); });
-  day = over && latest >= 0 && c.min >= latest + NIGHT_OVER ? NONE : { stretches, stops, loops, pool: poolEnd !== null && c.min >= poolEnd };
+  const wears = new Map();
+  D.stops.forEach((s, si) => {
+    const due = dueAt.get(si), first = due && s.routes.find(ri => due.has(ri));
+    if (first !== undefined && first !== null) { if (first !== s.routes[0]) wears.set(si, ['c', first]); }
+    else if (loopOn(si)) wears.set(si, ['u', U.stops[U.sharedByCvtd[si].i].routes.find(ri => !loops.has(ri))]);
+  });
+  day = over && latest >= 0 && c.min >= latest + NIGHT_OVER ? NONE : { stretches, stops, loops, pool: poolEnd !== null && c.min >= poolEnd, wears };
   return day;
 }
 /** Each shuttle loop's end today by USU's listed hours; null on a day it doesn't run. */
@@ -2187,6 +2199,19 @@ function litBus(m) {
   if (JR && JR.appBus) return m.id === JR.appBus;
   return m.kind === 'c' ? hiLines.includes(m.ri) || runRoutes.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
 }
+/** A Connect bus off duty, in words, or null: 'Not in service' when it reports with no trip (logged off, on its way
+ *  in; its route the last it ran, rt.parked), 'Done for the day' when its trip is over and its run has no next one
+ *  today. Drawn grey and kept on the map; a bus between two trips of its run is on duty. */
+function offDuty(b, clockNow = now()) {
+  if (b.free) return 'Not in service';
+  const ti = tripOf(b.trip);
+  if (ti === undefined || nextTrip(ti, clockNow.ymd) !== undefined) return null;
+  const u = rt.trips[b.trip], nowS = Date.now() / 1000;
+  if (u) return u.stops.some(x => x[3] !== 1 && x[2] >= nowS - 60) ? null : 'Done for the day';   // its final stop too
+  const te = tripEnd(ti), st = tripStops(ti), end = te ? te.min : st.length ? st[st.length - 1][0] : null;
+  return end !== null && clockNow.min > end + Math.max(0, busDelay(b) || 0) + 2 ? 'Done for the day' : null;
+}
+const OFF_GREY = '#8a8d91';
 /** Every bus with a fix, shuttle and Connect alike, moved or placed; the ones gone from the feeds removed. */
 /** On a wide screen the panel covers the map's left 420 px: the map keeps its centre in the part you can see,
  *  easing across as the panel slides, so the place you were looking at stays put. */
@@ -2436,7 +2461,7 @@ export function liveUpdate(app) {
     paintBus(m);
   };
   if (U) for (const b of live.buses) place(b, 'u', uink(b.ri), U.routes[b.ri].name + ' · bus ' + b.name);
-  if (!rtStale()) for (const b of rt.buses) place(b, 'c', dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label);
+  if (!rtStale()) for (const b of [...rt.buses, ...rt.parked]) { const off = offDuty(b); place(b, 'c', off ? OFF_GREY : dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label + (off ? ' · ' + off.toLowerCase() : '')); }
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
@@ -2490,8 +2515,8 @@ function selectBus(id, app) {
 }
 /** A Connect bus: its route and headsign, where it's headed next with the feed's minutes. */
 function connectCard(b, app, bare = false) {
-  const r = D.routes[b.ri], clockNow = now();
-  const next = bare ? [] : busStops(b, 5);
+  const r = D.routes[b.ri], clockNow = now(), off = offDuty(b, clockNow);
+  const next = bare || off ? [] : busStops(b, 5);
   const card = col.querySelector('#mapcard');
   // The word comes from the next stop the timetable has a row for: never the trip's final one, which on a loop
   // is the stop it left from, an hour's schedule earlier. Only that one left, the card just says Live.
@@ -2499,8 +2524,9 @@ function connectCard(b, app, bare = false) {
   const dl = busDelay(b) ?? (at ? at.min - (schedAt(at.si, b) ?? at.min) : null);
   const late = dl !== null && !isLoop(b.ri) ? lateWords(heldAt(nextStopOf(b) ?? (at && at.si), dl)) : '';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
-    <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late ? 'Live · ' + late : 'Live')}</div>
-    <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : r.long}</span></div></div>
+    <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
+    <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : r.long}</span></div>
+    ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.free ? 'its last run was ' + routeName(b.ri) : 'its last run is over'}. Not one to wait for.</span></div>` : ''}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
   card.classList.remove('hidden');

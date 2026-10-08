@@ -8,7 +8,11 @@ import { now, dayDiff, clockText, dayFrom } from './time.js';
 export const RT_URL = LIVE_URL;
 const POLL = 5000, STALE = 90000;   // each bus reports every 3 to 8 seconds; the relay keeps the feed 5
 
-export const rt = { at: 0, t: 0, buses: [], trips: {}, doubt: new Set(), loopMode: {}, wanted: false, fetching: false, error: null };
+export const rt = { at: 0, t: 0, buses: [], parked: [], trips: {}, doubt: new Set(), loopMode: {}, wanted: false, fetching: false, error: null };
+/** A bus's route as last seen on a trip: a bus that has finished (logged off its trip, on its way in) still reports,
+ *  with no trip to say whose it is. Kept by it, it stays on the map, grey (rt.parked: the map's alone, nothing else
+ *  counts it). */
+const lastRoute = new Map();
 let timer = null;
 /** 'trip:stop' → when the feed first stopped predicting that Transit Center bay for that trip: the bus pulled out. */
 const left = new Map();
@@ -96,7 +100,7 @@ async function tick(force) {
       }
       trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s, end, hub: hubAhead(ti, at, j.t), cancelled: u.c === 1 };
     }
-    const buses = [];
+    const buses = [], parked = [];
     for (const b of j.buses || []) {
       const ti = tripIdx.get(b.trip);
       let info = ti !== undefined ? tripInfo[ti] : null;
@@ -107,7 +111,9 @@ async function tick(force) {
         if (m) ri = D.routeByShort[m[1]] ?? D.routes.findIndex(r => r.short.startsWith(m[1] + ' '));
         if (ri === -1) ri = undefined;
       }
+      if ((ri === undefined || ri < 0) && !b.trip && lastRoute.has(b.id)) { parked.push({ id: 'c:' + b.id, label: b.label || b.id, trip: '', ri: lastRoute.get(b.id), lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: null, dir: null, free: true }); continue; }
       if (ri === undefined || ri < 0) continue;
+      lastRoute.set(b.id, ri);
       buses.push({ id: 'c:' + b.id, label: b.label || b.id, trip: b.trip, ri, lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: info ? info.h : null, dir: info ? info.dir : null });
     }
     // A detoured route's buses report where they are, but the tracker predicts nothing for them (off the route it
@@ -128,7 +134,7 @@ async function tick(force) {
     }
     for (const [k, ms] of left) if (t0 - ms > 600000) left.delete(k);
     for (const ri of D.hub.loops || []) watchLoop(ri, trips, buses, t0);
-    rt.trips = trips; rt.buses = buses; rt.t = j.t; rt.at = Date.now(); rt.error = null;
+    rt.trips = trips; rt.buses = buses; rt.parked = parked; rt.t = j.t; rt.at = Date.now(); rt.error = null;
   } catch (e) {
     rt.error = e.message || 'unreachable';
   }
@@ -476,4 +482,6 @@ export function standingAt(ri) {
     return !!first && !!D.stops[first[1]]?.hub && first[0] >= nowMin - 15;
   }) || null;
 }
-export function findBus(id) { return rt.buses.find(b => b.id === id); }
+export function findBus(id) { return rt.buses.find(b => b.id === id) || rt.parked.find(b => b.id === id); }
+/** A trip's index in the timetable, by the feed's id. */
+export function tripOf(id) { index(); return tripIdx ? tripIdx.get(id) : undefined; }
