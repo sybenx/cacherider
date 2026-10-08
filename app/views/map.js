@@ -93,7 +93,7 @@ function style(sat = true) {
     glyphs: BASE + 'vendor/basemaps-assets/fonts/{fontstack}/{range}.pbf',
     sprite: BASE + 'vendor/basemaps-assets/sprites/' + flavor,
     sources: {
-      protomaps: { type: 'vector', tiles: [BASE + 'tiles/{z}/{x}/{y}.pbf'], minzoom: TILES.minzoom, maxzoom: TILES.maxzoom, bounds: TILES.bounds, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
+      protomaps: { type: 'vector', tiles: [BASE + 'tiles/{z}/{x}/{y}.pbf'], minzoom: TILES.minzoom, maxzoom: TILES.maxzoom, bounds: TILES.bounds, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Improve this map</a>' },
       stops: { type: 'geojson', data: stopsGeo() },
       lines: { type: 'geojson', data: drawn.lines || { type: 'FeatureCollection', features: [] } },
       lclosed: { type: 'geojson', data: drawn.closed || { type: 'FeatureCollection', features: [] } },
@@ -2485,6 +2485,10 @@ function setSpot(at) {
 }
 /** A spot's walk to a stop or back up from it, steep either way (a place is walked to and from). */
 const steepBoth = (a, b) => steepWalk(a, b) || steepWalk(b, a);
+/** The map's own data is OpenStreetMap's, and anyone can put it right: a building or a crossing missing, a place gone,
+ *  a street misnamed. Its editor, at this spot, under a spot's card; 'Improve this map' in the map's credits. A rider
+ *  who fixes it sees it here at the next cut of the tiles (the places and crossings, the next night). */
+const osmFix = at => html`<p class="fine osmfix">Map wrong here? <a href="https://www.openstreetmap.org/edit#map=19/${at.lat.toFixed(5)}/${at.lon.toFixed(5)}" target="_blank" rel="noopener">Fix it on OpenStreetMap</a>: the streets, buildings, crossings and places come from there.</p>`;
 /** Directions up with both ends (#/go/<to>/<from…>), as the address has them: { to, from, q }, or null (none up, or
  *  one end still being picked, where a tap on the map is the pick). */
 function goEnds() {
@@ -2528,7 +2532,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null, swa
   const lines = () => by.length || uby.length ? html`<div class="roadroutes">${by.map(ri => { const r = D.routes[ri]; return html`<button type="button" class="roadroute" data-ri="${ri}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</button>`; })}${uby.map(ri => html`<a class="roadroute" href="#/map/uroute/${encodeURIComponent(U.routes[ri].id)}">${chip(ri, 30)}<span class="mid"><span class="name">${U.routes[ri].name}</span><span class="sub">Aggie Shuttle · ${U.routes[ri].stops.length} stops</span></span>${icon('fwd', 18)}</a>`)}</div>` : '';
   // The stops at once, their next buses (and a road's route times on the map) the moment after.
   const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${swap ? 'Change directions' : forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span>${road ? '' : placeStar(at)}</div>${lines()}</div>${go}
-    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare, steep: steepBoth(at, U.stops[x.i]) }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare, steep: !road && steepBoth(at, D.stops[x.i]) })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}`.s;
+    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare, steep: steepBoth(at, U.stops[x.i]) }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare, steep: !road && steepBoth(at, D.stops[x.i]) })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}${osmFix(at)}`.s;
   card.innerHTML = markup(true);
   const spotKeyNow = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
   afterPaint(() => {

@@ -238,6 +238,9 @@ test('map: a spot and its card, a road and its routes, a right click', async ({ 
   await mapReady(page);
   await expect(page.getByRole('link', { name: 'Directions to here' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'From here' })).toBeVisible();
+  // The way to put the map right: OpenStreetMap's editor at the spot, and 'Improve this map' in the credits.
+  await expect(page.getByRole('link', { name: 'Fix it on OpenStreetMap' }).filter({ visible: true }).first()).toHaveAttribute('href', /openstreetmap\.org\/edit#map=19\/41\.73790\/-111\.83457/);
+  await expect(page.locator('a[href="https://www.openstreetmap.org/fixthemap"]')).toHaveCount(1);
   // A tap on the road just beside its marker (Main runs north and south): the road's card, its routes as rows.
   const box = await page.locator('.spot-marker').boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + 12);
