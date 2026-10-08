@@ -161,9 +161,9 @@ function style(sat = true) {
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
-      { id: 'trk-path', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3, 17, 5], 'line-dasharray': [0, 1.6], 'line-opacity': ['get', 'sure'] } },   // dots, closer than a notice's, and never the shuttle's dashes
+      { id: 'trk-path', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': townFade(['get', col], ['get', col === 'dcolor' ? 'dgone' : 'gone']), 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3, 17, 5], 'line-dasharray': [0, 1.6], 'line-opacity': ['get', 'sure'] } },   // dots, closer than a notice's, and never the shuttle's dashes
       { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
-      { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': ['coalesce', ['get', 'sure'], 0.9] } },
+      { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': townFade(['get', col], ['get', col === 'dcolor' ? 'dgone' : 'gone']), 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': ['coalesce', ['get', 'sure'], 0.9] } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
       { id: 'usu-lines', type: 'line', source: 'ulines', minzoom: 12, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': townFade(['get', 'color'], ['get', 'gone']), 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'approx'], 1, 1.8], 15, ['case', ['get', 'approx'], 1.8, 3.5], 17, ['case', ['get', 'approx'], 2.5, 6]], 'line-opacity': ['case', ['get', 'approx'], 0.35, 0.95], 'line-dasharray': [3, 1.5] } },
       // a loop too faint to read on its own (black by night): a hair of UEDGE either side of it
@@ -273,7 +273,8 @@ function closedSegments(fc) {
   const out = [], gaps = {};
   for (const c of cuts) {
     for (const [d0, d1] of unvouched(c, grid)) {
-      out.push({ type: 'Feature', properties: { color: sinkLine('#' + c.r.color), dcolor: lift('#' + c.r.color), route: c.ri, sure: c.sure ? 0.9 : 0.55 }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
+      const lc = sinkLine('#' + c.r.color), dc = lift('#' + c.r.color);
+      out.push({ type: 'Feature', properties: { color: lc, dcolor: dc, gone: faded(lc, false), dgone: faded(dc, true), done: doneToday().routes.has(c.ri), route: c.ri, sure: c.sure ? 0.9 : 0.55 }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
       (gaps[c.shape] ||= []).push([(c.base + d0) % c.total, (c.base + d1) % c.total]);
     }
   }
@@ -609,7 +610,7 @@ function detourCard(u) {
 /** The ways round the buses have been seen to take (data.js's A.seen, announced or not), along the streets, dashed
  *  in the route's colour, fainter while only two buses have gone that way. */
 function trackedPaths() {
-  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), gone: faded(sinkLine('#' + D.routes[ri].color), false), dgone: faded(lift('#' + D.routes[ri].color), true), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
+  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), gone: faded(sinkLine('#' + D.routes[ri].color), false), dgone: faded(lift('#' + D.routes[ri].color), true), done: doneToday().routes.has(ri), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
@@ -619,7 +620,7 @@ const drawn = { lines: null, closed: null, key: null };
  *  nothing, and a detour whose day's buses are done is dropped when it is. */
 function closedKeyOf(clockNow) {
   const d = doneToday(clockNow);
-  return clockNow.ymd + JSON.stringify(d.stretches) + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify([...d.wears]) + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
+  return clockNow.ymd + JSON.stringify(d.stretches) + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify([...d.wears]) + [...d.routes].join() + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
 }
 async function loadShapes(m = map) {
   const fc = await shapes();
@@ -630,7 +631,10 @@ async function loadShapes(m = map) {
     const { closed, gaps } = closedSegments(fc);
     const { done, gaps: by } = passedSegments(fc);
     for (const [sh, g] of Object.entries(by)) (gaps[sh] ||= []).push(...g);
-    drawn.lines = openLines(fc, gaps); drawn.lines.features.unshift(...done); drawn.closed = closed; drawn.key = key;   // the passed under the lines still running, where they share a road
+    drawn.lines = openLines(fc, gaps);
+    const over = doneToday().routes;   // a route with nothing left today: its whole line, ends and all
+    drawn.lines.features = drawn.lines.features.map(f => over.has(f.properties.route) && !f.properties.done ? { ...f, properties: { ...f.properties, done: true } } : f);
+    drawn.lines.features.unshift(...done); drawn.closed = closed; drawn.key = key;   // the passed under the lines still running, where they share a road
   }
   closedKey = key;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
@@ -1931,6 +1935,8 @@ function tintStops(m, ri) {
  *  - `stops`: those whose every bus today has been (a stop shut by notice with its routes; one a shuttle loop shares
  *    while the loop runs).
  *  - `loops`: the shuttle's past their listed hours (USU's page: no timetable, so a loop all at once).
+ *  - `routes`: Connect's routes out today with nothing left to run: drawn faded whole, the ends of a line no stop to
+ *    stop stretch covers (a loop's tail into the Center) and its detours' dots with it.
  *  - `pool`: POOL past its hours.
  *  - `wears`: a stop's colour where it isn't its first route's: the first of its routes still to come there today
  *    (the Blue Loop's at Route 1's stops once the 1 is done), else a shuttle loop still serving its pole. A stop's
@@ -1938,7 +1944,7 @@ function tintStops(m, ri) {
  *  One reset for the lot: NIGHT_OVER after the last of them ends (the Evening Express's 10 PM on a weeknight), and
  *  from midnight: the map is tomorrow's then. A kind not running today (the shuttle at the weekend) isn't faded. */
 const NIGHT_OVER = 10;   // minutes
-const NONE = { stretches: [], stops: new Set(), loops: new Set(), pool: false, wears: new Map() };
+const NONE = { stretches: [], stops: new Set(), loops: new Set(), pool: false, wears: new Map(), routes: new Set() };
 let dayAt = '', day = NONE, lastDay = null, lastRows = [];
 export function doneToday(c = now()) {
   const key = c.ymd + ':' + c.min + ':' + rt.at;   // once a minute and at each word from the feed: where the last buses are
@@ -1991,7 +1997,7 @@ export function doneToday(c = now()) {
     if (first !== undefined && first !== null) { if (first !== s.routes[0]) wears.set(si, ['c', first]); }
     else if (loopOn(si)) wears.set(si, ['u', U.stops[U.sharedByCvtd[si].i].routes.find(ri => !loops.has(ri))]);
   });
-  day = over && latest >= 0 && c.min >= latest + NIGHT_OVER ? NONE : { stretches, stops, loops, pool: poolEnd !== null && c.min >= poolEnd, wears };
+  day = over && latest >= 0 && c.min >= latest + NIGHT_OVER ? NONE : { stretches, stops, loops, pool: poolEnd !== null && c.min >= poolEnd, wears, routes: new Set([...ran].filter(ri => !running.has(ri))) };
   return day;
 }
 /** Each shuttle loop's end today by USU's listed hours; null on a day it doesn't run. */
@@ -2020,7 +2026,7 @@ function litLines(m, lines, loops, soft = false) {
   const own = dk ? 'dcolor' : 'color', gone = dk ? 'dgone' : 'gone';
   m.setPaintProperty('route-lines', 'line-color', any ? ['get', gone] : townFade(['get', own], ['get', gone]));
   m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : 0.75);
-  if (m.getLayer('trk-path')) m.setPaintProperty('trk-path', 'line-color', ['get', any ? gone : own]);   // a detour the buses showed us fades with its route
+  if (m.getLayer('trk-path')) m.setPaintProperty('trk-path', 'line-color', any ? ['get', gone] : townFade(['get', own], ['get', gone]));   // a detour the buses showed us fades with its route
   // the shuttle's loops faded back by colour too, not see-through: two on one road didn't add up the way Connect's don't
   m.setPaintProperty('usu-lines', 'line-color', any ? ['get', 'gone'] : townFade(['get', 'color'], ['get', 'gone']));
   m.setPaintProperty('usu-lines', 'line-opacity', ['case', ['get', 'approx'], 0.35, 0.9]);
