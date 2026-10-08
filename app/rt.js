@@ -384,6 +384,10 @@ function feedSays(t, u) {
   const i = order.indexOf(t.si);
   if (i < 0) return null;
   const f = u.first ? order.indexOf(D.stopById[u.first.sid]) : -1, l = u.last ? order.indexOf(D.stopById[u.last.sid]) : -1;
+  // Its next stop past the middle of the trip: the bus is on its way back, not leaving. A route's trip ends where it
+  // began, at the Center, and a bus in at the end of its 8:30 was 'still at its bay', the 8:30 leaving now, 21 min
+  // late, until it took up its next trip: only on a fresh start, before `left` had seen it pull out.
+  const homeward = f > (order.length - 1) / 2;
   // Pulling out of a Transit Center bay, the bus drops the bay from its predictions at once. Rather than vanish, the
   // row says now for a minute after it goes; and a bus, which never leaves a bay early, holds its scheduled minute
   // till that's out too. A loop spacing its buses just goes: the next one is what matters.
@@ -395,7 +399,7 @@ function feedSays(t, u) {
     // late bus leaves when it's ready. Now, until it pulls out. A Blue Loop 12:53, in at 1:00 (2026-09-30), was
     // dropped with its bus sitting there, and the bay's badge showed the 1:11's bus, 12 min out.
     const bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v), st = D.stops[t.si];
-    if (bus && bus.trip === D.trips[t.trip] && distance(bus.lat, bus.lon, st.lat, st.lon) < 110) return held(t, toMin(Math.floor(Date.now() / 1000)) - t.min);
+    if (!homeward && bus && bus.trip === D.trips[t.trip] && distance(bus.lat, bus.lon, st.lat, st.lon) < 110) return held(t, toMin(Math.floor(Date.now() / 1000)) - t.min);
     return held(t, 0);
   }
   if (l >= 0 && i > l && u.lastDelay !== null) return { ...held(t, u.lastDelay), est: true };

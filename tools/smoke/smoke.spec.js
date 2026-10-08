@@ -213,6 +213,29 @@ test('search: where people live, an apartment complex and a dorm by name', async
   expect(r[3]).not.toBe('');   // by its kind
 });
 
+test('the Center: a bus back in at the end of its trip isn\'t its departure still leaving', async ({ page }) => {
+  // A fresh start at 8:51: a route's 8:30 bus back at the Center finishing its trip read as the 8:30 leaving now, 21 min
+  // late, until it took up its next trip. Made up from the timetable: a route's departure from a bay 21 minutes ago.
+  await open(page);
+  const r = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), rtm = await import('/app/rt.js'), t = await import('/app/time.js');
+    const c = t.now(), ri = d.D.routes.findIndex(x => !(d.D.hub.loops || []).includes(d.D.routes.indexOf(x)) && Object.values(x.stops || {}).some(q => q.length > 6 && d.D.stops[q[0]].hub));
+    if (ri < 0) return null;
+    const [dir, seq] = Object.entries(d.D.routes[ri].stops).find(([, q]) => q.length > 6 && d.D.stops[q[0]].hub);
+    const hubSi = seq[0], dep = { min: c.min - 21, r: ri, dir: +dir, si: hubSi, trip: d.D.times[hubSi] && Object.values(d.D.times[hubSi]).flat().find(x => x[1] === ri)?.[4], day: 0 };
+    if (dep.trip === undefined || dep.min < 0) return null;
+    const id = d.D.trips[dep.trip], near = seq[seq.length - 2], hub = d.D.stops[hubSi], nowS = Math.floor(Date.now() / 1000);
+    rtm.tripOf(id);   // the feed's trip index, as its first answer builds it
+    // its next stop the one before the Center, the bus at the bay: in, finishing the trip
+    rtm.rt.trips = { [id]: { v: 'X1', ts: nowS, at: new Map([[d.D.stops[near].id, { seq: seq.length - 2, time: nowS + 30, skipped: false }]]), first: { sid: d.D.stops[near].id, seq: seq.length - 2, time: nowS + 30 }, last: { sid: d.D.stops[near].id, seq: seq.length - 2, time: nowS + 30 }, lastDelay: 0, ti: dep.trip, stops: [[d.D.stops[near].id, seq.length - 2, nowS + 30, 0]], end: seq.length - 1 } };
+    rtm.rt.buses = [{ id: 'c:X1', label: 'X1', trip: id, ri, lat: hub.lat, lon: hub.lon, course: 0, speed: 0, ts: nowS, h: null, dir: +dir }];
+    rtm.rt.at = Date.now(); rtm.rt.t = nowS;
+    const p = rtm.predict(dep);
+    return p === null || p.gone || p.min === dep.min ? 'gone' : 'leaving ' + p.min;
+  });
+  if (r !== null) expect(r).toBe('gone');
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
