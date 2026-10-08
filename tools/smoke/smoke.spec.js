@@ -186,6 +186,18 @@ test('one clock rule: due from its minute\'s start, gone from the next', async (
   expect(r).toEqual([true, false, true, false, true, 'now', 'in 1 min', 850]);
 });
 
+test('the map\'s lines: faded behind the last buses, every one in colour ten minutes after the night\'s last call', async ({ page }) => {
+  await open(page);
+  const r = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), m = await import('/app/views/map.js');
+    const c = t.now(), ends = d.D.routes.map((_, ri) => d.lastTripOn(ri, c.ymd)).filter(Boolean).map(l => l.end[0]);
+    if (!ends.length) return null;   // no buses today: nothing to fade
+    const E = Math.max(...ends);
+    return { during: m.passedRuns({ ymd: c.ymd, min: E - 20, sec: 0 }).length, after: m.passedRuns({ ymd: c.ymd, min: Math.min(1439, E + 30), sec: 0 }).length };
+  });
+  if (r) { expect(r.during).toBeGreaterThan(0); expect(r.after).toBe(0); }
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
@@ -210,7 +222,7 @@ test('routes list: every route, one opened', async ({ page }) => {
 test('route: both ways, its sibling, a stop on it', async ({ page }) => {
   await open(page, '#/map/route/2');
   await mapReady(page);
-  await expect(page.getByText(/stops, in order/i).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText(/stops, in order|stops left/i).filter({ visible: true }).first()).toBeVisible();
   const ways = page.locator('a[href^="#/map/route/2/"]');
   if (await ways.count()) { await ways.last().click(); await expect(page).toHaveURL(/#\/map\/route\/2\//); }
   await go(page, '#/map/route/16%20PM');

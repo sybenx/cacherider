@@ -356,25 +356,51 @@ function trimWalk(f, best, from, to, closed) {
   return { coords: slice(walk, start, end), shape: f.properties.shape, s0: (f._cum[a] + start) % total, s1: (f._cum[a] + end) % total, walk, start, end, base: f._cum[a], total };
 }
 /** The passed stretches (passedRuns) cut from their route's shapes as the detours' are: the lines left open there,
- *  and each stretch drawn as its own feature, done (faded at the town's zoom). */
+ *  and each stretch drawn as its own feature, done (faded at the town's zoom). The stretch a last bus is on, cut up
+ *  to the bus. */
 const stretchCuts = new Map();   // 'route:from:to' → its cuts
 function passedSegments(fc) {
   const done = [], gaps = {};
-  for (const [ri, a, b] of passedRuns()) {
+  for (const [ri, a, b, at, f] of passedRuns()) {
     const k = ri + ':' + a + ':' + b;
     if (!stretchCuts.has(k)) {   // a stretch's shape never changes: cut once
       const shapes = fc.features.filter(f => f.properties.route === ri);
       const from = D.stops[a], to = D.stops[b];
       // between towns (16 to Preston) two stops can be kilometres apart: the walk allowed as long as their gap, thrice
       stretchCuts.set(k, cutShape(shapes, from, to, [from, to], Math.max(6000, 3 * distance(from.lat, from.lon, to.lat, to.lon)))
-        .map(cut => ({ props: { ...shapes.find(f => f.properties.shape === cut.shape).properties, done: true }, coords: cut.coords, shape: cut.shape, s0: cut.s0, s1: cut.s1 })));
+        .map(cut => ({ props: { ...shapes.find(f => f.properties.shape === cut.shape).properties, done: true }, coords: cut.coords, shape: cut.shape, s0: cut.s0, s1: cut.s1, total: cut.total })));
     }
     for (const cut of stretchCuts.get(k)) {
-      done.push({ type: 'Feature', properties: cut.props, geometry: { type: 'LineString', coordinates: cut.coords } });
-      (gaps[cut.shape] ||= []).push([cut.s0, cut.s1]);
+      let coords = cut.coords, s1 = cut.s1;
+      if (f !== undefined) {   // the last bus on it: faded as far as the bus
+        const walk = cut.walk ||= coords.reduce((w, p, i) => (w.push([i ? w[i - 1][0] + distance(coords[i - 1][1], coords[i - 1][0], p[1], p[0]) : 0, p]), w), []);
+        const d = partWay(walk, at, f);
+        if (d < 1) continue;
+        coords = slice(walk, 0, d); s1 = (cut.s0 + d) % cut.total;
+      }
+      done.push({ type: 'Feature', properties: cut.props, geometry: { type: 'LineString', coordinates: coords } });
+      (gaps[cut.shape] ||= []).push([cut.s0, s1]);
     }
   }
   return { done, gaps };
+}
+/** How far along a stretch's walk its last bus is: the bus's place on it, where the feed has the bus and it's on
+ *  this line (a variant of the route on another road isn't); else the timetable's share of the way, `f`. */
+function partWay(walk, at, f) {
+  const L = walk[walk.length - 1][0];
+  if (at) {
+    const k = Math.cos(at.lat * Math.PI / 180);
+    let best = null;
+    for (let i = 1; i < walk.length; i++) {
+      const [d0, [ax, ay]] = walk[i - 1], [d1, [bx, by]] = walk[i];
+      const dx = (bx - ax) * k, dy = by - ay, px = (at.lon - ax) * k, py = at.lat - ay;
+      const u = dx || dy ? Math.max(0, Math.min(1, (px * dx + py * dy) / (dx * dx + dy * dy))) : 0;
+      const off = distance(at.lat, at.lon, ay + u * (by - ay), ax + u * (bx - ax));
+      if (!best || off < best.off) best = { off, d: d0 + u * (d1 - d0) };
+    }
+    if (best && best.off < 120) return best.d;
+  }
+  return f * L;
 }
 /** The part of a walk between two distances along it, ends interpolated. */
 function slice(walk, d0, d1) {
@@ -556,7 +582,7 @@ async function loadShapes(m = map) {
     const { closed, gaps } = closedSegments(fc);
     const { done, gaps: by } = passedSegments(fc);
     for (const [sh, g] of Object.entries(by)) (gaps[sh] ||= []).push(...g);
-    drawn.lines = openLines(fc, gaps); drawn.lines.features.push(...done); drawn.closed = closed; drawn.key = key;
+    drawn.lines = openLines(fc, gaps); drawn.lines.features.unshift(...done); drawn.closed = closed; drawn.key = key;   // the passed under the lines still running, where they share a road
   }
   closedKey = key;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
@@ -1854,10 +1880,13 @@ function tintStops(m, ri) {
  *  timetable's, the feed's where its bus is out), and a stretch between two stops passed once that last bus has left
  *  the far one. Per stop, not per route: a last run that turns back partway (16, 12) leaves the rest to the run
  *  before it, and each part fades when its own last bus has gone. Each passed stretch, as [route, from, to] stop
- *  indices. None from midnight on: the next day's last calls are all to come. */
+ *  indices; the one a last bus is on as [route, from, to, where the bus is (or null), the timetable's share of the
+ *  way], faded up to the bus, not all at once when it gets to the next stop. None once the night's last bus is done
+ *  (NIGHT_OVER after its last call), nor from midnight on: the lines are tomorrow's then. */
+const NIGHT_OVER = 10;   // minutes
 let passedAt = '', passed = [], lastDay = null, lastRows = [];
-function passedRuns(c = now()) {
-  const key = c.ymd + ':' + c.min;   // once a minute: the live feed's word on the last buses with it
+export function passedRuns(c = now()) {
+  const key = c.ymd + ':' + c.min + ':' + rt.at;   // once a minute and at each word from the feed: where the last buses are
   if (key === passedAt) return passed;
   passedAt = key; passed = [];
   // The timetable's last calls worked out once a day; only the feed's word on them each minute.
@@ -1866,15 +1895,30 @@ function passedRuns(c = now()) {
     lastRows = [];
     for (let ri = 0; ri < D.routes.length; ri++) for (const [dir, seq] of Object.entries(D.routes[ri].stops || {})) {
       // this way's calls only: the Center's stop is the end of one way and the start of the other
-      lastRows.push([ri, seq, seq.map(si => timesOn(si, c.ymd).filter(t => t.r === ri && !t.prov && String(t.dir) === dir).reduce((m, t) => !m || t.min > m.min ? t : m, null))]);
+      const rows = seq.map(si => timesOn(si, c.ymd).filter(t => t.r === ri && !t.prov && String(t.dir) === dir).reduce((m, t) => !m || t.min > m.min ? t : m, null));
+      for (let i = rows.length - 1; i >= 0 && rows[i] === null; i--) rows[i] = i ? rows[i - 1] : null;   // the last stop, no call of its own: as the one before
+      lastRows.push([ri, seq, rows]);
     }
   }
+  let over = true, latest = -1;
   for (const [ri, seq, rows] of lastRows) {
-    const last = rows.map(t => { if (!t) return null; const l = t.min < c.min - 120 ? t : lively(t); return l.gone ? -1 : l.min; });   // long gone: no need to ask the feed
-    for (let i = last.length - 1; i >= 0 && last[i] === null; i--) last[i] = i ? last[i - 1] : null;   // the last stop, no call of its own: as the one before
+    const lv = rows.map(t => !t ? null : t.min < c.min - 120 ? t : lively(t));   // long gone: no need to ask the feed
+    const last = lv.map(l => !l ? null : l.gone ? -1 : l.min);
+    for (const l of lv) if (l) latest = Math.max(latest, l.min);
     // stop to stop: a run passed end to end on a round trip starts and ends at the Center, a cut of nothing
-    for (let i = 1; i < seq.length; i++) if (last[i] !== null && last[i - 1] !== null && c.min > last[i] && seq[i] !== seq[i - 1]) passed.push([ri, seq[i - 1], seq[i]]);
+    for (let i = 1; i < seq.length; i++) {
+      if (last[i] === null || last[i - 1] === null || seq[i] === seq[i - 1]) continue;
+      if (c.min > last[i]) { passed.push([ri, seq[i - 1], seq[i]]); continue; }
+      over = false;
+      // left the near stop on its way to the far one, the same trip's last call at both
+      if (c.min > last[i - 1] && rows[i].trip === rows[i - 1].trip) {
+        const b = busOn(rows[i].trip), from = lv[i - 1].min, to = last[i];
+        const f = to > from ? Math.max(0, Math.min(1, (c.min + c.sec / 60 - from - 1) / (to - from))) : 0;
+        passed.push([ri, seq[i - 1], seq[i], b ? { lat: +b.bus.lat.toFixed(5), lon: +b.bus.lon.toFixed(5) } : null, +f.toFixed(2)]);
+      }
+    }
   }
+  if (over && latest >= 0 && c.min >= latest + NIGHT_OVER) passed = [];
   return passed;
 }
 /** A picked route, or a bus's loop, drawn on top at full strength; every other line faded back. With a way on drawn
