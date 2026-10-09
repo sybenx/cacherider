@@ -1242,9 +1242,12 @@ function wireGrip(app) {
   // Swiped down, the card shrinks to its head (the stop's name and routes) and the map shows through; swiped down
   // again it goes. Up, or a tap on the head, opens it out. The size chosen stays for the next stop tapped.
   const peeked = () => card.classList.contains('peek');
-  // The Center's board scrolls as one page over the map (hubPlace), none of this: nor is it put away, as gone, only
+  // The Center's board scrolls as one page over the map (sheetPlace), none of this: nor is it put away, as gone, only
   // leaving the Center brought it back.
-  const board = () => !!card.querySelector(':scope > .hubsheet') && /^#\/hub/.test(location.hash);
+  // A stop's page on a phone the same (boardCard): its own scroll, folded to its head by a swipe down; folded, one
+  // more puts it away, as a stop is something looked at and let go, where the Center is a place the rider's at.
+  const board = () => boardCard(card) && (!card.querySelector(':scope > .hubsheet') || /^#\/hub/.test(location.hash));
+  const stopBoard = () => board() && !!card.querySelector(':scope > .pagesheet');
   // Between its two sizes the card only ever slides: its height changes in one go, before or after the slide, with
   // the transform holding its top edge where it was, so nothing bounces. A short transition for the settle only,
   // then none, so a tap elsewhere still shows its card at once.
@@ -1296,7 +1299,7 @@ function wireGrip(app) {
       return;
     }
     if (e.target.closest('a, button, [data-go]')) return;
-    if (board()) { if (hubFolded) hubFold(false); return; }   // folded, a tap on it opens it
+    if (board()) { if (sheetFolded) sheetFold(false); return; }   // folded, a tap on it opens it
     if (peeked()) { delete card.dataset.tall; toFull(); }
     else if (e.target.closest('.grip')) toPeek();
   });
@@ -1312,7 +1315,7 @@ function wireGrip(app) {
       // Folded, a scroll down opens it. At its top, a pull up folds it: a new one, not the tail of the scroll that
       // brought it there. A trackpad's tail runs on for a second, dying away, and a rider's next pull began inside it:
       // waiting for a quiet gap, only the first fold ever came. A pull after a pause, or one gathering speed, is new.
-      if (hubFolded) { if (e.deltaY > 0) { e.preventDefault(); hubFold(false); } return; }
+      if (sheetFolded) { if (e.deltaY > 0) { e.preventDefault(); sheetFold(false); } return; }
       const abs = Math.abs(e.deltaY);
       if (e.deltaY >= 0 || card.scrollTop > 0) { pullOn = false; pull = 0; pullAbs = abs; return; }
       if (gap > 250 || abs > pullAbs * 1.3 + 1) pullOn = true;
@@ -1320,7 +1323,7 @@ function wireGrip(app) {
       if (!pullOn) return;
       e.preventDefault();
       pull += abs;
-      if (pull > 40) { pullOn = false; pull = 0; hubFold(true); }
+      if (pull > 40) { pullOn = false; pull = 0; sheetFold(true); }
       return;
     }
     if (!peeked() && e.deltaY < 0 && card.scrollTop <= 0 && fresh && card.classList.contains('open') && !wide()) { e.preventDefault(); wheelAt = e.timeStamp; toPeek(); return; }
@@ -1336,8 +1339,9 @@ function wireGrip(app) {
     if (bY === null || !board()) return;
     const dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : bY) - bY;
     bY = null;
-    if (!hubFolded && bTop && dy > 60) hubFold(true);
-    else if (hubFolded && dy < -40) hubFold(false);
+    if (!sheetFolded && bTop && dy > 60) sheetFold(true);
+    else if (sheetFolded && dy < -40) sheetFold(false);
+    else if (sheetFolded && dy > 60 && stopBoard()) away();
   });
   card.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) { y0 = null; return; }
@@ -1755,35 +1759,49 @@ function hubCard(clockNow) {
   else { card.innerHTML = markup; card.classList.remove('peek'); hubKey = s.pick || ''; }
   card.classList.remove('hidden');
   card.classList.add('open');
-  if (!again) { hubFolded = false; hubPlace(card); card.scrollTop = 0; }
+  if (!again) { sheetFolded = false; sheetPlace(card); card.scrollTop = 0; }
   hubMount(card);
 }
 /** The board on a phone rests where the bays' own room ends (hubRoom), the countdown at the least, and scrolls as one
  *  page over the map: down, it slides up over the bays and on through the departures; back at its top, it's where
  *  it rested. The card is the map's height, the room above the board an empty band that lets the map have the finger.
  *  It had two sizes, snapped between, and a scroll that opened it out covered the bays with no way back but the grip. */
-let hubRest = 0, hubFolded = false;   // the board's top, from the map's; folded down to its countdown
-function hubPlace(card) {
+let sheetRest = 0, sheetFolded = false;   // the board's top, from the map's; folded down to its countdown (a stop's, to its head)
+/** The card as a board: the Center's, and on a phone a stop's page. One scroll over the map from where it rests, folded
+ *  to its head by a swipe down. A stop's sheet had three sizes snapped between (its opening, its head, the whole card at
+ *  70%, scrolling inside), and the swipes did one thing on it and another on the Center's. */
+const boardCard = card => !!card && card.classList.contains('open') && (!!card.querySelector(':scope > .hubsheet') || (!wide() && !!card.querySelector(':scope > .pagesheet')));
+function sheetPlace(card) {
   const H = map.getContainer().clientHeight, top = topCover();
-  const g = card.querySelector(':scope > .grip'), h = card.querySelector(':scope > .head');
-  const headH = (g ? g.offsetHeight : 24) + (h ? h.offsetHeight : 100) + 1;
-  const rest = Math.max(top, Math.min(hubRoom(), H - headH));
-  hubRest = hubFolded ? Math.max(rest, H - headH) : rest;
-  card.classList.toggle('hubfold', hubFolded);
-  card.style.setProperty('--hub-top', top + 'px'); card.style.setProperty('--hub-room', (hubRest - top) + 'px');
+  const g = card.querySelector(':scope > .grip'), stopPage = card.querySelector(':scope > .pagesheet');
+  let headH, open;
+  if (stopPage) {
+    // a stop's: resting at its opening height (openingHeight: down to its next bus, or its closure), folded to its head
+    const g0 = g ? g.getBoundingClientRect().top : card.getBoundingClientRect().top, h = stopPage.querySelector('.head');
+    headH = Math.round((h ? h.getBoundingClientRect().bottom - g0 : 140) + 2);
+    open = H - (openingHeight(card) ?? headH);
+  } else {
+    const h = card.querySelector(':scope > .head');
+    headH = (g ? g.offsetHeight : 24) + (h ? h.offsetHeight : 100) + 1;
+    open = hubRoom();
+  }
+  const rest = Math.max(top, Math.min(open, H - headH));
+  sheetRest = sheetFolded ? Math.max(rest, H - headH) : rest;
+  card.classList.toggle('hubfold', sheetFolded);
+  card.style.setProperty('--hub-top', top + 'px'); card.style.setProperty('--hub-room', (sheetRest - top) + 'px');
 }
 /** A swipe down at the board's top folds it to its first card (when the next group leaves, and who's in), the bays
  *  framed larger in the room it frees; up, or a tap on it, and it's back where it rests. Never put away: gone, only
  *  leaving the Center brought it back. */
-function hubFold(on) {
+function sheetFold(on) {
   const card = col.querySelector('#mapcard');
-  if (hubFolded === on || !card.querySelector(':scope > .hubsheet')) return;
-  hubFolded = on; card.scrollTop = 0;
+  if (sheetFolded === on || !boardCard(card)) return;
+  sheetFolded = on; card.scrollTop = 0;
   // Slid, not snapped: the board and its ground move together (--hub-room, a registered length, eases), and the
   // bays are framed again over the same time.
   card.classList.add('hubslide'); clearTimeout(card._slide); card._slide = setTimeout(() => card.classList.remove('hubslide'), 320);
-  hubPlace(card);
-  fitHub(false, 280);
+  sheetPlace(card);
+  if (card.querySelector(':scope > .hubsheet')) fitHub(false, 280); else if (stopAt) frameStop(stopAt, 280);   // framed again in the room it leaves
 }
 /** The bays, and how the Center frames them: south up, as a rider stands at the Center facing the hall from 500
  *  North; in to the bays' own zoom at the least, whatever covers the map. */
@@ -2273,7 +2291,7 @@ function room() {
   const up = !!card && card.classList.contains('open') && getComputedStyle(card).visibility !== 'hidden';
   if (!wide()) {
     const rs = document.querySelector('#runsheet .rs');
-    r.bottom = rs ? rs.offsetHeight : !up ? 0 : card.querySelector(':scope > .hubsheet') && hubRest ? H - hubRest : card.offsetHeight;
+    r.bottom = rs ? rs.offsetHeight : !up ? 0 : boardCard(card) && sheetRest ? H - sheetRest : card.offsetHeight;
   } else if (up) r[panelRight() ? 'left' : 'right'] = card.offsetWidth + 16;   // the card in the corner across from the panel
   return r;
 }
@@ -2435,7 +2453,7 @@ function leaveHubKept() {
   const box = map.getContainer(), r = room(), { left, right } = pad();
   // The board's own rest, not the card's state: a tap on the map has put the card away by now (select), and the
   // middle of the whole map, under the board, was kept instead of what the rider could see.
-  if (!wide() && hubRest) r.bottom = Math.max(r.bottom, box.clientHeight - hubRest);
+  if (!wide() && sheetRest) r.bottom = Math.max(r.bottom, box.clientHeight - sheetRest);
   const x = left + (box.clientWidth - left - right + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
   stayAt = map.unproject([x, y]); stayOff = true; location.hash = '#/map';
 }   // stayOff: the Center left by a tap off its board, the map kept
@@ -2751,6 +2769,14 @@ function pageSheet(page, app, fresh) {
     const hands = () => { delete card.dataset.opening; };
     card.addEventListener('touchstart', hands, { once: true, passive: true }); card.addEventListener('pointerdown', hands, { once: true });
   }
+  if (!wide()) {
+    // A phone: the Center's board's way (sheetPlace), resting at its opening height, measured again as it fills in.
+    card.classList.remove('peek'); delete card.dataset.tall;
+    if (!again) { sheetFolded = false; card.scrollTop = 0; }
+    card.classList.add('open');
+    if (card.dataset.opening === page.key || !again) { sheetPlace(card); if (!again) setTimeout(() => { if (card.dataset.opening === page.key && !sheetFolded) sheetPlace(card); }, 400); }
+    return;
+  }
   if (card.dataset.opening === page.key) { openingPeek(card); card.classList.add('peek'); card.dataset.tall = '1'; if (!again) setTimeout(() => { if (card.dataset.opening === page.key) openingPeek(card); }, 400); }
   card.classList.add('open');
 }
@@ -2758,8 +2784,14 @@ function pageSheet(page, app, fresh) {
  *  the road across), or there's none, to the head alone: the stop, its routes, the way there. It went on to the bus
  *  after, and at a stop with a stop across the road that was most of the screen, the map it was tapped on gone. */
 function openingPeek(card) {
-  const pg = card.querySelector('.pagesheet'), nx = pg.querySelector('.next'), head = pg.querySelector('.head');
-  const H = map.getContainer().clientHeight, top = card.getBoundingClientRect().top - card.scrollTop;
+  const h = openingHeight(card);
+  if (h === null) return fitPeek(card);
+  card.style.setProperty('--peek', h + 'px');
+}
+/** That height, from the card's top edge (its grip), or null where there's nothing to go by. */
+function openingHeight(card) {
+  const pg = card.querySelector('.pagesheet'), nx = pg.querySelector('.next'), head = pg.querySelector('.head'), g = card.querySelector(':scope > .grip');
+  const H = map.getContainer().clientHeight, top = g ? g.getBoundingClientRect().top : card.getBoundingClientRect().top - card.scrollTop;
   const to = el => el.getBoundingClientRect().bottom - top + 1;
   let h = nx ? to(nx) : Infinity;
   if (h > 0.5 * H) h = head ? to(head) : Infinity;
@@ -2768,13 +2800,15 @@ function openingPeek(card) {
   // a swipe up out of sight.
   const warn = pg.querySelector('.head ~ .callout.alert, .head ~ .callout.unann');
   if (warn) { const all = to(warn), lead = warn.querySelector('b'); h = Math.max(isFinite(h) ? h : 0, all <= 0.6 * H ? all : (lead ? to(lead) + 8 : all)); }
-  if (!isFinite(h)) return fitPeek(card);
-  card.style.setProperty('--peek', Math.round(Math.min(h, 0.6 * H)) + 'px');
+  if (!isFinite(h)) return null;
+  return Math.round(Math.min(h, 0.6 * H));
 }
 /** A stop framed above its sheet: at the streets, in the middle of the map left over. */
-function frameStop(ll) {
+let stopAt = null;   // the stop last framed over its sheet: framed again when the sheet folds or opens
+function frameStop(ll, duration = 650) {
+  stopAt = ll;
   // A run up by the frame (a time opened): the run's framing is the one, however the two land.
-  requestAnimationFrame(() => { if (!MT.R) frame(ll, { zoom: Math.max(map.getZoom(), 16), duration: 650, essential: true }); });
+  requestAnimationFrame(() => { if (!MT.R) frame(ll, { zoom: Math.max(map.getZoom(), 16), duration, essential: true }); });
 }
 
 /** The map asked where the rider will start from, for directions to a stop: the ask on the card, the map left as it is. */

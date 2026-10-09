@@ -387,6 +387,39 @@ test('a closed stop tapped on a phone: its closure in the card as it opens, not 
   expect(hit).toBe(true);
 });
 
+test('a stop\'s card on a phone, as the Center\'s board: rests at its next bus, folds to its head, and goes', async ({ page }, info) => {
+  test.skip(!phone(info), 'a phone\'s card over the map');
+  await open(page);
+  const id = await page.evaluate(async () => { const d = await import('/app/data.js'); return d.D.stops.find(s => !s.hub && s.routes.length && !s.out).id; });
+  await go(page, '#/map/' + id);
+  await mapReady(page);
+  const card = page.locator('#mapcard');
+  await expect(card).toHaveClass(/open/);
+  await page.waitForTimeout(800);
+  const cdp = await page.context().newCDPSession(page);
+  const swipe = async (y0, y1) => {
+    const x = 200, steps = 8;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0 }] });
+    for (let i = 1; i <= steps; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 + (y1 - y0) * i / steps }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(500);
+  };
+  const room = () => card.evaluate(c => parseFloat(c.style.getPropertyValue('--hub-room')));
+  const grip = async () => (await card.locator('.grip').boundingBox()).y + 30;
+  const rest = await room();
+  expect(rest).toBeGreaterThan(0);   // resting partway up, the map above it
+  await swipe(await grip(), (await grip()) + 150);   // down at its top: folded to its head
+  await expect(card).toHaveClass(/hubfold/);
+  expect(await room()).toBeGreaterThanOrEqual(rest);   // (a stop with no bus to come rests at its head already)
+  await page.mouse.click(200, (await grip()) + 40);   // a tap on it: open again
+  await expect(card).not.toHaveClass(/hubfold/);
+  await swipe(await grip(), (await grip()) + 150);
+  await expect(card).toHaveClass(/hubfold/);
+  await swipe(await grip(), (await grip()) + 150);   // folded, down again: put away
+  await expect(card).not.toHaveClass(/\bopen\b/);
+  await expect(page).toHaveURL(/#\/map$/);
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
