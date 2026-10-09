@@ -181,7 +181,9 @@ function style(sat = true) {
       { id: 'usu-stops', type: 'symbol', source: 'ustops', minzoom: 12.5, layout: { 'icon-image': townIcon(['get', 'far'], ['get', 'icon']), 'icon-size': ['interpolate', ['linear'], ['zoom'], 12.5, 0.45, 15, 0.7, 17, 1], 'icon-allow-overlap': true }, paint: {} },
       { id: 'usu-labels', type: 'symbol', source: 'ustops', minzoom: 15.5, layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Medium'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': flavor === 'dark' ? '#eef0f2' : '#1d1f20', 'text-halo-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'text-halo-width': 1.2 } },
       // Stops from the streets in (z14); further out only the lit route's, in the layer after, so a stop is there because it was asked for.
-      { id: 'stops', type: 'circle', source: 'stops', minzoom: 12, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
+      // Open stops drawn over closed ones (and the '?' of a detour seen): twins across a street, ten metres apart, are one
+      // dot zoomed out, and whichever came last in the list was the one seen, a closed ring hiding an open twin.
+      { id: 'stops', type: 'circle', source: 'stops', minzoom: 12, layout: { 'circle-sort-key': ['case', ['any', ['get', 'closed'], ['get', 'maybe']], 0, 1] }, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 14, 5.5, 17, 8, 19, 11],
         // a closed stop is a hollow ring in its route's colour
         // an unannounced detour's stop: the same ring, a ? in it
         'circle-color': stopInks(flavor === 'dark').fill,
