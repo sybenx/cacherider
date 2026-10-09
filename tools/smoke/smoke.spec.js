@@ -662,6 +662,25 @@ test('directions up: a tap on the map changes nothing, a long press or right cli
   await expect(page).toHaveURL(/#\/go\/@41\.74335,-111\.81510:Institute\/at\/[-\d.]+,[-\d.]+\//);
 });
 
+test('directions from where you are: a right click asks which end, the destination kept', async ({ page }) => {
+  // Directions to a spot, from where the phone is (no start in the address): a right click went to the bare spot, the
+  // destination dropped, so its From here started over.
+  await page.addInitScript(() => { localStorage.setItem('cr-near', 'on'); localStorage.setItem('cr-lastgeo', JSON.stringify({ lat: 41.74061, lon: -111.83124, at: Date.now(), acc: 0, picked: true })); });
+  await open(page);
+  await go(page, '#/go/@41.75484,-111.81505:Aztec');
+  await mapReady(page);
+  await expect(page.getByText(/Leave|walk/i).filter({ visible: true }).first()).toBeVisible();
+  const map = await page.locator('#map').boundingBox(), side = await page.locator('#side').boundingBox();
+  const open_ = page.locator('#mapcard.open'), card = (await open_.count()) ? await open_.boundingBox() : null;
+  const left = side && side.width < map.width * 0.6 && side.x <= map.x + 1 ? side.x + side.width : map.x;
+  const top = map.y + 80, bottom = card && card.width > map.width * 0.6 ? card.y - 10 : map.y + map.height - 60;
+  await page.mouse.click(left + 30, (top + bottom) / 2, { button: 'right' });
+  await expect(page.locator('#mapcard.open .eyebrow', { hasText: 'Change directions' })).toBeVisible();
+  await expect(page.locator('#mapcard a', { hasText: 'Go here instead' })).toHaveAttribute('href', /^#\/go\/@[-\d.,]+:[^/]*$/);   // from where you are still
+  await page.locator('#mapcard a', { hasText: 'Start from here' }).click();
+  await expect(page).toHaveURL(/#\/go\/@41\.75484,-111\.81505:Aztec\/at\/[-\d.]+,[-\d.]+\//);
+});
+
 test('directions: a walk over a busy road goes by its crossing, said', async ({ page }) => {
   // The Transit Center to the Rush FunPlex: off Route 5 on the east side of US 91 (Main Street, 4 lanes, 50 mph),
   // the FunPlex on the west. The walk goes over at the lights, and says so; the map's walk bends there too.

@@ -743,7 +743,7 @@ async function made(app) {
     pressedAt = Date.now(); clearTimeout(tapTimer);
     const { lat, lng } = e.lngLat, at = { lat, lon: lng, label: whereabouts(lat, lng) };
     // Directions up: the spot as either end instead, a card asking which (a tap changes nothing there).
-    const ends = goEnds();
+    const ends = goEnds(app.geo);   // (from where the rider is too: the destination kept, not dropped for the bare spot)
     if (ends) { showAt(at, app, now(), null, null, null, ends); return; }
     if (JR) { location.hash = '#/map/' + atPath(at); return; }   // off the way, to the spot: Back comes back
     showAt(at, app, now(), pickFor, pickTo);
@@ -2696,10 +2696,12 @@ const steepBoth = (a, b) => steepWalk(a, b) || steepWalk(b, a);
  *  who fixes it sees it here at the next cut of the tiles (the places and crossings, the next night). */
 const osmFix = at => html`<p class="fine osmfix">Map wrong here? <a href="https://www.openstreetmap.org/edit#map=19/${at.lat.toFixed(5)}/${at.lon.toFixed(5)}" target="_blank" rel="noopener">Fix it on OpenStreetMap</a>: the streets, buildings, crossings and places come from there.</p>`;
 /** Directions up with both ends (#/go/<to>/<from…>), as the address has them: { to, from, q }, or null (none up, or
- *  one end still being picked, where a tap on the map is the pick). */
-function goEnds() {
-  const [path, q = ''] = location.hash.split('?'), m = /^#\/go\/([^/]+)\/(.+)$/.exec(path);
-  return m && m[1] !== '-' ? { to: m[1], from: m[2], q: q ? '?' + q.split('&').filter(x => !x.startsWith('plan=')).join('&') : '' } : null;
+ *  one end still being picked, where a tap on the map is the pick). With `geo`, #/go/<to> too: from where the rider is
+ *  (from null). */
+function goEnds(geo = null) {
+  const [path, q = ''] = location.hash.split('?'), m = /^#\/go\/([^/]+)(?:\/(.+))?$/.exec(path);
+  // From where the rider is (no start in the address, the phone's spot the start): both ends set too, when `geo` is.
+  return m && m[1] !== '-' && (m[2] || geo) ? { to: m[1], from: m[2] || null, q: q ? '?' + q.split('&').filter(x => !x.startsWith('plan=')).join('&') : '' } : null;
 }
 /** The directions whose card a long press has put a 'Change directions' card over (a phone's one card): until the
  *  rider goes somewhere, the feed's redraws of the directions leave it up (it went in seconds). */
@@ -2729,7 +2731,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null, swa
   // Otherwise (a place found, a long press) the spot either end of a journey: to it from where the rider is, or from it
   // to a stop, place or address asked for next.
   // Directions up, a long press: this spot as the start instead, or as where to (the time picked kept).
-  const go = swap ? html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${swap.to}/${atPath(at)}${swap.q === '?' ? '' : swap.q}">${corners()}Start from here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}/${swap.from}${swap.q === '?' ? '' : swap.q}">Go here instead</a></div>`
+  const go = swap ? html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${swap.to}/${atPath(at)}${swap.q === '?' ? '' : swap.q}">${corners()}Start from here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}${swap.from ? '/' + swap.from : ''}${swap.q === '?' ? '' : swap.q}">Go here instead</a></div>`
     : forId ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${forId}/${atPath(at)}">${corners()}Directions from here</a></div>`
     : toFrom ? html`<div class="open"><a class="btn btn-primary btn-lg blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}/${atPath(spotOf(toFrom))}">${corners()}Directions to here</a></div>`
     : html`<div class="open"><a class="btn btn-primary btn-lg btn-block blueprint" href="#/go/${spotKey(at.lat, at.lon, at.label)}">${corners()}Directions to here</a><a class="btn btn-secondary btn-lg blueprint" href="#/go/-/${atPath(at)}">From here</a></div>`;
