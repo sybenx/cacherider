@@ -420,6 +420,45 @@ test('a stop\'s card on a phone, as the Center\'s board: rests at its next bus, 
   await expect(page).toHaveURL(/#\/map$/);
 });
 
+test('a route\'s card on a phone, as the board: rests at its first stops, folds to its head, and goes; a POOL pickup\'s swipe up goes nowhere', async ({ page }, info) => {
+  test.skip(!phone(info), 'a phone\'s card over the map');
+  await open(page, '#/map/route/2');
+  await mapReady(page);
+  const card = page.locator('#mapcard');
+  await expect(card.locator('.routesheet')).toBeVisible();
+  await page.waitForTimeout(800);
+  const cdp = await page.context().newCDPSession(page);
+  const swipe = async (y0, y1) => {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: y0 }] });
+    for (let i = 1; i <= 8; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200, y: y0 + (y1 - y0) * i / 8 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(500);
+  };
+  const grip = async () => (await card.locator('.grip').boundingBox()).y + 30;
+  const rest = await card.evaluate(c => parseFloat(c.style.getPropertyValue('--hub-room')));
+  expect(rest).toBeGreaterThan(0);
+  await swipe(await grip(), (await grip()) + 150);
+  await expect(card).toHaveClass(/hubfold/);
+  expect(await card.evaluate(c => parseFloat(c.style.getPropertyValue('--hub-room')))).toBeGreaterThan(rest);
+  await swipe(await grip(), (await grip()) + 150);
+  await expect(card).not.toHaveClass(/\bopen\b/);
+  await expect(page).toHaveURL(/#\/map$/);
+  // POOL's card: its first button is the booking app, and a swipe up went off to the app store
+  const pool = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), m = await import('/app/views/map.js');
+    const s = d.POOL && d.POOL.stops.find(x => x.stop === null || x.stop === undefined || x.stop < 0);
+    if (!s) return null;
+    m.selectPool(s.id, window.__app);   // as a tap on its badge on the map
+    return s.id;
+  });
+  test.skip(!pool, 'no POOL pickups of their own');
+  await expect(card.locator('.open a').first()).toBeVisible();
+  const before = page.url();
+  const g = await grip();
+  await swipe(g + 80, g - 120);
+  expect(page.url()).toBe(before);
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {

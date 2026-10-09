@@ -652,13 +652,18 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 /* the board's ground, from the band's end down, painted on the card's scrolled content so it moves with the board */
 .mapcard.open:has(> .hubsheet) { background: linear-gradient(transparent var(--hub-room, 0px), var(--color-bg) var(--hub-room, 0px)) local; }
 .mapcard.open:has(> .hubsheet) > .grip { border-radius: 0; border-top: 1px solid var(--cr-line); box-shadow: 0 -6px 18px rgba(0,0,0,.18); cursor: default; }
-/* a stop's page on a phone, the same way (map.js sheetPlace): resting at its opening height, one scroll over the map */
+/* a stop's page and a route's on a phone, the same way (map.js sheetPlace): resting at its opening height, one scroll over the map */
 @media (max-width: 839px) {
-  .mapcard.open:has(> .pagesheet) { top: var(--hub-top, 0px); max-height: none; padding-top: var(--hub-room, 0px); background: linear-gradient(transparent var(--hub-room, 0px), var(--color-bg) var(--hub-room, 0px)) local; border-top: 0; box-shadow: none; pointer-events: none; scrollbar-width: none; }
-  .mapcard.open:has(> .pagesheet)::-webkit-scrollbar { display: none; }
-  .mapcard.open:has(> .pagesheet) > * { pointer-events: auto; display: flow-root; }
-  .mapcard.open:has(> .pagesheet) > .grip { border-radius: 0; border-top: 1px solid var(--cr-line); box-shadow: 0 -6px 18px rgba(0,0,0,.18); cursor: default; }
+  .mapcard.open:has(> .pagesheet), .mapcard.open:has(> .routesheet) { top: var(--hub-top, 0px); max-height: none; padding-top: var(--hub-room, 0px); background: linear-gradient(transparent var(--hub-room, 0px), var(--color-bg) var(--hub-room, 0px)) local; border-top: 0; box-shadow: none; pointer-events: none; scrollbar-width: none; }
+  .mapcard.open:has(> .pagesheet)::-webkit-scrollbar, .mapcard.open:has(> .routesheet)::-webkit-scrollbar { display: none; }
+  .mapcard.open:has(> .pagesheet) > *, .mapcard.open:has(> .routesheet) > * { pointer-events: auto; display: flow-root; }
+  .mapcard.open:has(> .pagesheet) > .grip, .mapcard.open:has(> .routesheet) > .grip { border-radius: 0; border-top: 1px solid var(--cr-line); box-shadow: 0 -6px 18px rgba(0,0,0,.18); cursor: default; }
   .mapcard.open:has(> .pagesheet) > .pagesheet { background: var(--color-bg); min-height: calc(100% - var(--hub-room, 0px) - 24px); }
+  .mapcard.open:has(> .routesheet) > .head, .mapcard.open:has(> .routesheet) > .routesheet { background: var(--color-bg); }
+  .mapcard.open:has(> .routesheet) > .routesheet { min-height: calc(100% - var(--hub-room, 0px) - 160px); }
+  /* its head held under the search bar as the list scrolls up under it: a sticky edge is inside the board's band, so
+     pulled up by it */
+  .mapcard.open:has(> .routesheet) > .routehead { top: calc(-1 * var(--hub-room, 0px)); }
 }
 /* the bar is 40 by 4; the handle around it is the whole width and tall enough for a thumb, and the browser never gets the drag */
 .mapcard .grip { display: block; width: 100%; height: 24px; padding: 10px calc(50% - 20px); box-sizing: border-box; background: var(--cr-line); background-clip: content-box; border-radius: 2px; touch-action: none; cursor: grab; }
@@ -1065,9 +1070,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .rs-ways .chip.on { border-color: var(--color-accent); color: var(--color-accent-700); }
 .rs-count { margin-left: auto; font: 600 0.8125rem var(--font-heading); letter-spacing: .08em; text-transform: uppercase; color: var(--cr-muted); }
 .routepage .routehead { padding: 4px 16px 12px; }
-/* on a phone the route's stops are the map's card: a little over half the screen, the map framed above it, and
-   its head held at the top while the list scrolls under it */
-.mapcard:has(> .routesheet):not(.peek) { max-height: 55%; }
+/* on a phone the route's stops are the map's card (a board, map.js sheetPlace), its head held at the top while the list scrolls under it */
 /* a route's other half (16 PM from 16 AM) */
 .rs-also { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font: 400 0.875rem/1.35 var(--font-body); letter-spacing: 0; color: var(--color-text); text-decoration: none; }
 .rs-also-t { flex: 1; min-width: 0; }

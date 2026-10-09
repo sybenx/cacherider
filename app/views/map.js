@@ -1170,7 +1170,10 @@ function sheetCard(o, clockNow) {
   else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); sheetKey = key; }
   card.classList.remove('hidden');
   card.classList.add('open');
-  if (!again && s.anchor) { const a = card.querySelector('#' + s.anchor); if (a) card.scrollTop = Math.max(0, a.getBoundingClientRect().top - card.getBoundingClientRect().top - card.clientHeight / 3); }
+  // As the Center's board and a stop's (sheetPlace): resting at its head and first stops, one scroll over the map.
+  if (!again) { sheetFolded = false; sheetPlace(card); }
+  // Opened for a bus on it: its row brought up to the sheet's resting edge, the sheet rising over the map to show it.
+  if (!again && s.anchor && s.anchor !== 'here') { const a = card.querySelector('#' + s.anchor); if (a) card.scrollTop = Math.max(0, a.getBoundingClientRect().top - (card.getBoundingClientRect().top + parseFloat(card.style.getPropertyValue('--hub-room') || 0)) - 60); }
 }
 /** The route's page beside the map on a wide screen: the same sheet, in the panel. */
 export function routePage(o, clockNow) {
@@ -1238,7 +1241,8 @@ function wireGrip(app) {
     selectedBus = null; selectedU = null; select(null, app); };
   // The card's own Open button (the card itself is .open too): a place's page. A spot's card has none: its first
   // button is directions, and a swipe up is no ask for those.
-  const pageHref = () => { const a = card.querySelector(':scope > .open a'), h = a && a.getAttribute('href'); return h && !/^#\/go\//.test(h) ? h : null; };
+  // Only a page of the app's own: POOL's first button is its booking app, and a swipe up went off to the app store.
+  const pageHref = () => { const a = card.querySelector(':scope > .open a'), h = a && a.getAttribute('href'); return h && h.startsWith('#/') && !/^#\/go\//.test(h) ? h : null; };
   // Swiped down, the card shrinks to its head (the stop's name and routes) and the map shows through; swiped down
   // again it goes. Up, or a tap on the head, opens it out. The size chosen stays for the next stop tapped.
   const peeked = () => card.classList.contains('peek');
@@ -1247,7 +1251,7 @@ function wireGrip(app) {
   // A stop's page on a phone the same (boardCard): its own scroll, folded to its head by a swipe down; folded, one
   // more puts it away, as a stop is something looked at and let go, where the Center is a place the rider's at.
   const board = () => boardCard(card) && (!card.querySelector(':scope > .hubsheet') || /^#\/hub/.test(location.hash));
-  const stopBoard = () => board() && !!card.querySelector(':scope > .pagesheet');
+  const stopBoard = () => board() && !card.querySelector(':scope > .hubsheet');   // a stop's or a route's: folded, a swipe down puts it away
   // Between its two sizes the card only ever slides: its height changes in one go, before or after the slide, with
   // the transform holding its top edge where it was, so nothing bounces. A short transition for the settle only,
   // then none, so a tap elsewhere still shows its card at once.
@@ -1770,12 +1774,20 @@ let sheetRest = 0, sheetFolded = false;   // the board's top, from the map's; fo
 /** The card as a board: the Center's, and on a phone a stop's page. One scroll over the map from where it rests, folded
  *  to its head by a swipe down. A stop's sheet had three sizes snapped between (its opening, its head, the whole card at
  *  70%, scrolling inside), and the swipes did one thing on it and another on the Center's. */
-const boardCard = card => !!card && card.classList.contains('open') && (!!card.querySelector(':scope > .hubsheet') || (!wide() && !!card.querySelector(':scope > .pagesheet')));
+const boardCard = card => !!card && card.classList.contains('open') && (!!card.querySelector(':scope > .hubsheet') || (!wide() && !!card.querySelector(':scope > .pagesheet, :scope > .routesheet')));
 function sheetPlace(card) {
   const H = map.getContainer().clientHeight, top = topCover();
-  const g = card.querySelector(':scope > .grip'), stopPage = card.querySelector(':scope > .pagesheet');
+  const g = card.querySelector(':scope > .grip'), stopPage = card.querySelector(':scope > .pagesheet'), routeList = card.querySelector(':scope > .routesheet');
   let headH, open;
-  if (stopPage) {
+  if (routeList) {
+    // a route's: resting at its head and its first few stops (the stop it was opened from, where it was), half the map
+    // at most, the route framed above; folded to its head
+    const g0 = g ? g.getBoundingClientRect().top : card.getBoundingClientRect().top, to = el => el.getBoundingClientRect().bottom - g0 + 1;
+    const h = card.querySelector(':scope > .head'), rows = routeList.querySelectorAll('.rs-list > *'), yours = routeList.querySelector('.yourstop');
+    headH = Math.round((h ? to(h) : 120) + 2);
+    const want = Math.max(rows.length ? to(rows[Math.min(2, rows.length - 1)]) : headH, yours ? to(yours) : 0);
+    open = H - Math.round(Math.min(want, 0.5 * H));
+  } else if (stopPage) {
     // a stop's: resting at its opening height (openingHeight: down to its next bus, or its closure), folded to its head
     const g0 = g ? g.getBoundingClientRect().top : card.getBoundingClientRect().top, h = stopPage.querySelector('.head');
     headH = Math.round((h ? h.getBoundingClientRect().bottom - g0 : 140) + 2);
@@ -1801,7 +1813,9 @@ function sheetFold(on) {
   // bays are framed again over the same time.
   card.classList.add('hubslide'); clearTimeout(card._slide); card._slide = setTimeout(() => card.classList.remove('hubslide'), 320);
   sheetPlace(card);
-  if (card.querySelector(':scope > .hubsheet')) fitHub(false, 280); else if (stopAt) frameStop(stopAt, 280);   // framed again in the room it leaves
+  if (card.querySelector(':scope > .hubsheet')) fitHub(false, 280);   // framed again in the room it leaves
+  else if (card.querySelector(':scope > .routesheet') && focusRoute !== undefined) frame(routeBounds(focusRoute), { maxZoom: 15.5, duration: 280 });
+  else if (stopAt) frameStop(stopAt, 280);
 }
 /** The bays, and how the Center frames them: south up, as a rider stands at the Center facing the hall from 500
  *  North; in to the bays' own zoom at the least, whatever covers the map. */
