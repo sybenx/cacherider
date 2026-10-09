@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#f2f2f3">
 <style>html{background:#f2f2f3;color-scheme:light}@media(prefers-color-scheme:dark){html:not([data-theme=light]){background:#101214;color-scheme:dark}}html[data-theme=dark]{background:#101214;color-scheme:dark}</style>
 <script>(function(){var m=matchMedia("(prefers-color-scheme: dark)"),t=document.querySelector("meta[name=theme-color]"),r=document.documentElement,s=null;try{s=localStorage.getItem("cr-theme")}catch(e){}if(s==="light"||s==="dark")r.dataset.theme=s;function set(){var d=m.matches&&r.dataset.theme!=="light"||r.dataset.theme==="dark";t.content=d?"#101214":"#f2f2f3";}set();m.addEventListener("change",set);document.addEventListener("visibilitychange",set);})()</script>
+<script>try{if(localStorage.getItem("cr-panel")==="right")document.documentElement.dataset.panel="right"}catch(e){}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Cache Rider">

@@ -192,7 +192,7 @@ function sync(a, b) {
   }
 }
 
-async function render(tick = false) {
+export async function render(tick = false) {
   // The route page is the map's now: an old address lands there, in place of itself in the history.
   if (/^#\/route\//.test(location.hash)) history.replaceState(null, '', location.hash.replace(/^#\/route\//, '#/map/route/'));
   const { seg, q } = parse();

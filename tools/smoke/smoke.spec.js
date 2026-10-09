@@ -292,6 +292,25 @@ test('a spot picked on the map for where you are: from the home page, and kept a
   await expect(page.getByText('Near the spot you picked').filter({ visible: true }).first()).toBeVisible();
 });
 
+test('the panel on the right, set in Settings: the map\'s buttons across from it', async ({ page }, info) => {
+  test.skip(phone(info), 'a wide screen\'s panel');
+  await open(page, '#/about');
+  await page.locator('button[data-side="right"]').click();
+  await expect(page.locator('button[data-side="right"]')).toHaveAttribute('aria-pressed', 'true');
+  await go(page, '#/');
+  await mapReady(page);
+  const vw = page.viewportSize().width;
+  const side = await page.locator('#side').boundingBox();
+  expect(Math.round(side.x + side.width)).toBe(vw);   // flush right
+  const ctrl = await page.locator('#map .maplibregl-ctrl-top-right').boundingBox();
+  expect(ctrl.x).toBeLessThan(100);   // the buttons on the left, clear of it
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.panel === 'right');   // kept, set before the page draws
+  await open(page, '#/about');
+  await page.locator('button[data-side="left"]').click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.panel || 'left')).toBe('left');
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {

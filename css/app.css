@@ -132,6 +132,14 @@ svg { display: block; flex: none; }
   #body.map-open #mapcol { flex: none; }
   #body:not(.map-open) .mapnotice { left: 432px; }
   .m-only { display: none !important; }
+  /* the panel on the right (Settings, this computer): the map's card, notice and buttons across from it */
+  [data-panel="right"] #side { left: auto; right: 0; border-right: 0; border-left: 1px solid var(--cr-line); }
+  [data-panel="right"] #body.map-open #side { transform: translateX(100%); }
+  [data-panel="right"] #body:not(.map-open) .mapnotice { left: 12px; right: 432px; }
+  [data-panel="right"] .mapcard { right: auto; left: 16px; }
+  [data-panel="right"] #map .maplibregl-ctrl-top-right, [data-panel="right"] #map .maplibregl-ctrl-bottom-right { right: auto; left: 0; }
+  [data-panel="right"] #map .maplibregl-ctrl-top-right .maplibregl-ctrl { float: left; margin: 10px 0 0 10px; }
+  [data-panel="right"] #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl { float: left; margin: 0 0 10px 10px; }
 }
 /* narrower, the time alone: the search keeps its room */
 @media (min-width: 840px) and (max-width: 1179px) { .topclock > span:first-child { display: none; } }

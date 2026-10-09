@@ -2230,12 +2230,13 @@ function offDuty(b, clockNow = now()) {
 }
 const OFF_GREY = '#8a8d91';
 /** Every bus with a fix, shuttle and Connect alike, moved or placed; the ones gone from the feeds removed. */
-/** On a wide screen the panel covers the map's left 420 px: the map keeps its centre in the part you can see,
- *  easing across as the panel slides, so the place you were looking at stays put. */
-let padLeft = null;
+/** On a wide screen the panel covers 420 px of the map, its left or, set so (Settings), its right: the map keeps its
+ *  centre in the part you can see, easing across as the panel slides, so the place you were looking at stays put. */
+let padW = null, padSide = null;
+const panelRight = () => document.documentElement.dataset.panel === 'right';
 // The panel's room, eased in with every move that follows it: a move started while the panel's padding is still
 // easing (a stop picked as the Map tab opens) would stop it partway and leave the map off centre.
-const pad = () => ({ left: padLeft || 0, top: 0, right: 0, bottom: 0 });
+const pad = () => panelRight() ? { left: 0, top: 0, right: padW || 0, bottom: 0 } : { left: padW || 0, top: 0, right: 0, bottom: 0 };
 /** The valley's edges, which the map keeps within. MapLibre's own limit (maxBounds) measures the whole map, not the
  *  part left clear beside the panel, so it stopped short of the east edge by half the panel and let the west run on
  *  under it. This one keeps the part you can see inside the edges, and zooms in as far as it takes to. */
@@ -2273,7 +2274,7 @@ function room() {
   if (!wide()) {
     const rs = document.querySelector('#runsheet .rs');
     r.bottom = rs ? rs.offsetHeight : !up ? 0 : card.querySelector(':scope > .hubsheet') && hubRest ? H - hubRest : card.offsetHeight;
-  } else if (up) r.right = card.offsetWidth + 16;
+  } else if (up) r[panelRight() ? 'left' : 'right'] = card.offsetWidth + 16;   // the card in the corner across from the panel
   return r;
 }
 const MIN_ROOM = 120;   // what's framed gets this much height at least, whatever covers the map
@@ -2309,13 +2310,13 @@ function midOf(b) {
   return [(b.getWest() + b.getEast()) / 2, (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI];
 }
 let padUntil = 0;
-const settlePad = () => { if (map.getPadding().left !== (padLeft || 0)) map.setPadding(pad()); };
+const settlePad = () => { const p = map.getPadding(), q = pad(); if (p.left !== q.left || p.right !== q.right) map.setPadding(q); };
 function panelPad(app) {
-  const want = wide() && app.route.name !== 'map' ? 420 : 0;
-  if (want === padLeft) return;
-  padLeft = want;
+  const want = wide() && app.route.name !== 'map' ? 420 : 0, side = panelRight() ? 'right' : 'left';
+  if (want === padW && side === padSide) return;
+  padW = want; padSide = side;
   padUntil = Date.now() + 300;   // a move then is the panel's, not the rider's: a stop picked with it still goes to the stop
-  map.easeTo({ padding: { left: want, top: 0, right: 0, bottom: 0 }, duration: 0 });   // the panel is simply there, so the map is too
+  map.easeTo({ padding: pad(), duration: 0 });   // the panel is simply there, so the map is too
 }
 
 /** The Map tab tapped again: the whole of Logan, north up, nothing picked. */
@@ -2431,11 +2432,11 @@ let beforeHub = null, backDue = false, stayOff = false, stayAt = null;
 /** Leaving the Center for the Map tab, the map kept (its north button, a tap off the board): where the rider was
  *  looking, the middle of what the board left in view, to keep in the middle once the map is turned north. */
 function leaveHubKept() {
-  const box = map.getContainer(), r = room(), left = padLeft || 0;
+  const box = map.getContainer(), r = room(), { left, right } = pad();
   // The board's own rest, not the card's state: a tap on the map has put the card away by now (select), and the
   // middle of the whole map, under the board, was kept instead of what the rider could see.
   if (!wide() && hubRest) r.bottom = Math.max(r.bottom, box.clientHeight - hubRest);
-  const x = left + (box.clientWidth - left + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
+  const x = left + (box.clientWidth - left - right + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
   stayAt = map.unproject([x, y]); stayOff = true; location.hash = '#/map';
 }   // stayOff: the Center left by a tap off its board, the map kept
 export function leaveHub() { if (!wide() || hubTurned) backDue = true; }   // a wide screen's map moved only by the tab again: else nothing to put back
@@ -2810,8 +2811,8 @@ function searchMarks(m) {
   const pts = [...searchIds.map(id => stop(D.stopById[id])).map(s => [s.lon, s.lat]), ...m.spots.map(p => [p.lon, p.lat])];
   if (!pts.length) return;
   // In view is in the part not under the panel or the header's shade.
-  const box = map.getContainer(), W = box.clientWidth, H = box.clientHeight, x0 = (padLeft || 0) + 16, y0 = topCover() + 16;
-  if (pts.every(p => { const q = map.project(p); return q.x >= x0 && q.x <= W - 16 && q.y >= y0 && q.y <= H - 16; })) return;
+  const box = map.getContainer(), W = box.clientWidth, H = box.clientHeight, pd = pad(), x0 = pd.left + 16, x1 = W - pd.right - 16, y0 = topCover() + 16;
+  if (pts.every(p => { const q = map.project(p); return q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= H - 16; })) return;
   const b = new maplibregl.LngLatBounds();
   for (const p of pts) b.extend(p);
   frame(b, { maxZoom: 16 });
