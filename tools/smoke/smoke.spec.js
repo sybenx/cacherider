@@ -368,6 +368,25 @@ test('the Center: a bus two-thirds of a run down is held for its next run, which
   expect(r).toEqual(['held', 'on time']);
 });
 
+test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', async ({ page }, info) => {
+  test.skip(!phone(info), 'a phone\'s card over the map');
+  await open(page);
+  const id = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js');
+    await d.loadAlerts({ relay: false });
+    const c = t.now(), i = d.D.stops.findIndex((s, i) => d.closedThrough(i, c.ymd) !== null);
+    return i < 0 ? null : d.D.stops[i].id;
+  });
+  test.skip(!id, 'no stop closed by a notice today');
+  await go(page, '#/map/' + id);
+  const lead = page.locator('#mapcard .callout.alert b').first();
+  await expect(lead).toBeVisible();
+  await page.waitForTimeout(1200);   // the card's opening slide
+  // what's at the headline's middle is the headline: in the card as it opens, above the tabs
+  const hit = await lead.evaluate(b => { const r = b.getBoundingClientRect(), el = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 12)); return !!el && (b === el || b.contains(el)); });
+  expect(hit).toBe(true);
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {

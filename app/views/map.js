@@ -2763,6 +2763,11 @@ function openingPeek(card) {
   const to = el => el.getBoundingClientRect().bottom - top + 1;
   let h = nx ? to(nx) : Infinity;
   if (h > 0.5 * H) h = head ? to(head) : Infinity;
+  // A stop closed or skipped (a notice, or a detour seen from the buses): that's the news, in the opening height too,
+  // whole where it fits, else its headline. A closed stop has no next bus, so it opened to the head alone, the notice
+  // a swipe up out of sight.
+  const warn = pg.querySelector('.head ~ .callout.alert, .head ~ .callout.unann');
+  if (warn) { const all = to(warn), lead = warn.querySelector('b'); h = Math.max(isFinite(h) ? h : 0, all <= 0.6 * H ? all : (lead ? to(lead) + 8 : all)); }
   if (!isFinite(h)) return fitPeek(card);
   card.style.setProperty('--peek', Math.round(Math.min(h, 0.6 * H)) + 'px');
 }
