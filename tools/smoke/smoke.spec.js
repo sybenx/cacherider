@@ -687,7 +687,7 @@ test('directions: a walk over a busy road goes by its crossing, said', async ({ 
   await open(page);
   await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.74061,-111.83124/Transit%20Center');
   await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/Cross .*Main Street.* at the (light|crosswalk)/);
-  await expect(page.getByText(/crow flies, but over a busy road/).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText(/(crow flies, but|sidewalks, paths and streets,) over a busy road/).filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('a.walkall')).toHaveCount(0);   // three miles: not a walk worth offering beside the bus
   // Straight over US 91 it's the stop across from the Eccles Ice Center instead, the same bus, sooner: said, and the
   // Crosswalks chip there to take it. (Only while Route 5 runs: no way, or tomorrow's on another route, nothing to compare.)
@@ -762,6 +762,19 @@ test('directions arriving by a time: the shuttle the way picked, when it is the 
   // Walking the whole way beside it: how long, how far, up the bench to campus.
   await expect(page.locator('a.walkall').filter({ visible: true }).first()).toContainText(/\d+ min · .* (ft|m) up/);
   await expect(page.locator('a.walkall b.hill').filter({ visible: true }).first()).toHaveText(/steep/i);   // the word first, not the feet alone
+});
+
+test('directions arriving by a time on a later day: that day said, no bus missed', async ({ page }) => {
+  // Richmond to Utah Podiatry, by 8 AM on a weekday to come: the 15 at 6:40 was 'Today' and 'Missed it? The next 15
+  // leaves at 8:10' (gone by the time picked, 8:00, not by the clock), as if the 15 ran hourly.
+  await open(page);
+  const d = new Date(); d.setDate(d.getDate() + 2); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  await go(page, '#/go/@41.73632,-111.83415:Utah%20Podiatry/at/41.92243,-111.80832/Richmond?t=a' + ymd + '-0800');
+  const picked = page.locator('.jsum').filter({ visible: true }).first();
+  await expect(picked).toBeVisible();
+  await expect(picked.locator('.eyebrow')).toHaveText(new RegExp(d.toLocaleDateString('en-US', { weekday: 'long' }), 'i'));
+  await expect(page.locator('.tl .missed')).toHaveCount(0);
 });
 
 test('directions: avoid steep walks, on and off, and in Settings', async ({ page }) => {

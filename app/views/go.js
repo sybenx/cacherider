@@ -6,7 +6,7 @@ import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, day
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { spotOf, spotKey, atPath, climb, RISE, slope, walkSlope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE, crossingsOff } from '../geo.js';
+import { walkNetReady, spotOf, spotKey, atPath, climb, RISE, slope, walkSlope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE, crossingsOff } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, planNetBy, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
@@ -223,8 +223,8 @@ function sheet(J, head, clockNow, fixed = false, also = '') {
   const st = J.straight;
   const straight = st ? html`<div class="jrow straightalt" role="note"><span class="sub"><b>Straight across ${st.roads} (no crosswalk):</b> ${st.p.legs.filter(l => l.kind === 'ride').map(l => l.u ? chip(l.r, 18) : badge(l.r, 18))} to ${stopWords(st.p.legs.filter(l => l.kind === 'ride').pop().to)}, ${fixed && clockNow.by ? `leave at ${clockText(st.p.leave)}, ${st.gain} min later` : `there at ${clockText(st.p.arrive)}, ${st.gain} min sooner`}. Crosswalks off to see it.</span></div>` : '';
   return html`<div class="gohead">${head}${day}${also}${summary(P, J, clockNow, fixed)}${straight}${walkAll(J, P, clockNow)}</div>
-    <div class="journeysheet legs">${timeline(P, J, clockNow)}${later}${sortRow}${rows}</div>
-    <div class="fine">From the timetable and the live feed, worked out on this phone. Walks are as the crow flies, but over a busy road by its lights or a crosswalk.</div>`.s;
+    <div class="journeysheet legs">${timeline(P, J)}${later}${sortRow}${rows}</div>
+    <div class="fine">From the timetable and the live feed, worked out on this phone. ${walkNetReady() ? 'Walks go along the sidewalks, paths and streets, over a busy road by its lights or a crosswalk.' : 'Walks are as the crow flies, but over a busy road by its lights or a crosswalk.'}</div>`.s;
 }
 /** A way's shape, for grouping: its rides, each by route and where it's boarded. The same shape at another time is the
  *  same way, later. */
@@ -236,7 +236,8 @@ function summary(p, J, clockNow, fixed) {
   const changes = p.legs.filter((l, k) => l.kind === 'ride' && p.legs.slice(0, k).some(x => x.kind === 'ride'));
   const at = [...new Set(changes.map(l => where(l.from).hub ? 'the ' + D.hub.name : stopWords(l.from)))];
   const left = p.leave - clockNow.min;
-  const eye = fixed ? (p.day === 0 ? 'Today' : dayWord(p.ymd).replace(/^./, c => c.toUpperCase())) : p.day === 0 ? (left <= 0 ? 'Leaving now' : left === 1 ? 'Leave in a minute' : `Leave in ${left} min`) : p.day === 1 ? 'Tomorrow' : dayName(p.ymd);
+  // A time picked: its day said (a plan's day 0 is the picked day's, not today).
+  const eye = fixed ? dayWord(p.ymd).replace(/^./, c => c.toUpperCase()) : p.day === 0 ? (left <= 0 ? 'Leaving now' : left === 1 ? 'Leave in a minute' : `Leave in ${left} min`) : p.day === 1 ? 'Tomorrow' : dayName(p.ymd);
   // Its buses as badges first: on a phone the card opens at this block, the timeline a swipe below, and the times
   // alone didn't say which bus (a rider at the Center read the hospital's way as having no Route 2 in it).
   const rides = p.legs.filter(l => l.kind === 'ride').map(l => l.u ? chip(l.r, 22) : badge(l.r, 22));
@@ -472,8 +473,10 @@ const addrLine = x => { const h = said(x); return h && h.addr ? html`<span class
  *  clock is in is tinted; a bus already gone says which one comes next. For someone who doesn't know the system: stops
  *  by the names the bus announces, each bus by its badge and where it's heading. */
 const CROSS = 45;   // metres: two stops this near, a change between them, are across the street from each other
-function timeline(p, J, clockNow) {
-  const rides = p.legs.filter(l => l.kind === 'ride'), today = p.day === 0, m = clockNow.min;
+function timeline(p, J) {
+  // The clock's own now, not the time picked: arriving by 8 on Monday, Monday's 6:40 bus is neither today nor gone (it
+  // said 'Missed it? The next 15 leaves at 8:10', as if the 15 ran hourly). A plan's day 0 is the picked day's.
+  const clockNow = now(), rides = p.legs.filter(l => l.kind === 'ride'), today = p.ymd === clockNow.ymd, m = clockNow.min;
   const colour = l => l.u ? U.routes[l.r].color : '#' + D.routes[l.r].color;
   const within = (a, b) => today && m >= a && m < b;
   const at = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x);   // a leg's end, Connect's or the shuttle's
