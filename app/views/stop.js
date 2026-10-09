@@ -187,7 +187,7 @@ export function render({ id, full, run, on }, clockNow) {
 function tpLine(si) {
   const ris = stop(si).routes.filter(ri => timed(si, ri));
   if (!ris.length) return '';
-  return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Route/, 'route')}: an early bus waits here for its time.</span></span>`;
+  return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Route/, 'route')}: if a bus arrives early it will wait until the scheduled time.</span></span>`;
 }
 function describeDays(r) {
   // Which days a route runs at all: from the services its departures carry.
