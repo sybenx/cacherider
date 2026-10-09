@@ -215,47 +215,70 @@ test('search: where people live, an apartment complex and a dorm by name', async
 
 test('the Center: a bus back in at the end of its trip isn\'t its departure still leaving', async ({ page }) => {
   // A fresh start at 8:51: a route's 8:30 bus back at the Center finishing its trip read as the 8:30 leaving now, 21 min
-  // late, until it took up its next trip. Made up from the timetable: a route's departure from a bay 21 minutes ago.
+  // late, until it took up its next trip. Made up from the timetable: a run whose next is an hour on or more (21 min down
+  // isn't held for it: rt.js holdOf), the clock 21 minutes after it.
   await open(page);
-  const r = await page.evaluate(async () => {
-    const d = await import('/app/data.js'), rtm = await import('/app/rt.js'), t = await import('/app/time.js');
-    const c = t.now(), ri = d.D.routes.findIndex(x => !(d.D.hub.loops || []).includes(d.D.routes.indexOf(x)) && Object.values(x.stops || {}).some(q => q.length > 6 && d.D.stops[q[0]].hub));
-    if (ri < 0) return null;
-    const [dir, seq] = Object.entries(d.D.routes[ri].stops).find(([, q]) => q.length > 6 && d.D.stops[q[0]].hub);
-    const hubSi = seq[0], dep = { min: c.min - 21, r: ri, dir: +dir, si: hubSi, trip: d.D.times[hubSi] && Object.values(d.D.times[hubSi]).flat().find(x => x[1] === ri)?.[4], day: 0 };
-    if (dep.trip === undefined || dep.min < 0) return null;
-    const id = d.D.trips[dep.trip], near = seq[seq.length - 2], hub = d.D.stops[hubSi], nowS = Math.floor(Date.now() / 1000);
-    rtm.tripOf(id);   // the feed's trip index, as its first answer builds it
-    // its next stop the one before the Center, the bus at the bay: in, finishing the trip
-    rtm.rt.trips = { [id]: { v: 'X1', ts: nowS, at: new Map([[d.D.stops[near].id, { seq: seq.length - 2, time: nowS + 30, skipped: false }]]), first: { sid: d.D.stops[near].id, seq: seq.length - 2, time: nowS + 30 }, last: { sid: d.D.stops[near].id, seq: seq.length - 2, time: nowS + 30 }, lastDelay: 0, ti: dep.trip, stops: [[d.D.stops[near].id, seq.length - 2, nowS + 30, 0]], end: seq.length - 1 } };
-    rtm.rt.buses = [{ id: 'c:X1', label: 'X1', trip: id, ri, lat: hub.lat, lon: hub.lon, course: 0, speed: 0, ts: nowS, h: null, dir: +dir }];
-    rtm.rt.at = Date.now(); rtm.rt.t = nowS;
-    const p = rtm.predict(dep);
-    return p === null || p.gone || p.min === dep.min ? 'gone' : 'leaving ' + p.min;
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js');
+    const c = t.now(), loops = d.D.hub.loops || [];
+    for (const [si, s] of d.D.stops.entries()) {
+      if (!s.hub) continue;
+      for (const row of d.timesOn(si, c.ymd)) {
+        if (loops.includes(row.r)) continue;
+        const st = d.tripStops(row.trip), f = st[0], nx = d.nextTrip(row.trip, c.ymd), ns = nx !== undefined ? d.tripStops(nx)[0] : null;
+        const seq = (d.D.routes[row.r].stops || {})[String(row.dir)] || [];
+        if (!f || f[0] !== row.min || f[1] !== si || seq.length < 7 || seq[0] !== si || (ns && ns[0] - f[0] < 60)) continue;
+        return { ti: row.trip, f, ri: row.r, dir: row.dir, seq, at: Date.now() + ((f[0] + 21 - c.min) * 60 - c.sec) * 1000 };
+      }
+    }
+    return null;
   });
-  if (r !== null) expect(r).toBe('gone');
+  test.skip(!pick, 'no hourly run from the Center today');
+  await page.clock.setFixedTime(new Date(pick.at));
+  const r = await page.evaluate(async ({ ti, f, ri, dir, seq }) => {
+    const d = await import('/app/data.js'), rtm = await import('/app/rt.js');
+    const id = d.D.trips[ti], near = seq[seq.length - 2], hub = d.D.stops[f[1]], nowS = Math.floor(Date.now() / 1000);
+    rtm.tripOf(id);
+    // its next stop the one before the Center, the bus at the bay: in, finishing the trip
+    rtm.rt.trips = { [id]: { v: 'X1', ts: nowS, at: new Map([[d.D.stops[near].id, { seq: seq.length - 2, time: nowS + 30, skipped: false }]]), first: { sid: d.D.stops[near].id, seq: seq.length - 2, time: nowS + 30 }, last: { sid: d.D.stops[near].id, seq: seq.length - 2, time: nowS + 30 }, lastDelay: 0, ti, stops: [[d.D.stops[near].id, seq.length - 2, nowS + 30, 0]], end: seq.length - 1 } };
+    rtm.rt.buses = [{ id: 'c:X1', label: 'X1', trip: id, ri, lat: hub.lat, lon: hub.lon, course: 0, speed: 0, ts: nowS, h: null, dir }];
+    rtm.rt.at = Date.now(); rtm.rt.t = nowS;
+    const p = rtm.predict({ min: f[0], r: ri, dir, si: f[1], trip: ti, day: 0 });
+    return p === null || (p.gone && !p.held) || p.min === f[0] ? 'gone' : 'leaving ' + p.min + (p.held ? ' held' : '');
+  }, pick);
+  expect(r).toBe('gone');
 });
 
 test('the Center: a departure still listed past its minute, its bus on its trip before, by where the bus is', async ({ page }) => {
   // 3:06 PM, every 3:00 'leaving now, 6 min late': the feed still listed the Center on each 3:00 and had its bus on the
-  // trip before, out on its run. Made up from the timetable: a route's departure 6 minutes ago.
+  // trip before, out on its run. Made up from the timetable: a route's half-hourly departure, the clock 6 minutes on.
   await open(page);
-  const r = await page.evaluate(async () => {
-    const d = await import('/app/data.js'), rtm = await import('/app/rt.js'), t = await import('/app/time.js');
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js');
     const c = t.now(), loops = d.D.hub.loops || [];
-    const ri = d.D.routes.findIndex((x, i) => !loops.includes(i) && Object.values(x.stops || {}).some(q => q.length > 6 && d.D.stops[q[0]].hub));
-    if (ri < 0) return null;
-    const [dir, seq] = Object.entries(d.D.routes[ri].stops).find(([, q]) => q.length > 6 && d.D.stops[q[0]].hub);
-    const hubSi = seq[0], ti = Object.values(d.D.times[hubSi] || {}).flat().find(x => x[1] === ri)?.[4];
-    if (ti === undefined || c.min < 6) return null;
-    const dep = { min: c.min - 6, r: ri, dir: +dir, si: hubSi, trip: ti, day: 0 }, id = d.D.trips[ti], hub = d.D.stops[hubSi], nowS = Math.floor(Date.now() / 1000);
+    for (const [si, s] of d.D.stops.entries()) {
+      if (!s.hub) continue;
+      for (const row of d.timesOn(si, c.ymd)) {
+        if (loops.includes(row.r)) continue;
+        const f = d.tripStops(row.trip)[0], nx = d.nextTrip(row.trip, c.ymd), ns = nx !== undefined ? d.tripStops(nx)[0] : null;
+        if (!f || f[0] !== row.min || f[1] !== si || !ns || ns[0] - f[0] !== 30) continue;
+        return { ti: row.trip, f, ri: row.r, dir: row.dir, at: Date.now() + ((f[0] + 6 - c.min) * 60 - c.sec) * 1000 };
+      }
+    }
+    return null;
+  });
+  test.skip(!pick, 'no half-hourly run from the Center today');
+  await page.clock.setFixedTime(new Date(pick.at));
+  const r = await page.evaluate(async ({ ti, f, ri, dir }) => {
+    const d = await import('/app/data.js'), rtm = await import('/app/rt.js');
+    const id = d.D.trips[ti], hub = d.D.stops[f[1]], nowS = Math.floor(Date.now() / 1000), dep = { min: f[0], r: ri, dir, si: f[1], trip: ti, day: 0 };
     rtm.tripOf(id);
-    const trip = { v: 'X2', ts: nowS, at: new Map([[hub.id, { seq: 0, time: nowS - 360, skipped: false }]]), first: { sid: hub.id, seq: 0, time: nowS - 360 }, last: { sid: hub.id, seq: 0, time: nowS - 360 }, lastDelay: 0, ti, stops: [[hub.id, 0, nowS - 360, 0]], end: seq.length - 1 };
-    const at = (lat, lon, speed) => { rtm.rt.trips = { [id]: trip }; rtm.rt.buses = [{ id: 'c:X2', label: 'X2', trip: 'the_one_before', ri, lat, lon, course: 0, speed, ts: nowS, h: null, dir: +dir }]; rtm.rt.at = Date.now(); rtm.rt.t = nowS; const p = rtm.predict(dep); return p && p.gone ? 'gone' : 'leaving'; };
+    const trip = { v: 'X2', ts: nowS, at: new Map([[hub.id, { seq: 0, time: nowS - 360, skipped: false }]]), first: { sid: hub.id, seq: 0, time: nowS - 360 }, last: { sid: hub.id, seq: 0, time: nowS - 360 }, lastDelay: 0, ti, stops: [[hub.id, 0, nowS - 360, 0]], end: 99 };
+    const at = (lat, lon, speed) => { rtm.rt.trips = { [id]: trip }; rtm.rt.buses = [{ id: 'c:X2', label: 'X2', trip: 'the_one_before', ri, lat, lon, course: 0, speed, ts: nowS, h: null, dir }]; rtm.rt.at = Date.now(); rtm.rt.t = nowS; const p = rtm.predict(dep); return p && p.gone ? 'gone' : 'leaving'; };
     // out on its run; standing at the bay; at the bay but moving, pulling out
     return [at(hub.lat + 0.03, hub.lon, 8), at(hub.lat, hub.lon, 0), at(hub.lat, hub.lon, 6)];
-  });
-  if (r !== null) expect(r).toEqual(['gone', 'leaving', 'gone']);
+  }, pick);
+  expect(r).toEqual(['gone', 'leaving', 'gone']);
 });
 
 test('the Center\'s compass: north up and south up, one to the other', async ({ page }) => {
@@ -309,6 +332,40 @@ test('the panel on the right, set in Settings: the map\'s buttons across from it
   await open(page, '#/about');
   await page.locator('button[data-side="left"]').click();
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.panel || 'left')).toBe('left');
+});
+
+test('the Center: a bus two-thirds of a run down is held for its next run, which leaves on time', async ({ page }) => {
+  // Route 8's 2:00, its bus in at 2:27: 'leaving any second', when it went out on the 2:30 (2026-10-09). Made up from
+  // the timetable: a route's half-hourly departure from the Center, the clock set to 22 minutes after it.
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js');
+    const c = t.now(), loops = d.D.hub.loops || [];
+    for (const [si, s] of d.D.stops.entries()) {
+      if (!s.hub) continue;
+      for (const row of d.timesOn(si, c.ymd)) {
+        if (loops.includes(row.r)) continue;
+        const f = d.tripStops(row.trip)[0], nx = d.nextTrip(row.trip, c.ymd), ns = nx !== undefined ? d.tripStops(nx)[0] : null;
+        if (!f || f[0] !== row.min || f[1] !== si || !ns || !d.D.stops[ns[1]].hub || ns[0] - f[0] !== 30) continue;
+        return { ti: row.trip, nx, f, ns, ri: row.r, dir: row.dir, at: Date.now() + ((f[0] + 22 - c.min) * 60 - c.sec) * 1000 };
+      }
+    }
+    return null;
+  });
+  test.skip(!pick, 'no half-hourly run from the Center today');
+  await page.clock.setFixedTime(new Date(pick.at));
+  const r = await page.evaluate(async ({ ti, nx, f, ns, ri, dir }) => {
+    const d = await import('/app/data.js'), rtm = await import('/app/rt.js');
+    const id = d.D.trips[ti], hub = d.D.stops[f[1]], nowS = Math.floor(Date.now() / 1000);
+    rtm.tripOf(id);
+    // its bus standing at its bay, the feed's listing of the Center 22 minutes old: 'leaving now', 22 down
+    rtm.rt.trips = { [id]: { v: 'X3', ts: nowS, at: new Map([[hub.id, { seq: 0, time: nowS - 22 * 60, skipped: false }]]), first: { sid: hub.id, seq: 0, time: nowS - 22 * 60 }, last: { sid: hub.id, seq: 0, time: nowS - 22 * 60 }, lastDelay: 0, ti, stops: [[hub.id, 0, nowS - 22 * 60, 0]], end: 99 } };
+    rtm.rt.buses = [{ id: 'c:X3', label: 'X3', trip: id, ri, lat: hub.lat, lon: hub.lon, course: 0, speed: 0, ts: nowS, h: null, dir }];
+    rtm.rt.at = Date.now(); rtm.rt.t = nowS;
+    const p = rtm.predict({ min: f[0], si: f[1], trip: ti, r: ri, dir, day: 0 }), q = rtm.predict({ min: ns[0], si: ns[1], trip: nx, r: ri, dir, day: 0 });
+    return [p && p.gone && p.held === ns[0] ? 'held' : JSON.stringify(p), q && q.keeps ? 'on time' : JSON.stringify(q)];
+  }, pick);
+  expect(r).toEqual(['held', 'on time']);
 });
 
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {

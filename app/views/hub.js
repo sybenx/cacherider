@@ -228,7 +228,12 @@ function together(st, clockNow) {
     // again here as a count and a list, it was three lines saying the strip over.
     const name = ks2 => routeNames(ks2.map(k => routesOf(k)[0]));
     const loose = leaving.filter(k => st[k].loose && !gone.includes(k)), away = leaving.filter(k => st[k].away && !gone.includes(k)), quiet = leaving.filter(k => !st[k].out && !st[k].loose && !st[k].away && !gone.includes(k));
-    const odd = [gone.length ? name(gone) + ' cancelled' : '', away.length ? name(away) + (away.length > 1 ? ' still out on runs before this' : ' still out on its run before this') : '', loose.length ? name(loose) + ' out with no estimate' : '', quiet.length ? name(quiet) + (quiet.length > 1 ? ' not reporting' : ' not reporting') : ''].filter(Boolean).join('; ');
+    // A route's bus far enough down to be held for its next run (rt.js holdOf): said, and when it goes; one that may be,
+    // said as may. Its run's row at the group's minute, with the feed's word.
+    const runAt = k => routesOf(k).flatMap(ri => D.hub.bays.filter(b => b.routes.includes(ri)).flatMap(b => timesOn(b.stop, p.ymd).filter(t => t.r === ri && t.min === p.min))).map(t => lively({ ...t, day: 0, ymd: p.ymd }))[0];
+    const holds = leaving.filter(k => !gone.includes(k)).map(k => [k, runAt(k)]).filter(([, t]) => t && (t.held || (t.live && t.live.mayHold)));
+    const heldSay = holds.map(([k, t]) => name([k]) + (t.held ? ' held for the ' + clockText(t.held) : ' may be held for the ' + clockText(t.live.mayHold))).join('; ');
+    const odd = [heldSay, gone.length ? name(gone) + ' cancelled' : '', away.length ? name(away) + (away.length > 1 ? ' still out on runs before this' : ' still out on its run before this') : '', loose.length ? name(loose) + ' out with no estimate' : '', quiet.length ? name(quiet) + (quiet.length > 1 ? ' not reporting' : ' not reporting') : ''].filter(Boolean).join('; ');
     note = html`${odd ? html`<span class="tc-note">${odd.replace(/^./, c => c.toUpperCase())}.</span>` : ''}${connections(leaving.filter(k => !gone.includes(k)), st, p, clockNow)}`;
   } else if (p.day === 0 && rtDown()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
   return html`<div class="tc-together blueprint">${corners()}

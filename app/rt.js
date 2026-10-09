@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, runOf, timesOn, serviceSpan } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, runOf, timesOn, serviceSpan, nextTrip, prevTrip } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -266,6 +266,48 @@ function loopAtHub(t, u, sid, hit) {
  *  prediction rather than one for this stop. */
 export function predict(t) {
   if (t.trip === undefined || t.day || rtStale() || !D.trips) return null;
+  if (isLoop(t.r)) return feedPredict(t);   // the loops keep their own rules: never held for the next, never waited for
+  const h = holdOf(t.trip);
+  if (h && h.held) return { gone: true, held: h.next };   // the whole run: its bus goes out on the next instead
+  if (h && h.after) {   // the run after a held one: its bus is in, and leaves on its minute, till it's off on it
+    const u = rt.trips[D.trips[t.trip]], bus = u && u.v && rt.buses.find(b => b.id === 'c:' + u.v);
+    if (!(bus && bus.trip === D.trips[t.trip])) return KEEPS;
+  }
+  const p = feedPredict(t);
+  return h && h.may && p && !p.gone && !p.keeps ? { ...p, mayHold: h.next } : p;
+}
+/** Held for its next run, as the Transit Center does it: a route's bus far enough down when it gets in doesn't run
+ *  the late run, it waits for its next and goes out on that on time (a rider at the Center has till then). By how far
+ *  down against the run's length (the time to its next departure): half (15 min on a half-hourly route) it may be,
+ *  two-thirds (20) all but always, more (25) always; nothing's sure, so half is said as 'may be', and two-thirds on is
+ *  taken as held. Route 8's 2:00, its bus in 27 min down, was 'leaving any second' at 2:27 (2026-10-09): it went at
+ *  2:30, on the 2:30. Per trip, from its first stop, the Center: { held, may, next: the next run's minute }, or
+ *  { after } for the run after a held one, whose bus is in by its minute. */
+const holds = new Map();
+let holdsAt = 0;
+function holdOf(ti) {
+  if (holdsAt !== rt.at) { holds.clear(); holdsAt = rt.at; }
+  if (holds.has(ti)) return holds.get(ti);
+  holds.set(ti, null);   // asked again while working it out (a run's own row): nothing held
+  const own = holdOwn(ti), pt = own ? null : prevTrip(ti, now().ymd), prev = pt !== undefined && pt !== null ? holdOwn(pt) : null;
+  const h = own || (prev && prev.held && prev.inBy ? { after: true } : null);
+  holds.set(ti, h);
+  return h;
+}
+/** A trip's own: how far down its departure from the Center is, against the time to its next run. */
+function holdOwn(ti) {
+  const st = tripStops(ti), first = st[0];
+  if (!first || !D.stops[first[1]] || !D.stops[first[1]].hub || !tripInfo || !tripInfo[ti]) return null;
+  const ymd = now().ymd, nx = nextTrip(ti, ymd), ns = nx !== undefined && nx !== null ? tripStops(nx)[0] : null;
+  if (!ns || !D.stops[ns[1]] || !D.stops[ns[1]].hub || ns[0] <= first[0]) return null;   // no next run from here to be held for
+  const info = tripInfo[ti], p = feedPredict({ min: first[0], si: first[1], trip: ti, r: info.r, h: info.h, dir: info.dir, day: 0 });
+  if (!p || p.gone || p.keeps || p.min === undefined) return null;
+  const down = p.min - first[0], run = ns[0] - first[0];
+  if (down >= run * 2 / 3) return { held: true, next: ns[0], inBy: p.min <= ns[0] };
+  if (down >= run / 2) return { may: true, next: ns[0] };
+  return null;
+}
+function feedPredict(t) {
   const u = rt.trips[D.trips[t.trip]];
   // No word on it yet (within two hours: later, the run before isn't under way): its bus, on the trip before, due in
   // by its start is on time; due in after it, from a Transit Center bay, it leaves when that bus is in, estimated. Late
@@ -418,7 +460,7 @@ export const heldAt = (si, delay, ri) => D.stops[si] && D.stops[si].hub && !(isL
 const held = (t, delay) => { const d = heldAt(t.si, delay, t.r); return { min: t.min + d, delay: d }; };
 /** The Green and Blue Loops: far off their timetable in traffic as a matter of course, so no late or early word. */
 export const isLoop = ri => (D.hub.loops || []).includes(ri);
-setLive(t => { const p = predict(t); if (!p) return t; return p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true, cancelled: !!p.cancelled } : { ...t, min: p.min, live: p }; });
+setLive(t => { const p = predict(t); if (!p) return t; return p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true, cancelled: !!p.cancelled, held: p.held } : { ...t, min: p.min, live: p }; });
 /** Today's departures from a stop the feed says are cancelled, from now to `within` minutes on (`ok`: which to look
  *  at, by route): kept in a list, struck, so a rider waiting for one sees it isn't coming rather than a gap. */
 export function cancelledAt(si, clockNow = now(), within = 60, ok = null) {

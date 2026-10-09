@@ -113,7 +113,7 @@ export const liveTag = t => liveMark(t.live && t.live.est ? 'Estimated' : 'Live'
 export function lively(t) {
   if (t.live || t.gone) return t;
   const p = predict(t);
-  return !p ? t : p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true, cancelled: !!p.cancelled } : { ...t, min: p.min, live: p };
+  return !p ? t : p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true, cancelled: !!p.cancelled, held: p.held } : { ...t, min: p.min, live: p };
 }
 /** The timetable's minute for a departure, live or not. The big time is always this one. */
 export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
