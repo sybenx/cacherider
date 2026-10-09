@@ -153,10 +153,12 @@ export function slope(lat1, lon1, lat2, lon2) {
   return { up: climb(lat1, lon1, lat2, lon2), down: climb(lat2, lon2, lat1, lon1), steepUp, steepDown };
 }
 /** Steep, for a walk: a stretch of it climbing 6% or more (the grid's 100 m cells soften a short pitch, so not 8).
- *  Not the climb all told: 30 m over two miles is Uphill, its feet said. The one rule for the word STEEP and for
+ *  Not the climb all told: 30 m over two miles is Uphill, its feet said. Or going down one: 8 m or more down, 10% or
+ *  more somewhere (a gentle downhill is the easy way; the bluff from 400 North down to the Island, 80 ft at 17%, is a
+ *  climb down, and a rider with a stroller or a bad knee goes another way). The one rule for the word STEEP and for
  *  avoiding steep walks. */
-export const STEEP = 0.06;
-export const isSteep = s => s.up >= 4 && s.steepUp >= STEEP;
+export const STEEP = 0.06, STEEP_DOWN = 0.10;
+export const isSteep = s => (s.up >= 4 && s.steepUp >= STEEP) || (s.down >= 8 && s.steepDown >= STEEP_DOWN);
 export const steepWalk = (a, b) => !!(a && b && E) && isSteep(slope(a.lat, a.lon, b.lat, b.lon));
 /** The rider's choice (Settings, or the chip on directions): ways without a steep walk up, where there are any. */
 let flat = (() => { try { return localStorage.getItem('cr-steep') === 'avoid'; } catch { return false; } })();
@@ -170,7 +172,23 @@ export const PACE = 75, RISE = 10;
  *  road, the way by its crossing instead (walkWay). */
 export function walkMins(lat1, lon1, lat2, lon2, d = distance(lat1, lon1, lat2, lon2)) {
   const w = walkWay(lat1, lon1, lat2, lon2);
-  return Math.max(1, Math.ceil((w.via.length ? w.d : d) / PACE + climb(lat1, lon1, lat2, lon2) / RISE));
+  return Math.max(1, Math.ceil((w.via.length ? w.d : d) / PACE + climb(lat1, lon1, lat2, lon2) / RISE + descent(lat1, lon1, lat2, lon2) / DROP));
+}
+/** Metres down a walk where it's steep going down (10% or more): slower than the flat, the steps placed, though not as
+ *  slow as the climb: DROP metres of it a minute (RISE's up). A walk down counted as on the flat. */
+export const DROP = 30;
+function descent(lat1, lon1, lat2, lon2) {
+  if (!E) return 0;
+  const d = distance(lat1, lon1, lat2, lon2), n = Math.max(1, Math.ceil(d / E.cell)), step = d / n;
+  let prev = height(lat1, lon1), down = 0;
+  if (prev === null) return 0;
+  for (let k = 1; k <= n; k++) {
+    const h = height(lat1 + (lat2 - lat1) * k / n, lon1 + (lon2 - lon1) * k / n);
+    if (h === null) continue;
+    if (prev - h >= STEEP_DOWN * step) down += prev - h;
+    prev = h;
+  }
+  return down;
 }
 
 // ---- busy roads and their crossings, for walks. data/walks.json (tools/walks.py): the highways and wide or fast

@@ -321,10 +321,16 @@ function search(starts, wanted, at, dest, ymd, min0, live, day, by = null, upto 
   // the hill on foot); one that spares a minute by riding on round a loop is not.
   if (by !== null) for (let i = found.length - 1; i >= 0; i--) if (found[i].arrive > by) found.splice(i, 1);
   for (const p of found) p.walk = p.legs.reduce((n, l) => n + (l.kind === 'walk' ? l.mins : 0), 0);
+  // A way with a steep walk (up or down, geo.js isSteep) never beats a flat one out of the list: the climb down the
+  // bluff to Crocket Avenue, sooner by the clock, isn't a better way than Route 3 to Riverside Drive.
+  const legEnd = (x, end) => x === undefined || x === null ? end : typeof x === 'object' ? x : pt(x);
+  const tripFrom = origin.si !== undefined ? stop(origin.si) : origin, tripTo = typeof dest === 'object' ? dest : stop(dest);
+  const ok = q => !!q && Number.isFinite(q.lat) && Number.isFinite(q.lon);
+  for (const p of found) p.hill = p.legs.some(l => { if (l.kind !== 'walk') return false; const a = legEnd(l.from, tripFrom), b = legEnd(l.to, tripTo); return ok(a) && ok(b) && steepWalk(a, b); });
   found.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
   const kept = [];
   for (const p of found) {
-    if (!kept.some(q => q.leave >= p.leave && q.arrive <= p.arrive && q.walk < p.walk + WALK_LESS && (q.arrive < p.arrive || q.changes <= p.changes))) kept.push(p);
+    if (!kept.some(q => q.leave >= p.leave && q.arrive <= p.arrive && q.walk < p.walk + WALK_LESS && (q.arrive < p.arrive || q.changes <= p.changes) && !(q.hill && !p.hill))) kept.push(p);
   }
   if (by !== null) kept.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.walk - b.walk);
   else kept.sort((a, b) => a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);

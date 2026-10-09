@@ -459,6 +459,24 @@ test('a route\'s card on a phone, as the board: rests at its first stops, folds 
   expect(page.url()).toBe(before);
 });
 
+test('a steep walk down is steep too: the bluff from 400 North down to Crocket Avenue', async ({ page }) => {
+  // From the Center to the closed Crocket Avenue stop the Green Loop and a climb down the bluff came first, not called
+  // steep (only up was), and Route 3 to Riverside Drive, flat, second or third (2026-10-09).
+  await open(page);
+  const r = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), g = await import('/app/geo.js');
+    await g.loadElevation();
+    const off = d.D.stops.find(s => s.name === '651 East 400 North'), crocket = { lat: 41.73621, lon: -111.81286 };
+    if (!off) return null;
+    const s = g.slope(off.lat, off.lon, crocket.lat, crocket.lon), flat = Math.ceil(d.distance(off.lat, off.lon, crocket.lat, crocket.lon) / g.PACE);
+    return { down: Math.round(s.down), steep: g.isSteep(s), mins: g.walkMins(off.lat, off.lon, crocket.lat, crocket.lon), flat };
+  });
+  test.skip(!r, 'no stop at 651 East 400 North');
+  expect(r.down).toBeGreaterThanOrEqual(8);
+  expect(r.steep).toBe(true);
+  expect(r.mins).toBeGreaterThan(r.flat);   // slower going down it than on the flat
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {

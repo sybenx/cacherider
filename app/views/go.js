@@ -303,8 +303,14 @@ export const goSort = () => new URLSearchParams(location.hash.split('?')[1] || '
 // Quickest there (then leaving latest), the first opened; arriving by a time, leaving latest that makes it (then
 // there soonest): to the Institute by 7, the Evening Express at 6:29, not the Green Loop at 6:25 to wait 16 minutes.
 // Or by the walk.
+// A way with a steep walk in it (up or down, geo.js isSteep) ranks as if HILL minutes later: to Crocket Avenue from the
+// Center, the Blue Loop and a climb down the bluff from 400 North came first, Route 3 to Riverside Drive, three minutes
+// on and flat, second. Still there to pick; Avoid steep walks drops them.
+const HILL = 10;
+const hillsOf = new WeakMap();
+const hill = (p, o, d) => { if (!hillsOf.has(p)) { const at = x => x === undefined ? null : typeof x === 'string' && x[0] === 'u' && U ? U.stops[+x.slice(1)] : stop(x); hillsOf.set(p, p.legs.some(l => l.kind === 'walk' && steepWalk(at(l.from) || o, at(l.to) || d)) ? HILL : 0); } return hillsOf.get(p); };
 const sortPlans = (plans, o, d, by = false) => plans.slice().sort((a, b) => goSort() === 'walk' ? (a.day - b.day) || (walkOf(a, o, d) - walkOf(b, o, d)) || (a.arrive - b.arrive)
-  : by ? (a.day - b.day) || (b.leave - a.leave) || (a.arrive - b.arrive) : (a.day - b.day) || (a.arrive - b.arrive) || (b.leave - a.leave));
+  : by ? (a.day - b.day) || ((b.leave - hill(b, o, d)) - (a.leave - hill(a, o, d))) || (a.arrive - b.arrive) : (a.day - b.day) || ((a.arrive + hill(a, o, d)) - (b.arrive + hill(b, o, d))) || (b.leave - a.leave));
 function pickPlan(plans0, key, e, clockNow, t = null) {
   // Arriving by: when they all make it (none does, and they're the first ways there after, quickest first)
   const by = /^a\d{8}-(\d{2})(\d{2})$/.exec(t || ''), byMin = by ? +by[1] * 60 + +by[2] : -1;
@@ -534,7 +540,7 @@ function hillOf(a, b, flat = '') {
   if (!a || !b) return '';
   const s = slope(a.lat, a.lon, b.lat, b.lon), ft = [s.up >= 4 ? heightOf(s.up) + ' up' : '', s.down >= 4 ? heightOf(s.down) + ' down' : ''].filter(Boolean).join(', ');
   if (!ft) return flat;
-  const word = isSteep(s) ? html`<b class="hill steep">Steep</b>` : s.up >= 10 ? html`<b class="hill">Uphill</b>` : s.down >= 10 ? html`<b class="hill">${s.steepDown >= STEEP ? 'Steep downhill' : 'Downhill'}</b>` : '';
+  const word = isSteep(s) ? html`<b class="hill steep">Steep</b>` : s.up >= 10 ? html`<b class="hill">Uphill</b>` : s.down >= 10 ? html`<b class="hill">Downhill</b>` : '';   // a steep one down is Steep (isSteep), as up
   return html`${word}${word ? ', ' : ''}${ft}`;
 }
 const hillWords = (a, b) => { const h = hillOf(a, b); return h ? html` · ${h}` : ''; };
