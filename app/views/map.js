@@ -783,7 +783,7 @@ async function made(app) {
     // Asked where the rider is: the spot tapped is their place from here on, kept as a fix found would be.
     if (pickMe) {
       const { lat, lng } = e.lngLat, g = { lat, lon: lng, at: Date.now(), acc: 0, stale: false, kept: true, picked: true };
-      app.geo = g; pref('near', 'on'); pref('lastgeo', JSON.stringify({ lat: g.lat, lon: g.lon, at: g.at, acc: 0 }));
+      app.geo = g; pref('near', 'on'); pref('lastgeo', JSON.stringify({ lat: g.lat, lon: g.lon, at: g.at, acc: 0, picked: true }));   // kept as picked: it stands till Near me (main.js)
       pickMe = false; location.hash = '#/';
       return;
     }
@@ -2777,7 +2777,7 @@ function askMe() {
   selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
   const card = col.querySelector('#mapcard');
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">Where are you?</span><div class="name"><span>Tap the map where you are</span></div>
-    <div class="muted">The stops nearest that spot come first. It stays on this device.</div></div>`;
+    <div class="muted">The stops nearest that spot come first, until you pick again or tap Near me. It stays on this device.</div></div>`;
   card.classList.remove('hidden', 'peek');
   requestAnimationFrame(() => card.classList.add('open'));
 }

@@ -271,6 +271,27 @@ test('the Center\'s compass: north up and south up, one to the other', async ({ 
   expect(said[0]).toBe(said[2]);
 });
 
+test('a spot picked on the map for where you are: from the home page, and kept after a reload', async ({ page }) => {
+  // A desk with no location: the spot was dropped on the next visit (no permission, so the kept place 'wasn't where they
+  // are'), and picking it was only in the sheet that asks for location.
+  await open(page);
+  await page.evaluate(() => { localStorage.removeItem('cr-near'); localStorage.removeItem('cr-lastgeo'); });
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  const pick = page.locator('a[href="#/map/me"]').filter({ visible: true }).first();
+  await expect(pick).toBeVisible();
+  await pick.click();
+  await expect(page).toHaveURL(/#\/map\/me/);
+  await mapReady(page);
+  const box = await page.locator('#map canvas').boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 3);
+  await expect(page).toHaveURL(/#\/$/);
+  await expect(page.getByText('Near the spot you picked').filter({ visible: true }).first()).toBeVisible();
+  await page.reload();
+  await page.waitForTimeout(3000);   // past the location check on opening
+  await expect(page.getByText('Near the spot you picked').filter({ visible: true }).first()).toBeVisible();
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {

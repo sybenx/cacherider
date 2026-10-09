@@ -345,7 +345,7 @@ export function locate(onDone, fresh = false) {
     // used, but marked (stale, over 10 min), and said where it's shown: 'Nearest as of 8:14 AM'. Throwing it away left
     // no location at all. A time that can't be right (none, or ahead of the clock) is taken as now.
     const t = p.timestamp > 1.5e12 && p.timestamp < Date.now() + 60000 ? p.timestamp : Date.now();
-    if (app.geo && !app.geo.stale && t < app.geo.at) return true;   // older than the one we have: keep ours
+    if (app.geo && !app.geo.stale && !app.geo.picked && t < app.geo.at) return true;   // older than the one we have: keep ours (a spot picked gives way to any fix asked for)
     const g = { lat: p.coords.latitude, lon: p.coords.longitude, at: t, acc: p.coords.accuracy, stale: Date.now() - t > 600000 };
     const moved = !app.geo || distance(app.geo.lat, app.geo.lon, g.lat, g.lon) > 30;
     app.geo = g;
@@ -361,6 +361,8 @@ export function locate(onDone, fresh = false) {
   const fail = err => {
     if (answered) return;   // the rough fix stands
     const denied = err.code === err.PERMISSION_DENIED;
+    // A spot picked on the map stands whatever the browser says: Near me asked and refused, it's still the rider's place.
+    if (app.geo && app.geo.picked) { if (denied) askLocation(null); else onDone && onDone(app.geo); return; }
     if (denied) { pref('near', 'blocked'); app.geo = null; }
     else if (app.geo && Date.now() - app.geo.at > 600000 && !app.geo.stale) { app.geo = { ...app.geo, stale: true }; render(); }   // kept, said as old
     onDone && onDone(denied ? null : app.geo);
@@ -376,8 +378,12 @@ export function locate(onDone, fresh = false) {
 
 /** Near me: silent when the browser already allows it, the explaining sheet only when the browser is about to ask. */
 export async function nearMe(onDone, fresh = false) {
+  // A spot picked on the map is where the rider is, however long ago, till they ask for their location (fresh: Near
+  // me): kept between visits, not dropped or swapped for the browser's guess at a desk.
+  const picked = app.geo && app.geo.picked;
+  if (picked && !fresh) { onDone && onDone(app.geo); return; }
   // A fix from the last two minutes is where the rider is: no browser call, so no prompt.
-  const have = app.geo && Date.now() - app.geo.at < 120000 ? app.geo : null;
+  const have = !picked && app.geo && Date.now() - app.geo.at < 120000 ? app.geo : null;
   if (have && !fresh) { onDone && onDone(have); return; }
   // Asked afresh (the map's button, a way from where you are): the kept fix at once, where there is one, and the
   // phone asked for its own now; that one again, where it's somewhere else. A tap on the button is a question
@@ -420,7 +426,7 @@ export function nearOff() {
  *  allowed: never a prompt before a tap. The rough fix first, then the GPS's, as ever. */
 async function autoLocate() {
   if (pref('near') !== 'on' || !navigator.permissions) return;
-  if (app.geo && Date.now() - app.geo.at < 120000) return;
+  if (app.geo && (app.geo.picked || Date.now() - app.geo.at < 120000)) return;   // a spot picked stands till Near me
   try {
     const st = await navigator.permissions.query({ name: 'geolocation' });
     if (st.state === 'granted') locate();

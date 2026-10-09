@@ -36,7 +36,7 @@ function landing(clockNow, app) {
   const uWins = nearU && nearU.d <= 800 && board(nearU.i).some(r => r.est) && (!near || near.d > 800 || nearU.mins < walkMins(app.geo.lat, app.geo.lon, D.stops[near.i].lat, D.stops[near.i].lon, near.d));
   let heroSi, heroU, heroWhy = '';
   // An old fix (the phone found no newer: GrapheneOS indoors) is still used, but said as of when.
-  const nearWord = app && app.geo && app.geo.stale ? 'Nearest as of ' + clockText(now(new Date(app.geo.at)).min) : 'Nearest';
+  const nearWord = app && app.geo && app.geo.picked ? 'Nearest your spot' : app && app.geo && app.geo.stale ? 'Nearest as of ' + clockText(now(new Date(app.geo.at)).min) : 'Nearest';
   if (uWins) { heroU = nearU.i; heroWhy = nearWord; }
   else if (near && near.d <= 800) { heroSi = near.i; heroWhy = nearWord; }
   else if (firstSaved !== undefined && firstSaved.startsWith('u:')) { heroU = U.stopById[firstSaved.slice(2)]; heroWhy = 'Saved'; }
@@ -89,7 +89,8 @@ function landing(clockNow, app) {
   parts.push(html`<div class="ask${first ? '' : ' land-where'}">
     <form class="search" id="search" role="search"><input class="input" type="search" placeholder="${first ? 'Street, place or route' : 'Where to?'}" autocomplete="off" aria-label="Search stops, places and routes"><span class="lead">${icon('search', 22)}</span></form>
     ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
-      <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : ''}</div>`);
+      <a class="btn btn-secondary btn-lg" href="#/map/me">${icon('pin', 20)}Pick a spot on the map</a>
+      <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : whereFrom(geo)}</div>`);
   parts.push(homeLine(geo), hubLine(clockNow), shuttleLine(clockNow), isWide() ? '' : routesLine());   // wide, the chips below are the routes
   // And what the app does, shown rather than said: the stops with the most buses today (by the timetable's departures,
   // not by riders: there's no count of those, so not 'popular' or 'busiest'), with their next buses.
@@ -217,6 +218,13 @@ function busiest(clockNow, n = 4) {
   return out;
 }
 /** 'Take me home': with a Home saved, directions there from where the rider is, in a tap; not when they're there. */
+/** Where the stops are sorted from, a tap from any home page: the rider's location, or a spot picked on the map (a
+ *  desk, a tablet with no GPS). Picking was only in the sheet that asks for location, seen once. */
+function whereFrom(geo) {
+  if (geo && !geo.picked) return '';   // located: the top's button turns it off
+  return geo ? html`<div class="land-near">${icon('pin', 16)}<span>Near the spot you picked</span><span aria-hidden="true">·</span><a href="#/map/me">Change</a><span aria-hidden="true">·</span><button type="button" class="land-link" id="near-live">Use my location</button></div>`
+    : html`<div class="land-near"><button type="button" class="land-link" id="near-live">${icon('near', 16)}Use my location</button><span aria-hidden="true">·</span><a href="#/map/me">${icon('pin', 16)}Pick a spot on the map</a></div>`;
+}
 function homeLine(geo) {
   const h = placeNamed('Home');
   if (!h || (geo && distance(geo.lat, geo.lon, h.lat, h.lon) < 300)) return '';
@@ -300,6 +308,8 @@ function mount(el, app) {
     if (input.value || focusNext) { focusNext = false; input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
   }
   for (const near of el.querySelectorAll('#near, #near-ask')) near.onclick = () => app.geo ? nearOff() : nearMe();
+  const live = el.querySelector('#near-live');   // a spot picked: the phone's own fix asked for, in its place
+  if (live) live.onclick = () => nearMe(null, !!(app.geo && app.geo.picked));
   wireInstall(el);
   const edit = el.querySelector('#edit-saved');
   if (edit) edit.onclick = () => { app.editSaved = !app.editSaved; window.dispatchEvent(new HashChangeEvent('hashchange')); };

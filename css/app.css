@@ -814,6 +814,10 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .ask { padding: 0 16px 18px; display: flex; flex-direction: column; gap: 12px; }
 .ask .btn-lg { min-height: 52px; font-family: var(--font-heading); font-weight: 600; font-size: 1.1875rem; letter-spacing: .01em; gap: 8px; }
 .ask-note { font-size: 0.7812rem; line-height: 1.45; color: var(--cr-muted); text-align: center; text-wrap: pretty; }
+/* where the stops are sorted from: location, or a spot picked on the map (home.js whereFrom) */
+.land-near { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; font-size: 0.875rem; color: var(--cr-muted); }
+.land-near svg { vertical-align: -3px; margin-right: 3px; }
+.land-near a, .land-link { color: var(--color-accent-700); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; padding: 4px 0; font: inherit; cursor: pointer; display: inline-flex; align-items: center; }
 @media (min-width: 840px) { .land-top { display: none; } .hero { margin-top: 16px; } }
 /* expanded: the header's box is the one search; the panel's own boxes, the home page's and the search page's, go */
 @media (min-width: 840px) { #side .ask > #search, #side .pad:has(> #search) { display: none; } }
