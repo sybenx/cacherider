@@ -2314,6 +2314,7 @@ const MIN_ROOM = 120;   // what's framed gets this much height at least, whateve
  *  maxZoom; a point ([lon, lat]) at `zoom`, or the map's own. Its middle in the room's middle at whatever zoom it
  *  comes to (a fit's own centre is right only at the fit's own zoom). `bearing`: turned so (unset, as it is). */
 function frameCam(target, { margin, zoom, minZoom = 0, maxZoom = 19, bearing } = {}) {
+  if (!target) return null;   // (a shape not made yet)
   const r = room(), H = map.getContainer().clientHeight, m = margin ?? (wide() ? 40 : 16);
   const p = { top: r.top + m, bottom: r.bottom + m, left: r.left + m, right: r.right + m };
   p.bottom = Math.min(p.bottom, Math.max(m, H - p.top - MIN_ROOM));
@@ -3456,9 +3457,10 @@ async function mainJourney(J, app) {
   p.legs.forEach((l, k) => {
     if (l.kind === 'walk') {
       const a = k === 0 ? [J.from.lon, J.from.lat] : ll(l.from), b = k === p.legs.length - 1 ? [J.to.lon, J.to.lat] : ll(l.to);
-      // By its crossings where it goes over a busy road (geo.js walkWay), not straight across it.
-      const xs = walkWay(a[1], a[0], b[1], b[0]).via.filter(v => !v.none);
-      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: [a, ...xs.map(v => [v.lon, v.lat]), b] } });
+      // As it's walked (geo.js walkWay): along the sidewalks, paths and steps where they're known, else straight but by
+      // its crossings where it goes over a busy road.
+      const w = walkWay(a[1], a[0], b[1], b[0]), xs = w.via.filter((v, i) => !v.none && !w.via.slice(0, i).some(o => o.lat === v.lat && o.lon === v.lon));   // (a corner's two roads, one mark)
+      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: w.coords || [a, ...xs.map(v => [v.lon, v.lat]), b] } });
       // Where to cross, marked: a light or a crosswalk, said beside it.
       for (const v of xs) marks.push({ type: 'Feature', properties: { k: 'cross', label: v.kind === 's' ? 'Cross at the light' : 'Cross here' }, geometry: { type: 'Point', coordinates: [v.lon, v.lat] } });
     } else if (k > 0 && p.legs[k - 1].kind === 'ride') marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(l.from) } });

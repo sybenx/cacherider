@@ -31,6 +31,8 @@ jobs:
         run: python3 tools/osmplaces.py || echo 'Overpass unreachable; keeping the last places'
       - name: Busy roads and their crossings, for walks, from OpenStreetMap
         run: python3 tools/walks.py || echo 'Overpass unreachable; keeping the last roads'
+      - name: The ways a rider walks (footways, paths, steps, sidewalks, streets), from OpenStreetMap
+        run: python3 tools/walknet.py || echo 'Overpass unreachable; keeping the last ways'
       - name: Snapshot the USU shuttle's routes and stops
         run: python3 tools/usu.py || echo 'shuttle feed unreachable; keeping the last snapshot'
       - name: POOL's pickup points, from Connect's published Remix map
@@ -47,7 +49,7 @@ jobs:
               old = json.loads(subprocess.check_output(['git', 'show', 'HEAD:data/cvtd.json'])); old['feed'].pop('built', None)
           except Exception:
               old = None
-          shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json', 'data/crossings.json', 'data/osm-places.json', 'data/pool.json', 'data/walks.json']) != 0
+          shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json', 'data/crossings.json', 'data/osm-places.json', 'data/pool.json', 'data/walks.json', 'data/walknet.json']) != 0
           # The stops kept out of the timetable: a change when one comes or goes, not when its dates move on.
           ids = lambda j: sorted(s['id'] for s in (j or {}).get('stops', []))
           try:
@@ -60,7 +62,7 @@ jobs:
           if [ "$changed" != yes ]; then echo 'no change'; git checkout -- data; exit 0; fi
           git config user.name 'transit data'
           git config user.email 'actions@users.noreply.github.com'
-          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json data/gone-stops.json data/walks.json
+          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json data/gone-stops.json data/walks.json data/walknet.json
           git commit -m "Transit data: $(date -u +%Y-%m-%d)"
           # Onto whatever another run (alerts, the timetable, the map) pushed meanwhile, a few tries.
           for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done; exit 1

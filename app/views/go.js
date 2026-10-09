@@ -6,7 +6,7 @@ import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, day
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { spotOf, spotKey, atPath, climb, RISE, slope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE, crossingsOff } from '../geo.js';
+import { spotOf, spotKey, atPath, climb, RISE, slope, walkSlope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE, crossingsOff } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, planNetBy, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
@@ -295,7 +295,7 @@ function walkOf(p, o, d) {
   for (const l of p.legs) {
     if (l.kind === 'ride') continue;
     const a = at(l.from) || o, b = at(l.to) || d;
-    m += (l.mins || 0) + (a && b ? 2 * climb(a.lat, a.lon, b.lat, b.lon) / RISE : 0);
+    m += (l.mins || 0) + (a && b ? 2 * walkSlope(a, b).up / RISE : 0);   // the climb as it's walked
   }
   return m;
 }
@@ -538,9 +538,10 @@ function timeline(p, J, clockNow) {
  *  (`flat`, 'on the flat' for the whole way's line). */
 function hillOf(a, b, flat = '') {
   if (!a || !b) return '';
-  const s = slope(a.lat, a.lon, b.lat, b.lon), ft = [s.up >= 4 ? heightOf(s.up) + ' up' : '', s.down >= 4 ? heightOf(s.down) + ' down' : ''].filter(Boolean).join(', ');
+  // as it's walked (along the ways, geo.js walkSlope): its steps said first, then its feet up and down
+  const s = walkSlope(a, b), ft = [s.steps ? 'steps' : '', s.up >= 4 ? heightOf(s.up) + ' up' : '', s.down >= 4 ? heightOf(s.down) + ' down' : ''].filter(Boolean).join(', ');
   if (!ft) return flat;
-  const word = isSteep(s) ? html`<b class="hill steep">Steep</b>` : s.up >= 10 ? html`<b class="hill">Uphill</b>` : s.down >= 10 ? html`<b class="hill">Downhill</b>` : '';   // a steep one down is Steep (isSteep), as up
+  const word = isSteep(s) || s.steps ? html`<b class="hill steep">Steep</b>` : s.up >= 10 ? html`<b class="hill">Uphill</b>` : s.down >= 10 ? html`<b class="hill">Downhill</b>` : '';   // a steep one down is Steep (isSteep), as up
   return html`${word}${word ? ', ' : ''}${ft}`;
 }
 const hillWords = (a, b) => { const h = hillOf(a, b); return h ? html` · ${h}` : ''; };
@@ -563,9 +564,10 @@ function walkAll(J, P, c) {
 const XING_MORE = 150;   // metres: a crossing this much out of the way is worth the choice, and said
 function wayOf(a, b) {
   if (!a || !b) return { d: 0, via: [] };
-  const by = walkWay(a.lat, a.lon, b.lat, b.lon, true), straight = { d: distance(a.lat, a.lon, b.lat, b.lon), via: [] };
+  // by the crossings, and the way straight over (along the ways too, where they're known: geo.js walkWay)
+  const by = walkWay(a.lat, a.lon, b.lat, b.lon, true), straight = crossingsOff(() => walkWay(a.lat, a.lon, b.lat, b.lon));
   const real = by.via.some(v => !v.none), far = real && by.d - straight.d >= XING_MORE;
-  return useCrossings() ? { ...by, alt: far ? straight : null, over: by.via } : { ...straight, alt: far ? by : null, over: by.via };
+  return useCrossings() ? { ...by, alt: far ? straight : null, over: by.via } : { ...straight, alt: far ? by : null, over: straight.via.length ? straight.via : by.via };
 }
 /** Its crossings, said under the walk, and the other way where it's much shorter or longer: 'Cross Main Street and
  *  Airport Road at the light by 2500 North · or straight across, 6 min less (no crosswalk)'; crossings off, 'Straight

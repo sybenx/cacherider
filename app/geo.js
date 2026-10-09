@@ -2,6 +2,7 @@
 // from an origin, so "1400 North 500 East" is a point once the town's grid is
 // known; tools/grid.py fitted each grid from the street names in our tiles.
 import { BASE, D, nearest, distance } from './data.js';
+import { WalkNet } from './walknet.js';
 
 let G = null;
 export async function loadGrid() {
@@ -159,7 +160,9 @@ export function slope(lat1, lon1, lat2, lon2) {
  *  avoiding steep walks. */
 export const STEEP = 0.06, STEEP_DOWN = 0.10;
 export const isSteep = s => (s.up >= 4 && s.steepUp >= STEEP) || (s.down >= 8 && s.steepDown >= STEEP_DOWN);
-export const steepWalk = (a, b) => !!(a && b && E) && isSteep(slope(a.lat, a.lon, b.lat, b.lon));
+export const steepWalk = (a, b) => { if (!(a && b)) return false; const w = netWalk(a.lat, a.lon, b.lat, b.lon, xing); return w ? isSteep(w) || w.steps : !!E && isSteep(slope(a.lat, a.lon, b.lat, b.lon)); };
+/** A walk's lie of the land as it's walked: along the ways where they're known (its steps said), else straight. */
+export const walkSlope = (a, b) => netWalk(a.lat, a.lon, b.lat, b.lon, xing) || { ...slope(a.lat, a.lon, b.lat, b.lon), steps: false };
 /** The rider's choice (Settings, or the chip on directions): ways without a steep walk up, where there are any. */
 let flat = (() => { try { return localStorage.getItem('cr-steep') === 'avoid'; } catch { return false; } })();
 export const avoidSteep = () => flat;
@@ -171,6 +174,8 @@ export const PACE = 75, RISE = 10;
  *  times (the planner's legs, the stops nearest a rider). `d`, when the distance is already known; across a busy
  *  road, the way by its crossing instead (walkWay). */
 export function walkMins(lat1, lon1, lat2, lon2, d = distance(lat1, lon1, lat2, lon2)) {
+  const n = netWalk(lat1, lon1, lat2, lon2, xing);
+  if (n) return Math.max(1, Math.ceil(n.mins));
   const w = walkWay(lat1, lon1, lat2, lon2);
   return Math.max(1, Math.ceil((w.via.length ? w.d : d) / PACE + climb(lat1, lon1, lat2, lon2) / RISE + descent(lat1, lon1, lat2, lon2) / DROP));
 }
@@ -250,6 +255,8 @@ const FAR = 1500;   // metres: a crossing further off than this from where the l
  *  'm' a crosswalk), road }] }; one with `none` where the road has no crossing within reach (the walk straight,
  *  said). */
 export function walkWay(lat1, lon1, lat2, lon2, any = false) {
+  const n = netWalk(lat1, lon1, lat2, lon2, any || xing);   // along the ways, where they're known
+  if (n) return n;
   const straight = { d: distance(lat1, lon1, lat2, lon2), via: [] };
   if (!WK || !(any || xing)) return straight;   // crossings off (the rider's choice): straight, as the crow flies
   const key = lat1.toFixed(5) + ',' + lon1.toFixed(5) + '>' + lat2.toFixed(5) + ',' + lon2.toFixed(5);
@@ -269,6 +276,44 @@ export function walkWay(lat1, lon1, lat2, lon2, any = false) {
   if (w.via.length && w.via.every(v => v.none)) w.d = straight.d;
   WK.memo.set(key, w);
   return w;
+}
+// ---- the ways themselves (app/walknet.js, data/walknet.json from tools/walknet.py): a walk found along the footways,
+// paths, steps, sidewalks and streets, not as the crow flies. Loaded after the page, the elevation and the busy roads;
+// until then, and for a point off them, every walk as above.
+let NET = null, netLoading = null;
+const netMemo = new Map();
+export function loadWalkNet() {
+  return netLoading ??= (async () => {
+    try {
+      const [j] = await Promise.all([(await fetch(BASE + 'data/walknet.json')).json(), loadElevation(), loadWalks()]);
+      NET = new WalkNet(j, (la, lo) => E ? height(la, lo) : 0, WK ? WK.x : [], roadAt, { PACE, RISE, DROP, FEEL, STEEP, STEEP_DOWN });
+      netMemo.clear();
+    } catch { NET = null; }
+    return NET;
+  })();
+}
+export const walkNetReady = () => !!NET;
+/** A walk along the ways, `restricted` to a busy road's crossings or not; avoiding steep ways when the rider asks. */
+function netWalk(lat1, lon1, lat2, lon2, restricted) {
+  if (!NET) return null;
+  const key = lat1.toFixed(5) + ',' + lon1.toFixed(5) + '>' + lat2.toFixed(5) + ',' + lon2.toFixed(5) + (restricted ? 'r' : '') + (flat ? 'f' : '');
+  if (netMemo.has(key)) return netMemo.get(key);
+  if (netMemo.size > 8000) netMemo.clear();
+  const w = NET.route(lat1, lon1, lat2, lon2, { restricted, avoid: flat });
+  netMemo.set(key, w);
+  return w;
+}
+/** The busy road nearest a point, by name (walks.json's), for a crossing made without a crosswalk. */
+function roadAt(lat, lon) {
+  if (!WK) return null;
+  let best = null, bd = 40;
+  for (const [ri, k] of WK.grid.get(cellOf(lat, lon)) || []) {
+    const p = WK.roads[ri].p[k], q = WK.roads[ri].p[k + 1];
+    const ax = (p[1] - lon) * KX, ay = (p[0] - lat) * KY, bx = (q[1] - lon) * KX, by = (q[0] - lat) * KY, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    const u = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0, d = Math.hypot(ax + u * dx, ay + u * dy);
+    if (d < bd) { bd = d; best = WK.roads[ri].n; }
+  }
+  return best;
 }
 /** A walk's crossings in words, those at one corner together: 'Cross Main Street and Airport Road at the light by
  *  2500 North', 'Cross 400 North at the crosswalk'; with none in reach, 'No crosswalk on US 91 near here'. The

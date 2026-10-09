@@ -3,7 +3,7 @@
 import { D, load, BASE, pref, loadAlerts, loadPlaces, loadPool, A, distance } from './data.js';
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
 import { html, icon } from './ui.js';
-import { loadGrid , loadElevation, loadWalks, spotKey } from './geo.js';
+import { loadGrid , loadElevation, loadWalks, loadWalkNet, spotKey } from './geo.js';
 import { WIDE_MQ, isWide } from './wide.js';
 import * as home from './views/home.js';
 import * as stopView from './views/stop.js';
@@ -601,6 +601,8 @@ async function boot() {
   try {
     await Promise.all([load(), loadAlerts({ relay: false })]);
     extras = Promise.all([loadGrid(), loadUSU(), loadPlaces(), loadPool(), loadElevation(), loadWalks()]).catch(() => {}).then(() => { extrasReady = true; });   // the lie of the land, for timing walks; shared kerbs need the timetable's stops
+    // The ways themselves, after: every walk along them once they're in (geo.js), the page drawn again with them.
+    extras.then(() => loadWalkNet()).then(net => { if (net) render(); }).catch(() => {});
     if (!lightFirst()) await extras;
   } catch (e) {
     side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;

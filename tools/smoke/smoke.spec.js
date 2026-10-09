@@ -477,6 +477,30 @@ test('a steep walk down is steep too: the bluff from 400 North down to Crocket A
   expect(r.mins).toBeGreaterThan(r.flat);   // slower going down it than on the flat
 });
 
+test('walks along the ways: the real path, and over a busy road only at its light', async ({ page }) => {
+  // data/walknet.json (tools/walknet.py): a walk found along the footways, paths, steps, sidewalks and streets, not as
+  // the crow flies; US 91 crossed only at a light or a marked crossing, as walks.json has them, unless crosswalks are off.
+  await open(page);
+  const r = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), g = await import('/app/geo.js');
+    if (!await g.loadWalkNet()) return null;
+    const s651 = d.D.stops.find(x => x.name === '651 East 400 North'), crocket = { lat: 41.73621, lon: -111.81286 };
+    const down = g.walkWay(s651.lat, s651.lon, crocket.lat, crocket.lon);
+    const over = g.walkWay(41.78315, -111.83096, 41.78406, -111.83789), straight = g.crossingsOff(() => g.walkWay(41.78315, -111.83096, 41.78406, -111.83789));
+    return {
+      path: down.coords.length, longer: down.d > d.distance(s651.lat, s651.lon, crocket.lat, crocket.lon) * 1.2, steep: g.steepWalk(s651, crocket),
+      light: over.via.some(v => !v.none), overD: over.d, straightD: straight.d, straightNone: straight.via.some(v => v.none),
+    };
+  });
+  test.skip(!r, 'no walking network');
+  expect(r.path).toBeGreaterThan(4);   // a path, not a line
+  expect(r.longer).toBe(true);         // round by the trail, not straight down the bluff
+  expect(r.steep).toBe(true);
+  expect(r.light).toBe(true);          // over US 91 at a light
+  expect(r.overD).toBeGreaterThan(r.straightD + 300);
+  expect(r.straightNone).toBe(true);   // crosswalks off: straight over, said so
+});
+
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
