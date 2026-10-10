@@ -3605,8 +3605,10 @@ async function routeTimes(ri, clockNow) {
     if (run && t.live && (late === null || t.min > late.min)) late = { min: t.min, delay: t.live.delay };
     // The day's first run, where it starts partway along the route: said, so the stops before it (their first bus the
     // run after) don't look out of order. Not at the Transit Center, where every run starts.
-    // Each way's first, as the route's sheet marks it (the day's single earliest missed the other way's).
-    const starts = !D.stops[si].hub && Object.keys(D.routes[ri].stops || {}).some(d => { const f = runsOn(ri, t.ymd, d)[0]; return f && f.trip === t.trip && f.si === si; });
+    // Each way's first, as the route's sheet marks it (the day's single earliest missed the other way's). Not a trip
+    // its bus came into off the other way (15 south from Richmond, the same bus turned round from 15 north): its
+    // block's trip before it on the route, its run's start, started it.
+    const starts = !D.stops[si].hub && Object.keys(D.routes[ri].stops || {}).some(d => { const f = runsOn(ri, t.ymd, d)[0]; return f && f.trip === t.trip && f.si === si && runOf(f.trip, t.ymd)[0] === f.trip; });
     let label = short(t) + which(t) + (starts ? ' · starts here' : '');
     let lines = [[label, colour(t)]];
     // Where one way calls only on request (16 north at Pepperidge Farms): the next bus each way, a line apiece, the

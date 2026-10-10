@@ -777,6 +777,28 @@ test('directions arriving by a time on a later day: that day said, no bus missed
   await expect(page.locator('.tl .missed')).toHaveCount(0);
 });
 
+test('a route\'s first run the other way, turned round from this way, doesn\'t start there (15 south from Richmond)', async ({ page }) => {
+  // The map's 'starts here' marks a way's first run where it starts partway along. 15 south's first leaves Richmond,
+  // but its bus is 15 north's first turned round there: one run, started at the Center, so nothing starts in Richmond.
+  await open(page);
+  const r = await page.evaluate(async () => {
+    const d = await import('/app/data.js');
+    const t = new Date(); do t.setDate(t.getDate() + 1); while (t.getDay() === 0 || t.getDay() === 6);
+    const ymd = t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0');
+    const ri = d.D.routes.findIndex(x => x.short === '15');
+    const firsts = [0, 1].map(dir => { let f = null;
+      for (const si of new Set(Object.values(d.D.routes[ri].stops).flat())) for (const x of d.timesOn(si, ymd)) {
+        if (x.r !== ri || x.dir !== dir) continue;
+        const st = d.tripStops(x.trip); if (!f || st[0][0] < f.min) f = { trip: x.trip, min: st[0][0], si: st[0][1] }; }
+      return f; });
+    return firsts.map(f => { const run = d.runOf(f.trip, ymd), s0 = d.tripStops(run[0])[0][1];
+      return { hub: !!d.stop(f.si).hub, own: run[0] === f.trip, startHub: !!d.stop(s0).hub }; });
+  });
+  const partway = r.filter(x => !x.hub);
+  expect(partway.length, 'one way of the 15 leaves from partway along').toBeGreaterThan(0);
+  for (const x of partway) { expect(x.own, 'its run began before it').toBe(false); expect(x.startHub, 'at the Center').toBe(true); }
+});
+
 test('directions: avoid steep walks, on and off, and in Settings', async ({ page }) => {
   // West of campus up to the Institute: the quickest way walks up the bench. Avoiding steep: a way without (or, with
   // none, the ways there are, said so); the chip kept as the rider's choice, Settings showing it.
