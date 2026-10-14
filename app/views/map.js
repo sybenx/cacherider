@@ -2248,10 +2248,12 @@ function litBus(m) {
   if (JR && JR.appBus) return m.id === JR.appBus;
   return m.kind === 'c' ? hiLines.includes(m.ri) || runRoutes.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
 }
-/** A Connect bus off duty, in words, or null: 'Not in service' when it reports with no trip (logged off, on its way
- *  in; its route the last it ran, rt.parked), 'Done for the day' when its trip is over and its run has no next one
+/** A Connect bus off duty, in words, or null: 'Not reporting' when its tracker has gone quiet (rt.parked, its place
+ *  minutes old), 'Not in service' when it reports with no trip (logged off, on its way in; its route the last it ran,
+ *  rt.parked), 'Done for the day' when its trip is over and its run has no next one
  *  today. Drawn grey and kept on the map; a bus between two trips of its run is on duty. */
 function offDuty(b, clockNow = now()) {
+  if (b.quiet) return 'Not reporting';
   if (b.free) return 'Not in service';
   const ti = tripOf(b.trip);
   if (ti === undefined || nextTrip(ti, clockNow.ymd) !== undefined) return null;
@@ -2575,9 +2577,9 @@ function connectCard(b, app, bare = false) {
   const dl = busDelay(b) ?? (at ? at.min - (schedAt(at.si, b) ?? at.min) : null);
   const late = dl !== null && !isLoop(b.ri) ? lateWords(heldAt(nextStopOf(b) ?? (at && at.si), dl)) : '';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
-    <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
+    <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : r.long}</span></div>
-    ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.free ? 'its last run was ' + routeName(b.ri) : 'its last run is over'}. Not one to wait for.</span></div>` : ''}</div>
+    ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may have moved on' : b.free ? 'its last run was ' + routeName(b.ri) + '. Not one to wait for' : 'its last run is over. Not one to wait for'}.</span></div>` : ''}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
   card.classList.remove('hidden');

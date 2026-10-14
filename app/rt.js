@@ -7,6 +7,10 @@ import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
 const POLL = 5000, STALE = 90000;   // each bus reports every 3 to 8 seconds; the relay keeps the feed 5
+/** A bus whose tracker has gone quiet: three minutes without a report (standing still, a bus still reports, every few
+ *  seconds) and it's grey, its place an old one, counted nowhere; ten, and it's off the map. Bus 1168 was drawn in
+ *  Route 12's colour 41 minutes after its last word. */
+const QUIET = 180, GONE = 600;
 
 export const rt = { at: 0, t: 0, buses: [], parked: [], trips: {}, doubt: new Set(), loopMode: {}, wanted: false, fetching: false, error: null };
 /** A bus's route as last seen on a trip: a bus that has finished (logged off its trip, on its way in) still reports,
@@ -111,7 +115,10 @@ async function tick(force) {
         if (m) ri = D.routeByShort[m[1]] ?? D.routes.findIndex(r => r.short.startsWith(m[1] + ' '));
         if (ri === -1) ri = undefined;
       }
-      if ((ri === undefined || ri < 0) && !b.trip && lastRoute.has(b.id)) { parked.push({ id: 'c:' + b.id, label: b.label || b.id, trip: '', ri: lastRoute.get(b.id), lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: null, dir: null, free: true }); continue; }
+      const quiet = b.ts && j.t - b.ts > QUIET ? b.ts : 0;
+      if (quiet && j.t - b.ts > GONE) continue;
+      if (quiet && ri !== undefined && ri >= 0) { parked.push({ id: 'c:' + b.id, label: b.label || b.id, trip: b.trip || '', ri, lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: info ? info.h : null, dir: info ? info.dir : null, quiet }); continue; }
+      if ((ri === undefined || ri < 0) && !b.trip && lastRoute.has(b.id)) { parked.push({ id: 'c:' + b.id, label: b.label || b.id, trip: '', ri: lastRoute.get(b.id), lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: null, dir: null, free: true, quiet }); continue; }
       if (ri === undefined || ri < 0) continue;
       lastRoute.set(b.id, ri);
       buses.push({ id: 'c:' + b.id, label: b.label || b.id, trip: b.trip, ri, lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: info ? info.h : null, dir: info ? info.dir : null });

@@ -139,6 +139,25 @@ test('bus click-off: back where the rider was', async ({ page }, info) => {
   await expect(page).toHaveURL(new RegExp('#/stop/' + id + '$'));
 });
 
+test('a bus gone quiet: grey after three minutes without a report, off the map after ten', async ({ page }) => {
+  // The relay's answer made up: three buses on one trip, heard from now, five minutes ago, twenty minutes ago.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page, '#/');
+  const trip = await page.evaluate(async () => (await import('/app/data.js')).D.trips[0]);
+  const t = Math.floor(Date.now() / 1000), bus = (label, ago, lon) => ({ id: label, label, trip, lat: 41.735, lon, bearing: 0, speed: 0, ts: t - ago });
+  feed = { t, trips: {}, buses: [bus('9001', 2, -111.835), bus('9002', 300, -111.83), bus('9003', 1200, -111.825)] };
+  await go(page, '#/map');
+  await mapReady(page);
+  await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('.maplibregl-marker.bus')].map(m => m.title).filter(x => / 900\d/.test(x)).sort())).toEqual([
+    expect.stringMatching(/bus 9001(?! · not reporting)/), expect.stringMatching(/bus 9002 · not reporting$/)]);
+  const r = await page.evaluate(async () => { const { rt } = await import('/app/rt.js'); return { buses: rt.buses.map(b => b.label), parked: rt.parked.map(b => b.label) }; });
+  expect(r).toEqual({ buses: ['9001'], parked: ['9002'] });
+  await page.evaluate(() => [...document.querySelectorAll('.maplibregl-marker.bus')].find(m => / 9002/.test(m.title)).click());
+  await expect(page.getByText('Not reporting').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText(/last heard from at/).filter({ visible: true }).first()).toBeVisible();
+});
+
 test('search: a route, every route, a street, a place, an address', async ({ page }) => {
   await open(page);
   await go(page, '#/search?q=12');
