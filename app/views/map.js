@@ -1285,6 +1285,9 @@ document.addEventListener('click', e => {
  *  also drags with a mouse. The browser's pull-to-refresh never sees any of it. */
 /** The peek's height: the grip and the head, whatever the stop's name and routes take. */
 function fitPeek(card) {
+  // The directions minimised (swiped down from where they open): down to their head, where to, the map the rest.
+  const gh = card.querySelector(':scope > .gohead');
+  if (gh && card.dataset.min) { const h = gh.querySelector('.head') || gh; card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 4) + 'px'); return; }
   // The directions: down to the last way, every one there to tap between, the way picked drawn in the map above;
   // never more than 60% of it. (Down to the way picked, the ways after it were a swipe up away each time.)
   const rows = card.querySelectorAll('.gohead .jrow'), last = rows[rows.length - 1];
@@ -1310,7 +1313,9 @@ function wireGrip(app) {
       if (hubBay !== null) { hubBay = null; hubKey = null; history.replaceState(history.state, '', '#/hub'); shownHash = '#/hub'; hubBadges(); }
       return; }
     if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); closeTo('#/map'); return; }
-    if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); backToWays(); return; }
+    if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); delete card.dataset.min; backToWays(); return; }
+    // No way by bus: out of the directions, as a way's are. Hidden only, the next redraw (the minute, the feed) put it back.
+    if (card.querySelector(':scope > .gonone')) { card.classList.remove('open', 'peek'); delete card.dataset.min; if (history.state && history.state.prev) history.back(); else closeTo('#/map'); return; }
     if (card.querySelector(':scope > .pagesheet') && /^#\/(stop|usu)\//.test(location.hash)) { card.classList.remove('open', 'peek'); closeTo('#/map'); return; }   // a stop's sheet put away: Back to the map it came from
     selectedBus = null; selectedU = null; select(null, app); cardAway(); };
   // The card's own Open button (the card itself is .open too): a place's page. A spot's card has none: its first
@@ -1339,7 +1344,16 @@ function wireGrip(app) {
   };
   // Down to the peek: the head slides to where it will rest, then the card is cut to it.
   // A way's card at its new size: the way framed again in what it leaves (after the slide's settle).
-  const refitWay = () => { if (card.querySelector(':scope > .journeysheet')) setTimeout(() => frameWay(400), 340); };
+  const refitWay = () => { if (card.querySelector(':scope > .journeysheet')) setTimeout(() => frameWay(400), 340); else if (card.querySelector(':scope > .gonone')) setTimeout(() => frameNone(400), 340); };
+  // The directions' card has a third size: from where it opens (its ways, or the stops to go from), a swipe down is
+  // down to its head, where to, and the map has the screen; one more leaves the directions. It went straight from where
+  // it opened, and a 'no way by bus' card came back with the next redraw.
+  const dirs = () => !!card.querySelector(':scope > .gohead');
+  const minned = () => !!card.dataset.min;
+  // Down to the head: the slide first at the height it has, then the card cut to it (as toPeek).
+  const toMin = (dy = 0) => { const h0 = card.offsetHeight, old = card.style.getPropertyValue('--peek'); card.dataset.min = '1'; fitPeek(card); const h1 = parseFloat(card.style.getPropertyValue('--peek')) || h0; card.style.setProperty('--peek', old); slide(dy, Math.max(0, h0 - h1), () => { card.style.setProperty('--peek', h1 + 'px'); card.scrollTop = 0; }); refitWay(); };
+  // Back up to where it opens: it grows first, held down where the head was, then slides up (as toFull).
+  const fromMin = (dy = 0) => { const h0 = card.offsetHeight; delete card.dataset.min; fitPeek(card); const h1 = card.offsetHeight; slide(h1 - h0 + dy, 0); refitWay(); };
   const toPeek = (dy = 0) => { const full = card.offsetHeight; fitPeek(card); const peekH = parseFloat(card.style.getPropertyValue('--peek')) || full; slide(dy, Math.max(0, full - peekH), () => { card.classList.add('peek'); card.scrollTop = 0; }); refitWay(); };
   // Up to the whole card: it grows first, held down where the peek was, then slides up.
   const toFull = (dy = 0) => { const peekH = card.offsetHeight; card.classList.remove('peek'); const full = card.offsetHeight; slide(full - peekH + dy, 0); refitWay(); };
@@ -1355,7 +1369,8 @@ function wireGrip(app) {
     // A stop's sheet opens part way (down to its next two buses): a swipe down from there is down to its head, the map
     // to the finger; the next one puts it away.
     const tall = !!card.dataset.tall && !!card.querySelector(':scope > .pagesheet');
-    if (claimed === 'down') { if (peeked() && board()) slide(at, 0); else if (peeked() && !tall) away(); else { delete card.dataset.tall; toPeek(at); } }
+    if (claimed === 'down') { if (peeked() && board()) slide(at, 0); else if (peeked() && dirs() && !minned()) toMin(at); else if (peeked() && !tall) away(); else { delete card.dataset.tall; toPeek(at); } }
+    else if (peeked() && minned()) fromMin(at);
     else if (peeked()) { delete card.dataset.tall; toFull(at); }
     else { slide(at, 0); const href = pageHref(); if (href) location.hash = href; }   // the page slides up over the map
   };
@@ -1378,7 +1393,8 @@ function wireGrip(app) {
     }
     if (e.target.closest('a, button, [data-go]')) return;
     if (board()) { if (sheetFolded) sheetFold(false); return; }   // folded, a tap on it opens it
-    if (peeked()) { delete card.dataset.tall; toFull(); }
+    if (peeked() && minned()) fromMin();
+    else if (peeked()) { delete card.dataset.tall; toFull(); }
     else if (e.target.closest('.grip')) toPeek();
   });
   // A mouse's wheel or a trackpad (a desktop window narrow enough for a phone's layout): scrolled on a card down to
@@ -1405,10 +1421,11 @@ function wireGrip(app) {
       return;
     }
     if (!peeked() && e.deltaY < 0 && card.scrollTop <= 0 && fresh && card.classList.contains('open') && !wide()) { e.preventDefault(); wheelAt = e.timeStamp; toPeek(); return; }
+    if (peeked() && dirs() && !minned() && e.deltaY < 0 && card.scrollTop <= 0 && fresh && !wide()) { e.preventDefault(); wheelAt = e.timeStamp; toMin(); return; }
     if (!peeked() || e.deltaY <= 0) return;
     e.preventDefault();
     if (e.timeStamp - wheelAt < 400) return;   // one opening for one flick
-    wheelAt = e.timeStamp; delete card.dataset.tall; toFull();
+    wheelAt = e.timeStamp; if (minned()) { fromMin(); return; } delete card.dataset.tall; toFull();
   }, { passive: false });
   // The board: a swipe down begun at its top folds it, one up opens it again (its own scroll does the rest).
   let bY = null, bTop = false;
@@ -3527,12 +3544,14 @@ function dressJourney() {
   map.setPaintProperty('stops', 'circle-stroke-color', paperInk());
 }
 /** The way drawn, or put away (null). Drawn afresh only when the way itself changes; framed when it's a new one. */
-let jrNone = null;   // a 'no way by bus' up: its two ends on the map, its card
+let jrNone = null, jrNoneB = null;   // a 'no way by bus' up: its two ends on the map, its card; and what it frames
+/** A 'no way by bus' framed: its ends and the stops its card names, in the room the card leaves. */
+const frameNone = (duration = 600) => { if (jrNone && jrNoneB) frame(wide() || col.querySelector('#mapcard').dataset.min ? jrNoneB.all : jrNoneB.core, { margin: wide() ? 80 : 24, maxZoom: 16, bearing: 0, duration }); };
 async function mainJourney(J, app) {
   if (!map) return;
   if (!ready) { if (J) map.once('load', () => mainJourney(J, app)); return; }
   if (!(J && J.none) && jrNone) {
-    jrNone = null; if (nearBy === 'none') markNear();   // its own marks only: the near view may have just made its own
+    jrNone = null; jrNoneB = null; if (nearBy === 'none') markNear();   // its own marks only: the near view may have just made its own
     if (map.getSource('jr')) map.getSource('jr').setData({ type: 'FeatureCollection', features: [] });
     const card = col.querySelector('#mapcard');
     if (!J && card.querySelector(':scope > .gonone')) card.classList.remove('open', 'peek');
@@ -3541,15 +3560,23 @@ async function mainJourney(J, app) {
     if (JR) mainJourney(null, app);
     addJourneyLayers(map);
     map.getSource('jr').setData({ type: 'FeatureCollection', features: [['start', J.from], ['end', J.to]].map(([k, p]) => ({ type: 'Feature', properties: { k }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
-    // As the near view has them: the start's four nearest stops, marked with their names, where a bus could be met.
-    const four = nearFour(J.from).filter(x => x.d < 20000);
-    markNear(four.map(x => D.stops[x.i].id), 'none');
+    // The stops the card names, marked with their names: where to drive to for a bus there, or where a bus gets you.
+    // Else, as the near view has them, the start's four nearest. (The four nearest were marked beside a list naming
+    // others, and framed with them the map was too tall for the strip above the card: it fell back to the start alone.)
+    const named = (J.marks || []).map(id => D.stops.findIndex(s => s.id === id)).filter(i => i >= 0);
+    const near = named.length ? named : nearFour(J.from).filter(x => x.d < 20000).map(x => x.i);
+    markNear(near.map(i => D.stops[i].id), 'none');
     if (app.route.name === 'map' && !wide()) journeyCard(J, app);
     if (jrNone === J.base) return;
     jrNone = J.base;
-    const b = new maplibregl.LngLatBounds([J.from.lon, J.from.lat], [J.from.lon, J.from.lat]).extend([J.to.lon, J.to.lat]);
-    for (const x of four) b.extend([D.stops[x.i].lon, D.stops[x.i].lat]);
-    requestAnimationFrame(() => frame(b, { margin: wide() ? 80 : 56, maxZoom: 16, bearing: 0, duration: 600 }));
+    // Framed whole (both ends, the stops) where there's room for it: beside a wide screen's page, or over a phone's card
+    // put down to its head. Over the card as it opens, the end the list is about and its stops, the other end left out:
+    // Preston to Greenville wanted the map further out than it goes in the strip above the card, and it showed Preston.
+    const ll = p => [p.lon, p.lat], end = J.side === 'end' ? J.to : J.from;
+    const all = new maplibregl.LngLatBounds(ll(J.from), ll(J.from)).extend(ll(J.to)), core = new maplibregl.LngLatBounds(ll(end), ll(end));
+    for (const i of near) { all.extend([D.stops[i].lon, D.stops[i].lat]); core.extend([D.stops[i].lon, D.stops[i].lat]); }
+    jrNoneB = { all, core: named.length ? core : all };
+    requestAnimationFrame(() => frameNone());
     return;
   }
   if (!J) {
@@ -3632,7 +3659,7 @@ function journeyCard(J, app) {
   const again = !!card.querySelector(':scope > .journeysheet, :scope > .gonone') && card.classList.contains('open') && card.dataset.way === J.base;
   // From way to way, the card keeps its height, so the rows stay under the thumb: a longer way scrolls in it.
   if (again) { if (!card.classList.contains('peek')) card.style.setProperty('--jh', card.offsetHeight + 'px'); morph(card, markup); }
-  else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); }
+  else { card.style.removeProperty('--jh'); card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); delete card.dataset.min; }
   J.mount(card);
   card.dataset.way = J.base;
   card.classList.remove('hidden');

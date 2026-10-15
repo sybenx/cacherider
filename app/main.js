@@ -20,15 +20,18 @@ import { setRtWanted, onRt } from './rt.js';
 const side = document.getElementById('side');
 const body = document.getElementById('body');
 const TABS = [
-  { href: '#/', label: 'Stops', icon: 'stops', match: h => !stopOfMap && /^#\/(stop|search|about|usu|go|routes|$)/.test(h) },
+  { href: '#/', label: 'Stops', icon: 'stops', match: h => !stopOfMap && /^#\/(stop|search|about|usu|go|routes|$)/.test(h) && !seasonOwns(h) },
   { href: '#/map', label: 'Map', icon: 'map', match: h => stopOfMap || h.startsWith('#/map') },
   { href: '#/hub', label: 'Transit Center', icon: 'hub', match: h => h.startsWith('#/hub') },
 ];
 // A tab for the season's own: the Pumpkin Walk's while its shuttle has a night still to come (views/pumpkin.js), gone
 // by itself after the last, its page still there at its address.
 const SEASON_TABS = [
-  { href: '#/pumpkin', label: 'Pumpkin Walk', icon: 'pumpkin', match: h => h.startsWith('#/pumpkin'), on: () => pumpkin.pumpkinOn() },
+  // its own directions too (its 'How to get to Greenville'): they lit Stops, the rider seemingly off the Pumpkin Walk
+  { href: '#/pumpkin', label: 'Pumpkin Walk', icon: 'pumpkin', match: h => h.startsWith('#/pumpkin') || pumpkin.directionsTo(h), on: () => pumpkin.pumpkinOn() },
 ];
+/** An address a season's tab, while it's up, has for its own: not Stops' then. */
+const seasonOwns = h => SEASON_TABS.some(t => { try { return t.on() && t.match(h); } catch { return false; } });
 const tabsNow = () => D ? [...TABS, ...SEASON_TABS.filter(t => { try { return t.on(); } catch { return false; } })] : TABS;
 
 export const app = {

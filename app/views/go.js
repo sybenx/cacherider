@@ -364,19 +364,26 @@ function noWay(e, to, hubBay, also) {
   const { origin, d, name } = e, o = origin.si !== undefined ? stop(origin.si) : origin, apart = distance(o.lat, o.lon, d.lat, d.lon);
   // From a spot with no stop a walk off (out past the routes, Cove or Benson): not 'no bus goes there', which was
   // false; the nearest stops a bus there leaves from, to get to by car or bike.
-  if (origin.si === undefined) { const far = farStarts(o, e, to); if (far) return [far]; }
-  { const far = farEnds(e, to, e.fromSi !== undefined ? stop(e.fromSi).id : null, e.at); if (far) return [far]; }
+  { const far = farOf(e, to); if (far) return [far.html]; }
   if (apart > 1000) return [noBus(d, name, apart)];
   const out = also ? [also] : [];
   out.push(html`<div class="empty"><h2>No way there by bus</h2><p>Nothing in the timetable joins these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
   if (hubBay && origin.si !== D.hub.bays[0].stop) out.push(html`<div class="chips"><a class="chip" href="#/go/${to}/${hubBay}">Try from the ${D.hub.name}</a></div>`);
   return out;
 }
+/** The far list that answers, either way round (a start out of a walk of any stop, or a place out of a walk of any):
+ *  { html, ids, side }, its stops' ids for the map to mark, and which end they're near ('start' or 'end'). Null when neither is out of a walk. */
+function farOf(e, to) {
+  const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
+  return (e.origin.si === undefined && farStarts(o, e, to)) || farEnds(e, to, e.fromSi !== undefined ? stop(e.fromSi).id : null, e.at) || null;
+}
 /** Out of a walk of any stop: the nearest stops a way there leaves from, each with its next way and how much more runs
  *  from it today. A farther one is listed only when it has clearly more buses left today than every nearer one (a stop on a
  *  route that runs all day, Richmond's, past one with a bus or two left, Lewiston's): near, or more often, the rider
  *  picks. Three at most. Null when a stop is within a walk (the ways' own 'no way' then) or none has a way. */
 const WALK_REACH = 1000;
+/** Minutes to drive to a stop this far off as the crow flies. */
+const driveMins = m => Math.ceil(m * 1.33 / 20 / 60) + 5;
 const farKept = new Map();   // worked out once a minute, not on every feed tick's redraw (six searches each)
 function farStarts(o, e, to) {
   const k = [o.lat.toFixed(4), o.lon.toFixed(4), to, now().min].join('|');
@@ -389,27 +396,30 @@ function farStarts0(o, e, to) {
   // The nearest stop of each set of routes (a town's stops are mostly the same routes; one each is enough).
   const seen = new Set(), cands = [];
   for (const x of near) { const k = x.s.routes.slice().sort().join(','); if (seen.has(k)) continue; seen.add(k); cands.push(x); if (cands.length === 6) break; }
-  const c = now(), rows = [];
+  const c0 = now(), rows = [];
   let most = -1;
   for (const x of cands) {
+    // From when the rider could be there: miles off, by car (the roads a third longer than the crow flies, 45 mph, five
+    // minutes to park). A bus at 3:47 was listed from eight miles off at 3:42, there to be missed.
+    const drive = driveMins(x.d), c = { ...c0, min: Math.min(c0.min + drive, 1439) };
     const p = (journeys({ si: x.si }, e.dest, c, 2).plans || [])[0];
     if (!p) continue;
     const ride = p.legs.find(l => l.kind === 'ride');
     const left = p.day === 0 && ride && !ride.u ? timesOn(ride.from, c.ymd).filter(t => t.r === ride.r && t.min >= c.min).map(t => t.min) : [];
     if (rows.length && (left.length < most * 1.5 || left.length < most + 3)) continue;   // farther and not clearly more often (half again, three more): not a better choice
     most = Math.max(most, left.length);
-    rows.push({ x, p, ride, left });
+    rows.push({ x, p, ride, left, drive });
     if (rows.length === 3) break;
   }
   if (!rows.length) return null;
-  return farList('No stop within a walk of you', 'The nearest a bus there leaves from:', rows, x => `#/go/${to}/${x.s.id}`, 'away');
+  return { html: farList('No stop within a walk of you', 'The nearest a bus there leaves from:', rows, x => `#/go/${to}/${x.s.id}`, 'away'), ids: rows.map(r => r.x.s.id), side: 'start' };
 }
 /** A stop's row in either list: its route, where it is, the next way, and how much more runs today. */
 function farList(head, line, rows, href, rel) {
   const when = (p, m) => (p.day === 0 ? '' : p.day === 1 ? 'tomorrow ' : dayName(p.ymd) + ' ') + clockText(m);
   return html`<div class="farstarts"><div class="empty"><h2>${head}</h2><p>${line}</p></div>
-    <div class="list">${rows.map(({ x, p, ride, left }) => html`<a class="row" href="${href(x)}">${ride ? (ride.u ? chip(ride.r, 30) : badge(ride.r, 30)) : ''}<div class="mid"><span class="name">${stopTitle(x.si)}</span>
-      <span class="sub">${metres(x.d)} ${rel} · leaves ${when(p, p.leave)}, there ${when(p, p.arrive)}</span>
+    <div class="list">${rows.map(({ x, p, ride, left, drive }) => html`<a class="row" href="${href(x)}">${ride ? (ride.u ? chip(ride.r, 30) : badge(ride.r, 30)) : ''}<div class="mid"><span class="name">${stopTitle(x.si)}</span>
+      <span class="sub">${metres(x.d)} ${rel}${drive ? `, a ${drive}-min drive` : ''} · leaves ${when(p, p.leave)}, there ${when(p, p.arrive)}</span>
       ${left.length ? html`<span class="sub">${left.length === 1 ? 'The last bus today' : `${left.length} buses left today, the last ${clockText(left[left.length - 1])}`}</span>` : ''}</div>${icon('fwd', 20)}</a>`)}</div></div>`;
 }
 /** The other way round: the start's fine, the place is out of a walk of any stop (a farm road, a canyon). The nearest
@@ -443,12 +453,13 @@ function farEnds0(e, to, from, at) {
   if (!rows.length) return null;
   // To that stop, from the same start: a stop named, a spot, or (neither) where the phone is.
   const fromPart = from ? '/' + from : at ? '/' + atPath(at) : '';
-  return html`${farList(`No stop within a walk of ${e.name}`, 'The nearest a bus gets you:', rows, x => `#/go/${x.s.id}${fromPart}`, 'from there')}${poolCallout(d)}`;
+  return { html: html`${farList(`No stop within a walk of ${e.name}`, 'The nearest a bus gets you:', rows, x => `#/go/${x.s.id}${fromPart}`, 'from there')}${poolCallout(d)}`, ids: rows.map(r => r.x.s.id), side: 'end' };
 }
 /** The map's side of it: just the two ends, framed, and the page as its card. */
 function noWayJourney(e, to, parts, hubBay, also) {
-  const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin;
-  return { none: true, base: 'none:' + to, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon },
+  const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin, far = farOf(e, to);
+  // marks: the stops the card names (where to drive to, or where a bus gets you), for the map to show with the ends
+  return { none: true, base: 'none:' + to, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon }, marks: far ? far.ids : null, side: far ? far.side : null,
     sheet: () => html`<div class="gohead gonone">${parts}${noWay(e, to, hubBay, also)}</div>`, mount: el => mount(el, null, true) };
 }
 /** POOL, Connect's on-demand ride, where a place is in its zone: book it, or call. */

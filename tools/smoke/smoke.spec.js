@@ -541,6 +541,38 @@ test('routes list: every route, one opened', async ({ page }) => {
   await expect(page.getByText('Route 5').filter({ visible: true }).first()).toBeVisible();
 });
 
+test('directions from out of a walk of any stop, on a phone: swiped down, the card goes down to its head and stays, then leaves', async ({ page }, info) => {
+  // From north of Franklin, Idaho, to the Transit Center: the card lists the stops to drive to. A swipe down hid it,
+  // and the next redraw (the feed's tick, the minute) put it back up; there was no way to see the map under it.
+  test.skip(!phone(info), 'a phone\'s card over the map');
+  await open(page, '#/');
+  await go(page, '#/go/10628498/at/42.03000,-111.87400/North%20of%20Franklin');
+  await mapReady(page);
+  const card = page.locator('#mapcard');
+  await expect(card.locator('.gonone .farstarts .row').first()).toBeVisible({ timeout: 20_000 });
+  await expect(card.locator('.farstarts .row .sub').first()).toContainText(/-min drive · leaves/);
+  const cdp = await page.context().newCDPSession(page);
+  const swipe = async (y0, y1) => {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: y0 }] });
+    for (let i = 1; i <= 8; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200, y: y0 + (y1 - y0) * i / 8 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(600);
+  };
+  const grip = async () => (await card.locator('.grip').boundingBox()).y + 20;
+  const tall = (await card.boundingBox()).height;
+  await swipe(await grip(), (await grip()) + 150);
+  await expect(card).toHaveClass(/\bopen\b/);
+  expect(await card.evaluate(c => c.dataset.min)).toBe('1');
+  expect((await card.boundingBox()).height).toBeLessThan(tall / 2);
+  // A redraw, as the feed's tick makes: still down to its head, not back up
+  await page.evaluate(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
+  await page.waitForTimeout(1500);
+  await expect(card).toHaveClass(/\bopen\b/);
+  expect(await card.evaluate(c => c.dataset.min)).toBe('1');
+  await swipe(await grip(), (await grip()) + 150);
+  await expect(page).toHaveURL(/#\/$/);
+});
+
 test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts', async ({ page }) => {
   // The real feed's, whatever the date: the page stands with a season or without (a route gone from the timetable says
   // so); while one is on, its tab is there and lit on its page, its nights listed, and a stop of it opens.

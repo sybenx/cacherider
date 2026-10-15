@@ -12,6 +12,11 @@ import { ART, DECO, PERCH } from './pumpkin-art.js';
 /** The Pumpkin Walk's route, or -1 when the timetable hasn't one. */
 export const pumpkinRoute = () => D ? D.routes.findIndex(r => /^pumpkin/i.test(r.short)) : -1;
 const stopsOf = ri => [...new Set(Object.values(D.routes[ri].stops || {}).flat())];
+/** Directions to one of its stops (#/go/<stop>, its 'How to get to'): the season's tab's as much as the page is. */
+export function directionsTo(h) {
+  const m = /^#\/go\/([^/?]+)/.exec(h), ri = m ? pumpkinRoute() : -1;
+  return ri >= 0 && stopsOf(ri).some(si => D.stops[si].id === decodeURIComponent(m[1]));
+}
 /** 'Greenville', 'Park': a stop's name without the route's own, which every one of its stops carries. */
 const placeOf = si => D.stops[si].name.replace(/^pumpkin walk\s*[-–·:]\s*/i, '').trim() || D.stops[si].name;
 
