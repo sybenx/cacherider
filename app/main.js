@@ -265,6 +265,7 @@ export async function render(tick = false) {
   setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U) || (name === 'go' && !!U));   // directions: the shuttle is in the planner
   setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route', 'go', 'pumpkin'].includes(name));
   body.classList.toggle('map-open', mapOpen);
+  body.classList.toggle('pk-on', name === 'pumpkin');   // the Pumpkin Walk's vines round the map (views/pumpkin.js), while it's up
   if (view && !stopMap) {
     // A page is the same page across its own picks (the Transit Center's routes): `view.key` says so, and the
     // rider's place is kept.

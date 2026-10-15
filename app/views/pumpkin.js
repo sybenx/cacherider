@@ -1,12 +1,13 @@
 // The Pumpkin Walk: North Logan's October evenings of carved pumpkins, and Connect's seasonal shuttle to them, round
 // from Greenville to the park every few minutes while it runs. A page of its own and a tab while the season lasts
 // (main.js), every word of it from the timetable: the route (its short name 'Pumpkin Walk'), its two stops, its nights
-// and their hours, so next October's, or a night added or dropped, needs nothing here. The art is drawn below, no
-// image to fetch. A first cut, for Claude Design to take on.
+// and their hours, so next October's, or a night added or dropped, needs nothing here. The art is drawn in
+// pumpkin-art.js, no image to fetch. A first cut, for Claude Design to take on.
 import { D, nextAt, timesOn, distance } from '../data.js';
 import { now, dayFrom, dayName, fmtDay, clockText, clockShort, minsTo } from '../time.js';
 import { html, raw, icon, badge, depRow, liveMark, liveWord, sched, lively, when, time, corners } from '../ui.js';
 import { rt, rtStale } from '../rt.js';
+import { ART, DECO, PERCH } from './pumpkin-art.js';
 
 /** The Pumpkin Walk's route, or -1 when the timetable hasn't one. */
 export const pumpkinRoute = () => D ? D.routes.findIndex(r => /^pumpkin/i.test(r.short)) : -1;
@@ -42,43 +43,12 @@ export function pumpkinOn(clockNow = now()) {
   return ns.some((n, k) => n.n && (k > 0 || clockNow.min <= n.last + 15));
 }
 
-// ---- the art: dusk over the hills, a path, and pumpkins lit along it. Its colours are its own, the night's, in either
-// theme: an evening is dark whatever the phone is set to.
-function pumpkin(x, y, s, face) {
-  const eyes = face === 1
-    ? 'M-9 -19l3.5-6 3.5 6zM2 -19l3.5-6 3.5 6z'
-    : face === 2 ? 'M-9 -21h6v5h-6zM3 -21h6v5h-6z' : 'M-8 -18l2.5-7 2.5 7zM3 -18l2.5-7 2.5 7z';
-  const mouth = face === 2
-    ? 'M-9 -11q9 7 18 0q-9 3-18 0z'
-    : 'M-10 -12q10 8 20 0l-3 1-1.5 3-2-2.5-1.5 3-2-3-1.5 3-2-2.5-1.5 3-2-3z';
-  return `<g transform="translate(${x} ${y}) scale(${s})">
-    <ellipse cx="0" cy="-12" rx="30" ry="22" fill="url(#pkHalo)"/>
-    <ellipse cx="-11" cy="-13" rx="12" ry="13" fill="#c94a16"/><ellipse cx="11" cy="-13" rx="12" ry="13" fill="#c94a16"/>
-    <ellipse cx="-5" cy="-13" rx="10" ry="14" fill="#e8611c"/><ellipse cx="5" cy="-13" rx="10" ry="14" fill="#e8611c"/>
-    <ellipse cx="0" cy="-13" rx="7" ry="14.5" fill="#f57a24"/>
-    <path d="M0-26c0-4 1.5-7 4.5-8.5" stroke="#4f6b2a" stroke-width="3.2" fill="none" stroke-linecap="round"/>
-    <path d="${eyes}" fill="#ffd66b"/><path d="${mouth}" fill="#ffd66b"/>
-  </g>`;
+const art = raw(ART), perch = raw(PERCH);   // the dusk banner, and the vine along a phone's card (pumpkin-art.js)
+/** The frame put into the map once (it shows while the view is up: #body.pk-on, main.js). */
+function frameMap() {
+  const m = document.getElementById('map');
+  if (m && !document.getElementById('pk-deco')) m.insertAdjacentHTML('beforeend', DECO);
 }
-const STARS = [[24, 18], [61, 34], [96, 12], [140, 28], [182, 10], [231, 24], [258, 8], [297, 30], [338, 14], [372, 26], [120, 46], [210, 44]];
-const art = raw(`<svg class="pk-art" viewBox="0 0 400 170" preserveAspectRatio="xMidYMax slice" role="img" aria-label="Pumpkins glowing along a path over the hills at dusk">
-  <defs>
-    <linearGradient id="pkSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a1238"/><stop offset=".55" stop-color="#4a2a5e"/><stop offset=".85" stop-color="#b5532f"/><stop offset="1" stop-color="#e48a3a"/></linearGradient>
-    <radialGradient id="pkHalo"><stop offset="0" stop-color="#ffb347" stop-opacity=".55"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
-    <mask id="pkMoon"><rect width="400" height="170" fill="#fff"/><circle cx="331" cy="34" r="15" fill="#000"/></mask>
-  </defs>
-  <rect width="400" height="170" fill="url(#pkSky)"/>
-  ${STARS.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i % 3 ? 0.9 : 1.4}" fill="#fff6dc" opacity="${i % 2 ? 0.7 : 0.95}"/>`).join('')}
-  <circle cx="340" cy="38" r="15" fill="#fff2c4" mask="url(#pkMoon)"/>
-  <path d="M0 112C40 96 74 92 112 100s70 2 104-10 78-14 112-4 54 10 72 6V170H0z" fill="#2b1c47"/>
-  <path d="M0 132c30-12 66-16 102-8s64 6 98-6 72-14 112-2 64 12 88 4V170H0z" fill="#1d1333"/>
-  <g stroke="#140c24" stroke-width="2" stroke-linecap="round" fill="none">
-    <path d="M38 126V96m0 12-9-9m9 3 8-10m-8 18 6-5"/><path d="M356 120V88m0 14 9-8m-9 0-8-9m8 20-6-4"/>
-  </g>
-  <path d="M60 170c26-14 62-22 104-24s88 6 120 0 50-10 66-14l6 6c-16 6-36 12-70 16s-78 0-118 4-66 12-86 12z" fill="#3a2856" opacity=".9"/>
-  ${[[92, 151], [150, 145], [212, 147], [272, 143], [330, 135]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.6" fill="#ffd66b"/>`).join('')}
-  ${pumpkin(70, 160, 1.15, 0)}${pumpkin(128, 150, 0.8, 2)}${pumpkin(190, 162, 1.3, 1)}${pumpkin(258, 151, 0.85, 0)}${pumpkin(318, 160, 1.05, 2)}
-</svg>`);
 
 /** The page. */
 export function render(_, clockNow) {
@@ -139,7 +109,7 @@ export function render(_, clockNow) {
   const strip = html`<div class="pk-nights">${ns.map((n, k) => html`<div class="pk-night${k === 0 ? ' tonight' : ''}${n.n ? '' : ' off'}"><span class="d">${k === 0 ? 'Tonight' : dayName(n.ymd, true)}</span><span class="dt">${fmtDay(n.ymd).replace(/^\w+,?\s*/, '')}</span><span class="h">${n.n ? clockShort(n.first) + '–' + clockShort(n.last) : 'No shuttle'}</span></div>`)}</div>`;
 
   return {
-    html: html`${back}<div class="head pk-head"><div class="pk-hero blueprint"><div class="pk-clip">${art}</div>${corners()}</div>
+    html: html`${perch}${back}<div class="head pk-head"><div class="pk-hero blueprint"><div class="pk-clip">${art}</div>${corners()}</div>
         <span class="eyebrow">Seasonal · North Logan</span><h1>Pumpkin Walk</h1><div class="muted pk-sub">${D.agency.brand}'s shuttle${sub ? ' · ' + sub : ''}</div></div>
       ${now$}
       ${live}
@@ -148,7 +118,8 @@ export function render(_, clockNow) {
       <div class="pk-actions"><a class="btn btn-primary" href="#/go/${D.stops[home].id}">${icon('walk', 18)}How to get to ${placeOf(home)}</a></div>
       <div class="fine">The shuttle's times are ${D.agency.brand}'s published timetable for the Pumpkin Walk, refreshed nightly, and live where the feed has the bus. The Pumpkin Walk itself is North Logan's; its own hours and news are the city's to give.</div>`,
     title: 'Pumpkin Walk', live: true, keepScroll: true,
-    mount: (el, app) => { if (app) window.__app = app; },   // the rider's fix, for the nearest stop, as the home page reads it
+    // the rider's fix, for the nearest stop, as the home page reads it; and the map's frame of vines, put in once
+    mount: (el, app) => { if (app) window.__app = app; frameMap(); },
   };
 }
 

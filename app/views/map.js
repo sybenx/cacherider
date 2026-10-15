@@ -3193,7 +3193,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
         if (!fc || lastFocused !== 'r:' + ri) return;
         const b = new maplibregl.LngLatBounds();
         for (const f of fc.features) if (f.properties.route === ri) for (const c of f.geometry.coordinates) b.extend(c);
-        if (!b.isEmpty()) frame(b, { maxZoom: 15.5, duration: 500 });
+        if (!b.isEmpty()) frame(b, { maxZoom: 15.5, duration: 500, margin: wide() ? 72 : 52 });   // inside its vines (views/pumpkin.js)
       });
     }
     if (bus) ringBus(bus); else { wantRing = null; if (ringed) unring(); }
