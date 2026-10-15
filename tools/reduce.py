@@ -218,13 +218,14 @@ for i in hub_stops:
 pulse_set = set(route_idx[r['id']] for r in routes if r['short'] in hub['pulse_routes'])
 pulse = {}
 for sv in services:
-    count, running = {}, set()
+    count = {}
     for i in hub_stops:
         for m, ri, hi, di, _ti in times.get(str(i), {}).get(sv["id"], []):
-            if ri in pulse_set: count.setdefault(m, set()).add(ri); running.add(ri)
-    # Half the routes that run that day, not half of all of them: on a Saturday nine run, in two groups of four
-    # an hour apart (on the hour and at half past), and each group is a real departure together.
-    pulse[sv['id']] = sorted(m for m, rs in count.items() if len(rs) >= max(3, len(running) // 2))
+            if ri in pulse_set: count.setdefault(m, set()).add(ri)
+    # Three routes or more, as the board's list groups them (app/views/hub.js): half of those running that day left
+    # out the day's ends, a Saturday's last group (1, 5, 7 and 8 at 6:30 PM) and a weekday's first (11, 12 and 15 at
+    # 5:30 AM), and after 6 on a Saturday the board counted to Monday. The app reads the same from the timetable.
+    pulse[sv['id']] = sorted(m for m, rs in count.items() if len(rs) >= 3)
 hub_out = {'name': hub['name'], 'short': hub['short'], 'lat': hub['lat'], 'lon': hub['lon'],
            'address': stops[hub_stops[0]]['name'] if hub_stops else '', 'town': stops[hub_stops[0]]['town'] if hub_stops else '',
            'bays': bays, 'pulse': pulse, 'pulseRoutes': sorted(pulse_set), 'pulseLabel': hub.get('pulse_label', ''), 'pulseName': hub.get('pulse_name', 'Next pulse'),

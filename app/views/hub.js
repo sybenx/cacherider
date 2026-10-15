@@ -3,7 +3,7 @@
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone } from '../time.js';
-import { html, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively } from '../ui.js';
+import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
@@ -206,8 +206,9 @@ function together(st, clockNow) {
   const still = leaving.map(k => st[k].deps.find(d => d.day === p.day && schedOf(d) === p.min)).filter(d => d && !isGone(d, clockNow));
   const due = still.length ? Math.min(...still.map(d => d.min)) : p.min;
   const diff = minsTo({ min: due, day: p.day }, clockNow);
+  // A timer, not news: the page is a polite live region (index.html), and its tick would be read out every second.
   const end = p.day === 0 && diff < 60
-    ? html`<span class="t tc-count" data-countdown="${due}">${countdown(due, clockNow)}</span><span class="cap">min : sec</span>`
+    ? html`<span class="t tc-count" data-countdown="${due}" role="timer" aria-live="off">${countdown(due, clockNow)}</span><span class="cap">min : sec</span>`
     : html`<span class="t tc-count">${p.day === 0 ? diff : ''}</span><span class="cap">${p.day === 0 ? 'min' : relative(p, clockNow)}</span>`;
   const livenow = p.day === 0 && !rtStale();
   // When each route's run in this group leaves, where the feed has moved it 2 min or more: the question a rider at the
@@ -217,7 +218,7 @@ function together(st, clockNow) {
   // Each a link that picks its route (where its bus is, in words, and its bay): a route's own answer a tap away.
   const segs = leaving.map(k => {
     const s = st[k], r = D.routes[s.ris[0]], full = livenow && s.eta === 0, lt = leavesAt(k);
-    return `<a class="tc-seg${full ? ' in' : ''}${lt !== null ? ' late' : ''}" href="#/hub/${encodeURIComponent(k)}" style="--rc:#${r.color}" aria-label="${isLoop(s.ris[0]) ? r.long : 'Route ' + k}${lt !== null ? ', leaves about ' + clockText(lt) : ''}"><i></i><b>${k}</b>${lt !== null ? `<em>${clock(lt).h}</em>` : ''}</a>`;
+    return `<a class="tc-seg${full ? ' in' : ''}${lt !== null ? ' late' : ''}" href="#/hub/${encodeURIComponent(k)}" style="--rc:#${esc(r.color)}" aria-label="${esc(isLoop(s.ris[0]) ? r.long : 'Route ' + k)}${lt !== null ? ', leaves about ' + clockText(lt) : ''}"><i></i><b>${esc(k)}</b>${lt !== null ? `<em>${clock(lt).h}</em>` : ''}</a>`;   // the feed's names, escaped as everywhere
   }).join('');
   let note = '';
   if (livenow && leaving.length) {
@@ -236,8 +237,10 @@ function together(st, clockNow) {
     const odd = [heldSay, gone.length ? name(gone) + ' cancelled' : '', away.length ? name(away) + (away.length > 1 ? ' still out on runs before this' : ' still out on its run before this') : '', loose.length ? name(loose) + ' out with no estimate' : '', quiet.length ? name(quiet) + (quiet.length > 1 ? ' not reporting' : ' not reporting') : ''].filter(Boolean).join('; ');
     note = html`${odd ? html`<span class="tc-note">${odd.replace(/^./, c => c.toUpperCase())}.</span>` : ''}${connections(leaving.filter(k => !gone.includes(k)), st, p, clockNow)}`;
   } else if (p.day === 0 && rtDown()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
+  // A small group at the day's ends (11, 12 and 15 at 5:30 AM) by its routes, not as 'Routes 1–15'.
+  const who = leaving.length && leaving.length * 2 < ks.length ? routeNames(leaving.map(k => routesOf(k)[0])) : (D.hub.pulseName || 'Routes').replace(/\s+leave$/, '');
   return html`<div class="tc-together blueprint">${corners()}
-    <div class="top"><div class="col"><span class="eyebrow">Next departure · ${(D.hub.pulseName || 'Routes').replace(/\s+leave$/, '')}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}</span></div><div class="end">${end}</div></div>
+    <div class="top"><div class="col"><span class="eyebrow">Next departure · ${who}</span>${time(p.min, 56)}<span class="sub">${leaving.length || ks.length} routes leave together${satShape(p)}</span></div><div class="end">${end}</div></div>
     ${leaving.length ? html`<div class="bars"><div class="segs" style="grid-template-columns:repeat(${leaving.length},minmax(0,1fr))">${html.raw(segs)}</div>${note}</div>` : ''}</div>`;
 }
 

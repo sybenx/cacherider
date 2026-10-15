@@ -29,6 +29,7 @@ export function load() {
     for (const r of D.routes) r.tpSet = new Set(r.tp || []);
     // The feed's long names pad the number ('Route 03'): said as riders say it, 'Route 3'.
     for (const r of D.routes) if (r.long) r.long = r.long.replace(/^(Route\s+)0+(?=\d)/i, '$1');
+    groups();
     return D;
   })().catch(e => { loading = null; throw e; });
 }
@@ -141,6 +142,11 @@ export async function loadPool() {
     const r = await fetch(BASE + 'data/pool.json', { cache: 'no-cache' });
     if (!r.ok) return;
     const j = await r.json();
+    // A pickup at a bus stop is that stop by its id: the file's index into the timetable's stops is the one its build
+    // read (tools/pool.py), and a timetable a day on, a stop added before it (the Pumpkin Walk's), or the two files
+    // kept on the phone from different days, put the POOL notice on another stop. Not in the timetable: none.
+    await load();
+    for (const s of j.stops) if (s.stop !== null && s.stop !== undefined) s.stop = D.stopById[s.id] ?? null;
     j.byStop = new Map(j.stops.filter(s => s.stop !== null && s.stop !== undefined).map(s => [s.stop, s]));
     j.byId = new Map(j.stops.map(s => [s.id, s]));
     POOL = j;
@@ -536,7 +542,15 @@ export function timesOn(si, ymd) {
   }
   const missing = (D.stops[si].routes || []).filter(r => !seen.has(r) && !routeRunsOn(r, ymd));
   if (missing.length) {
-    for (const sid of upcomingServices(ymd)) for (const t of per[sid] || []) if (missing.includes(t[1]) && !notRun(t[4], si, sid)) out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], prov: sid, req: onRequest(si, t[1], t[3]) });
+    // Each route from the first calendar after that has it, and only that one: on a day before the feed's first
+    // (14 Oct, the feed starting the 15th), every route was filled from both calendars ahead, the 15th's and the
+    // 21st's, each departure listed twice.
+    const from = new Map();   // route → the calendar it's filled from
+    const ahead = upcomingServices(ymd).sort((a, b) => D.services.find(s => s.id === a).start.localeCompare(D.services.find(s => s.id === b).start));
+    for (const sid of ahead) for (const t of per[sid] || []) if (missing.includes(t[1]) && (from.get(t[1]) ?? sid) === sid && !notRun(t[4], si, sid)) {
+      from.set(t[1], sid);
+      out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], prov: sid, req: onRequest(si, t[1], t[3]) });
+    }
   }
   // A detour that names this stop: that route's buses aren't calling here today.
   const closed = A.byStop[D.stops[si].id] ? closedRoutes(si, ymd) : null;
@@ -796,8 +810,16 @@ export function newTimetable(clockNow = now()) {
  *  against the same weekday the week before. Only then is "new timetable" worth telling a rider at this stop. */
 export function timesChange(si, start) {
   if (!start) return false;
-  const key = ymd => timesOn(si, ymd).map(t => t.min + ':' + t.r).join(',');
-  for (let k = 0; k < 7; k++) if (key(dayFrom(start, k).ymd) !== key(dayFrom(start, k - 7).ymd)) return true;
+  // The timetable's own rows only, and a day the feed covers: the week before can begin before its first calendar (a
+  // feed starting Thursday the 15th, the new times on Wednesday the 21st), and that Wednesday was the stand-in rows
+  // filled from the calendars ahead, never the same, so every stop said 'New timetable'.
+  const first = D.services.reduce((m, s) => !m || s.start < m ? s.start : m, null);
+  const key = ymd => timesOn(si, ymd).filter(t => !t.prov).map(t => t.min + ':' + t.r).join(',');
+  for (let k = 0; k < 7; k++) {
+    const was = dayFrom(start, k - 7).ymd;
+    if (first && was < first) continue;
+    if (key(dayFrom(start, k).ymd) !== key(was)) return true;
+  }
   return false;
 }
 
@@ -831,6 +853,31 @@ export function nextServiceDay(clockNow = now()) {
     if (servicesOn(ymd).size) return ymd;
   }
   return null;
+}
+
+/** Every minute three or more of the numbered routes leave the Center together is a group, as the board's own list
+ *  groups them (hub.js nextHour). The file's pulse (tools/reduce.py) was the minutes at least half of them leave, so
+ *  a Saturday's last group, 1, 5, 7 and 8 at 6:30 PM, and a weekday's first, 11, 12 and 15 at 5:30 AM, weren't: after
+ *  6 on a Saturday the board counted to Monday's 6:30 AM, four routes leaving in twenty minutes in the list under it.
+ *  Read from the timetable here too, so a file built before the rule changed says the same. */
+const GROUP = 3;
+function groups() {
+  const H = D.hub;
+  if (!H || !H.bays) return;
+  const ours = new Set(H.pulseRoutes || []), per = {};   // service → minute → the routes leaving then
+  for (const b of H.bays) for (const [sid, rows] of Object.entries(D.times[b.stop] || {})) for (const t of rows) {
+    if (ours.has(t[1]) && b.routes.includes(t[1])) ((per[sid] ||= {})[t[0]] ||= new Set()).add(t[1]);
+  }
+  H.pulse = H.pulse || {};
+  for (const [sid, mins] of Object.entries(per)) {
+    H.pulse[sid] = [...new Set([...(H.pulse[sid] || []), ...Object.keys(mins).filter(m => mins[m].size >= GROUP).map(Number)])].sort((a, b) => a - b);
+  }
+}
+/** The numbered routes leaving the Center together at a group's minute, by the timetable that day. */
+export function pulseGroup(p) {
+  const ours = new Set(D.hub.pulseRoutes || []), out = new Set();
+  for (const b of D.hub.bays) for (const t of timesOn(b.stop, p.ymd)) if (t.min === p.min && ours.has(t.r) && b.routes.includes(t.r)) out.add(t.r);
+  return [...out];
 }
 
 /** The hub's pulse: next departures where the numbered routes leave together. */

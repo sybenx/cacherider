@@ -2,7 +2,7 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes } from '../data.js';
+import { D, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
@@ -193,9 +193,11 @@ function stopHeroBlock(si, why, clockNow) {
   const quiet = first.day > 1 ? quietWords(clockNow.ymd, first.ymd) : '';   // 'Monday · no buses Sunday'
   const dayWord = first.day === 0 ? '' : first.day === 1 ? 'Tomorrow' : dayName(first.ymd) + (quiet ? ' · ' + quiet : '');
   const then = next.slice(1, 2);   // one, so a moved time and its estimate have room
+  // Escaped like every other place it's shown: the feed's headsign, its route's description or a place's name from
+  // OpenStreetMap, none of them markup (a name with a tag in it was put on the page as one).
   const dest = String(headsign(first)), long = D.routes[first.r].long;
   return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span>${big}
-    <div class="who">${badge(first.r, 44)}<div class="mid"><span class="dest">${html.raw(dest)}</span>${dayWord || dest.replace(/<[^>]+>/g, '') !== long ? html`<span class="sub">${[dayWord, dest.replace(/<[^>]+>/g, '') !== long ? long : ''].filter(Boolean).join(' · ')}</span>` : ''}${lastTag(first)}</div>${sideVal}</div>
+    <div class="who">${badge(first.r, 44)}<div class="mid"><span class="dest">${dest}</span>${dayWord || dest !== long ? html`<span class="sub">${[dayWord, dest !== long ? long : ''].filter(Boolean).join(' · ')}</span>` : ''}${lastTag(first)}</div>${sideVal}</div>
     ${then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${when(t, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : ''}</a></div>`;
 }
 
@@ -236,7 +238,9 @@ function hubLine(clockNow) {
   const p = nextPulse(1, clockNow)[0];
   if (!p) return '';
   const soon = p.day === 0 ? relative(p, clockNow) : p.day === 1 ? 'tomorrow' : dayName(p.ymd);
-  return html`<a class="land-hub" href="#/hub">${icon('hub', 18)}<span class="col"><span>${D.hub.name}</span><span class="sub">${(D.hub.pulseName || 'All routes').replace(/\s+leave$/, '')} leave at <b>${clockText(p.min)}</b> · ${soon}</span></span>${icon('fwd', 18)}</a>`;
+  // A small group at the day's ends by its routes, as the board says it: 'Routes 1, 5, 7 and 8 leave at 6:30 PM'.
+  const group = pulseGroup(p), who = group.length && group.length * 2 < (D.hub.pulseRoutes || []).length ? routeNames(group) : (D.hub.pulseName || 'All routes').replace(/\s+leave$/, '');
+  return html`<a class="land-hub" href="#/hub">${icon('hub', 18)}<span class="col"><span>${D.hub.name}</span><span class="sub">${who} leave at <b>${clockText(p.min)}</b> · ${soon}</span></span>${icon('fwd', 18)}</a>`;
 }
 
 /** Every route as a line under the shuttle's: their colours, and the list a tap away. On a phone the routes were only
