@@ -529,17 +529,16 @@ function setupInstall() {
 }
 
 /** The look: the phone's by default, or light or dark when the rider picks one; kept on the phone and applied in
- *  index.html before first paint. The toggle steps phone → light → dark → phone, and wears the sun-and-moon, the
+ *  index.html before first paint. The pick is data-theme-mode (auto, light, dark); data-theme is always the look
+ *  showing, light or dark, the device's when the pick is auto, so the stylesheet has one dark scope. The toggle steps phone → light → dark → phone, and wears the sun-and-moon, the
  *  sun or the moon to say which it's on. */
-export const themeMode = () => document.documentElement.dataset.theme || 'auto';
+export const themeMode = () => document.documentElement.dataset.themeMode || 'auto';
 const THEME = { auto: ['sunmoon', 'Matches this device'], light: ['sun', 'Light'], dark: ['moon', 'Dark'] };
 export function cycleTheme() {
   const next = { auto: 'light', light: 'dark', dark: 'auto' }[themeMode()];
-  if (next === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = next;
+  document.documentElement.dataset.themeMode = next;
   pref('theme', next === 'auto' ? null : next);
-  const dark = next === 'dark' || next === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches;
-  const m = document.querySelector('meta[name=theme-color]');
-  if (m) m.content = dark ? '#101214' : '#f2f2f3';
+  if (window.crTheme) window.crTheme();   // index.html's: data-theme and the browser's bar colour
   window.dispatchEvent(new Event('themechange'));
   paintThemeButtons();
 }

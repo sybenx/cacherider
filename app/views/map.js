@@ -99,7 +99,7 @@ function lift(hex) {
   while (lum(v) < 0.2 && t < 1) { t += 0.05; v = c.map(x => Math.round(x + (255 - x) * t)); }
   return '#' + v.map(x => x.toString(16).padStart(2, '0')).join('');
 }
-const dark = () => matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
+const dark = () => document.documentElement.dataset.theme === 'dark';   // always written, the device's look when the rider hasn't picked one (index.html)
 
 const QUIET = /^(roads_tunnels_|roads_bridges_\w+_casing$|roads_runway$|roads_taxiway$|roads_pier$|landuse_(runway|aerodrome|pier|beach|zoo|pedestrian)$|boundaries|places_(country|region)$|water_label_ocean$|earth_label_islands$|address_label$|roads_oneway$|pois$)/;
 function style(sat = true) {
@@ -1330,7 +1330,8 @@ function wireGrip(app) {
   // A stop's page on a phone the same (boardCard): its own scroll, folded to its head by a swipe down; folded, one
   // more puts it away, as a stop is something looked at and let go, where the Center is a place the rider's at.
   const board = () => boardCard(card) && (!card.querySelector(':scope > .hubsheet') || /^#\/hub/.test(location.hash));
-  const stopBoard = () => board() && !card.querySelector(':scope > .hubsheet');   // a stop's or a route's: folded, a swipe down puts it away
+  // (not the Pumpkin Walk's: its card is the tab's own view, as the Center's board is; put away, the next redraw put it back)
+  const stopBoard = () => board() && !card.querySelector(':scope > .hubsheet') && !card.querySelector(':scope > .pagesheet > .pk-page');   // a stop's or a route's: folded, a swipe down puts it away
   // Between its two sizes the card only ever slides: its height changes in one go, before or after the slide, with
   // the transform holding its top edge where it was, so nothing bounces. A short transition for the settle only,
   // then none, so a tap elsewhere still shows its card at once.

@@ -33,18 +33,8 @@
   --cr-late: #d4302b;   /* a bus running late */
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-bg: #101214; --color-surface: #1a1d20; --color-text: #eef0f2;
-    --color-accent: #94bce3; --color-accent-600: #b5d9fd; --color-accent-700: #b5d9fd;
-    --color-accent-100: #1d2d3d; --color-accent-900: #e6f2ff;
-    --color-divider: rgba(238,240,242,.2); --cr-muted: #b3b6bb; --cr-line: rgba(238,240,242,.13);
-    --cr-hover: rgba(238,240,242,.06); --cr-scrim: rgba(0,0,0,.6);
-    --shadow-md: 0 3px 10px rgba(0,0,0,.5); --shadow-lg: 0 12px 32px rgba(0,0,0,.6);
-    --warn-bg: #3b3005; --warn-ink: #ffe28a; --warn-edge: #e0a800; --cr-late: #e5483f;
-    color-scheme: dark;
-  }
-}
+/* Dark: data-theme is always written before first paint (index.html), the device's look when the rider hasn't
+   picked one, so the dark tokens live in this one scope. */
 :root[data-theme="dark"] {
   --color-bg: #101214; --color-surface: #1a1d20; --color-text: #eef0f2;
   --color-accent: #94bce3; --color-accent-600: #b5d9fd; --color-accent-700: #b5d9fd;
@@ -691,7 +681,6 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .maplibregl-ctrl-group { background: var(--color-bg) !important; box-shadow: var(--shadow-md) !important; border-radius: var(--radius-md) !important; }
 .maplibregl-ctrl-group button + button { border-top-color: var(--cr-line) !important; }
 :root[data-theme="dark"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1); } }
 .stop-marker { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--color-bg); box-shadow: 0 0 0 1px rgba(0,0,0,.25); cursor: pointer; }
 .stop-marker.on { width: 20px; height: 20px; border-width: 3px; box-shadow: 0 0 0 2px var(--color-accent); }
 .spot-marker { width: 10px; height: 10px; border-radius: 50%; background: var(--color-accent); border: 2px solid var(--color-bg); box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
@@ -1298,7 +1287,92 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
   #pk-deco .pk-tl { top: 6px; }
   #pk-deco .pk-br { bottom: 26px; }   /* clear of the map's credits */
 }
-:root[data-theme="light"] #pk-deco .pk-edge, :root:not([data-theme="dark"]) #pk-deco .pk-edge { opacity: .85; }
+:root[data-theme="light"] #pk-deco .pk-edge { opacity: .85; }
 .pk-perch { display: none; }
 .mapcard .pk-perch { display: block; position: relative; height: 0; pointer-events: none; }
 .mapcard .pk-perch svg { position: absolute; left: 0; width: 100%; height: 46px; top: -66px; overflow: visible; }   /* sitting on the card's edge, the grip's top */
+
+/* ---- The Pumpkin Walk at night (views/pumpkin.js; Claude Design's, templates/pumpkin-walk-explore): its own
+   palette in either theme, over a phone's card and a wide screen's page alike. */
+.mapcard:has(> .pagesheet > .pk-page), #side:has(.pk-page), .pk-page {
+  --color-bg: #16112b; --color-surface: #211a3d; --color-text: #f3eee6; --cr-muted: #b9b0c9; --cr-line: rgba(243,238,230,.14);
+  --color-divider: rgba(243,238,230,.22); --color-accent: #94bce3; --color-accent-600: #b5d9fd; --color-accent-700: #b5d9fd;
+  --color-accent-100: #2a2250; --cr-hover: rgba(243,238,230,.06); --pk-orange: #e8611c; color-scheme: dark;
+}
+.mapcard:has(> .pagesheet > .pk-page) > .grip { --cr-line: rgba(243,238,230,.3); }
+#side:has(.pk-page) { background: var(--color-bg); }
+.pk-page { background: var(--color-bg); color: var(--color-text); padding-bottom: 8px; }
+/* tall enough on a phone's card for its head to rise to the top, the resting countdowns scrolled off above it */
+.mapcard > .pagesheet > .pk-page { min-height: calc(100dvh + 48px); }
+/* where a phone's card rests (map.js: its .next and .head): both stops' next, side by side, a tap to the line */
+.pk-fold.next.head { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 6px 20px 14px; border: 0; cursor: pointer; }
+.pk-fcol { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-right: 16px; }
+.pk-fcol + .pk-fcol { padding: 0 0 0 16px; border-left: 1px solid var(--cr-line); }
+.pk-fk { font: 600 0.8125rem/1 var(--font-heading); letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); }
+.pk-fcol.home .pk-fk { color: var(--color-accent); }
+.pk-fn { font: 600 3rem/.9 var(--font-heading); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pk-fn small, .pk-ln small { font-size: .4em; margin-left: .1em; letter-spacing: 0; color: var(--pk-orange); }
+.pk-fn.est, .pk-ln.est { color: var(--color-accent-700); }
+.pk-fsub { font-size: 0.8125rem; color: var(--cr-muted); }
+@media (min-width: 840px) { .pk-fold.next.head { display: none; } }   /* beside the map, the line says it */
+/* its head */
+.pk-headx { padding: 28px 20px 0; display: flex; flex-direction: column; gap: 4px; }
+.pk-eyes { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font: 600 0.8125rem/1 var(--font-heading); letter-spacing: .12em; text-transform: uppercase; }
+.pk-season { color: var(--pk-orange); }
+.pk-when { color: var(--cr-muted); }
+.pk-title { font: 600 3rem/1 var(--font-heading); letter-spacing: -.01em; margin-top: 6px; }
+.pk-headx .pk-sub { color: var(--cr-muted); }
+/* the line: its top stop and its foot, the shuttles on the road between */
+.pk-line { position: relative; height: 300px; margin: 26px 20px 0; }
+.pk-rail { position: absolute; left: 9px; top: 24px; height: 200px; border-left: 2px dashed rgba(232,97,28,.55); }
+.pk-lstop { position: absolute; left: 0; right: 0; padding-left: 40px; display: flex; flex-direction: column; gap: 8px; }
+.pk-lstop.top { top: 0; }
+.pk-lstop.foot { top: 200px; }
+.pk-ring { position: absolute; left: 0; top: 14px; width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--pk-orange); background: var(--color-bg); }
+.pk-lrow { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.pk-lname { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pk-lk { font: 600 0.75rem/1 var(--font-heading); letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); }
+.pk-lk.near { color: var(--color-accent); }
+.pk-lplace { font: 600 1.875rem/1 var(--font-heading); text-transform: uppercase; letter-spacing: .02em; color: inherit; text-decoration: none; }
+.pk-lsub { font-size: 0.875rem; color: var(--cr-muted); }
+.pk-ln { font: 600 4.5rem/.85 var(--font-heading); font-variant-numeric: tabular-nums; letter-spacing: -.02em; white-space: nowrap; }
+.pk-ln small { font-size: .36em; }
+.pk-lthen { display: flex; align-items: baseline; gap: 14px; min-height: 17px; font: 600 1.0625rem/1 var(--font-heading); font-variant-numeric: tabular-nums; color: var(--cr-muted); }
+.pk-lthen .w { font: 0.8125rem/1.3 var(--font-body); }
+.pk-lthen .livetag, .pk-lthen .sched { margin-left: auto; align-self: center; }
+.pk-bus { position: absolute; left: -1px; width: 22px; height: 22px; margin-top: 13px; }   /* top: its place along the rail (pumpkin.js) */
+.pk-bus > i { position: absolute; inset: 0; border-radius: 50%; background: var(--pk-orange); box-shadow: 0 0 0 4px var(--color-bg), 0 0 16px 3px rgba(232,97,28,.5); }
+.pk-bus > i::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.pk-bus.up > i::after { border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 8px solid var(--color-bg); margin-top: -1px; }
+.pk-bus.down > i::after { border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid var(--color-bg); margin-top: 1px; }
+.pk-bus.wait > i::after { width: 8px; height: 8px; background: var(--color-bg); }
+.pk-bus.up::before, .pk-bus.down::before { content: ""; position: absolute; left: 10px; width: 2px; height: 30px; }
+.pk-bus.up::before { top: 20px; background: linear-gradient(rgba(232,97,28,.9), rgba(232,97,28,0)); }   /* a trail behind it */
+.pk-bus.down::before { bottom: 20px; background: linear-gradient(rgba(232,97,28,0), rgba(232,97,28,.9)); }
+.pk-blab { position: absolute; left: 41px; top: 2px; white-space: nowrap; display: flex; gap: 8px; align-items: baseline; font-size: 0.875rem; }
+.pk-blab b { font: 600 0.75rem/1 var(--font-heading); letter-spacing: .12em; text-transform: uppercase; color: var(--pk-orange); }
+.pk-quiet { margin: -8px 20px 0 60px; font-size: 0.8125rem; color: var(--cr-muted); }
+/* back down to the map, on a phone (beside it, it's there) */
+.pk-maplink { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 4px 20px 0 60px; color: var(--color-accent-700); text-decoration: none; font-size: 0.9375rem; font-weight: 500; }
+#side .pk-maplink { display: none; }
+/* the night: how much is left, now on it, the last shuttle back */
+.pk-tonight { margin: 18px 20px 0; display: flex; flex-direction: column; gap: 10px; }
+.pk-tn { display: flex; justify-content: space-between; align-items: baseline; }
+.pk-tn .k { font: 600 0.875rem/1 var(--font-heading); letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); }
+.pk-tn .v { font: 600 1.25rem/1 var(--font-heading); font-variant-numeric: tabular-nums; }
+.pk-bar { position: relative; height: 6px; background: rgba(243,238,230,.14); }
+.pk-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--pk-orange); }
+.pk-bar > b { position: absolute; top: -5px; width: 2px; height: 16px; margin-left: -1px; }
+.pk-bar > b.now { background: var(--color-text); }
+.pk-bar > b.last { background: var(--cr-muted); }
+.pk-ends { display: flex; justify-content: space-between; font-size: 0.8125rem; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
+.pk-ends .now { color: var(--color-text); }
+.pk-last { margin: 2px 0 0; font-size: 0.9375rem; }
+.pk-last b { font: 600 1.125rem/1 var(--font-heading); }
+.pk-page .pk-nights { margin-top: 20px; }
+.pk-through { margin: 8px 20px 0; font-size: 0.8125rem; color: var(--cr-muted); }
+/* the city's word on the walk and getting there (this year's) */
+.pk-city { margin: 18px 20px 0; padding-top: 14px; border-top: 1px solid var(--cr-line); font-size: 0.875rem; color: var(--cr-muted); }
+.pk-city p { margin: 0 0 8px; }
+.pk-city b { color: var(--color-text); font-weight: 600; }
+.pk-city a { color: var(--color-accent-700); }

@@ -42,3 +42,8 @@ Project: https://claude.ai/design/p/9263b2fe-9248-4dd0-83ce-6040c1429471 (first 
 - `css/app.css` ships whole, app-frame rules (#app, #side, #map, #tabs) included; a new id-scoped rule there can
   surprise a design. Check the contact sheets after any app.css change.
 - The Pumpkin Walk parts are seasonal; the route exists in the feed only in October.
+- Since 2026-10-15 the app's Pumpkin Walk view is Claude Design's night 'line' (templates/pumpkin-walk-explore): its
+  markup (.pk-fold, .pk-line, .pk-tonight, in app/views/pumpkin.js) has no parts here yet. PumpkinNextShuttle and
+  PumpkinDusk are the first cut's: still styled by app.css, no longer drawn by the app.
+- Theme: app.css has one dark scope, :root[data-theme="dark"]; index.html's head script always writes data-theme
+  (light or dark, the device's when the rider hasn't picked) and keeps the pick in data-theme-mode.

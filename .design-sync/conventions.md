@@ -10,8 +10,9 @@ with them and the result is the app's look exactly.
 - No provider or wrapper. Link `styles.css`; components work anywhere.
 - Phone first: design at 390 px wide on `var(--color-bg)`. The app's layout switches at 840 px (wider: the page is a
   420 px column beside a map, and the bottom `TabBar` gives way to links in a top bar).
-- Dark theme: put `data-theme="dark"` on `<html>` (or leave it unset to follow the system). Every token flips; the
-  route colours and the Pumpkin Walk art don't.
+- Theme: `data-theme="dark"` on `<html>` for dark, `"light"` (or unset) for light; the tokens have one dark scope,
+  `:root[data-theme="dark"]` (the app writes the attribute from the device's setting before first paint). Every token
+  flips; the route colours and the Pumpkin Walk's night palette don't.
 
 ## The look (the "Industry" system)
 
@@ -33,8 +34,10 @@ with them and the result is the app's look exactly.
 
 ## The Pumpkin Walk (seasonal, October)
 
-North Logan's evening pumpkin walk, served by Connect's shuttle (route 'Pumpkin Walk', between Greenville and the Park,
-every 5 min, 6 PM to 10 PM). Its parts have their own night palette and pumpkin orange (#e8611c): `PumpkinDusk` (the
+North Logan's evening pumpkin walk, served by Connect's shuttle (route 'Pumpkin Walk', a loop from Greenville to the
+Park and back, every 5 min, 6 PM to 10 PM). The app's view of it is the night (this project's
+templates/pumpkin-walk-explore, built): background #16112b, text #f3eee6, muted #b9b0c9, pumpkin orange #e8611c, in
+either theme. Its parts: `PumpkinDusk` (the
 banner), `PumpkinVines` (frames the map of the walk: keep the subject about 52 px in from the sides), `PumpkinPerch`
 (a vine on top of a phone's pull-up card), `PumpkinNextShuttle`, `PumpkinNights`. Pumpkins decorate the edges; the
 content stays the app's plain rows and times.
