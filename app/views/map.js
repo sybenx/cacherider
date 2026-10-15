@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pref } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres, dayFrom, isGone, isDue } from '../time.js';
-import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, closeTo } from '../ui.js';
+import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, closeTo, replaceTo } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -22,8 +22,11 @@ const satOn = () => sat;
 const coarse = () => matchMedia('(pointer: coarse)').matches;
 const wide = isWide;
 /** So wide a stop's page takes the whole screen, map and all: a tap on the map shows its card instead. */
-/** A stop link opened on the Map tab of a wide screen becomes its page, without a history entry to loop back into. */
-const asPage = hash => location.replace(location.href.split('#')[0] + hash);
+/** A stop link opened on the Map tab of a wide screen becomes its page, without a history entry to loop back into.
+ *  In place by replaceTo, as every address the map puts in place of another (ui.js): location.replace left the entry
+ *  no state, and where the browser can't say it was the same step (no Navigation API: Safari) it was stamped with the
+ *  address it replaced, so a sheet put away after it (closeTo) added the map again and the first Back did nothing. */
+const asPage = hash => { if (location.hash !== hash) replaceTo(hash); };
 
 let focusRoute;   // the route whose page is open, its stops in its colour
 let fitSize = '', map = null, ready = false, selected = null, uHilite = '', meMarker = null, pinMarker = null, flavorName = null, lastFocused = null;
@@ -583,9 +586,25 @@ function shapes() {
   if (!shapesFC) shapesFC = Promise.all([
     fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json()),
     fetch(BASE + 'data/crossings.json').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-  ]).then(([j, x]) => { XINGS = x || {}; return { type: 'FeatureCollection', features: j.lines.map(l => { const raw = '#' + route(l.route).color, c = sinkLine(raw), dc = lift(raw); return { type: 'Feature', properties: { color: c, dcolor: dc, soft: mix(c, paperOf(false), 0.35), dsoft: mix(dc, paperOf(true), 0.35), gone: faded(c, false), dgone: faded(dc, true), route: l.route, shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }; }) }; })
+  ]).then(([j, x]) => { XINGS = x || {}; const ris = lineRoutes(j.lines); return { type: 'FeatureCollection', features: j.lines.flatMap((l, k) => { if (ris[k] === undefined) return []; const raw = '#' + route(ris[k]).color, c = sinkLine(raw), dc = lift(raw); return [{ type: 'Feature', properties: { color: c, dcolor: dc, soft: mix(c, paperOf(false), 0.35), dsoft: mix(dc, paperOf(true), 0.35), gone: faded(c, false), dgone: faded(dc, true), route: ris[k], shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }]; }) }; })
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
+}
+/** Each line's route in this timetable. The lines file names a route by its place in the route list, which is this
+ *  timetable's only when both files are the same night's: the service worker refreshes each on its own, and a phone
+ *  kept 14 Oct's timetable (15 routes) with 15 Oct's lines (the Pumpkin Walk the 16th), whose route was nobody's: the
+ *  line threw, and every line went with it, the map without a route on it. A line names its route's number as well
+ *  (`key`, the short name's first word: '16' for 16 AM and PM), so where a place and its number disagree, the files
+ *  are two nights' and the number says: a number's routes in the file's order, as the timetable has them in its own.
+ *  A line whose route the timetable hasn't (a route added since) is left off. */
+function lineRoutes(lines) {
+  const keyOf = ri => D.routes[ri] ? D.routes[ri].short.split(' ')[0] : undefined;
+  if (lines.every(l => l.key === undefined ? !!D.routes[l.route] : keyOf(l.route) === l.key)) return lines.map(l => l.route);
+  console.warn('shapes: the route lines and the timetable are from different days; matched by route number');
+  const ours = new Map(), theirs = new Map();   // a number → the timetable's routes for it, and the file's places for it
+  D.routes.forEach((r, ri) => { const k = keyOf(ri); (ours.get(k) || ours.set(k, []).get(k)).push(ri); });
+  for (const l of lines) { const o = theirs.get(l.key) || theirs.set(l.key, []).get(l.key); if (!o.includes(l.route)) o.push(l.route); }
+  return lines.map(l => l.key === undefined ? (D.routes[l.route] ? l.route : undefined) : (ours.get(l.key) || [])[theirs.get(l.key).indexOf(l.route)]);
 }
 /** A way round on the map: its route lit, its card up, the way and its stops in view. */
 let wantSeen = null;
@@ -623,40 +642,60 @@ function trackedPaths() {
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
-const drawn = { lines: null, closed: null, key: null };
+const drawn = { lines: null, closed: null, key: null, cut: null, cutKey: null };
 /** What the closed stops and dotted stretches are drawn from: the day and the detours in force, not when the alerts
  *  were fetched, so a refetch saying the same thing (every ten minutes, and the relay's just after launch) redraws
- *  nothing, and a detour whose day's buses are done is dropped when it is. */
+ *  nothing, and a detour whose day's buses are done is dropped when it is. Not the stretches the last buses have
+ *  passed (linesKeyOf): those move with the buses. */
 function closedKeyOf(clockNow) {
   const d = doneToday(clockNow);
-  return clockNow.ymd + JSON.stringify(d.stretches) + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify([...d.wears]) + [...d.routes].join() + '|' + [...loopsOut()].sort().join() + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
+  return clockNow.ymd + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify([...d.wears]) + [...d.routes].join() + '|' + [...loopsOut()].sort().join() + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
 }
-async function loadShapes(m = map) {
+/** What the route lines' faded stretches are drawn from: each stretch the day's last bus has passed, and on the one
+ *  it's on, where it is, to a hundred metres or so and a tenth of the way. Kept out of closedKeyOf: in it, every word
+ *  from the feed while the last runs were out moved a bus, and every stop, POOL pickup, shuttle loop, detour and line
+ *  was laid out again, seven sources every five seconds (84 a minute at 8:35 PM, none at 2 PM). */
+function linesKeyOf(clockNow) {
+  return JSON.stringify(doneToday(clockNow).stretches.map(s => s.length > 3 ? [s[0], s[1], s[2], s[3] && Math.round(s[3].lat * 1e3), s[3] && Math.round(s[3].lon * 1e3), Math.round(s[4] * 10)] : s));
+}
+async function loadShapes(m = map, all = true) {
   const fc = await shapes();
   if (!fc || !m) return;
   // Worked out once for the detours as they stand: the map's first load, a restyle and the first page shown all ask.
-  const key = closedKeyOf(now());
-  if (drawn.key !== key) {
-    const { closed, gaps } = closedSegments(fc);
+  const c = now(), key = closedKeyOf(c), lk = linesKeyOf(c);
+  if (drawn.key !== key + '|' + lk) {
+    // The detours' dots by the notices and the day alone: not cut again for a last bus moving on.
+    if (drawn.cutKey !== key) { drawn.cut = closedSegments(fc); drawn.cutKey = key; }
+    const gaps = Object.fromEntries(Object.entries(drawn.cut.gaps).map(([sh, g]) => [sh, [...g]]));
     const { done, gaps: by } = passedSegments(fc);
     for (const [sh, g] of Object.entries(by)) (gaps[sh] ||= []).push(...g);
     drawn.lines = openLines(fc, gaps);
     const over = doneToday().routes;   // a route with nothing left today: its whole line, ends and all
     drawn.lines.features = drawn.lines.features.map(f => over.has(f.properties.route) && !f.properties.done ? { ...f, properties: { ...f.properties, done: true } } : f);
-    drawn.lines.features.unshift(...done); drawn.closed = closed; drawn.key = key;   // the passed under the lines still running, where they share a road
+    drawn.lines.features.unshift(...done); drawn.closed = drawn.cut.closed; drawn.key = key + '|' + lk;   // the passed under the lines still running, where they share a road
   }
-  closedKey = key;
+  closedKey = key; linesKey = lk;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);
+  if (!all) return;
   if (m.getSource('lclosed')) m.getSource('lclosed').setData(drawn.closed);
   if (m.getSource('trk')) m.getSource('trk').setData(trackedPaths());
   if (wantSeen && location.hash === '#/map/alert/' + wantSeen) { const u = (A.seen || []).find(x => x.id === wantSeen); if (u) openSeen(u); }
 }
-/** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. */
-let closedKey = null;
+/** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. The last buses only
+ *  moving on: the route lines alone, every fifteen seconds at most (the fade, drawn at the town's zoom, falls ten
+ *  pixels or so behind its bus). */
+let closedKey = null, linesKey = null, linesAt = 0;
+const LINES_EVERY = 15000;
 function refreshClosed(clockNow) {
-  const key = closedKeyOf(clockNow);   // the last buses moving on fade the stretches behind them
-  if (closedKey === key) return;
-  closedKey = key;
+  const key = closedKeyOf(clockNow);
+  if (closedKey === key) {
+    const lk = linesKeyOf(clockNow);
+    if (lk === linesKey || Date.now() - linesAt < LINES_EVERY) return;
+    linesKey = lk; linesAt = Date.now();
+    if (map && map.getSource('lines')) loadShapes(map, false);
+    return;
+  }
+  closedKey = key; linesKey = linesKeyOf(clockNow); linesAt = Date.now();
   for (const m of [map]) if (m && m.getSource('stops')) { m.getSource('stops').setData(stopsGeo()); if (m.getSource('pool')) m.getSource('pool').setData(poolGeo()); if (m.getSource('ulines')) { m.getSource('ulines').setData(usuLinesGeo()); m.getSource('ustops').setData(usuStopsGeo()); } loadShapes(m); }
 }
 let tilesLoaded = null;
@@ -787,7 +826,7 @@ async function made(app) {
   const pick = e => {
     // Beside the board on a wide screen, the Center's own view: a click on it leaves the board up and the map where it
     // is (a route picked from a badge put away, the board as it was). The board is the page there, not a card over it.
-    if (wide() && hubOn && /^#\/hub/.test(location.hash)) { if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub'); return; }
+    if (wide() && hubOn && /^#\/hub/.test(location.hash)) { if (/^#\/hub\/./.test(location.hash)) replaceTo('#/hub'); return; }
     // A finger's reach grows with the dots: zoomed out to the town, where a stop is a speck, a box a thumb wide round
     // every one left four taps in five on the map opening a stop, the whole town a target. A dot's width and a margin
     // there; the thumb's whole width from the streets' zoom (16) in.
@@ -889,7 +928,7 @@ async function made(app) {
     // At the Center, a route picked from its badge: put away as well, the board back as it was. Nothing picked there,
     // the board is put away for the map itself on a phone: the Map tab, the map where it is, turned north (as its
     // north button). Beside it on a wide screen, the board stays.
-    else if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub');
+    else if (/^#\/hub\/./.test(location.hash)) replaceTo('#/hub');
     else if (/^#\/hub(\?|$)/.test(location.hash) && !wide()) leaveHubKept();
     // A stop's sheet put away by a tap off it, or a card of the map's own: Back to the map, not the address left behind
     // (the next Back did nothing).
@@ -899,7 +938,7 @@ async function made(app) {
   for (const id of ['stops', 'stops-lit', 'stops-near']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
   let bigFlavor = flavorName;   // its own, as the stop page's small map keeps its
-  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; applyBias(); addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; runsKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); markNear(nearIds, nearBy); if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
+  window.addEventListener('themechange', () => { const f = dark() ? 'dark' : 'light'; if (f !== bigFlavor) { bigFlavor = f; ready = false; map.setStyle(style(), { diff: false }); map.once('style.load', () => { ready = true; applyBias(); addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); paperKept = null; labelsHeard = false; searchKey = null; runsKey = null; searchMarks(wantMarks); if (hubOn) { hubOn = false; for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); } loadShapes(); applySelection(); showSat(sat); markNear(nearIds, nearBy); if (spotUp) setSpot(spotShown); /* a spot's disc: the new style's source starts empty, and the pin and card stayed without it */ if (MT.R) { MT.key = null; drawRun(MT); } if (JR) { jrKey = null; window.dispatchEvent(new HashChangeEvent('hashchange')); } }); } });
   wireChrome(app);
   wireGrip(app);
 }
@@ -937,7 +976,15 @@ function routeSheet({ short, dir, at, full, bus }, clockNow) {
   const names = dirs.map(k => { const n = dirName(ri, k); return n && !n.places ? 'to ' + n.text : ''; });
   const apart = dirs.length > 1 && names.every(Boolean) && new Set(names).size === names.length;
   const dirWord = apart ? ' ' + names[dirs.indexOf(d)] : '';   // ' to Preston', for the notes that speak of this way
-  const seq = routeOrder(ri, d);
+  const seq = d === undefined ? [] : routeOrder(ri, d);
+  // A route the timetable lists with no trips in it (a season's route after its season, its row left in the feed, as
+  // the Pumpkin Walk's may be after 20 Oct): said so, its name and badge as any route's. Its list threw, with no stop
+  // to start it from: 'Something went wrong' beside the map, nothing on a phone's.
+  if (!seq.length) {
+    const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</div></div></div>`;
+    const body = html`<div class="routesheet"><div class="empty"><p>No trips in ${D.agency.brand}'s timetable for this route right now.</p></div></div>`;
+    return { head, body, anchor: null, title: isLoop(ri) ? r.long : 'Route ' + r.short, ri };
+  }
   const here = at !== undefined ? D.stopById[at] : undefined;   // from a stop's badge: that stop, marked, in view
   // Where its buses are: a row for each, just before the stop it calls at next.
   const buses = rtStale() ? [] : rt.buses.filter(b => b.ri === ri && (b.dir === null || String(b.dir) === d));
@@ -1202,7 +1249,9 @@ function sheetCard(o, clockNow) {
 export function routePage(o, clockNow) {
   const s = routeSheet(o, clockNow);
   if (!s) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such route</h2></div>`, title: 'Route' };
-  return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a></div><div class="routepage">${s.head}${s.body}</div>`.s,
+  // Back by the history only to a page of the app's own (each entry knows the one before it, main.js): history.length
+  // counts the pages before the app too, and a route opened from a link elsewhere went back out of the app.
+  return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a></div><div class="routepage">${s.head}${s.body}</div>`.s,
     title: s.title, key: 'route' + o.short + '/' + (o.dir || '') + (o.at || '') + (o.full ? '*' : ''), keepScroll: true, anchor: s.anchor, anchorBlock: 'center' };
 }
 /** A bus from a route's list, ringed on the map and the map eased to it; the sheet stays. One not placed yet is
@@ -2120,9 +2169,10 @@ function select(id, app, fly = false, zoomIn = false, go = true) {
     if (zoomIn === 'closer') frame([s.lon, s.lat], { zoom: Math.min(18, Math.max(16, map.getZoom() + 1.5)), duration: 650 });
     return;
   }
-  // From one stop to the next on the map, the address replaced: Back is the map, not each stop tapped on the way.
+  // From one stop to the next on the map, the address replaced: Back is the map, not each stop tapped on the way. In
+  // place with its entry's state (asPage): a second stop's sheet swiped away then steps Back to the map.
   const to = '#/stop/' + id;
-  if (STOP_PAGE.test(location.hash)) location.replace(to); else location.hash = to;
+  if (STOP_PAGE.test(location.hash)) replaceTo(to); else location.hash = to;
 }
 /** A stop's page, or a shuttle stop's (or an old link to either on the map): the address a stop tapped replaces. */
 const STOP_PAGE = /^#\/(stop\/|usu\/(?!route\/)|map\/(\d|usu\/))/;
@@ -2506,33 +2556,54 @@ export function hubAgain(app) {
 /** Search the map from outside it: the header's box on a wide screen. Set once the map is up. */
 export let mapSearch = () => {};
 
+/** The shuttle's buses once its feed has gone quiet (none of its answers in a minute: isStale): grey, as a Connect bus
+ *  not reporting is, its card saying when they were last heard of; ten minutes and they're off the map. They were
+ *  drawn in their loops' colours for as long as the feed was down, a phone off the network on campus showing the
+ *  last places it had heard of as if the buses were there, while Connect's went at a minute and a half. */
+const U_GONE = 600e3;
+/** A bus picked, or a road's route lit, while the map was out of sight: its way on drawn again when it's shown. */
+let hiddenMissed = false;
 export function liveUpdate(app) {
-  if (rtShown !== null) routeTimes(rtShown, now());   // the feed's word moves a route's next buses
   if (!map) return;
-  if (selectedBus || ringed || JR) drawRuns();   // the line follows the bus (a way's bus, coming to it, too)
+  // Out of sight (a phone's other tab up), the buses are moved and nothing is drawn: a bus picked on the map, or a
+  // road's one route, had its times and its way on worked out and laid out again at every word from the feed, a
+  // canvas no one could see drawn 112 times in 30 s from the Stops tab. show() asks for them again.
+  const shown = !!map.getContainer().clientWidth;
+  if (!shown && (rtShown !== null || selectedBus || ringed || JR)) hiddenMissed = true;
+  if (shown && rtShown !== null) routeTimes(rtShown, now());   // the feed's word moves a route's next buses
+  if (shown && (selectedBus || ringed || JR)) drawRuns();   // the line follows the bus (a way's bus, coming to it, too)
   const seen = new Set();
-  const place = (b, kind, color, title) => {
-    seen.add(b.id);
-    let m = busMarkers.get(b.id);
-    if (!m) {
-      const el = document.createElement('div');
-      el.className = kind === 'u' ? 'bus shuttle' : 'bus';
-      el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? ARROW_A : ARROW) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
-      el.onclick = ev => { ev.stopPropagation(); if (!cardTo('#/map/bus/' + encodeURIComponent(b.id) + '?tap=1')) selectBus(b.id, app); };
-      m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind, id: b.id };
-      busMarkers.set(b.id, m);
-      m.marker.setLngLat([b.lon, b.lat]).addTo(map);
-    } else glide(m, b.lon, b.lat);
-    m.el.title = title;
-    m.el.style.setProperty('--bus-color', color); m.el.style.setProperty('--bus-ink', inkOn(color));
-    m.marker.setRotation(b.course);
-    m.ri = b.ri; m.speed = b.speed; m.to = [b.lon, b.lat];   // where it's gliding to: in or out by that, not by where it's got
-    m.el.classList.toggle('on', selectedBus === b.id || ringed === b.id);
-    m.el.classList.toggle('edged', kind === 'u' && uedge(b.ri));   // a black shuttle by night: outlined far off too
-    paintBus(m);
+  // Each bus on its own, and kept only once it has a place: a shuttle report without its longitude threw as its
+  // marker was placed, the marker kept with no place, and every update after threw on it before Connect's buses were
+  // reached, all twenty standing still as the feed moved them on. That one isn't drawn, and the rest go on.
+  const place = (b, kind, look) => {
+    if (!(Number.isFinite(b.lat) && Number.isFinite(b.lon) && Math.abs(b.lat) <= 90 && Math.abs(b.lon) <= 180)) return;
+    try {
+      const [color, title] = look();
+      let m = busMarkers.get(b.id);
+      if (!m) {
+        const el = document.createElement('div');
+        el.className = kind === 'u' ? 'bus shuttle' : 'bus';
+        el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? ARROW_A : ARROW) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
+        el.onclick = ev => { ev.stopPropagation(); if (!cardTo('#/map/bus/' + encodeURIComponent(b.id) + '?tap=1')) selectBus(b.id, app); };
+        const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'map' }).setLngLat([b.lon, b.lat]);
+        m = { marker, el, ri: b.ri, kind, id: b.id };
+        busMarkers.set(b.id, m);
+        marker.addTo(map);
+      } else glide(m, b.lon, b.lat);
+      seen.add(b.id);
+      m.el.title = title;
+      m.el.style.setProperty('--bus-color', color); m.el.style.setProperty('--bus-ink', inkOn(color));
+      m.marker.setRotation(b.course);
+      m.ri = b.ri; m.speed = b.speed; m.to = [b.lon, b.lat];   // where it's gliding to: in or out by that, not by where it's got
+      m.el.classList.toggle('on', selectedBus === b.id || ringed === b.id);
+      m.el.classList.toggle('edged', kind === 'u' && color !== OFF_GREY && uedge(b.ri));   // a black shuttle by night: outlined far off too
+      paintBus(m);
+    } catch (e) { console.warn('bus', b.id, e); }
   };
-  if (U) for (const b of live.buses) place(b, 'u', uink(b.ri), U.routes[b.ri].name + ' · bus ' + b.name);
-  if (!rtStale()) for (const b of [...rt.buses, ...rt.parked]) { const off = offDuty(b); place(b, 'c', off ? OFF_GREY : dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label + (off ? ' · ' + off.toLowerCase() : '')); }
+  const uQuiet = isStale(), uAge = live.at ? Date.now() - live.at : 0;
+  if (U && uAge < U_GONE) for (const b of live.buses) place(b, 'u', () => [uQuiet ? OFF_GREY : uink(b.ri), U.routes[b.ri].name + ' · bus ' + b.name + (uQuiet ? ' · not reporting, last heard from at ' + lastSeen() : '')]);
+  if (!rtStale()) for (const b of [...rt.buses, ...rt.parked]) place(b, 'c', () => { const off = offDuty(b); return [off ? OFF_GREY : dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label + (off ? ' · ' + off.toLowerCase() : '')]; });
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
@@ -2648,7 +2719,7 @@ function selectU(id, app, closer = false) {
     return;
   }
   const to = '#/usu/' + id;
-  if (STOP_PAGE.test(location.hash)) location.replace(to); else location.hash = to;
+  if (STOP_PAGE.test(location.hash)) replaceTo(to); else location.hash = to;
 }
 
 /** An address: a pin, and the card lists the stops nearest it. */
@@ -2718,9 +2789,9 @@ function cardTo(h) {
 }
 /** A card of the map's own put away (a tap on nothing, a swipe): its address goes with it, Back to the map. */
 const cardAway = () => { if (CARD_AT.test(location.hash)) closeTo('#/map'); };
-let spotUp = false;   // a spot tapped or found is on the map (its disc and its card)
+let spotUp = false, spotShown = null;   // a spot tapped or found is on the map (its disc and its card); which
 function setSpot(at) {
-  spotUp = !!at;
+  spotUp = !!at; spotShown = at || null;
   if (at) hover();   // a spot tapped: nothing lit under the pointer over it
   const apply = () => map.getSource('spot') && map.getSource('spot').setData(at ? circle(at.lat, at.lon) : { type: 'FeatureCollection', features: [] });
   if (ready) apply(); else map.once('load', apply);
@@ -2980,6 +3051,9 @@ function busIn(id, app) {
 }
 async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, busTap, goPick, page }, app, clockNow) {
   await init(app);
+  // A spot's address that isn't a place (a link cut short, #/map/at/41.7; or #/map/at/abc, #/map/at/95,10) is the map
+  // alone: its card threw as the pin was placed, and the map stood there with nothing said.
+  if (at && !(Number.isFinite(at.lat) && Number.isFinite(at.lon) && Math.abs(at.lat) <= 90 && Math.abs(at.lon) <= 180)) at = null;
   if (!tick) swapUp = null;   // any page arrived at: the directions' own card again
   // A spot's disc and pin go with its card: gone to another page (the Center, a stop, Stops) the card was replaced and
   // the dashed disc stayed on the map. Kept for a spot's own address and for picking one; not by the minute's redraw.
@@ -2993,6 +3067,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // Still hidden (a phone's route page, its map behind it): nothing to frame, and nothing is framed, so the Map tab
   // opens where it was left, and a route's own map link, a new address, frames that route then.
   if (!(box.clientWidth && box.clientHeight)) return;
+  if (hiddenMissed) { hiddenMissed = false; drawRunsSoon(); }   // a picked bus's way on, left undrawn while out of sight (liveUpdate); its times come below
   // Made before it had a size: the home view, now there's a screen to fit it to (a stop, a route or the Center then
   // frames itself over this). The canvas brought to the box first: made hidden, it's MapLibre's 400 by 300 until the
   // resize watcher's next frame, and the town fitted into that opened two zoom levels out.
@@ -3368,7 +3443,7 @@ function mainRun(R) {
   for (const id of ['run', 'runt']) if (map.getSource(id)) map.getSource(id).setData({ type: 'FeatureCollection', features: [] });
   for (const id of RUN_HIDE) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
   map.setFilter('stops', null);
-  map.setLayerZoomRange('stops', 12, 24);
+  applyBias();   // the stops from their own zoom, a big screen's sooner: a flat 12 put them out at 11 on a desk after a run
   applySelection();
   quiet();   // back at the Center, its view again
 }
@@ -3471,7 +3546,7 @@ async function mainJourney(J, app) {
     for (const id of ['run', 'jr']) if (map.getSource(id)) map.getSource(id).setData({ type: 'FeatureCollection', features: [] });
     for (const id of [...RUN_HIDE, 'stop-selected']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
     map.setFilter('stops', null); map.setFilter('usu-stops', null);
-    map.setLayerZoomRange('stops', 12, 24);
+    applyBias();   // the stops from their own zoom (a flat 12 put them out at 11 on a desk after directions)
     const card = col.querySelector('#mapcard');
     if (card.querySelector(':scope > .journeysheet')) card.classList.remove('open', 'peek');
     applySelection();
@@ -3556,7 +3631,8 @@ function journeyCard(J, app) {
 /** Out of the directions: back where they were opened from. */
 function backToWays() {
   const base = col.querySelector('#mapcard').dataset.way;
-  if (history.length > 1) history.back(); else if (base) location.hash = base;
+  // By the history only when the page before is the app's own (main.js stamps it): opened from a link, Back left it.
+  if (history.state && history.state.prev) history.back(); else if (base) location.hash = base;
 }
 /** To the next way or the one before, in place: Back still leaves the directions. */
 function stepWay(dir) {
@@ -3587,7 +3663,7 @@ async function routeWays(ri) {
   ways.set(ri, way);
   return way;
 }
-let rtShown = null, rtWired = false, rtBase = null, rtAt = '';
+let rtShown = null, rtWired = false, rtBase = null, rtAt = '', rtEmpty = false;   // rtEmpty: the times' source cleared, and not set since
 const bear = (p, q) => Math.atan2((q.lon - p.lon) * Math.cos(p.lat * Math.PI / 180), q.lat - p.lat) * 180 / Math.PI;
 /** A route's times on the map just after the frame that asked for them: the page or card it comes with is on screen
  *  first. Asked for again before then, the last word counts. */
@@ -3617,7 +3693,8 @@ async function routeTimes(ri, clockNow) {
   // a route lit from a road, with no list beside it.
   if (ri !== null && /^#\/map\/route\//.test(location.hash) && !ringed && !selectedBus) ri = null;
   rtShown = ri;
-  if (ri === null) { rtBase = null; map.getSource('rtimes').setData({ type: 'FeatureCollection', features: [] }); return; }
+  // Cleared once: cleared again at every redraw (the minute, each word from the feed) it was laid out anew each time.
+  if (ri === null) { rtBase = null; if (!rtEmpty) { rtEmpty = true; map.getSource('rtimes').setData({ type: 'FeatureCollection', features: [] }); } return; }
   const [way, fc] = await Promise.all([routeWays(ri), shapes()]);
   if (rtShown !== ri) return;
   const all = [...new Set(Object.values(D.routes[ri].stops || {}).flat())], items = [];
@@ -4011,5 +4088,5 @@ function placeTimes() {
     if (!order.length) return null;
     return { type: 'Feature', properties: { ...props, v: order.flatMap(k => [k, off[k]]) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } };
   }).filter(Boolean);
-  map.getSource('rtimes').setData({ type: 'FeatureCollection', features });
+  map.getSource('rtimes').setData({ type: 'FeatureCollection', features }); rtEmpty = false;
 }
