@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pref } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, metres, dayFrom, isGone, isDue } from '../time.js';
-import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard } from '../ui.js';
+import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, closeTo } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -12,9 +12,8 @@ import { rt, findBus, tripOf, busOn, busStops, nextStopOf, lateWords, heldAt, bu
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
-import { openShare, siteLink } from '../share.js';
 import { lightInks, apartInks, hueless, faint } from '../ink.js';
-import { placeStar, openSave } from '../places.js';
+import { placeStar } from '../places.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
 const SAT = { tiles: ['https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}'], maxzoom: 16, attribution: 'Imagery <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS</a>' };
@@ -735,9 +734,18 @@ async function made(app) {
   let tapTimer = 0, lastTap = 0, lastAt = null;
   const cancelTap = () => clearTimeout(tapTimer);
   map.on('touchstart', cancelTap); map.on('movestart', cancelTap); map.on('zoomstart', cancelTap);
+  // A tap is a tap: not the touch that stopped the map coasting under it (a pan let go, a flight), nor one the map
+  // moved under, nor one that slid on the glass (MapLibre takes a slide of 12 px for a tap). Each of those opened
+  // whatever was under the finger, a stop's sheet or a card over most of the screen.
+  let touchFrom = null, stilled = false;
+  map.on('touchstart', e => { touchFrom = e.point; stilled = map.isMoving(); });
+  map.on('movestart', () => { if (touchFrom) stilled = true; });
+  map.on('touchend', e => { if (!e.originalEvent.touches.length) setTimeout(() => { touchFrom = null; }, 0); });
   // A long press (a right click with a mouse) picks the spot under it: its nearest stops, and directions to or from
   // it. A finger that moves, or a second one, is a pan or a pinch, and picks nothing; the tap it ends in is swallowed.
-  let pressTimer = 0, pressFrom = null, pressedAt = 0;
+  // Answered on the lift, the spot marked as the press is felt: a finger resting before a pan opened a card over most
+  // of the screen and flew the map under it as it moved.
+  let pressTimer = 0, pressFrom = null, pressedAt = 0, pressReady = null;
   const spotAt = e => {
     if (Date.now() - pressedAt < 800) return;   // Android sends a long press as a context menu too: once
     pressedAt = Date.now(); clearTimeout(tapTimer);
@@ -746,13 +754,18 @@ async function made(app) {
     const ends = goEnds(app.geo);   // (from where the rider is too: the destination kept, not dropped for the bare spot)
     if (ends) { showAt(at, app, now(), null, null, null, ends); return; }
     if (JR) { location.hash = '#/map/' + atPath(at); return; }   // off the way, to the spot: Back comes back
+    if (!pickFor && !pickTo && cardTo('#/map/' + atPath(at))) return;
     showAt(at, app, now(), pickFor, pickTo);
   };
-  const unpress = () => { clearTimeout(pressTimer); pressFrom = null; };
-  map.on('touchstart', e => { unpress(); if (e.originalEvent.touches.length !== 1) return; pressFrom = e.point; pressTimer = setTimeout(() => { pressFrom = null; spotAt(e); }, 550); });
+  let pressPin = null;
+  const unpress = () => { clearTimeout(pressTimer); pressFrom = null; pressReady = null; if (pressPin) pressPin.remove(); };
+  const felt = e => { pressReady = e; if (!pressPin) { const el = document.createElement('div'); el.className = 'spot-marker'; pressPin = new maplibregl.Marker({ element: el }); } pressPin.setLngLat(e.lngLat).addTo(map); };
+  map.on('touchstart', e => { unpress(); if (e.originalEvent.touches.length !== 1) return; pressFrom = e.point; pressTimer = setTimeout(() => felt(e), 550); });
   map.on('touchmove', e => { if (pressFrom && Math.hypot(e.point.x - pressFrom.x, e.point.y - pressFrom.y) > 10) unpress(); });
-  map.on('touchend', unpress); map.on('touchcancel', unpress);
-  map.on('contextmenu', e => { e.originalEvent.preventDefault(); unpress(); spotAt(e); });
+  // Lifted (or the touch taken by the browser's own long press, Android's context menu): the spot.
+  const lift = () => { const e = pressReady; pressReady = null; unpress(); if (e) spotAt(e); };
+  map.on('touchend', lift); map.on('touchcancel', lift);
+  map.on('contextmenu', e => { e.originalEvent.preventDefault(); if (pressFrom || pressReady) return; unpress(); spotAt(e); });   // a finger's: its lift answers
   // A double click on the map beside the home page (a desk's near view): the Map tab, the zoom in going on there.
   // The home page's map is a picture of the near view; a rider zooming into it wants the map.
   map.on('dblclick', () => { if (!coarse() && wide() && ['', '#', '#/'].includes(location.hash)) location.hash = '#/map'; });
@@ -768,13 +781,17 @@ async function made(app) {
     const t = Date.now(), again = t - lastTap < 500 && lastAt && Math.hypot(e.point.x - lastAt.x, e.point.y - lastAt.y) < 30;
     lastTap = again ? 0 : t; lastAt = e.point;
     clearTimeout(tapTimer);
-    if (!again) tapTimer = setTimeout(() => pick(e), 300);
+    const slid = stilled || (touchFrom && Math.hypot(e.point.x - touchFrom.x, e.point.y - touchFrom.y) > 6);
+    if (!again && !slid) tapTimer = setTimeout(() => pick(e), 300);
   });
   const pick = e => {
     // Beside the board on a wide screen, the Center's own view: a click on it leaves the board up and the map where it
     // is (a route picked from a badge put away, the board as it was). The board is the page there, not a card over it.
     if (wide() && hubOn && /^#\/hub/.test(location.hash)) { if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub'); return; }
-    const r = coarse() ? 22 : 8;
+    // A finger's reach grows with the dots: zoomed out to the town, where a stop is a speck, a box a thumb wide round
+    // every one left four taps in five on the map opening a stop, the whole town a target. A dot's width and a margin
+    // there; the thumb's whole width from the streets' zoom (16) in.
+    const r = coarse() ? Math.max(12, Math.min(22, 12 + (map.getZoom() - 12) * 2.5)) : 8;
     const all = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['stops', 'stops-lit', 'stops-near', 'usu-stops', 'pool-stops', 'place-labels'].filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') });
     const hits = all.filter(f => f.layer.id !== 'place-labels');
     // Beside the directions page, a click is the other end: a stop that stop, a place's name that place, anywhere else
@@ -811,6 +828,7 @@ async function made(app) {
     // A place's name tapped, and no stop there: its spot, with the stops nearest it, as a search result opens it.
     if (!hits.length && all.length) {
       const f = all.map(f => { const q = map.project(f.geometry.coordinates); return { f, d: Math.hypot(q.x - e.point.x, q.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0].f, [lon, lat] = f.geometry.coordinates;
+      if (!pickFor && !pickTo && cardTo('#/map/' + atPath({ lat, lon, label: f.properties.name }))) return;
       showAt({ lat, lon, label: f.properties.name }, app, now(), pickFor, pickTo);
       return;
     }
@@ -855,6 +873,7 @@ async function made(app) {
     if (ris.length && !ris.some(ri => focusRoute !== undefined && familyKey(ri) === familyKey(focusRoute)) && routeUp) {
       card.classList.remove('open', 'peek'); routeAway(); return;
     }
+    const sheetUp = !!card.querySelector(':scope > .pagesheet') && cardOpen && /^#\/(stop|usu)\//.test(location.hash);
     selectedBus = null; selectedU = null; select(null, app);
     // The route up, its own line tapped: the whole of it again, its sheet back.
     if (ris.length && focusRoute !== undefined && ris.some(ri => familyKey(ri) === familyKey(focusRoute)) && /^#\/map\/route\//.test(location.hash)) pickRoute(focusRoute, app);
@@ -862,9 +881,9 @@ async function made(app) {
     // say which was meant): its card, its routes first as rows, each opening the whole route (named, where badges alone
     // were a chooser only someone who already knew the system could use), then the stops along that road a short walk
     // off, both sides, nearest first, each with its next bus and where it's going. A road with one route lights it too.
-    else if (ris.length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now(), null, null, ris); }
+    else if (ris.length) { const { lat, lng } = e.lngLat, at = { lat, lon: lng, label: whereabouts(lat, lng) }; if (!cardTo('#/map/' + atPath(at) + '?road=' + ris.map(ri => encodeURIComponent(D.routes[ri].short)).join(','))) showAt(at, app, now(), null, null, ris); }
     // Only the shuttle's line there: that spot, with its stops a walk off, as a road of Connect's gets.
-    else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat; showAt({ lat, lon: lng, label: whereabouts(lat, lng) }, app, now()); }
+    else if (map.getLayoutProperty('usu-lines', 'visibility') !== 'none' && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['usu-lines'] }).length) { const { lat, lng } = e.lngLat, at = { lat, lon: lng, label: whereabouts(lat, lng) }; if (!cardTo('#/map/' + atPath(at))) showAt(at, app, now()); }
     // Nothing there at all: a route picked on the Map tab is put away, as a tap off a stop puts the stop away.
     else if (routeUp) routeAway();
     // At the Center, a route picked from its badge: put away as well, the board back as it was. Nothing picked there,
@@ -872,6 +891,10 @@ async function made(app) {
     // north button). Beside it on a wide screen, the board stays.
     else if (/^#\/hub\/./.test(location.hash)) location.replace(location.href.split('#')[0] + '#/hub');
     else if (/^#\/hub(\?|$)/.test(location.hash) && !wide()) leaveHubKept();
+    // A stop's sheet put away by a tap off it, or a card of the map's own: Back to the map, not the address left behind
+    // (the next Back did nothing).
+    else if (sheetUp) closeTo('#/map');
+    else cardAway();
   };
   for (const id of ['stops', 'stops-lit', 'stops-near']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
   // The look changed (the toggle, or the phone's while following it): the basemap follows without a reload.
@@ -1221,10 +1244,11 @@ function fitPeek(card) {
   // a swipe up out of sight).
   const starts = card.querySelectorAll('.gonone .farstarts .row'), none = starts[starts.length - 1] || card.querySelector('.gonone .empty');   // down to the last start, when there's a list of them
   if (none) { card.style.setProperty('--peek', Math.min(none.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 8, (starts.length ? 0.75 : 0.6) * map.getContainer().clientHeight) + 'px'); return; }   // the starts are the answer, the map above has only the two ends: more room for them
-  // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it); a spot's head
-  // with its routes in it (at the Center, fourteen) down to where they start: swiped down, the card grew past the screen.
+  // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it). A spot's or a
+  // road's head has its routes in it, never more than 40% of the map: at the Center, fourteen, and swiped down the
+  // card grew past the screen.
   const h = card.querySelector('.head'), rr = h && h.querySelector(':scope > .roadroutes');
-  if (h) card.style.setProperty('--peek', Math.round(Math.min((rr ? rr.getBoundingClientRect().top : h.getBoundingClientRect().bottom) - card.getBoundingClientRect().top + card.scrollTop + 2, 0.6 * map.getContainer().clientHeight)) + 'px');
+  if (h) card.style.setProperty('--peek', Math.round(Math.min(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2, (rr ? 0.4 : 0.6) * map.getContainer().clientHeight)) + 'px');
 }
 function wireGrip(app) {
   const card = col.querySelector('#mapcard');
@@ -1234,12 +1258,12 @@ function wireGrip(app) {
       card.classList.remove('open', 'peek');
       // A route picked on it goes with the board: its badge lit and the rest dimmed, with nothing to say why, read as
       // stuck. The address in place, so Back doesn't pick it again.
-      if (hubBay !== null) { hubBay = null; hubKey = null; history.replaceState(null, '', '#/hub'); shownHash = '#/hub'; hubBadges(); }
+      if (hubBay !== null) { hubBay = null; hubKey = null; history.replaceState(history.state, '', '#/hub'); shownHash = '#/hub'; hubBadges(); }
       return; }
-    if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }
+    if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); closeTo('#/map'); return; }
     if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); backToWays(); return; }
-    if (card.querySelector(':scope > .pagesheet') && /^#\/(stop|usu)\//.test(location.hash)) { card.classList.remove('open', 'peek'); location.hash = '#/map'; return; }   // a stop's sheet put away: the Map tab
-    selectedBus = null; selectedU = null; select(null, app); };
+    if (card.querySelector(':scope > .pagesheet') && /^#\/(stop|usu)\//.test(location.hash)) { card.classList.remove('open', 'peek'); closeTo('#/map'); return; }   // a stop's sheet put away: Back to the map it came from
+    selectedBus = null; selectedU = null; select(null, app); cardAway(); };
   // The card's own Open button (the card itself is .open too): a place's page. A spot's card has none: its first
   // button is directions, and a swipe up is no ask for those.
   // Only a page of the app's own: POOL's first button is its booking app, and a swipe up went off to the app store.
@@ -1467,14 +1491,6 @@ function northControl() {
   };
 }
 
-/** The rider's dot tapped: directions to where they are, to send someone ('come to me'). Rounded to the street
- *  (about 50 m, the grid the app names places by), and the panel says what the link shows before anything's sent. */
-function shareHere() {
-  if (!meGeo) return;
-  const lat = Math.round(meGeo.lat / 0.0005) * 0.0005, lon = Math.round(meGeo.lon / 0.0005) * 0.0005, label = whereabouts(lat, lon) || 'where I am';
-  openShare({ url: siteLink('go/' + spotKey(lat, lon, label)), title: 'Share where you are', lines: [`Directions to ${label}`, 'Rounded to the street, from wherever they open it'],
-    also: [{ label: 'Save as a place (Home, Work…)', act: () => openSave({ lat, lon, label }) }] });   // at home, the natural moment to set it
-}
 /** Where the map rested after the near view was last framed: the Map tab, tapped with the map still there, goes on out. */
 let homeRest = null;
 const movedSinceHome = () => { if (!homeRest) return true; const c = map.getCenter(); return Math.abs(map.getZoom() - homeRest.zoom) > 0.05 || distance(c.lat, c.lng, homeRest.lat, homeRest.lon) > 30; };
@@ -1551,10 +1567,9 @@ function placeMe(geo) {
   meGeo = geo;
   if (!map) return;
   if (!meMarker) {
-    const el = document.createElement('div'); el.className = 'me-marker';
-    el.setAttribute('role', 'button'); el.setAttribute('aria-label', 'Share where you are'); el.tabIndex = 0;
-    const go = e => { e.stopPropagation(); e.preventDefault(); shareHere(); };
-    el.addEventListener('click', go); el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') go(e); });
+    // Not a button: in the middle of the near view, where thumbs land, a tap on it opened a sharing panel half the
+    // screen high. A tap there is the map's (a long press, your spot's card: its star saves it as Home or Work).
+    const el = document.createElement('div'); el.className = 'me-marker'; el.setAttribute('aria-label', 'You are here');
     meMarker = new maplibregl.Marker({ element: el });
   }
   meMarker.setLngLat([geo.lon, geo.lat]).addTo(map);
@@ -1941,11 +1956,13 @@ function hubRoom() {
   return Math.round(topCover() + 2 * HUB_M + spanY * 512 * 2 ** z);
 }
 let hubFlew = false;   // the Center flown to (from a view with it on screen): the way back is flown too, where it's to such a view
-function fitHub(arriving = false, duration = 700, fly = false) {
+function fitHub(arriving = false, duration = 700, fly = false, kept = false) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
   // Arrived at from the map zoomed in on the Center already (its badges up), that's where it was: it was kept only when
   // the Center's view was off, and the Map tab went back to a view from before, the town's.
-  if (arriving) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
+  // Come back to by Back (from a stop or a bus opened at the Center) it's the same visit: the view before it kept, not
+  // the stop's, which the Map tab then went back to.
+  if (arriving && !(kept && beforeHub)) beforeHub = { center: map.getCenter(), zoom: map.getZoom() };
   // Arriving from another tab it was there at once: the flight from the town down to the bays, turning half round on
   // the way, loaded the streets at every zoom between and re-placed every label, frame by frame, 700 ms of a phone's
   // work. With the zooms between built ahead (warmViews) and the map lighter to draw, it flies again, briefly, where
@@ -2473,7 +2490,7 @@ function leaveHubKept() {
   // middle of the whole map, under the board, was kept instead of what the rider could see.
   if (!wide() && sheetRest) r.bottom = Math.max(r.bottom, box.clientHeight - sheetRest);
   const x = left + (box.clientWidth - left - right + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
-  stayAt = map.unproject([x, y]); stayOff = true; location.hash = '#/map';
+  stayAt = map.unproject([x, y]); stayOff = true; closeTo('#/map');   // Back to the map it came from: Back brought the board back
 }   // stayOff: the Center left by a tap off its board, the map kept
 export function leaveHub() { if (!wide() || hubTurned) backDue = true; }   // a wide screen's map moved only by the tab again: else nothing to put back
 /** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
@@ -2501,7 +2518,7 @@ export function liveUpdate(app) {
       const el = document.createElement('div');
       el.className = kind === 'u' ? 'bus shuttle' : 'bus';
       el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? ARROW_A : ARROW) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
-      el.onclick = ev => { ev.stopPropagation(); selectBus(b.id, app); };
+      el.onclick = ev => { ev.stopPropagation(); if (!cardTo('#/map/bus/' + encodeURIComponent(b.id) + '?tap=1')) selectBus(b.id, app); };
       m = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map' }), el, ri: b.ri, kind, id: b.id };
       busMarkers.set(b.id, m);
       m.marker.setLngLat([b.lon, b.lat]).addTo(map);
@@ -2552,7 +2569,7 @@ function busRouteHref(id) {
 let busFrom = null;
 const routeAway = () => {
   const b = busFrom; busFrom = null;
-  location.hash = b && wide() && location.hash.startsWith(b.route) ? b.hash : '#/map';
+  closeTo(b && wide() && location.hash.startsWith(b.route) ? b.hash : '#/map');   // Back, where that's where it goes: Back reopened the route
 };
 function selectBus(id, app) {
   clearSpot();
@@ -2564,6 +2581,8 @@ function selectBus(id, app) {
   hiLines = []; hiLoops = b && !c ? [U.routes[b.ri].id] : [];
   applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
+  const card = col.querySelector('#mapcard');
+  if (card.dataset.roadPeek) { delete card.dataset.roadPeek; card.classList.remove('peek'); }   // a road's low card isn't the rider's size
   busCard(app, true);   // the bus at once; where it's headed next, with its minutes, the moment after
   afterPaint(() => { if (selectedBus !== id) return; busCard(app); if (c) routeTimesSoon(c.ri, now()); });   // its times along its route: the route's, if up, become this bus's; else its own appear
 }
@@ -2678,13 +2697,27 @@ function loopsBy(at) {
   if (!U) return [];
   return linesBy(usuLinesGeo().features.filter(f => !f.properties.approx), f => f.properties.id, at).map(f => U.routeById[f.properties.id]).filter(ri => ri !== undefined);
 }
-/** A searched place's pin and disc off the map, and the address back to the plain Map tab, so a reload doesn't
- *  bring them back: the rider has moved on to something else, or closed its card. */
+/** A searched place's pin and disc off the map. Its address stays: moved on to a stop from its card, Back is the card
+ *  again; its card put away, the closer steps Back to the map (cardAway). */
 function clearSpot() {
   if (pinMarker) pinMarker.remove();
   if (map) setSpot(null);
-  if (location.hash.startsWith('#/map/at/')) { history.replaceState(null, '', '#/map'); shownHash = '#/map'; }
 }
+/** The map's own cards (a spot, a road, a bus tapped) by their addresses, so Back puts them away, as it does a stop's
+ *  sheet: they opened with no entry of their own, and Back left the map (twice, and the app was gone). From the plain
+ *  map a new entry; from another such card in its place (Back is the map, not each card on the way). Elsewhere (the
+ *  Center, a route, a stop's sheet, directions) the card opens where it is, as it did: false. */
+const CARD_AT = /^#\/map\/(at|bus)\//;
+function cardTo(h) {
+  const cur = location.hash;
+  if (cur !== '#/map' && !CARD_AT.test(cur)) return false;
+  if (h === cur) shownHash = null;   // the same spot again, its card put away since: opened again
+  if (CARD_AT.test(cur) || h === cur) { history.replaceState(history.state, '', h); window.dispatchEvent(new HashChangeEvent('hashchange')); }
+  else location.hash = h;
+  return true;
+}
+/** A card of the map's own put away (a tap on nothing, a swipe): its address goes with it, Back to the map. */
+const cardAway = () => { if (CARD_AT.test(location.hash)) closeTo('#/map'); };
 let spotUp = false;   // a spot tapped or found is on the map (its disc and its card)
 function setSpot(at) {
   spotUp = !!at;
@@ -2759,9 +2792,13 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null, swa
   });
   card.classList.remove('hidden');
   const key = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4), move = lastFocused !== key;
+  // A road tapped: its routes alone, low (a swipe up for the stops along it), and the map where it is. It came up over
+  // 70% of the screen and flew the map, from a tap that was often only on the way to somewhere else.
+  if (road && !wide()) { fitPeek(card); card.classList.add('peek'); card.dataset.roadPeek = '1'; }
+  else if (card.dataset.roadPeek) { delete card.dataset.roadPeek; card.classList.remove('peek'); }
   requestAnimationFrame(() => {
     card.classList.add('open');   // up first: the spot goes above it
-    if (move) frame([at.lon, at.lat], { zoom: forId || toFrom ? map.getZoom() : Math.max(map.getZoom(), 14.5), duration: 700 });
+    if (move && !road) frame([at.lon, at.lat], { zoom: forId || toFrom ? map.getZoom() : Math.max(map.getZoom(), 14.5), duration: 700 });
   });
   lastFocused = key;
 }
@@ -2879,6 +2916,8 @@ function searchMarks(m) {
 
 /** Called by the router whenever the map is on screen. */
 let shownHash = null, lastMeasured = '';
+let popped = false;   // the last address came by Back or Forward
+window.addEventListener('popstate', () => { popped = true; });
 /** The map put away on a phone (another tab drawn over it): the next address is acted on afresh, even the same one.
  *  The home page's shuttle line, tapped a second time after a trip back home, did nothing: its address was the one
  *  the map had last shown. */
@@ -2939,7 +2978,7 @@ function busIn(id, app) {
   b.extend([D.hub.lon, D.hub.lat]);
   requestAnimationFrame(() => frame(b, { maxZoom: 16, bearing: 0, duration: 700 }));
 }
-async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, goPick, page }, app, clockNow) {
+async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, busTap, goPick, page }, app, clockNow) {
   await init(app);
   if (!tick) swapUp = null;   // any page arrived at: the directions' own card again
   // A spot's disc and pin go with its card: gone to another page (the Center, a stop, Stops) the card was replaced and
@@ -2983,6 +3022,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // its page with it.
   const fresh = location.hash !== shownHash || !!page && pageShown !== page.key, cameFrom = shownHash || '';
   shownHash = location.hash;
+  const byBack = popped; popped = false;   // arrived at by Back (or Forward), not a new address
   if (!fresh) return;
   // The map grown or shrunk since (the route page's small map opened out into the Map tab, say): what it was fitted to
   // is fitted again, at its new size, not left where the small one had it.
@@ -2993,8 +3033,8 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   if (pinMarker && !at) { pinMarker.remove(); setSpot(null); }
   if (stopId || ustopId || routeShort || alertId || hub || at || from || to) { selectedBus = null; selectedU = null; }
   if (asking !== !!(from || to || goPick)) { asking = !asking; applySelection(); }
-  if (busId) { lastFocused = 'b:' + busId; focusRoute = undefined; return busIn(busId, app); }
-  if (at) return showAt(at, app, clockNow);
+  if (busId) { lastFocused = 'b:' + busId; focusRoute = undefined; return busTap ? selectBus(busId, app) : busIn(busId, app); }   // tapped on the map: its card, the map where it is
+  if (at) { const road = (at.road || []).map(s => D.routeByShort[s]).filter(ri => ri !== undefined); return showAt(at, app, clockNow, null, null, road.length ? road : null); }
   if (from) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(from, app); }
   if (to) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(to, app, true); }
   if (hub) {
@@ -3006,7 +3046,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
     // a wide screen's board), the rider's zoom and turn are kept, even zoomed out past the bays.
     // Beside a wide screen's panel the board is the page and the map is left as the rider has it, not flown to the bays
     // (the user's ask: the Transit Center tab neither zooms nor pans there); on a phone the bays are the map.
-    if (!cameFrom.startsWith('#/hub') && !wide()) fitHub(true, 700, /^#\/map(\/|$)/.test(cameFrom));
+    if (!cameFrom.startsWith('#/hub') && !wide()) fitHub(true, 700, /^#\/map(\/|$)/.test(cameFrom), byBack);
     lastFocused = 'hub';
     hubBadges();
     return;

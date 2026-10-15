@@ -19,7 +19,7 @@ export function render({ id, full, run, on }, clockNow) {
   remember(s.id);
   const parts = [];
   const sv = isSaved(s.id);
-  parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
+  parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a>
     ${shareButton({ url: siteLink('stop/' + s.id), title: s.name, lines: [`Stop ${s.code || s.id}${s.town && s.town !== 'Logan' ? ' · ' + s.town : ''}`, 'Its next buses, live when they report'] })}
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
   const sd = side(si);

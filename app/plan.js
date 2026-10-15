@@ -2,7 +2,7 @@
 // the timetable, the feed's estimates where it has them, and nothing else: the valley is small (every route meets
 // at the Transit Center), so a ride and one change cover nearly every journey, and the whole search is a few
 // thousand lookups. The Aggie Shuttle joins in while it runs: no timetable, its buses' own estimates instead.
-import { stop, timesOn, tripStops, tripEnd, nextTrip, distance, nearest, servicesOn } from './data.js';
+import { D, stop, timesOn, tripStops, tripEnd, nextTrip, distance, nearest, servicesOn } from './data.js';
 import { lively, isLoop } from './ui.js';
 import { dayFrom } from './time.js';
 import { walkMins, steepWalk, avoidSteep, useCrossings } from './geo.js';
@@ -202,7 +202,11 @@ export function journeys(origin, dest, clockNow, days = 8, sh = null, live = tru
 function journeys0(origin, dest, clockNow, days, sh, live, by) {
   SH = sh; SERVED = new Set(sh ? sh.loops.flatMap(l => l.stops) : []);
   if (SH) SH.now = clockNow.min;
-  const spot = typeof dest === 'object', d = spot ? dest : stop(dest), o = origin.si !== undefined ? stop(origin.si) : origin;
+  // The Transit Center is one place, to or from: any of its bays, no walk between them, and how far it is measured from
+  // the Center, not the one bay named (to its first bay and to the Center as a place found by search, the answers
+  // differed: a walk, and Route 1).
+  const hubAt = si => si !== undefined && !!stop(si).hub, center = s => hubAt(s) ? { ...stop(s), lat: D.hub.lat, lon: D.hub.lon } : stop(s);
+  const spot = typeof dest === 'object', d = spot ? dest : center(dest), o = origin.si !== undefined ? center(origin.si) : origin;
   // A stop is a place like any other: a journey to it may end at any stop within a walk of it, and one from it may
   // start at any within a walk, as a spot's do, the stop itself at no walk. Each set is the nearest few (8, as a
   // spot's), with every stop close by kept whatever the count: the Transit Center's dozen bays, across the road.
@@ -215,6 +219,7 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   const wanted = new Map(spot ? [] : [[dest, 0]]);
   for (const { i, d: dd } of around(d, spot ? undefined : dest, WALK_FROM)) { const w = walkTo(stop(i), d, dd); if (w !== null) wanted.set(i, w); }
   for (const { x, d: dd } of nearU(d.lat, d.lon, WALK_TO).slice(0, 6)) { const w = walkTo(pt(x), d, dd); if (w !== null) wanted.set(x, w); }
+  if (!spot && hubAt(dest)) for (const b of D.hub.bays) wanted.set(b.stop, 0);
   // The stops close enough to the one asked for to be it (a first stop among them is no journey, just the walk).
   const at = new Set([...wanted].filter(([x]) => x === dest || distance(pt(x).lat, pt(x).lon, d.lat, d.lon) <= WALK_FROM).map(([x]) => x));
   // Where to start: the stop named at no walk, and the stops within a walk of it or of the rider, each with its walk.
@@ -223,6 +228,7 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   // nearest bays left Route 2's out, the ninth, and the way to the hospital was the 5, or the Green Loop to a 2.
   for (const { i, d: dd } of around(o, origin.si, CHANGE_WALK)) starts.push({ si: i, walk: walkTo(o, stop(i), dd), d: Math.round(dd) });
   for (const { x, d: dd } of nearU(o.lat, o.lon, WALK_TO).slice(0, 6)) starts.push({ si: x, walk: walkTo(o, pt(x), dd), d: Math.round(dd) });
+  if (hubAt(origin.si)) for (const st of starts) if (hubAt(st.si)) { st.walk = 0; st.d = 0; }
   for (let k = starts.length - 1; k >= 0; k--) if (starts[k].walk === null) starts.splice(k, 1);
   // Standing at the stop wanted, or within its walk: no bus to catch.
   const apart = Math.round(distance(o.lat, o.lon, d.lat, d.lon));

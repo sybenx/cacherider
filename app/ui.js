@@ -9,6 +9,14 @@ class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
 const part = v => v instanceof Raw ? v.s : Array.isArray(v) ? v.map(part).join('') : v == null || v === false ? '' : esc(v);
 export const html = (strings, ...vals) => new Raw(strings.reduce((out, s, i) => out + s + (i < vals.length ? part(vals[i]) : ''), ''));
 export const raw = s => new Raw(s);
+/** A sheet or card put away, to the map (or wherever `h` is): Back to it when it's the address before this one, so
+ *  the history doesn't gain the map again (Back then reopened what was put away); else this address turned into it,
+ *  in place. Each entry's `prev` is stamped by main.js the first time it's drawn. */
+export function closeTo(h) {
+  const s = history.state;
+  if (s && s.prev === h) { history.back(); return; }
+  history.replaceState(s, '', h); window.dispatchEvent(new HashChangeEvent('hashchange'));
+}
 html.raw = raw;
 
 const I = {

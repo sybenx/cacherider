@@ -599,6 +599,67 @@ test('map: a spot and its card, a road and its routes, a right click', async ({ 
   await expect(page.getByRole('link', { name: 'Directions to here' })).toBeVisible();
 });
 
+test('Back on a phone\'s map: a long press\'s card, a stop\'s sheet swiped away, the Map tab lit for a stop of the map', async ({ page }, info) => {
+  // A friend on the map: a card opened with no entry of its own, so Back left the map (twice, and the app was gone);
+  // a stop's sheet swiped away added the map again, so Back opened it again; a stop off the map lit Stops.
+  test.skip(!phone(info), 'a phone\'s map and its Back');
+  const id = await (async () => { await open(page); return someStop(page); })();
+  await go(page, '#/map');
+  await mapReady(page);
+  const map = await page.locator('#map').boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const x = map.x + map.width * 0.5, y = map.y + map.height * 0.35;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  await page.waitForTimeout(800);
+  await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);   // held: the spot marked, its card on the lift
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect(page).toHaveURL(/#\/map\/at\//);
+  await expect(page.locator('#mapcard')).toHaveClass(/\bopen\b/);
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/map$/);
+  await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);
+  // Held, then moved: a pan, no card.
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  await page.waitForTimeout(800);
+  for (let i = 1; i <= 6; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + i * 10 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(600);
+  await expect(page).toHaveURL(/#\/map$/);
+  await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);
+  // A stop from the map: the Map tab lit, its sheet swiped away, and Back past it, not into it again.
+  await go(page, '#/stop/' + id);
+  await expect(page.locator('#mapcard .pagesheet')).toBeVisible();
+  await expect(page.locator('#tabs a[href="#/map"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('#mapcard .backbar a').first()).toContainText('Back');
+  await page.waitForTimeout(600);
+  const grip = async () => (await page.locator('#mapcard .grip').boundingBox()).y + 20;
+  const swipe = async (y0, y1) => {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: y0 }] });
+    for (let i = 1; i <= 8; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200, y: y0 + (y1 - y0) * i / 8 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(500);
+  };
+  for (let i = 0; i < 3 && /#\/stop\//.test(page.url()); i++) await swipe(await grip(), (await grip()) + 220);
+  await expect(page).toHaveURL(/#\/map$/);
+  await page.goBack();
+  await expect(page).not.toHaveURL(/#\/stop\//);
+});
+
+test('Transit Center: directions there from its board, to any of its bays', async ({ page }) => {
+  await open(page, '#/hub');
+  await mapReady(page);
+  const link = page.getByRole('link', { name: 'How to get here' }).filter({ visible: true }).first();
+  await expect(link).toHaveAttribute('href', /^#\/go\/[^/]+$/);
+  // From Logan's court, to its first bay and to the Center as a place: the same first way.
+  const bay = (await link.getAttribute('href')).replace('#/go/', '');
+  const d = new Date(); d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  const t = '?t=' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '-0900';
+  const first = async h => { await go(page, h); const j = page.locator('.jsum').filter({ visible: true }).first(); await expect(j).toBeVisible(); return j.locator('.badge').first().getAttribute('title'); };
+  const a = await first('#/go/' + bay + '/at/41.73999,-111.83690/Logan%20Municipal%20Court' + t);
+  const b = await first('#/go/@41.74061,-111.83124:Transit%20Center/at/41.73999,-111.83690/Logan%20Municipal%20Court' + t);
+  expect(a).toBe(b);
+});
+
 test('Transit Center: the board, a route picked from the strip, the bays', async ({ page }, info) => {
   await open(page, '#/hub');
   await mapReady(page);

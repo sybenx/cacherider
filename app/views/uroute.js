@@ -7,7 +7,7 @@ export function render({ id }) {
   if (ri === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such route</h2></div>`, title: 'Shuttle' };
   const r = U.routes[ri];
   const buses = live.buses.filter(b => b.ri === ri);
-  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a></div>`];
+  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a></div>`];
   parts.push(html`<div class="head"><span class="eyebrow">${U.name}</span><div style="display:flex;align-items:center;gap:12px">${chip(ri, 44)}<div><h1 style="font-size:1.875rem">${r.name}</h1><div class="muted" style="font-size:0.875rem">${r.stops.length} stops · ${hasData() ? (buses.length ? buses.length + (buses.length === 1 ? ' bus' : ' buses') + ' on the road' + (untilWords(ri) ? ' · ' + untilWords(ri) : '') : 'no bus on the road right now') : 'finding buses…'}</div>${hours(ri) ? html`<div class="muted" style="font-size:0.8438rem">Usually ${hours(ri)}</div>` : ''}</div></div></div>`);
   parts.push(notice());
   const rows = r.stops.map(si => {

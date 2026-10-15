@@ -19,8 +19,8 @@ import { setRtWanted, onRt } from './rt.js';
 const side = document.getElementById('side');
 const body = document.getElementById('body');
 const TABS = [
-  { href: '#/', label: 'Stops', icon: 'stops', match: h => /^#\/(stop|search|about|usu|go|routes|$)/.test(h) },
-  { href: '#/map', label: 'Map', icon: 'map', match: h => h.startsWith('#/map') },
+  { href: '#/', label: 'Stops', icon: 'stops', match: h => !stopOfMap && /^#\/(stop|search|about|usu|go|routes|$)/.test(h) },
+  { href: '#/map', label: 'Map', icon: 'map', match: h => stopOfMap || h.startsWith('#/map') },
   { href: '#/hub', label: 'Transit Center', icon: 'hub', match: h => h.startsWith('#/hub') },
 ];
 
@@ -48,7 +48,7 @@ function renderTabs() {
       if (!a || !(h.startsWith('#/map') || h.startsWith('#/hub')) || !app.mapMod) return;
       e.preventDefault();
       if (h.startsWith('#/hub')) { app.mapMod.leaveHub(); location.hash = '#/map'; return; }   // once the Map tab is drawn
-      if (h !== '#/map') history.replaceState(null, '', '#/map');
+      if (h !== '#/map') history.replaceState(history.state, '', '#/map');
       app.mapMod.resetView(app);
     };
     for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', again);
@@ -78,6 +78,7 @@ function renderTabs() {
 
 /** A piece of the address as written: a link cut short mid-escape (%E0) is read as it stands, not thrown on. */
 const dec = s => { try { return decodeURIComponent(s); } catch { return s; } };
+let lastHash = null, stopOfMap = false;   // the address drawn last (the next new entry's `prev`); a stop up as the map's sheet
 
 function parse() {
   const h = (location.hash || '#/').slice(1);
@@ -194,8 +195,16 @@ function sync(a, b) {
 
 export async function render(tick = false) {
   // The route page is the map's now: an old address lands there, in place of itself in the history.
-  if (/^#\/route\//.test(location.hash)) history.replaceState(null, '', location.hash.replace(/^#\/route\//, '#/map/route/'));
+  if (/^#\/route\//.test(location.hash)) history.replaceState(history.state, '', location.hash.replace(/^#\/route\//, '#/map/route/'));
+  // Each entry in the history knows the address before it, stamped the first time it's drawn: a sheet put away steps
+  // Back to the map it came from (ui.js closeTo) instead of adding the map again.
+  if (!history.state || !('prev' in history.state)) history.replaceState({ prev: lastHash }, '');
+  lastHash = location.hash || '#/';
   const { seg, q } = parse();
+  // A stop opened from the map on a phone is the map with the stop as its sheet: the Map tab lit while it's up, not
+  // Stops (from the Stops tab's list, Stops).
+  const pageNow = (seg[0] === 'stop' || seg[0] === 'usu') && !isDesktop();
+  stopOfMap = pageNow && !!app.route && (app.route.name === 'map' || (stopOfMap && (app.route.name === 'stop' || app.route.name === 'usu')));
   renderTabs();
   // A route on a wide screen is a page beside the map, as a stop is; on a phone, the Map tab with its stops as the card.
   const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: dec(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus } : null;
@@ -271,7 +280,7 @@ export async function render(tick = false) {
   if (mapOpen && !extrasReady && extras) await extras;
   if ((mapOpen || isDesktop()) && extrasReady) {
     const m = await ensureMap();
-    const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: dec(seg[3] || '') } : null;
+    const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: dec(seg[3] || ''), road: q.road ? q.road.split(',').map(dec) : null } : null;
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert', mapB = name === 'map' && seg[1] === 'bus';
     const from = name === 'map' && seg[1] === 'from' ? seg[2] || null : null;   // the map asked where the rider will start from, for directions to this stop
     const to = name === 'map' && seg[1] === 'to' ? seg[2] || null : null;   // or where they're going, for directions from this spot
@@ -285,6 +294,7 @@ export async function render(tick = false) {
       alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
       busId: mapB && seg[2] ? dec(seg[2]) : null,   // a bus from the Transit Center's board: it, on its way in
+      busTap: mapB && q.tap === '1',   // or tapped on the map: its card, the map left where it is
       // Beside a wide screen's directions, the map picks the other end with a click: where from, for directions to a
       // stop or spot; where to, for directions from a spot.
       goPick: isDesktop() && name === 'go' && goArgs && goArgs.to ? goArgs.to !== '-' ? { for: goArgs.to } : goArgs.at ? { to: spotKey(goArgs.at.lat, goArgs.at.lon, goArgs.at.label) } : null : null,
@@ -549,7 +559,7 @@ function panelSearch(v) {
     return;
   }
   if (!onSearch) { searchFrom = location.hash || '#/'; location.hash = target; return; }
-  if (location.hash !== target) { history.replaceState(null, '', target); window.dispatchEvent(new HashChangeEvent('hashchange')); }
+  if (location.hash !== target) { history.replaceState(history.state, '', target); window.dispatchEvent(new HashChangeEvent('hashchange')); }
 }
 /** The header's box on a wide screen follows the page: the search's words on the search page (arriving there, the box
  *  is where to type), empty on any other but the Map tab's, which keeps its own. Not while it's being typed in. */

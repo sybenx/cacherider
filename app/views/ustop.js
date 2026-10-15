@@ -17,7 +17,7 @@ export function render({ id }, clockNow) {
   const cs = shared ? D.stops[shared.j] : null;
   const sid = 'u:' + s.id, sv = isSaved(sid);
   const parts = [];
-  parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a>
+  parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a>
     ${shareButton({ url: siteLink('usu/' + s.id), title: s.name, lines: ['Aggie Shuttle stop', 'Its next shuttles, from where the buses are'] })}
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${sid}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
   const eyebrow = cs ? `USU shuttle and Connect · ${metres(shared.d)} apart` : `${U.name} · ${s.routes.length} ${s.routes.length === 1 ? 'route' : 'routes'}`;

@@ -101,7 +101,7 @@ export function render({ bay }, clockNow) {
   const { st, pick } = board(bay, clockNow);
 
   const parts = [];
-  parts.push(html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1></div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`);
+  parts.push(html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1>${getHere()}</div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`);
   parts.push(together(st, clockNow), detourNotice(clockNow));
   parts.push(loops(st, pick, clockNow));
   if (pick) parts.push(picked(st[pick], clockNow), dayTimes(st[pick], clockNow));
@@ -281,11 +281,17 @@ function loops(st, pick, clockNow) {
 
 /** The board as a phone's map card: its head, all a swiped-down card keeps, the countdown to the routes leaving
  *  together (or, a bay picked, that route's card); under it the loops, the next hour and the footnote. */
+/** Directions to the Center, as a stop's page has them: searched for, it was four taps away, through a route and a bay.
+ *  To any of its bays (plan.js takes the Center as one place). */
+function getHere() {
+  const b = D.hub.bays[0];
+  return b ? html`<div class="golinks tc-go"><a class="golink" href="#/go/${D.stops[b.stop].id}">${icon('route', 16)}How to get here</a></div>` : '';
+}
 export function hubSheet({ bay }, clockNow) {
   const { st, pick } = board(bay, clockNow);
   return pick
     ? { pick, head: picked(st[pick], clockNow), body: html`${detourNotice(clockNow)}${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
-    : { pick, head: together(st, clockNow), body: html`${detourNotice(clockNow)}${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` };
+    : { pick, head: together(st, clockNow), body: html`${getHere()}${detourNotice(clockNow)}${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` };
 }
 
 /** The bays for the map, one badge a route (16 AM and PM as one), at its bay's stop as the timetable places it: the

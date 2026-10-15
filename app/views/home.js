@@ -331,7 +331,7 @@ function go(q, live = false) {
   const form = document.getElementById('search'), pick = !form ? '' : form.dataset.for ? '&for=' + encodeURIComponent(form.dataset.for) : form.dataset.from ? '&from=' + encodeURIComponent(form.dataset.from) : '';
   const target = q ? '#/search?q=' + encodeURIComponent(q) + pick : pick ? '#/search?' + pick.slice(1) : '#/';
   if (location.hash === target) return;
-  if (live) history.replaceState(null, '', target); else location.hash = target;
+  if (live) history.replaceState(history.state, '', target); else location.hash = target;
   window.dispatchEvent(new HashChangeEvent('hashchange'));
   if (live) { const i = document.querySelector('#search input'); if (i) { i.focus({ preventScroll: true }); i.setSelectionRange(i.value.length, i.value.length); } }
 }
