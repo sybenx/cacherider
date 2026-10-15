@@ -13,3 +13,11 @@ worker/.wrangler/
 # the smoke test
 tools/smoke/test-results/
 tools/smoke/playwright-report/
+
+# design sync (Claude Design): staged converter, its output, machine state; .design-sync/ itself is committed
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+.design-sync/pkg/dist/

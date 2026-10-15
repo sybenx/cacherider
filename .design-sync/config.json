@@ -1,0 +1,68 @@
+{
+  "projectId": "9263b2fe-9248-4dd0-83ce-6040c1429471",
+  "shape": "package",
+  "pkg": "cacherider",
+  "globalName": "CacheRider",
+  "buildCmd": "node .design-sync/pkg/build.mjs",
+  "entry": ".design-sync/pkg/dist/index.js",
+  "cssEntry": "dist/css/cacherider.css",
+  "componentSrcMap": {
+    "RouteBadges": "src/transit/RouteBadge.tsx",
+    "ScheduledMark": "src/transit/LiveMark.tsx",
+    "PumpkinDusk": "src/pumpkin-walk/PumpkinArt.tsx",
+    "PumpkinVines": "src/pumpkin-walk/PumpkinArt.tsx",
+    "PumpkinPerch": "src/pumpkin-walk/PumpkinArt.tsx"
+  },
+  "overrides": {
+    "DepartureRow": {
+      "cardMode": "column"
+    },
+    "PumpkinVines": {
+      "cardMode": "single",
+      "viewport": "420x560"
+    },
+    "Blueprint": {
+      "cardMode": "column"
+    },
+    "Button": {
+      "cardMode": "column"
+    },
+    "Icon": {
+      "cardMode": "column"
+    },
+    "Notice": {
+      "cardMode": "column"
+    },
+    "PageHead": {
+      "cardMode": "column"
+    },
+    "SectionHead": {
+      "cardMode": "column"
+    },
+    "PumpkinNextShuttle": {
+      "cardMode": "column"
+    },
+    "NextDeparture": {
+      "cardMode": "column"
+    },
+    "RouteBadges": {
+      "cardMode": "column"
+    },
+    "StopRow": {
+      "cardMode": "column"
+    },
+    "TabBar": {
+      "cardMode": "column"
+    },
+    "PumpkinNights": {
+      "cardMode": "column"
+    },
+    "PumpkinPerch": {
+      "cardMode": "column"
+    },
+    "PumpkinDusk": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

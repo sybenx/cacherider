@@ -1,0 +1,10 @@
+{
+  "name": "cacherider-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cache Rider's parts for Claude Design: the app's own markup and stylesheet, as React components",
+  "type": "module",
+  "module": "dist/index.js",
+  "types": "dist/types/index.d.ts",
+  "peerDependencies": { "react": ">=18" }
+}
