@@ -12,6 +12,11 @@ on:
 permissions:
   contents: write
 
+# One of the data jobs (this, the timetable, the alerts) at a time, so their pushes never race.
+concurrency:
+  group: data-push
+  cancel-in-progress: false
+
 jobs:
   extract:
     runs-on: ubuntu-latest
@@ -26,8 +31,11 @@ jobs:
           python-version: '3.12'
       - name: Cut the valley into tiles
         run: |
-          pip install -q pmtiles mapbox-vector-tile
+          # Pinned: these run with a token that can push to main, and so deploy.
+          pip install -q pmtiles==3.8.1 mapbox-vector-tile==2.2.0
           python3 tools/tiles.py
+          # Each refuses tiles that come out far short of the files published (a new Protomaps format, its layers
+          # renamed, fitted no grid and found no intersection), and the run stops before any commit.
           python3 tools/grid.py
           python3 tools/crossings.py
       - name: Commit if changed

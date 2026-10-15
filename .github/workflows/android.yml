@@ -12,12 +12,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: android } }
-    env: { PLAY_JSON: '${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}' }   # whether there's a key to reach Google Play with
+    # Whether there's a key to reach Google Play with: 'true' or 'false', never the key, which went to every step
+    # (the Gradle build and its downloaded plugins among them) when this held the secret itself.
+    env: { HAS_PLAY: "${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
-      - uses: gradle/actions/setup-gradle@v4
+      # Others' actions by the commit, not a tag that can be moved: this job holds the signing key.
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a   # v4.4.3
         with: { gradle-version: '8.11.1' }
       - name: Version from the tag
         id: v
@@ -41,6 +44,9 @@ jobs:
           gradle --no-daemon assembleRelease bundleRelease -PversionName=${{ steps.v.outputs.name }} -PversionCode=${{ steps.v.outputs.code }}
           cp app/build/outputs/apk/release/app-release*.apk "cacherider-${{ steps.v.outputs.name }}.apk"
           cp app/build/outputs/bundle/release/app-release.aab "cacherider-${{ steps.v.outputs.name }}.aab"
+      - name: Keystore put away
+        if: always() && github.event_name == 'push'
+        run: rm -f "$RUNNER_TEMP/release.jks"   # signed and done: nothing after the build needs it
       - name: Check the signature
         if: github.event_name == 'push'
         run: |
@@ -55,9 +61,9 @@ jobs:
       # key in the PLAY_SERVICE_ACCOUNT_JSON secret.
       - name: Up to Google Play
         id: play
-        if: github.event_name == 'push' && env.PLAY_JSON != ''
+        if: github.event_name == 'push' && env.HAS_PLAY == 'true'
         continue-on-error: true   # Play refusing doesn't hold up the GitHub release
-        uses: r0adkll/upload-google-play@v1
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5   # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.cacherider.android
@@ -65,9 +71,9 @@ jobs:
           tracks: ${{ vars.PLAY_TRACK || 'alpha' }}
           status: completed
       - name: Up to Google Play, as a draft
-        if: github.event_name == 'push' && env.PLAY_JSON != '' && steps.play.outcome == 'failure'
+        if: github.event_name == 'push' && env.HAS_PLAY == 'true' && steps.play.outcome == 'failure'
         continue-on-error: true
-        uses: r0adkll/upload-google-play@v1
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5   # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.cacherider.android
@@ -76,7 +82,7 @@ jobs:
           status: draft
       - name: Release
         if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65   # v2.6.2
         with:
           files: |
             android/cacherider-*.apk

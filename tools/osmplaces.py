@@ -11,6 +11,9 @@ it's kept once. The pamphlet's places (data/places.json) are searched first and 
 """
 import json, math, os, re, sys, time, urllib.parse, urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import overpass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'osm-places.json')
 BOX = '41.50,-112.10,42.10,-111.65'   # south, west, north, east: the valley, Idaho's end of it too
@@ -66,20 +69,16 @@ def dist(a, b, c, d):
 D = json.load(open(os.path.join(ROOT, 'data', 'cvtd.json')))
 stops = [s for s in D['stops'] if not s.get('hub')] + [s for s in D['stops'] if s.get('hub')][:1]
 
-# Overpass is often busy: a few tries, the main server and a mirror in turn. OSM_CACHE=file (working on this script):
-# the answer kept there and read back, Overpass asked once.
+# Overpass is often busy: a few tries, the main server and a mirror in turn, and an answer cut short or older than the
+# file already published turned away (tools/overpass.py). OSM_CACHE=file (working on this script): the answer kept
+# there and read back, Overpass asked once.
 CACHE = os.environ.get('OSM_CACHE')
-els = json.load(open(CACHE)) if CACHE and os.path.exists(CACHE) else None
-for tries in range(0 if els is not None else 6):
-    req = urllib.request.Request(['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'][tries % 2],
-                                 data=urllib.parse.urlencode({'data': QUERY}).encode(), headers={'User-Agent': 'cacherider-places/1.0 (+https://cacherider.com)'})
-    try:
-        els = json.load(urllib.request.urlopen(req, timeout=180))['elements']
-        if CACHE: json.dump(els, open(CACHE, 'w'))
-        break
-    except Exception as ex:
-        if tries == 5: raise
-        print('Overpass:', ex, '- again', file=sys.stderr); time.sleep(20 if tries % 2 == 0 else 60)
+WAS = overpass.published(OUT)
+if CACHE and os.path.exists(CACHE):
+    els, base = json.load(open(CACHE)), WAS.get('osm', '')
+else:
+    els, base = overpass.query(QUERY, 'cacherider-places/1.0 (+https://cacherider.com)', 180, since=WAS.get('osm', ''))
+    if CACHE: json.dump(els, open(CACHE, 'w'))
 
 rank = {k: i for i, k in enumerate(KEYS)}
 # The campus, if the valley has one: the university's own name, shortest where several features carry it (the campus
@@ -211,6 +210,8 @@ out.sort(key=lambda p: p[0].lower())
 print('streets: ' + ', '.join(f'{a} = {s}, {w}' for a, (s, w) in streets.items()), file=sys.stderr)
 areas += [h for h in halls if not any(a['name'] == h['name'] for a in areas)]
 print('buildings: ' + ', '.join(f"{h['name']} ({', '.join(h['names'])})" for h in halls), file=sys.stderr)
-json.dump({'from': 'OpenStreetMap contributors', 'campus': campus, 'places': out, 'areas': areas, 'streets': streets}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+# An answer that found far fewer places than the file riders have is a bad answer, not a valley that lost them.
+overpass.enough(len(out), len(WAS.get('places') or []), 'places', 0.9)
+json.dump({'from': 'OpenStreetMap contributors', 'osm': base, 'campus': campus, 'places': out, 'areas': areas, 'streets': streets}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(f'{len(areas)} areas: ' + ', '.join(a['name'] for a in areas), file=sys.stderr)
 print(f'{len(out)} places, {os.path.getsize(OUT) // 1024} KB, campus {campus or "none"}', file=sys.stderr)

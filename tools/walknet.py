@@ -25,6 +25,9 @@ out. Nothing here is Cache Valley's own: any valley's OSM gives the same.
 """
 import json, math, os, sys, time, urllib.parse, urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import overpass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'walknet.json')
 WALK = 2000      # metres from a stop: as far as the app looks for a walk to one, and more
@@ -101,19 +104,15 @@ def main():
     s, w = min(p[0] for p in stops) - MARGIN, min(p[1] for p in stops) - MARGIN
     n, e = max(p[0] for p in stops) + MARGIN, max(p[1] for p in stops) + MARGIN
     q = f'[out:json][timeout:240];way["highway"~"^({WAYS})$"]({s:.4f},{w:.4f},{n:.4f},{e:.4f});out body;>;out skel qt;'
+    # Overpass is often busy: a few tries, the main server and a mirror in turn, and an answer cut short or older than
+    # the file already published turned away (tools/overpass.py). OSM_CACHE=file: the answer kept and read back.
     cache = os.environ.get('OSM_CACHE')
-    els = json.load(open(cache)) if cache and os.path.exists(cache) else None
-    servers = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter']
-    for tries in range(0 if els is not None else 6):
-        req = urllib.request.Request(servers[tries % 2], data=urllib.parse.urlencode({'data': q}).encode(),
-                                     headers={'User-Agent': 'cacherider-walknet/1.0 (+https://cacherider.com)'})
-        try:
-            els = json.load(urllib.request.urlopen(req, timeout=300))['elements']
-            if cache: json.dump(els, open(cache, 'w'))
-            break
-        except Exception as ex:
-            if tries == 5: raise
-            print('Overpass:', ex, '- again', file=sys.stderr); time.sleep(20 if tries % 2 == 0 else 60)
+    was = overpass.published(OUT)
+    if cache and os.path.exists(cache):
+        els, base = json.load(open(cache)), was.get('osm', '')
+    else:
+        els, base = overpass.query(q, 'cacherider-walknet/1.0 (+https://cacherider.com)', 300, since=was.get('osm', ''))
+        if cache: json.dump(els, open(cache, 'w'))
     pos = {el['id']: (el['lat'], el['lon']) for el in els if el['type'] == 'node'}
     ways = [el for el in els if el['type'] == 'way' and walkable(el.get('tags', {}))]
     # Near a stop: a grid of the stops, 0.02 degrees a cell, and each way kept whole if any of its points is near one.
@@ -186,7 +185,10 @@ def main():
     for la, lo in nodes:
         a, b = round(la * 1e5), round(lo * 1e5)
         flat += [a - prev[0], b - prev[1]]; prev = (a, b)
-    doc = {'from': 'OpenStreetMap contributors', 'n': flat, 'e': edges}
+    doc = {'from': 'OpenStreetMap contributors', 'osm': base, 'n': flat, 'e': edges}
+    # A night's answer with whole areas missing still passed the floor below (40% of the nodes gone: 37,977 ways of
+    # 50,000): measured against the file riders have, from night to night it moves by a few per cent.
+    overpass.enough(len(edges), len(was.get('e') or []), 'ways', 0.9)
     if len(edges) < 1000: sys.exit(f'only {len(edges)} ways: not kept')
     json.dump(doc, open(OUT, 'w'), separators=(',', ':'))
     print(f'wrote {os.path.relpath(OUT, ROOT)}: {len(nodes)} junctions, {len(edges)} ways ({sum(1 for x in edges if x[2] == "s")} steps), {os.path.getsize(OUT) // 1024} KB', file=sys.stderr)

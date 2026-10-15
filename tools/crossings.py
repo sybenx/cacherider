@@ -135,6 +135,12 @@ for l in shapes:
         if any(e[1] == 'x' for e in evs) or len(sides) == 2 or any(e[1] == 't' and e[3] == 'big' for e in evs): keep.append(d)
     out[l['shape']] = [round(d) for d in keep]
 p = os.path.join(ROOT, 'data', 'crossings.json')
+# Tiles whose roads came out under another name (a new Protomaps format: its layers renamed) gave no intersections at
+# all, and an empty file went up with a green run. Half of the published count is no route change; it's the tiles.
+try: was = sum(len(v) for v in json.load(open(p)).values())
+except Exception: was = 0
+if was and sum(len(v) for v in out.values()) < was / 2:
+    raise SystemExit(f'only {sum(len(v) for v in out.values())} intersections where the published file has {was}: not kept')
 json.dump(out, open(p, 'w'), separators=(',', ':'))
 print('wrote', p, os.path.getsize(p), 'bytes:', sum(len(v) for v in out.values()), 'intersections on', len(out), 'shapes')
 for l in shapes: print('  route %2d shape %s: %3d intersections over %.1f km' % (l['route'], l['shape'], len(out[l['shape']]), sum(math.hypot(b[0]-a[0], b[1]-a[1]) for a, b in zip([xy(*c) for c in l['coords']][:-1], [xy(*c) for c in l['coords']][1:])) / 1000))

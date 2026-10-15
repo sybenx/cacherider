@@ -21,6 +21,9 @@ OSM gives the same.
 """
 import json, math, os, sys, time, urllib.parse, urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import overpass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'walks.json')
 MARGIN = 0.02   # degrees round the stops (about 2 km): as far as a walk to a stop goes, and more
@@ -73,15 +76,10 @@ node(w.r)["highway"~"^(crossing|traffic_signals)$"]->.x; .x out;
 node(w.f)(w.r)->.y; .y out;
 way(bn.x)["highway"]["name"]; out body;
 way(bn.y)["highway"]["name"]; out body;"""
-    # Overpass is often busy: a few tries, a minute apart, the main server and a mirror in turn.
-    servers = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter']
-    for tries in range(6):
-        req = urllib.request.Request(servers[tries % 2], data=urllib.parse.urlencode({'data': q}).encode(),
-                                     headers={'User-Agent': 'cacherider-walks/1.0 (+https://cacherider.com)'})
-        try: els = json.load(urllib.request.urlopen(req, timeout=200))['elements']; break
-        except Exception as ex:
-            if tries == 5: raise
-            print('Overpass:', ex, '- again', file=sys.stderr); time.sleep(20 if tries % 2 == 0 else 60)
+    # Overpass is often busy: a few tries, the main server and a mirror in turn, and an answer cut short or older than
+    # the file already published turned away (tools/overpass.py).
+    was = overpass.published(OUT)
+    els, base = overpass.query(q, 'cacherider-walks/1.0 (+https://cacherider.com)', 200, since=was.get('osm', ''))
     roads, ids = [], {}
     # A highway's name where a piece of it has only its number: what the rest of it with that number is called
     # (US 91 through North Logan is Main Street).
@@ -116,7 +114,10 @@ way(bn.y)["highway"]["name"]; out body;"""
         if set(c[4]) - set(c[3]): continue
         near = [o for o in x if o is not c and dist(c, o) < 40 and set(o[4]) - set(c[3])]
         if near: c[4] = sorted(set(c[4]) | set(min(near, key=lambda o: dist(c, o))[4]))
-    doc = {'from': 'OpenStreetMap contributors', 'roads': roads, 'x': x}   # no date: a night's run with nothing changed is no commit
+    # No date: a night's run with nothing changed is no commit. The snapshot it was cut from, which moves every night,
+    # is looked past by the workflow's check for a change (data.yml).
+    doc = {'from': 'OpenStreetMap contributors', 'osm': base, 'roads': roads, 'x': x}
+    overpass.enough(len(roads), len(was.get('roads') or []), 'roads', 0.9)
     if len(roads) < 5: sys.exit(f'only {len(roads)} roads: not kept')
     json.dump(doc, open(OUT, 'w'), separators=(',', ':'))
     print(f'wrote {os.path.relpath(OUT, ROOT)}: {len(roads)} roads, {len(x)} crossings ({sum(1 for c in x if c[2] == "s")} at lights), {os.path.getsize(OUT) // 1024} KB', file=sys.stderr)

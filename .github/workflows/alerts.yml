@@ -14,6 +14,11 @@ on:
 permissions:
   contents: write
 
+# One of the data jobs (this, the timetable, the map) at a time, so their pushes never race.
+concurrency:
+  group: data-push
+  cancel-in-progress: false
+
 jobs:
   alerts:
     runs-on: ubuntu-latest
@@ -23,7 +28,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Fetch and decode
-        run: python3 tools/alerts.py || { echo 'alerts feed unreachable; keeping the last file'; git checkout -- data/alerts.json; exit 0; }
+        # Unreachable (75, tools/upstream.py): the last file kept, green. Broken: the last file kept, and the run red.
+        run: python3 tools/upstream.py tools/alerts.py || { s=$?; git checkout -- data/alerts.json; [ $s = 75 ] && echo 'alerts feed unreachable; keeping the last file'; }
       - name: Commit if changed
         run: |
           # The fetched time alone is not a change worth a commit.

@@ -185,6 +185,11 @@ for g in grids:
     for k in ('klat', 'klon'): g[k] = float('%.4g' % g[k])
     g.pop('points', None); g.pop('borrowed', None)
 p = os.path.join(ROOT, 'data', 'grid.json')
+# Tiles whose roads came out under another name (a new Protomaps format) fitted no grid at all, and an empty file went
+# up: half the published towns gone is the tiles, not the valley.
+try: was = len(json.load(open(p))['grids'])
+except Exception: was = 0
+if was and len(grids) < was / 2: sys.exit(f'only {len(grids)} grids where the published file has {was}: not kept')
 json.dump({'grids': grids, 'places': [{'name': t['name'], 'lat': round(t['lat'], 5), 'lon': round(t['lon'], 5), 'pop': t['pop']} for t in towns], 'built': index.get('built', '')},
           open(p, 'w'), separators=(',', ':'))
 print('wrote', p, os.path.getsize(p), 'bytes,', len(grids), 'grids')

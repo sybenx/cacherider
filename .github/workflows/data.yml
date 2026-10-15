@@ -11,6 +11,12 @@ on:
 permissions:
   contents: write
 
+# One of the data jobs (this, the alerts, the map) at a time: two committing at once had the second's rebase stuck on
+# the one-line crossings.json both had written, and its push failed.
+concurrency:
+  group: data-push
+  cancel-in-progress: false
+
 jobs:
   reduce:
     runs-on: ubuntu-latest
@@ -23,22 +29,25 @@ jobs:
         run: curl -fsSL -o /tmp/cvtd.zip https://mycvtdbus.org/gtfs
       - name: Reduce
         run: |
-          pip install -q mapbox-vector-tile
+          pip install -q mapbox-vector-tile==2.2.0
           python3 tools/reduce.py /tmp/cvtd.zip --hints tools/hints.json --out data
+      # Each tool below that reads from elsewhere runs through tools/upstream.py: its source unreachable, or nothing
+      # worth keeping (75), and yesterday's file stands, green; the tool broken, and yesterday's file stands, the
+      # night's timetable still goes up, and the run ends red (tools/kept.sh, and the last step).
       - name: Intersections along each route, from the map tiles
-        run: python3 tools/crossings.py
+        run: python3 tools/crossings.py || sh tools/kept.sh $? data/crossings.json ''
       - name: Places to search for, from OpenStreetMap (once a night, one query)
-        run: python3 tools/osmplaces.py || echo 'Overpass unreachable; keeping the last places'
+        run: python3 tools/upstream.py tools/osmplaces.py || sh tools/kept.sh $? data/osm-places.json 'Overpass unreachable; keeping the last places'
       - name: Busy roads and their crossings, for walks, from OpenStreetMap
-        run: python3 tools/walks.py || echo 'Overpass unreachable; keeping the last roads'
+        run: python3 tools/upstream.py tools/walks.py || sh tools/kept.sh $? data/walks.json 'Overpass unreachable; keeping the last roads'
       - name: The ways a rider walks (footways, paths, steps, sidewalks, streets), from OpenStreetMap
-        run: python3 tools/walknet.py || echo 'Overpass unreachable; keeping the last ways'
+        run: python3 tools/upstream.py tools/walknet.py || sh tools/kept.sh $? data/walknet.json 'Overpass unreachable; keeping the last ways'
       - name: Snapshot the USU shuttle's routes and stops
-        run: python3 tools/usu.py || echo 'shuttle feed unreachable; keeping the last snapshot'
+        run: python3 tools/upstream.py tools/usu.py || sh tools/kept.sh $? data/usu.json 'shuttle feed unreachable; keeping the last snapshot'
       - name: POOL's pickup points, from Connect's published Remix map
-        run: python3 tools/pool.py || echo 'Remix unreachable; keeping the last POOL points'
+        run: python3 tools/upstream.py tools/pool.py || sh tools/kept.sh $? data/pool.json 'Remix unreachable; keeping the last POOL points'
       - name: Stops out of the timetable for a detour, kept as closed stops a while
-        run: python3 tools/gone.py || echo 'kept stops not refreshed; keeping the last'
+        run: python3 tools/upstream.py tools/gone.py || sh tools/kept.sh $? data/gone-stops.json 'kept stops not refreshed; keeping the last'
       - name: Commit if changed
         run: |
           # The built date alone is not a change worth a commit.
@@ -49,7 +58,19 @@ jobs:
               old = json.loads(subprocess.check_output(['git', 'show', 'HEAD:data/cvtd.json'])); old['feed'].pop('built', None)
           except Exception:
               old = None
-          shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json', 'data/crossings.json', 'data/osm-places.json', 'data/pool.json', 'data/walks.json', 'data/walknet.json']) != 0
+          shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json', 'data/crossings.json', 'data/pool.json']) != 0
+          # The OpenStreetMap files carry the snapshot they were cut from (osm, tools/overpass.py), which moves every
+          # night: a change only when something else in them did, and put back as it was when nothing did.
+          for f in ('data/osm-places.json', 'data/walks.json', 'data/walknet.json'):
+              try:
+                  a, b = json.load(open(f)), json.loads(subprocess.check_output(['git', 'show', 'HEAD:' + f]))
+                  had = 'osm' in b
+                  a.pop('osm', None); b.pop('osm', None)
+                  same = had and a == b
+              except Exception:
+                  same = False
+              if same: subprocess.call(['git', 'checkout', '--', f])
+              else: shapes = True
           # The stops kept out of the timetable: a change when one comes or goes, not when its dates move on.
           ids = lambda j: sorted(s['id'] for s in (j or {}).get('stops', []))
           try:
@@ -66,3 +87,8 @@ jobs:
           git commit -m "Transit data: $(date -u +%Y-%m-%d)"
           # Onto whatever another run (alerts, the timetable, the map) pushed meanwhile, a few tries.
           for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done; exit 1
+      - name: Every tool ran
+        if: env.BROKE != ''
+        run: |
+          echo "::error::a tool broke this run, its last file kept: $BROKE"
+          exit 1
