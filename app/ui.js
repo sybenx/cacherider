@@ -64,6 +64,8 @@ const I = {
   chevDown: '<path d="m6 9 6 6 6-6"/>',
   walk: '<circle cx="13.5" cy="4" r="1.6"/><path d="m9 21 2.5-6.5"/><path d="m12.5 15 2.5 6"/><path d="M7.5 12.5 10 8.5l3.5-1 2.5 3.5 3 1"/><path d="m10 8.5-1.5 5.5"/>',
   install: '<path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+  // the Pumpkin Walk's tab: a pumpkin, its ribs and its stem
+  pumpkin: '<path d="M12 7.5c-1.6-1.3-4.6-1.5-6.6 0C2.9 9.4 2.6 15.7 5.2 18.6c1.7 1.9 4.4 2 6.8.9 2.4 1.1 5.1 1 6.8-.9 2.6-2.9 2.3-9.2-.2-11.1-2-1.5-5-1.3-6.6 0Z"/><path d="M12 7.5c-1.7 2.6-1.7 9.4 0 12"/><path d="M12 7.5c1.7 2.6 1.7 9.4 0 12"/><path d="M12 7.5c0-2 .6-3.4 2-4.5"/>',
 };
 export const icon = (name, size = 20, sw = 1.5, fill = 'none') => raw(`<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name]}</svg>`);
 

@@ -83,7 +83,9 @@ async function lines() {
   // (driven to its next run's start, to the yard) is out of service, whatever the feed says.
   const ends = new Map();
   for (const [la, lo, ...ts] of j.ends || []) { const q = xy(la, lo); for (const t of ts) ends.set(t, q); }
-  L = { xy, off, dist, between, inHours, ends, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
+  // A trip id's prefix where it isn't its route's key (tools/reduce.py): the Pumpkin Walk's 'PW 1800' is 'Pumpkin'.
+  const prefix = j.prefixes || {};
+  L = { xy, off, dist, between, inHours, ends, prefix, anyInHours: ms => !j.hours || Object.keys(j.hours).some(k => inHours(k, ms)) }; lAt = Date.now();
   return L;
 }
 const far = (L, p, lat, lon) => { const q = L.xy(lat, lon); return Math.hypot(p[0] - q[0], p[1] - q[1]); };

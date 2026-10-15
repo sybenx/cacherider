@@ -13,6 +13,7 @@ import * as ustop from './views/ustop.js';
 import * as uroute from './views/uroute.js';
 import * as routesView from './views/routes.js';
 import * as go from './views/go.js';
+import * as pumpkin from './views/pumpkin.js';
 import { loadUSU, setWanted, onLive, U } from './usu.js';
 import { setRtWanted, onRt } from './rt.js';
 
@@ -23,6 +24,12 @@ const TABS = [
   { href: '#/map', label: 'Map', icon: 'map', match: h => stopOfMap || h.startsWith('#/map') },
   { href: '#/hub', label: 'Transit Center', icon: 'hub', match: h => h.startsWith('#/hub') },
 ];
+// A tab for the season's own: the Pumpkin Walk's while its shuttle has a night still to come (views/pumpkin.js), gone
+// by itself after the last, its page still there at its address.
+const SEASON_TABS = [
+  { href: '#/pumpkin', label: 'Pumpkin Walk', icon: 'pumpkin', match: h => h.startsWith('#/pumpkin'), on: () => pumpkin.pumpkinOn() },
+];
+const tabsNow = () => D ? [...TABS, ...SEASON_TABS.filter(t => { try { return t.on(); } catch { return false; } })] : TABS;
 
 export const app = {
   installPrompt: null,  // Chrome's deferred beforeinstallprompt, when it offers one
@@ -72,7 +79,7 @@ function renderTabs() {
     document.getElementById('topnav').addEventListener('click', e => { if (e.target.closest('a[href="#/"]')) home(e); });
   }
   for (const id of ['tabs', 'topnav']) {
-    document.getElementById(id).innerHTML = TABS.map(t => html`<a href="${t.href}" ${t.match(h) ? html.raw('aria-current="page"') : ''}>${icon(t.icon, id === 'tabs' ? 22 : 18)}${t.label}</a>`).join('');
+    document.getElementById(id).innerHTML = tabsNow().map(t => html`<a href="${t.href}" ${t.match(h) ? html.raw('aria-current="page"') : ''}>${icon(t.icon, id === 'tabs' ? 22 : 18)}${t.label}</a>`).join('');
   }
 }
 
@@ -236,6 +243,7 @@ export async function render(tick = false) {
     else if (name === 'route') view = (await ensureMap()).routePage(routeArgs, clockNow);
     else if (name === 'about') view = about.render({ section: seg[1] }, clockNow);
     else if (name === 'routes') view = routesView.render({}, clockNow);
+    else if (name === 'pumpkin') view = pumpkin.render({}, clockNow);
     else if (name === 'usu' && seg[1] === 'route') view = uroute.render({ id: seg[2] }, clockNow);
     else if (name === 'usu') view = ustop.render({ id: seg[1] }, clockNow);
     else if (name === 'map') view = null;
@@ -245,7 +253,8 @@ export async function render(tick = false) {
     view = { html: html`<div class="empty"><h2>Something went wrong</h2><p>${e.message}</p></div>` };
   }
   // A stop page reached from the Map tab on a phone is a sheet over the map: a swipe down at its top sends it back. The mark survives the minute's redraws of the same page.
-  const isPage = name === 'stop' || name === 'usu';   // a stop, a shuttle stop, a shuttle route
+  // a stop, a shuttle stop, a shuttle route; and the Pumpkin Walk's, on a phone the map of the walk with the page its card
+  const isPage = name === 'stop' || name === 'usu' || name === 'pumpkin';
   // A stop on a phone or a portrait tablet is the map with the page as its sheet, as a route and the Transit Center
   // are: the address stays the stop's (#/stop/…, #/usu/…), so links, bookmarks and the offline shell are as ever.
   const stopMap = isPage && !isDesktop() && !!view && !!view.mount;
@@ -254,7 +263,7 @@ export async function render(tick = false) {
   syncHeader(name, q);
   const mapOpen = name === 'map' || stopMap;
   setWanted(!!(view && view.live) || mapOpen || (isDesktop() && !!U) || (name === 'search' && !!U) || (name === 'home' && !!U) || (name === 'go' && !!U));   // directions: the shuttle is in the planner
-  setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route', 'go'].includes(name));
+  setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route', 'go', 'pumpkin'].includes(name));
   body.classList.toggle('map-open', mapOpen);
   if (view && !stopMap) {
     // A page is the same page across its own picks (the Transit Center's routes): `view.key` says so, and the
@@ -293,13 +302,16 @@ export async function render(tick = false) {
     const from = name === 'map' && seg[1] === 'from' ? seg[2] || null : null;   // the map asked where the rider will start from, for directions to this stop
     const to = name === 'map' && seg[1] === 'to' ? seg[2] || null : null;   // or where they're going, for directions from this spot
     const me = name === 'map' && seg[1] === 'me';   // or where the rider is, with no location to be had
+    // The Pumpkin Walk's page beside a wide screen's map: its route drawn there, as a route's own page draws it.
+    const pkRi = name === 'pumpkin' ? pumpkin.pumpkinRoute() : -1;
+    const seasonRoute = pkRi >= 0 ? { short: D.routes[pkRi].short } : null;
     m.show({
       stopId: name === 'map' && !hubMap && !goMap && !at && !from && !mapU && !mapR && !mapUR && !mapA && !mapB && seg[1] !== 'to' && seg[1] !== 'from' && !me ? seg[1] : name === 'stop' ? seg[1] : null, from, to, me,
       uRoute: mapUR ? seg[2] : name === 'usu' && seg[1] === 'route' ? seg[2] : null,
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       campus: mapU && !seg[2],   // the home page's shuttle line: campus, its loops drawn
-      routeShort: routeArgs ? routeArgs.short : null, routeArgs,
-      alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
+      routeShort: routeArgs ? routeArgs.short : seasonRoute ? seasonRoute.short : null, routeArgs: routeArgs || seasonRoute,
+      alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route' || name === 'pumpkin', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
       busId: mapB && seg[2] ? dec(seg[2]) : null,   // a bus from the Transit Center's board: it, on its way in
       busTap: mapB && q.tap === '1',   // or tapped on the map: its card, the map left where it is
@@ -309,7 +321,7 @@ export async function render(tick = false) {
       journey: goMap ? goJ : view && view.journey || null,   // a way from the directions page, drawn
       // A search in the panel beside the map: its first few stops ringed on the map, and its places' spots.
       searchMarks: isDesktop() && name === 'search' && q.q ? searchMarksOf(side) : null,
-      page: stopMap ? { key: name + '/' + seg[1] + (seg[2] ? '/' + seg[2] : ''), html: String(view.html), mount: view.mount } : null,   // a stop's page, the map's sheet
+      page: stopMap ? { key: [name, seg[1], seg[2]].filter(Boolean).join('/'), html: String(view.html), mount: view.mount } : null,   // a stop's page, the map's sheet
     }, app, clockNow);
   }
   if (!(mapOpen || isDesktop()) && app.mapMod && app.mapMod.away) app.mapMod.away();   // the map behind a phone's page: its next address is new to it

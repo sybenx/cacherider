@@ -86,7 +86,8 @@ async function track(env) {
       try { await fillIn(out, false); } catch (e) { /* the feed's own buses */ }
       if (!out.buses.length) continue;
       const t = Math.floor(Date.now() / 1000);
-      const rows = out.buses.map(b => { const key = keyOf(b.route) || shortOf(b.trip) || ''; return [b.label || b.id, b.trip || '', key, b.lat, b.lon, b.bearing, b.speed, b.ts, W ? +inService(W, out, b, key, t) : 1]; });
+      const keyOfTrip = trip => { const p = shortOf(trip); return (W && p && W.L.prefix[p]) || p; };   // PW 1800 → Pumpkin
+      const rows = out.buses.map(b => { const key = keyOf(b.route) || keyOfTrip(b.trip) || ''; return [b.label || b.id, b.trip || '', key, b.lat, b.lon, b.bearing, b.speed, b.ts, W ? +inService(W, out, b, key, t) : 1]; });
       await env.TRACKS.prepare('INSERT OR REPLACE INTO samples (t, buses) VALUES (?, ?)').bind(t, JSON.stringify(rows)).run();
       if (W) watchStep(W, t, rows);
     } catch (e) { /* a sample missed */ }

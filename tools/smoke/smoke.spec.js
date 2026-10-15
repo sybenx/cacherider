@@ -541,6 +541,20 @@ test('routes list: every route, one opened', async ({ page }) => {
   await expect(page.getByText('Route 5').filter({ visible: true }).first()).toBeVisible();
 });
 
+test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts', async ({ page }) => {
+  // The real feed's, whatever the date: the page stands with a season or without (a route gone from the timetable says
+  // so); while one is on, its tab is there and lit on its page, its nights listed, and a stop of it opens.
+  await open(page, '#/pumpkin');
+  await expect(page.getByRole('heading', { name: 'Pumpkin Walk' })).toBeVisible();
+  const tab = page.locator('#tabs a[href="#/pumpkin"], #topnav a[href="#/pumpkin"]').filter({ visible: true });
+  if (await tab.count()) {
+    await expect(tab.first()).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.pk-night').first()).toBeVisible();
+    await page.locator('.pk-from a[href^="#/stop/"]').filter({ visible: true }).first().click();
+    await expect(page).toHaveURL(/#\/stop\//);
+  }
+});
+
 test('route: both ways, its sibling, a stop on it', async ({ page }) => {
   await open(page, '#/map/route/2');
   await mapReady(page);

@@ -3181,9 +3181,21 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
     const at = routeArgs && routeArgs.at !== undefined && D.stopById[routeArgs.at] !== undefined ? routeArgs.at : null;
     selected = at; uHilite = ''; hiLines = [ri]; hiLoops = []; focusRoute = ri; applySelection();
     // On a phone's Map tab its stops are the card, the map framed above it; beside a wide screen's panel, the panel.
-    if (app.route.name === 'map' && !wide() && routeArgs) sheetCard(routeArgs, clockNow);
+    // The Pumpkin Walk's page on a phone: the page is the card (as a stop's is), its route framed above it.
+    if (page) pageSheet(page, app, true);
+    else if (app.route.name === 'map' && !wide() && routeArgs) sheetCard(routeArgs, clockNow);
     else col.querySelector('#mapcard').classList.remove('open');
-    if (focus && (changed || resized || whole)) frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
+    if (focus && (changed || resized || whole)) {
+      frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
+      // The Pumpkin Walk's page: its two stops are where a ride starts and ends, not how far its loop goes round (2500
+      // North out, 2200 North back, the loop's ends off the screen); its line framed once it's in.
+      if (app.route.name === 'pumpkin') shapes().then(fc => {
+        if (!fc || lastFocused !== 'r:' + ri) return;
+        const b = new maplibregl.LngLatBounds();
+        for (const f of fc.features) if (f.properties.route === ri) for (const c of f.geometry.coordinates) b.extend(c);
+        if (!b.isEmpty()) frame(b, { maxZoom: 15.5, duration: 500 });
+      });
+    }
     if (bus) ringBus(bus); else { wantRing = null; if (ringed) unring(); }
     return;
   }

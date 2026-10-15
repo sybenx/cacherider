@@ -50,6 +50,14 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   whole map; `#/map` opens straight to that, for keeping an eye on the buses.
 - **After hours, Sundays, weekday-only stops** — it says so, and shows the
   next day that runs.
+- **Pumpkin Walk** — North Logan's October evenings, and Connect's seasonal
+  shuttle to them, get a view of their own (`#/pumpkin`) and a tab while the
+  shuttle has a night still to come. On a phone it's the map, as the Transit
+  Center is: the whole loop framed, the shuttles moving on it, and a card to
+  pull up with the next shuttle from the stop you're nearest, both stops'
+  next few, and each night's hours; on a wide screen, the page beside the map.
+  All from the timetable, so next year's needs nothing but the feed, and the
+  tab goes by itself after the last night.
 - **Service alerts** — Connect's detours, closed stops and late starts, from
   its rider-alerts feed, checked hourly. A closed stop says so and drops that
   route's departures; routes, the map and the About page carry the rest.

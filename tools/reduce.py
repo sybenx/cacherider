@@ -298,7 +298,18 @@ by_end = {}
 for tid, sid in sorted(last_stop.items()):
     if sid in where: by_end.setdefault(where[sid], []).append(tid)
 trip_ends = [[la, lo, *ts] for (la, lo), ts in sorted(by_end.items())]
-json.dump({'lines': lines, 'hub': {'lat': hub['lat'], 'lon': hub['lon']}, 'hours': hours, 'tz': out['agency']['tz'], 'ends': trip_ends}, open(p, 'w'), separators=(',', ':'))
+# prefixes: a trip id's leading word where it isn't its route's key. The relay keys a bus by its trip's prefix (2_1400
+# is 2, B1_1329 is B), and the Pumpkin Walk's trips are 'PW 1800', its lines 'Pumpkin': the detour watch looked for a
+# line it never found, and counted the shuttle in service on a Sunday. A prefix two routes share is left out.
+prefixes, clash = {}, set()
+for t in trips.values():
+    m = re.match(r'([A-Z]+|\d+)', t['trip_id'])
+    k = routes[route_idx[t['route_id']]]['short'].split()[0]
+    if not m or m.group(1) == k: continue
+    if prefixes.get(m.group(1), k) != k: clash.add(m.group(1))
+    prefixes[m.group(1)] = k
+prefixes = {x: k for x, k in sorted(prefixes.items()) if x not in clash}
+json.dump({'lines': lines, 'hub': {'lat': hub['lat'], 'lon': hub['lon']}, 'hours': hours, 'tz': out['agency']['tz'], 'ends': trip_ends, 'prefixes': prefixes}, open(p, 'w'), separators=(',', ':'))
 print('wrote', p, os.path.getsize(p), 'bytes:', len(lines), 'lines')
 for sid, ms in pulse.items():
     print('pulse', sid, len(ms), 'times', ms[:6], '...' if len(ms) > 6 else '')

@@ -89,7 +89,7 @@ svg { display: block; flex: none; }
 #body.map-open #side { display: none; }
 #body.map-open #mapcol { display: block; flex: 1; }
 #tabs {
-  flex: none; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--cr-line);
+  flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border-top: 1px solid var(--cr-line);   /* three, and a season's (main.js) */
   padding: 0 8px env(safe-area-inset-bottom); background: var(--color-bg); position: relative; z-index: 500;
 }
 #tabs a {
@@ -1253,3 +1253,32 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 /* the Center's directions link: under its name beside a wide screen's board, at the top of a phone's board under its countdown */
 .tc-go { padding: 10px 16px 2px; }
 .tc-head .tc-go { padding: 6px 0 0; }
+
+/* The Pumpkin Walk (views/pumpkin.js): its dusk at the top, framed as the app frames its maps; its nights in a strip */
+.pk-hero { margin: 0 0 6px; }
+.mapcard .pk-hero .pk-clip { aspect-ratio: 400 / 96; }   /* a phone's card: a strip of the dusk, the map above it, */
+.mapcard .pk-back { display: none; }   /* and no Back bar: its tab is right there, and the card rests on the next shuttle */
+.pk-hero .pk-clip { aspect-ratio: 400 / 170; overflow: hidden; background: #1a1238; }
+.pk-hero .pk-art { display: block; width: 100%; height: 100%; }
+.pk-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.875rem; }
+.pk-next { display: flex; flex-direction: column; gap: 10px; padding: 2px 16px 14px; }
+.pk-next .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pk-nextrow { display: flex; align-items: center; gap: 14px; color: inherit; text-decoration: none; }
+.pk-big { font-family: var(--font-heading); font-weight: 600; font-size: 3.5rem; line-height: .9; letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pk-big small { font-size: .38em; margin-left: .12em; letter-spacing: 0; color: #e8611c; }
+.pk-big.est { color: var(--color-accent-700); }
+.pk-nextrow .mid { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pk-nextrow .dest { font-size: 1rem; font-weight: 500; }
+.pk-nextrow .sub { font-size: 0.8438rem; color: var(--cr-muted); }
+.pk-next .then { display: flex; align-items: baseline; gap: 14px; }
+.pk-live { margin: 14px 16px 0; color: inherit; text-decoration: none; }
+.pk-from .pk-from-name { display: inline-flex; align-items: center; gap: 8px; }
+.pk-from .note { color: inherit; }
+.pk-nights { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); margin: 0 16px; border-top: 1px solid var(--cr-line); border-left: 1px solid var(--cr-line); }
+.pk-night { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-right: 1px solid var(--cr-line); border-bottom: 1px solid var(--cr-line); }
+.pk-night .d { font-family: var(--font-heading); font-weight: 600; font-size: 1.0625rem; letter-spacing: .04em; text-transform: uppercase; }
+.pk-night .dt { font-size: 0.75rem; color: var(--cr-muted); }
+.pk-night .h { font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.pk-night.tonight { box-shadow: inset 0 3px 0 #e8611c; }
+.pk-night.off .h, .pk-night.off .d { color: var(--cr-muted); }
+.pk-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px; }
