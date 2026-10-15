@@ -26,9 +26,33 @@ const TTL = 5;   // seconds at the edge, the agency's feed asked no oftener than
 const ALERT_TTL = 300;   // a notice posted at the agency reaches riders within five minutes
 const ANNOUNCEMENTS = 'https://mycvtdbus.org/announcements.data';
 
+// GitHub runs scheduled workflows as it gets to them: the alerts' quarter hour and the timetable's night came hours
+// late. Asked for from here instead, on the minute, by their own on-demand trigger (workflow_dispatch), which GitHub
+// starts at once. GH_DISPATCH is a Worker secret: a token for this repository's Actions alone. GitHub's own schedules
+// stay as they were, the fallback; the workflows share one queue (data-push) and commit only what changed, so a late
+// run of GitHub's own after one of these does nothing.
+const REPO = 'sybenx/cacherider';
+const DISPATCH = [
+  { file: 'alerts.yml', due: d => d.getUTCMinutes() % 15 === 0 },   // as its cron, '*/15 * * * *'
+  { file: 'data.yml', due: d => d.getUTCHours() === 9 && d.getUTCMinutes() === 23 },   // '23 9 * * *', 03:23 Mountain
+];
+async function dispatch(env, at) {
+  if (!env.GH_DISPATCH) return;
+  const d = new Date(at);
+  for (const w of DISPATCH) {
+    if (!w.due(d)) continue;
+    const r = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${w.file}/dispatches`, {
+      method: 'POST', body: JSON.stringify({ ref: 'main' }),
+      headers: { ...UA, Authorization: 'Bearer ' + env.GH_DISPATCH, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
+    }).catch(e => ({ status: 0, text: async () => String(e) }));
+    if (r.status !== 204) console.log(`dispatch ${w.file}: ${r.status} ${(await r.text()).slice(0, 200)}`);   // a lapsed token (401): GitHub's own schedule carries on
+  }
+}
+
 export default {
-  // Every minute: where the buses are, for spotting detours from the tracks (tools/detours.py reads them).
-  async scheduled(ev, env, ctx) { ctx.waitUntil(track(env)); },
+  // Every minute: where the buses are, for spotting detours from the tracks (tools/detours.py reads them); and on
+  // their minutes, the data workflows asked for (dispatch).
+  async scheduled(ev, env, ctx) { ctx.waitUntil(Promise.all([track(env), dispatch(env, ev.scheduledTime)])); },
   async fetch(req, env) {
     const origin = req.headers.get('Origin') || '';
     const cors = {
