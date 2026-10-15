@@ -11,6 +11,9 @@ const KIND = { r: ROAD, f: FOOT, x: XING, s: STEPS, b: BUSY };
 // minutes over a busy road, waiting for the light; at a crosswalk without one, or for a gap in the traffic with none,
 // longer: and of two ways as long, the one crossing fewer, and at a light
 const WAIT = { s: 0.5, m: 0.75, none: 1 };
+// minutes a steep way or steps costs the search when the rider avoids them, so a way round is taken where there is
+// one: the search's alone, never the walk's minutes
+const AVOID = 20;
 
 /** A small binary heap of [cost, id], in two arrays that grow. */
 class Heap {
@@ -123,9 +126,11 @@ export class WalkNet {
     const { PACE, RISE, DROP } = this.r;
     const up = fwd ? this.up[m] : this.down[m], drop = fwd ? this.dropAB[m] : this.dropBA[m];
     let c = this.len[m] / PACE * (this.kind[m] === STEPS ? 2 : 1) + up / RISE + drop / DROP;
-    if (avoid && (this.kind[m] === STEPS || this.steepEdge(m, fwd))) c += 20;
+    if (avoid && this.dear(m, fwd)) c += AVOID;
     return c;
   }
+  /** A way avoided when asked: steps, or steep walked this way. */
+  dear(m, fwd) { return this.kind[m] === STEPS || this.steepEdge(m, fwd); }
   steepEdge(m, fwd) {
     const { STEEP, STEEP_DOWN } = this.r;
     const up = fwd ? this.up[m] : this.down[m], gu = fwd ? this.gUp[m] : this.gDown[m], down = fwd ? this.down[m] : this.up[m], gd = fwd ? this.gDown[m] : this.gUp[m];
@@ -331,7 +336,7 @@ export class WalkNet {
     steps.reverse();
     const firstId = best.same ? -1 : (steps.length ? S.prev.get(steps[0][1]) : best.id);
     const coords = [[lo1, la1], [s.lon, s.lat]];
-    let d = s.off, up = 0, down = 0, gu = 0, gd = 0, hasSteps = false;
+    let d = s.off, up = 0, down = 0, gu = 0, gd = 0, hasSteps = false, avoided = 0;
     const via = [];
     const crossing = (u, sec, hop) => {   // hop: [sector on, crossing, sector left from]
       if (!hop || !hop[1]) return;
@@ -363,6 +368,7 @@ export class WalkNet {
         up += fwd ? this.up[m] : this.down[m]; down += fwd ? this.down[m] : this.up[m];
         gu = Math.max(gu, fwd ? this.gUp[m] : this.gDown[m]); gd = Math.max(gd, fwd ? this.gDown[m] : this.gUp[m]);
         if (this.kind[m] === STEPS) hasSteps = true;
+        if (S.avoid && this.dear(m, S.rev ? !fwd : fwd)) avoided += AVOID;   // the dearness the search put on it, as it searched
         id = nid;
       }
       const node = id >> 3;
@@ -375,6 +381,8 @@ export class WalkNet {
     d += t.off;
     // the same point twice in a row dropped
     const line = coords.filter((p, i) => !i || Math.abs(p[0] - coords[i - 1][0]) > 1e-7 || Math.abs(p[1] - coords[i - 1][1]) > 1e-7);
-    return { mins: best.c, d, coords: line, via, up, down, steepUp: gu, steepDown: gd, steps: hasSteps };
+    // Its minutes as walked, not as searched: avoiding steep ways, one with no way round is still the minutes it takes.
+    // From 1210 East 1400 North up to 1450 East 1500 North is ten, and was said as fifty, the dearness left in.
+    return { mins: best.c - avoided, d, coords: line, via, up, down, steepUp: gu, steepDown: gd, steps: hasSteps };
   }
 }

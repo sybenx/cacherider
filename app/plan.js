@@ -10,8 +10,8 @@ import { walkMins, steepWalk, avoidSteep, useCrossings } from './geo.js';
 const WALK_TO = 1000;     // how far a rider is sent on foot to a first stop
 const WALK_FROM = 350;    // a stop this near the one asked for is as good, with the walk said
 const CHANGE = 1;         // minutes from one bus to the next at the same stop (the Transit Center's hold for each other)
-const AHEAD = 150;        // minutes of departures looked at from each first stop
-const MAX_ON = 8;         // buses tried from a first stop, and from a change stop
+const AHEAD = 150;        // minutes of departures looked at first from each first stop (later ones after, up to the soonest arrival found)
+const MAX_ON = 8;         // buses tried first from a first stop, and from a shuttle stop to change at (a bus stop's: all the day's)
 const CHANGE_WALK = 250;  // a change can be to a stop this near: the Transit Center's other bays, the stop across the road
 const WALK_LESS = 3;      // minutes on foot a way must spare to be kept for walking less: a minute or two is no reason to ride round a loop
 // Every walk is timed by geo.js's walkMins: distance at a walking pace, and the climb (a minute for each 10 m up,
@@ -112,6 +112,17 @@ function deps(si, ymd, from, live, cache, until = null) {
     out.sort((a, b) => a.min - b.min);
     return until === null ? out.slice(0, MAX_ON) : out.slice(-MAX_ON);
   }
+  const rows = dayRows(si, ymd, live, cache);
+  // To arrive by a time: the last few leaving before it, not the first few after a minute.
+  if (until !== null) return rows.filter(t => t.min >= from && t.min <= until).slice(-MAX_ON);
+  const out = [];
+  let first = null;   // the window of departures looked at starts at the first one, not at the minute asked (a day's first bus can be hours off)
+  for (const t of rows) { if (t.min < from) continue; if (first === null) first = t.min; if (t.min > first + AHEAD || out.length >= MAX_ON) break; out.push(t); }
+  return out;
+}
+
+/** A Connect stop's whole day of departures, in order: the feed's word on today's. */
+function dayRows(si, ymd, live, cache) {
   const k = si + '|' + ymd;
   let rows = cache.get(k);
   if (!rows) {
@@ -119,12 +130,7 @@ function deps(si, ymd, from, live, cache, until = null) {
     if (live) rows = rows.map(t => lively({ ...t, day: 0, ymd })).filter(t => !t.gone).sort((a, b) => a.min - b.min);
     cache.set(k, rows);
   }
-  // To arrive by a time: the last few leaving before it, not the first few after a minute.
-  if (until !== null) return rows.filter(t => t.min >= from && t.min <= until).slice(-MAX_ON);
-  const out = [];
-  let first = null;   // the window of departures looked at starts at the first one, not at the minute asked (a day's first bus can be hours off)
-  for (const t of rows) { if (t.min < from) continue; if (first === null) first = t.min; if (t.min > first + AHEAD || out.length >= MAX_ON) break; out.push(t); }
-  return out;
+  return rows;
 }
 
 /** A departure's ride as [its stops with their minutes, where it boards in them], or null: a Connect bus's run, or a
@@ -246,9 +252,9 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   // them, and so on back through the day.
   if (by !== null) {
     if (!servicesOn(clockNow.ymd).size) return { plans: [] };
-    const upto = new Map(starts.filter(st => !at.has(st.si)).map(st => [st.si, by - st.walk]));
+    const upto = new Map(starts.filter(st => !at.has(st.si)).map(st => [st.si, by - st.walk])), memo = dayMemo();
     while (upto.size) {
-      const plans = search(starts, wanted, at, spot ? d : dest, clockNow.ymd, clockNow.min, live, 0, by, upto, o, foot);
+      const plans = search(starts, wanted, at, spot ? d : dest, clockNow.ymd, clockNow.min, live, 0, by, upto, o, foot, memo);
       if (plans.walked) return { walk: apart, plans: [] };
       if (plans.length) return { plans };
     }
@@ -266,9 +272,29 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   return { plans: [] };
 }
 
-function search(starts, wanted, at, dest, ymd, min0, live, day, by, upto, from, foot) {
-  const cache = new Map(), spot = typeof dest === 'object', end = spot ? dest : stop(dest);
+/** What a search keeps of a day while it's asked again (arriving by, pass after pass): each stop's departures, and
+ *  the last legs from it. */
+const dayMemo = () => ({ rows: new Map(), legs: new Map() });
+
+function search(starts, wanted, at, dest, ymd, min0, live, day, by, upto, from, foot, memo = dayMemo()) {
+  const cache = memo.rows, spot = typeof dest === 'object', end = spot ? dest : stop(dest);
   const found = [];
+  // The last leg from a Connect stop: every bus of the day from it that gets to a stop wanted, in the order they leave,
+  // with when the rider's there, walk and all. Worked out once a stop, then looked up from every ride that passes it.
+  const legsFrom = si => {
+    let list = memo.legs.get(si);
+    if (!list) {
+      list = [];
+      for (const t2 of dayRows(si, ymd, live, cache)) {
+        const got2 = rideOf(t2, ymd);
+        if (!got2) continue;
+        const ride2 = rideTo(t2, got2[0], got2[1], wanted, true);
+        if (ride2) list.push({ t2, ride2, at: ride2.off + wanted.get(ride2.to) });
+      }
+      memo.legs.set(si, list);
+    }
+    return list;
+  };
   const done = (legs, walk0, walkEnd) => {
     const first = legs[0], last = legs[legs.length - 1], rides = legs.filter(l => l.kind === 'ride').length;
     const leave = first.on - walk0.walk, arrive = last.off + wanted.get(last.to);
@@ -278,6 +304,61 @@ function search(starts, wanted, at, dest, ymd, min0, live, day, by, upto, from, 
     if (spot || last.to !== dest) all.push({ kind: 'walk', d: Math.round(distance(pt(last.to).lat, pt(last.to).lon, end.lat, end.lon)), mins: wanted.get(last.to), from: last.to, to: spot ? undefined : dest, label: spot ? end.label : undefined });
     found.push({ day, ymd, leave, arrive, legs: all, changes: rides - 1 });
   };
+  // A bus from a first stop: straight there, or off at a stop along it and on to another.
+  const take = (st, t) => {
+    const got = rideOf(t, ymd);
+    if (!got) return;
+    const [seq, i] = got;
+    const direct = rideTo(t, seq, i, wanted, true);
+    if (direct) done([direct], st);
+    if (direct && at.has(direct.to)) return;   // a bus straight to the stop (or as good): no change from it is worth a look
+    // One change: off at any later stop, on to another route's next buses from there.
+    const delay = carried(t);
+    const seen = new Set();
+    for (let k = i + 1; k < seq.length; k++) {
+      const [m, x] = seq[k];
+      if (seen.has(x)) break;   // a loop back round: nothing new after
+      seen.add(x);
+      const off = Math.max(t.min, m + delay);
+      // On to the next bus from this stop, or one a short walk away: the Transit Center's bays are stops of their own.
+      // The one that gets there soonest, walk and all (the first to reach any stop wanted can leave the rider half a
+      // mile off while another at the same minute goes to the door); none leaving after that arrival can beat it. Any
+      // bus of the day, not the next few: off Route 15 in Hyde Park at 10:18, the next 16 to Franklin is at 4:55.
+      let best = null;
+      const better = (at2, y, ride2) => { if (!best || at2 < best.at) best = { at: at2, y, ride2 }; };
+      for (const y of nearOf(x)) {
+        const after = off + y.walk + CHANGE;
+        if (isU(y.si)) {
+          for (const t2 of deps(y.si, ymd, after, live, cache)) {
+            if (best && t2.min >= best.at) break;
+            if (sameRide(t, t2)) continue;   // the same route again is the same ride
+            const got2 = rideOf(t2, ymd);
+            if (!got2) continue;
+            const ride2 = rideTo(t2, got2[0], got2[1], wanted, true);
+            if (ride2) better(ride2.off + wanted.get(ride2.to), y, ride2);
+          }
+          continue;
+        }
+        const list = legsFrom(y.si);
+        let lo = 0, hi = list.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid].t2.min < after) lo = mid + 1; else hi = mid; }
+        for (let j = lo; j < list.length; j++) {
+          const e = list[j];
+          if (best && e.t2.min >= best.at) break;
+          if (sameRide(t, e.t2)) continue;
+          better(e.at, y, e.ride2);
+        }
+      }
+      if (best) {
+        const legs = [{ kind: 'ride', t, from: t.si, to: x, on: t.min, off, n: k - i, ti: t.trip, r: t.r, u: !!t.u, stops: seq.slice(i, k + 1).map(y => y[1]) }];
+        if (best.y.walk) legs.push({ kind: 'walk', d: apartOf(x, best.y.si), mins: best.y.walk, from: x, to: best.y.si });
+        legs.push({ ...best.ride2 });
+        done(legs, st);
+      }
+    }
+  };
+  // The first few buses from each first stop, and the rest of the day's kept aside.
+  const later = [];
   for (const st of starts) {
     if (at.has(st.si)) continue;   // a first stop that is as good as the destination is a walk, said elsewhere
     let ts;
@@ -286,45 +367,25 @@ function search(starts, wanted, at, dest, ymd, min0, live, day, by, upto, from, 
       if (!upto.has(st.si)) continue;
       ts = deps(st.si, ymd, min0 + st.walk, live, cache, upto.get(st.si));
       if (ts.length < MAX_ON) upto.delete(st.si); else upto.set(st.si, ts[0].min - 1);
-    } else ts = deps(st.si, ymd, min0 + st.walk, live, cache);
-    for (const t of ts) {
-      const got = rideOf(t, ymd);
-      if (!got) continue;
-      const [seq, i] = got;
-      const direct = rideTo(t, seq, i, wanted, true);
-      if (direct) done([direct], st);
-      if (direct && at.has(direct.to)) continue;   // a bus straight to the stop (or as good): no change from it is worth a look
-      // One change: off at any later stop, on to another route's next buses from there.
-      const delay = carried(t);
-      const seen = new Set();
-      for (let k = i + 1; k < seq.length; k++) {
-        const [m, x] = seq[k];
-        if (seen.has(x)) break;   // a loop back round: nothing new after
-        seen.add(x);
-        const off = Math.max(t.min, m + delay);
-        // On to the next bus from this stop, or one a short walk away: the Transit Center's bays are stops of their own.
-        // The one that gets there soonest, walk and all (the first to reach any stop wanted can leave the rider half a
-        // mile off while another at the same minute goes to the door); none leaving after that arrival can beat it.
-        let best = null;
-        for (const y of nearOf(x)) {
-          for (const t2 of deps(y.si, ymd, off + y.walk + CHANGE, live, cache)) {
-            if (best && t2.min >= best.at) break;
-            if (sameRide(t, t2)) continue;   // the same route again is the same ride
-            const got2 = rideOf(t2, ymd);
-            if (!got2) continue;
-            const ride2 = rideTo(t2, got2[0], got2[1], wanted, true);
-            if (!ride2) continue;
-            const at2 = ride2.off + wanted.get(ride2.to);
-            if (!best || at2 < best.at) best = { at: at2, y, ride2 };
-          }
-        }
-        if (best) {
-          const legs = [{ kind: 'ride', t, from: t.si, to: x, on: t.min, off, n: k - i, ti: t.trip, r: t.r, u: !!t.u, stops: seq.slice(i, k + 1).map(y => y[1]) }];
-          if (best.y.walk) legs.push({ kind: 'walk', d: apartOf(x, best.y.si), mins: best.y.walk, from: x, to: best.y.si });
-          legs.push(best.ride2);
-          done(legs, st);
-        }
-      }
+    } else {
+      ts = deps(st.si, ymd, min0 + st.walk, live, cache);
+      if (!isU(st.si)) for (const t of dayRows(st.si, ymd, live, cache).filter(t => t.min >= min0 + st.walk).slice(ts.length)) later.push([t, st]);
+    }
+    for (const t of ts) take(st, t);
+  }
+  // Then the later buses, soonest first, up to the soonest arrival yet: one leaving after it can't get there sooner,
+  // and one before it may get there as soon, leaving later. From 1000 East 700 North to Franklin at 9 in the morning,
+  // the first few buses found only Route 15 at 9:59 and six hours in Hyde Park for the 16; the 16 itself goes from
+  // round the corner at 4:34, there as soon. And with nothing found among the first few (Route 2 from 1090 North 600
+  // East, the 16 not till the afternoon), the day's buses all, not next Monday's or 'no way'.
+  if (!upto && later.length) {
+    let soonest = found.reduce((m, p) => Math.min(m, p.arrive), Infinity);
+    later.sort((a, b) => a[0].min - b[0].min);
+    for (const [t, st] of later) {
+      if (t.min >= soonest) break;
+      const n = found.length;
+      take(st, t);
+      for (let k = n; k < found.length; k++) soonest = Math.min(soonest, found[k].arrive);
     }
   }
   // Only journeys no other beats on every count: leaving later, arriving sooner, walking less (the minutes on foot,
