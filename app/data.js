@@ -362,7 +362,8 @@ const addrWords = s => s.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).fil
 const phraseIn = (hay, needle) => hay.some((_, i) => needle.every((x, j) => hay[i + j] === x));
 function namedStops(a) {
   const words = (a.title || '') + '. ' + (a.text || '');
-  if (!/\b(closed|closure|missed|not (?:be )?servic|skip|temporar)/i.test(words)) return [];
+  // ('will not be able to service the stop at 950 South Main St', the Blue Loop's detour, 2026-10-15: missed)
+  if (!/\b(closed|closure|missed|not (?:be )?(?:able to )?servic|unable to servic|skip|temporar)/i.test(words)) return [];
   const hay = addrWords(words.split(/\b(?:please use|alternate|alternative|instead|use the stops?\b)/i)[0]);
   const out = [];
   for (const s of D.stops) { if (s.hub) continue; const n = addrWords(s.name); if (n.length >= 2 && phraseIn(hay, n)) out.push(s.id); }
