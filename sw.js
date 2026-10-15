@@ -3,9 +3,12 @@
 // The phone answers from what it keeps, never waiting on the network: the app
 // as this version installed it (a deploy is a new version, and the page offers
 // a reload), the data files as last fetched, each checked behind the page.
-const VERSION = 'cr-v449';
+const VERSION = 'cr-v450';
+// The app's page is './' alone: Cloudflare Pages answers './index.html' with a redirect to './', and an answer kept
+// from a redirect can't be given to a navigation (the browser fails it outright, and every page the app's stood in
+// for, /privacy, /index.html, failed so, online or not, once the app was installed).
 const SHELL = [
-  './', './index.html', './manifest.webmanifest', './css/app.css',
+  './', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js',
   './app/views/home.js', './app/views/stop.js', './app/views/hub.js', './app/views/about.js', './app/views/map.js', './app/views/ustop.js', './app/views/uroute.js', './app/views/routes.js', './app/views/stopwide.js', './app/geo.js', './app/usu.js', './app/rt.js', './app/pointer.js', './app/plan.js', './app/views/go.js', './app/views/find.js', './app/share.js', './app/places.js', './app/ink.js', './app/roads.js', './app/walknet.js',
   './vendor/qrcodegen.mjs', './vendor/maplibre-gl.mjs', './vendor/maplibre-gl-shared.mjs', './vendor/maplibre-gl-worker.mjs', './vendor/maplibre-gl.css', './vendor/basemaps.mjs',
@@ -33,6 +36,8 @@ self.addEventListener('message', e => {
   if (e.data === 'skip-waiting') self.skipWaiting();
   // The version this worker serves, for Settings: the one the page is running, not the newest on the phone.
   else if (e.data === 'version' && e.ports[0]) e.ports[0].postMessage(VERSION);
+  // The app back in view after a while (main.js): the timetable asked for again, as an open asks for it.
+  else if (e.data === 'check-data') e.waitUntil(caches.open(DATA_CACHE).then(c => Promise.all(NEWS.map(u => c.match(scope + u).then(hit => hit && refresh(c, new Request(scope + u)))))));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'cr-map' && k !== 'cr-assets' && k !== DATA_CACHE).map(k => caches.delete(k))))
@@ -54,20 +59,43 @@ self.addEventListener('fetch', e => {
   e.respondWith(shell(e.request));
 });
 
-/** The app itself, as this version installed it: all its files from one deploy. */
+/** The app itself, as this version installed it: all its files from one deploy. Its page, './' (index.html is the
+ *  same page); another page of the site (the privacy policy) from the network, kept as it's seen, the app's page in
+ *  its place offline where it never was. Every navigation had the app's page, the privacy policy too. */
 async function shell(req) {
   const c = await caches.open(VERSION);
-  const hit = await c.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? await c.match('./index.html') : null);
-  return hit || networkFirst(req);
+  if (req.mode === 'navigate') {
+    const path = req.url.slice(scope.length).split(/[?#]/)[0];
+    return (path === '' || path === 'index.html') && await c.match('./') || networkFirst(req);
+  }
+  return await c.match(req, { ignoreSearch: true }) || networkFirst(req);
 }
+
+// The timetable, and the stops out of it: a newer one in, the open pages are told (main.js takes it at once in an app
+// just opened, and offers it in one that's been open a while, as a new version). Kept for the next open alone, the
+// app opened on the Pumpkin Walk's first day ran the day before's timetable, without it, and one left open, for days.
+const NEWS = ['data/cvtd.json', 'data/gone-stops.json'];
+const sameFeed = (a, b) => a.replace(/"built":\s*"[^"]*"/, '') === b.replace(/"built":\s*"[^"]*"/, '');   // built nightly, most nights from the same feed
 
 /** A data file as last fetched, at once, and the network asked behind it; the network waited on only with nothing kept. */
 async function keptThenChecked(e) {
   const c = await caches.open(DATA_CACHE);
   const hit = await c.match(e.request, { ignoreSearch: true });
   if (!hit) return networkFirst(e.request, DATA_CACHE);
-  e.waitUntil(fetch(e.request, { cache: 'no-cache' }).then(res => res.ok ? c.put(e.request, res) : null).catch(() => {}));
+  e.waitUntil(refresh(c, e.request));
   return hit;
+}
+/** A data file fetched again and kept; the timetable's pages told when it's another. */
+async function refresh(c, req) {
+  try {
+    const res = await fetch(req, { cache: 'no-cache' });
+    if (!res.ok) return;
+    const path = req.url.slice(scope.length).split('?')[0];
+    if (!NEWS.includes(path)) return c.put(req, res);
+    const was = await c.match(req, { ignoreSearch: true }), text = await res.clone().text();
+    await c.put(req, res);
+    if (was && !sameFeed(await was.text(), text)) for (const w of await self.clients.matchAll({ type: 'window' })) w.postMessage({ type: 'data', file: path });
+  } catch { /* kept as it is */ }
 }
 
 async function cacheFirst(req, name) {
@@ -83,10 +111,10 @@ async function networkFirst(req, name = VERSION) {
   const c = await caches.open(name);
   try {
     const res = await fetch(req, { cache: 'no-cache' });
-    if (res.ok) c.put(req, res.clone());
+    if (res.ok && !res.redirected) c.put(req, res.clone());   // a redirect's answer can't be given to a navigation
     return res;
   } catch {
-    const hit = await c.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? await c.match('./index.html') : null);
+    const hit = await c.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? await c.match('./') : null);
     return hit || new Response('Offline', { status: 503 });
   }
 }

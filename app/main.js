@@ -79,6 +79,7 @@ function renderTabs() {
 /** A piece of the address as written: a link cut short mid-escape (%E0) is read as it stands, not thrown on. */
 const dec = s => { try { return decodeURIComponent(s); } catch { return s; } };
 let lastHash = null, stopOfMap = false;   // the address drawn last (the next new entry's `prev`); a stop up as the map's sheet
+let lastPrev = null, lastAt = -1;         // that entry's own `prev`, and its place in the history where the browser says (the Navigation API)
 
 function parse() {
   const h = (location.hash || '#/').slice(1);
@@ -165,7 +166,9 @@ function wireSwipeBack() {
     if (!claimed) return;
     side.style.transition = ''; side.style.transform = '';
     // Far enough: the page it goes back to is simply there. Not far enough: the panel is back where it was.
-    if (-dx > side.offsetWidth * 0.3 || (-dx > 30 && -dx / Math.max(dt, 1) > 0.5)) { if (history.length > 1) history.back(); else location.hash = '#/'; }
+    // Back only to a page of the app's own (each entry knows the one before it, render() below): opened from a search
+    // or a link in a chat, the tab's history goes on past the app, and the swipe left it for the page before.
+    if (-dx > side.offsetWidth * 0.3 || (-dx > 30 && -dx / Math.max(dt, 1) > 0.5)) { if (history.state && history.state.prev) history.back(); else location.hash = '#/'; }
   };
   side.addEventListener('touchend', end); side.addEventListener('touchcancel', end);
 }
@@ -198,8 +201,13 @@ export async function render(tick = false) {
   if (/^#\/route\//.test(location.hash)) history.replaceState(history.state, '', location.hash.replace(/^#\/route\//, '#/map/route/'));
   // Each entry in the history knows the address before it, stamped the first time it's drawn: a sheet put away steps
   // Back to the map it came from (ui.js closeTo) instead of adding the map again.
-  if (!history.state || !('prev' in history.state)) history.replaceState({ prev: lastHash }, '');
-  lastHash = location.hash || '#/';
+  // An address put in place of the one drawn last (location.replace, which leaves no state) is the same step, and keeps
+  // that one's: stamped with the address it replaced, a second stop tapped on the map and its sheet swiped away left
+  // the map twice in the history, the first Back doing nothing. In place is told by the entry's index where the browser
+  // has one; ui.js replaceTo keeps the state everywhere.
+  const at = window.navigation && navigation.currentEntry ? navigation.currentEntry.index : -1;
+  if (!history.state || !('prev' in history.state)) history.replaceState({ prev: at >= 0 && at === lastAt ? lastPrev : lastHash }, '');
+  lastHash = location.hash || '#/'; lastPrev = history.state.prev; lastAt = at;
   const { seg, q } = parse();
   // A stop opened from the map on a phone is the map with the stop as its sheet: the Map tab lit while it's up, not
   // Stops (from the Stops tab's list, Stops).
@@ -615,7 +623,13 @@ async function boot() {
     extras.then(() => loadWalkNet()).then(net => { if (net) render(); }).catch(() => {});
     if (!lightFirst()) await extras;
   } catch (e) {
-    side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and pull to refresh.</p></div>`;
+    // Nothing to show without it, and nothing to pull: the page doesn't scroll as a whole (overscroll is off, for the
+    // map). It said 'pull to refresh', and a first open on a weak signal sat there, an iPhone's home-screen app above
+    // all (it starts with nothing of Safari's). Try again, and again by itself when the phone's back online.
+    side.innerHTML = html`<div class="empty"><h2>Couldn't load the timetable</h2><p>${e.message}. Check the connection and try again.</p><button class="btn btn-primary" type="button" id="retry">Try again</button></div>`;
+    const again = () => { window.removeEventListener('online', again); side.innerHTML = html`<div class="empty"><p>Loading the timetable…</p></div>`; boot(); };
+    side.querySelector('#retry').onclick = again;
+    window.addEventListener('online', again);
     return;
   }
   wireHeader();
@@ -670,28 +684,55 @@ async function boot() {
     // to take over; and the app opened afresh with one waiting (the first seconds, nothing done yet) takes it at once.
     // The check runs on coming back to the app and hourly, since the browser's own only runs on a navigation.
     const opened = Date.now();
-    let reloading = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) location.reload(); });
-    const take = w => { reloading = true; w.postMessage('skip-waiting'); };
+    let reloading = false, controlled = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      const was = controlled; controlled = true;
+      if (reloading) return location.reload();
+      // Another window of the app took the update: this one's version is gone from the phone (sw.js keeps one), and
+      // what it loads from now on comes from the new one, half of each. Reloaded where it isn't being looked at, else
+      // offered; its own bar's Reload had told a worker already running to take over, and nothing came of it.
+      if (!was) return;   // the first worker, taking a page that had none: nothing changed under it
+      if (document.visibilityState !== 'visible') location.reload(); else updateBar();
+    });
+    const take = w => { reloading = true; if (w.state === 'installed') w.postMessage('skip-waiting'); else location.reload(); };
     const waiting = w => { if (!navigator.serviceWorker.controller) return; if (Date.now() - opened < 4000) take(w); else updateBar(() => take(w)); };
     if (reg.waiting) waiting(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;
       if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') waiting(w); });
     });
-    const check = () => reg.update().catch(() => {});
+    // And the timetable, asked for again once the app's been open a while (sw.js tells the page when it's another, as
+    // below): an app left open ran the one it was opened with, for days.
+    let asked = Date.now();
+    const askData = () => { const c = navigator.serviceWorker.controller; if (c && document.visibilityState === 'visible' && Date.now() - asked > 15 * 60e3) { asked = Date.now(); c.postMessage('check-data'); } };
+    const check = () => { reg.update().catch(() => {}); askData(); };
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
     setInterval(check, 3600e3);
   }).catch(() => {});
 }
-/** 'Cache Rider has updated', with a reload: once, above the tabs. */
+// A newer timetable in on the phone (sw.js): taken at once in an app just opened (its first seconds, nothing done yet,
+// the page drawn from the one kept before), else offered as a new version is. Kept for the next open alone, the app
+// opened on the Pumpkin Walk's first day ran the day before's. Once a minute at most by itself, lest a file that's new
+// every time reload the app over and over. Listened for from the start: a word sent before is lost.
+const pageAt = Date.now();
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (!e.data || e.data.type !== 'data') return;
+    let last = 0;
+    try { last = +sessionStorage.getItem('cr-news') || 0; } catch { /* storage refused: offered, not taken */ last = Date.now(); }
+    if (Date.now() - pageAt < 4000 && Date.now() - last > 60e3) { try { sessionStorage.setItem('cr-news', String(Date.now())); } catch { /* as above */ } location.reload(); }
+    else updateBar(() => location.reload(), 'A new timetable is ready');
+  });
+  if (navigator.serviceWorker.startMessages) navigator.serviceWorker.startMessages();
+}
 /** A new version is in, waiting: a strip in the layout, above the tabs (a wide screen's bottom edge), the page and
- *  the map drawn smaller to make room, so it covers nothing. Put away with its ×, it comes back with the next update. */
-function updateBar(go = () => location.reload()) {
+ *  the map drawn smaller to make room, so it covers nothing. Put away with its ×, it comes back with the next update.
+ *  A newer timetable is offered the same way. */
+function updateBar(go = () => location.reload(), say = 'A new version of Cache Rider is ready') {
   if (document.querySelector('.updatebar')) return;
   const bar = document.createElement('div');
   bar.className = 'updatebar'; bar.setAttribute('role', 'status');
-  bar.innerHTML = html`<span>A new version of Cache Rider is ready</span><button class="btn btn-primary" type="button" data-reload>Reload</button><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Not now">${icon('close', 20)}</button>`;
+  bar.innerHTML = html`<span>${say}</span><button class="btn btn-primary" type="button" data-reload>Reload</button><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Not now">${icon('close', 20)}</button>`;
   const fit = () => window.dispatchEvent(new Event('resize'));   // the map measures its new room
   bar.querySelector('[data-reload]').onclick = () => go();   // the waiting version told to take over; the page reloads when it has
   bar.querySelector('[data-close]').onclick = () => { bar.remove(); fit(); };

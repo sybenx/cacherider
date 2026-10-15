@@ -3,7 +3,7 @@
 import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, dayFrom, isGone } from '../time.js';
-import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName } from '../ui.js';
+import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName, replaceTo } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
 import { walkNetReady, spotOf, spotKey, atPath, climb, RISE, slope, walkSlope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE, crossingsOff } from '../geo.js';
@@ -29,7 +29,7 @@ function ends({ to, from, at }) {
 function fromOnly(at) {
   const name = at.label || 'the spot you picked', path = atPath(at), key = spotKey(at.lat, at.lon, at.label);
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
-  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="#/map/${path}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a></div>`];
+  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="#/map/${path}" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a></div>`];
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>From ${name}</h1></div>`);
   parts.push(html`<div class="ask"><button class="btn btn-primary btn-lg blueprint" id="go-home" type="button" data-from="${path}">${corners()}${icon('near', 20)}To where I am</button>
     <a class="btn btn-secondary btn-lg btn-block" href="#/map/to/${key}">${icon('map', 20)}To a spot on the map</a>
@@ -48,7 +48,7 @@ function headOf(to, e, at, t, clockNow = now()) {
   const back = spot ? `#/map/at/${d.lat.toFixed(5)},${d.lon.toFixed(5)}/${encodeURIComponent(d.label)}` : `#/stop/${d.id}`;
   const chosen = !!at || fromSi !== undefined;
   const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'Where you are';
-  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a>${spot ? placeStar({ lat: d.lat, lon: d.lon, label: d.label || name }, true) : ''}${shareButton(shareOf(name, chosen ? fromName : null, t))}</div>`];
+  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a>${spot ? placeStar({ lat: d.lat, lon: d.lon, label: d.label || name }, true) : ''}${shareButton(shareOf(name, chosen ? fromName : null, t))}</div>`];
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
   // The other way round: from where this goes to, to where it starts (where you are, as the spot the phone has).
@@ -673,23 +673,21 @@ function mount(el, _app, inCard = false) {
     kept = null;
     const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
     q.delete('plan'); if (c.getAttribute('aria-pressed') !== 'true') q.set('sort', 'walk'); else q.delete('sort');
-    location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
+    replaceTo(path + (q.toString() ? '?' + q.toString() : ''));   // in place, the entry's state kept (ui.js), as below
   };
   // Crosswalks, on or off: the rider's choice for every trip, the ways worked out again.
   for (const c of el.querySelectorAll('.chip[data-xing]')) c.onclick = () => {
     kept = null; setUseCrossings(c.getAttribute('aria-pressed') !== 'true');
     const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
     q.delete('plan');
-    location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
-    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    replaceTo(path + (q.toString() ? '?' + q.toString() : ''));
   };
   // Avoid steep, on or off: the rider's choice for every trip (Settings has it too), the ways worked out again.
   for (const c of el.querySelectorAll('.chip[data-steep]')) c.onclick = () => {
     kept = null; setAvoidSteep(c.getAttribute('aria-pressed') !== 'true');
     const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query);
     q.delete('plan');
-    location.replace(location.href.split('#')[0] + path + (q.toString() ? '?' + q.toString() : ''));
-    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    replaceTo(path + (q.toString() ? '?' + q.toString() : ''));
   };
   // Where I am: the phone asked for its fix now, and the directions from it (the time picked kept).
   const b = el.querySelector('#go-near');
@@ -697,7 +695,7 @@ function mount(el, _app, inCard = false) {
     if (!g) return;
     const [path, query = ''] = location.hash.split('?'), q = new URLSearchParams(query), seg = path.replace(/^#\//, '').split('/');
     q.delete('plan'); q.delete('sort');
-    location.replace(location.href.split('#')[0] + '#/go/' + seg[1] + (q.toString() ? '?' + q.toString() : ''));
+    replaceTo('#/go/' + seg[1] + (q.toString() ? '?' + q.toString() : ''));
   }, true);
   // From a spot to where the rider is: their fix is the end.
   const h = el.querySelector('#go-home');
@@ -715,10 +713,10 @@ function mount(el, _app, inCard = false) {
   if (set) set.onclick = () => {
     const d = el.querySelector('#go-date').value.replace(/-/g, ''), tm = el.querySelector('#go-time').value.replace(':', '');
     const by = pickBy ? 'a' : '';
-    if (/^\d{8}$/.test(d) && /^\d{4}$/.test(tm)) location.replace(location.href.split('#')[0] + hashWith(by + d + '-' + tm));
+    if (/^\d{8}$/.test(d) && /^\d{4}$/.test(tm)) replaceTo(hashWith(by + d + '-' + tm));
   };
   const nw = el.querySelector('#go-now');
-  if (nw) nw.onclick = () => location.replace(location.href.split('#')[0] + hashWith(null));
+  if (nw) nw.onclick = () => replaceTo(hashWith(null));
   // A way's row: that way drawn, in place (Back still leaves the directions). On a phone the map's card handles the tap.
   // The one already drawn, tapped again: its legs, brought into view (on a phone the map's card does it).
   const open = c => {
@@ -729,7 +727,7 @@ function mount(el, _app, inCard = false) {
       if (legs) box.scrollTop += legs.getBoundingClientRect().top - box.getBoundingClientRect().top - 8;
       return;
     }
-    if (location.hash !== c.dataset.go) location.replace(location.href.split('#')[0] + c.dataset.go);
+    if (location.hash !== c.dataset.go) replaceTo(c.dataset.go);
   };
   for (const c of el.querySelectorAll('.jrow[data-go]')) {
     if (!inCard) c.onclick = () => open(c);

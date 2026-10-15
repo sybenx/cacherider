@@ -15,7 +15,12 @@ export const raw = s => new Raw(s);
 export function closeTo(h) {
   const s = history.state;
   if (s && s.prev === h) { history.back(); return; }
-  history.replaceState(s, '', h); window.dispatchEvent(new HashChangeEvent('hashchange'));
+  replaceTo(h);
+}
+/** An address in place of this one, the same step in the history: its state kept (the address before it, which
+ *  closeTo goes by). location.replace leaves none, and the entry was stamped with the address it replaced. */
+export function replaceTo(h) {
+  history.replaceState(history.state, '', h); window.dispatchEvent(new HashChangeEvent('hashchange'));
 }
 html.raw = raw;
 

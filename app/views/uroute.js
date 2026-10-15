@@ -1,5 +1,5 @@
 // A shuttle route: its stops in loop order, each with the nearest bus.
-import { html, icon } from '../ui.js';
+import { html, icon, esc } from '../ui.js';
 import { U, estimate, chip, liveTag, isStale, hasData, lastSeen, live, notice, offNote, hours, untilWords } from '../usu.js';
 
 export function render({ id }) {
@@ -7,13 +7,13 @@ export function render({ id }) {
   if (ri === undefined) return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/">${icon('back', 22)}Stops</a></div><div class="empty"><h2>No such route</h2></div>`, title: 'Shuttle' };
   const r = U.routes[ri];
   const buses = live.buses.filter(b => b.ri === ri);
-  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a></div>`];
+  const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a></div>`];
   parts.push(html`<div class="head"><span class="eyebrow">${U.name}</span><div style="display:flex;align-items:center;gap:12px">${chip(ri, 44)}<div><h1 style="font-size:1.875rem">${r.name}</h1><div class="muted" style="font-size:0.875rem">${r.stops.length} stops · ${hasData() ? (buses.length ? buses.length + (buses.length === 1 ? ' bus' : ' buses') + ' on the road' + (untilWords(ri) ? ' · ' + untilWords(ri) : '') : 'no bus on the road right now') : 'finding buses…'}</div>${hours(ri) ? html`<div class="muted" style="font-size:0.8438rem">Usually ${hours(ri)}</div>` : ''}</div></div></div>`);
   parts.push(notice());
   const rows = r.stops.map(si => {
     const s = U.stops[si], e = hasData() ? estimate(si, ri) : null;
     const end = e ? `<div class="end"><span class="t t-22">${e.here ? 'Here' : e.stops === null ? e.min + ' min' : e.stops + (e.stops === 1 ? ' stop' : ' stops')}</span><span class="rel">${isStale() ? 'at ' + lastSeen() : e.here ? 'now' : 'about ' + e.min + ' min'}</span></div>` : `<div class="end"><span class="rel">${hasData() ? '—' : ''}</span></div>`;
-    return html.raw(`<a class="row" href="#/usu/${s.id}"><span class="usq" style="background:${r.color}"></span><div class="mid"><span class="name">${s.name}</span>${e ? liveTag(isStale() ? 'Last seen ' + lastSeen() : 'Live').s : ''}</div>${end}</a>`);
+    return html.raw(`<a class="row" href="#/usu/${esc(s.id)}"><span class="usq" style="background:${esc(r.color)}"></span><div class="mid"><span class="name">${esc(s.name)}</span>${e ? liveTag(isStale() ? 'Last seen ' + lastSeen() : 'Live').s : ''}</div>${end}</a>`);
   });
   parts.push(html`<div class="list">${rows}</div>`, offNote([ri]));
   if (r.traced) parts.push(html`<div class="fine">USU publishes no drawn line for this route; the one on the map is traced along the streets between its stops, in order.</div>`);

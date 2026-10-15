@@ -121,7 +121,10 @@ function stopFollowing() {
   if (!pt.following) return;
   pt.following = false;
   if (pt.watch !== null && navigator.geolocation) navigator.geolocation.clearWatch(pt.watch);
-  pt.watch = null;
+  // The steps' last fix let go with them: the app's own (app.geo) is where the rider is from here on. Kept, every arrow
+  // and distance went on from where following stopped (the phone put away, the rider walked on, and back in the app
+  // the stop 70 ft off said 0.3 mi).
+  pt.watch = null; pt.fix = null;
   if (document.querySelector('[data-point]')) paint();
 }
 

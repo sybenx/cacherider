@@ -6,7 +6,7 @@ import { html, icon, badge, routeName } from '../ui.js';
 import { U, chip, live, hasData, hours, notice, offNote } from '../usu.js';
 
 export function render(_, clockNow) {
-  const back = html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Stops</a></div>`;
+  const back = html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Stops</a></div>`;
   const desc = r => (r.desc || '').replace(/^.*? - /, '').replace(/,\s*/g, ' · ');
   const rows = D.routes.map((r, i) => html`<a class="row" href="#/map/route/${encodeURIComponent(r.short)}">${badge(i, 36)}<div class="mid"><span class="name">${routeName(i, false)}</span>${desc(r) ? html`<span class="sub">${desc(r)}</span>` : ''}</div><span class="muted">${icon('fwd', 20)}</span></a>`);
   const shuttle = U ? U.routes.map((r, ri) => ({ r, ri })).filter(x => x.r.stops.length).map(({ r, ri }) => {

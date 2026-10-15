@@ -18,11 +18,13 @@ function parts(date) {
 }
 
 /** The agency's wall clock right now: { ymd: '20260924', dow: 0-6, min, sec }. Worked out once a second: the planner
- *  asks thousands of times in a search (every departure weighed asks), and Intl's formatting was half its time. */
+ *  asks thousands of times in a search (every departure weighed asks), and Intl's formatting was half its time. The
+ *  same second of the clock, not a second since: kept a whole second from wherever it was asked, the Center's
+ *  countdown read the second before now and then, showed 19:56 twice and skipped 19:55. */
 let nowAt = 0, nowWas = null;
 export function now(date) {
   const own = date === undefined, ms = own ? Date.now() : date.getTime();
-  if (own && nowWas && ms - nowAt < 1000 && ms >= nowAt) return nowWas;
+  if (own && nowWas && Math.floor(ms / 1000) === Math.floor(nowAt / 1000)) return nowWas;
   const p = parts(own ? new Date(ms) : date);
   const c = {
     ymd: p.year + p.month + p.day,

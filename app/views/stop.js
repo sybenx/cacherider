@@ -2,7 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom, isGone } from '../time.js';
-import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow } from '../ui.js';
+import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow, replaceTo } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -19,7 +19,9 @@ export function render({ id, full, run, on }, clockNow) {
   remember(s.id);
   const parts = [];
   const sv = isSaved(s.id);
-  parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.length>1){history.back();return false}">${icon('back', 22)}Back</a>
+  // Back to the page before when it's the app's own (each entry knows it, main.js), else home: opened from a search or
+  // a link in a chat, the tab's history went on past the app, and Back left it.
+  parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a>
     ${shareButton({ url: siteLink('stop/' + s.id), title: s.name, lines: [`Stop ${s.code || s.id}${s.town && s.town !== 'Logan' ? ' · ' + s.town : ''}`, 'Its next buses, live when they report'] })}
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
   const sd = side(si);
@@ -215,8 +217,8 @@ function mount(el) {
       location.hash = at(b.dataset.trip, b.dataset.on);
     };
     wireSheet(document.getElementById('runsheet'), {
-      swap: (trip, on) => location.replace(at(trip, on)),
-      close: () => { if (pushedRun) { pushedRun = false; history.back(); } else location.replace(`#/stop/${page.dataset.stop}`); },
+      swap: (trip, on) => replaceTo(at(trip, on)),   // in place, the entry's state kept (ui.js)
+      close: () => { if (pushedRun) { pushedRun = false; history.back(); } else replaceTo(`#/stop/${page.dataset.stop}`); },
     });
   }
   const b = el.querySelector('#save');
