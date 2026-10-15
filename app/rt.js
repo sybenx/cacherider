@@ -11,6 +11,7 @@ const POLL = 5000, STALE = 90000;   // each bus reports every 3 to 8 seconds; th
  *  seconds) and it's grey, its place an old one, counted nowhere; ten, and it's off the map. Bus 1168 was drawn in
  *  Route 12's colour 41 minutes after its last word. */
 const QUIET = 180, GONE = 600;
+const FROZEN = 300;   // seconds the feed's own time may lag the relay's before nothing in it is taken as live
 
 export const rt = { at: 0, t: 0, buses: [], parked: [], trips: {}, doubt: new Set(), loopMode: {}, wanted: false, fetching: false, error: null };
 /** A bus's route as last seen on a trip: a bus that has finished (logged off its trip, on its way in) still reports,
@@ -81,6 +82,10 @@ async function tick(force) {
   try {
     const j = await (await fetch(RT_URL, { cache: 'no-store', signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined })).json();   // a relay that hangs would stall the polling, not just this poll
     if (j.error) throw new Error(j.error);
+    // A feed that has stopped moving still answers, every report in it as old as the feed: a bus there by the feed's
+    // own clock, an hour after it last spoke. The relay says its own time (now) beside the feed's (t), so the age is
+    // the relay's to tell, not the phone's clock: an answer FROZEN behind is no news, as an unreachable relay is.
+    if (j.now && j.now - j.t > FROZEN) throw new Error('the feed has stopped');
     index();
     const trips = {};
     for (const [id, u] of Object.entries(j.trips || {})) {
@@ -106,12 +111,13 @@ async function tick(force) {
     }
     const buses = [], parked = [];
     for (const b of j.buses || []) {
+      if (!Number.isFinite(b.lat) || !Number.isFinite(b.lon)) continue;   // a report without a place is no bus on the map
       const ti = tripIdx.get(b.trip);
       let info = ti !== undefined ? tripInfo[ti] : null;
       let ri = info ? info.r : undefined;
       if (ri === undefined && b.route) ri = D.routeByShort[b.route];   // a detoured bus, from the tracker site: a route, no trip
-      if (ri === undefined) {   // a trip the timetable doesn't know: the route is the id's prefix
-        const m = /^([A-Z]*\d+)_/.exec(b.trip || '');
+      if (ri === undefined) {   // a trip the timetable doesn't know: the route is the id's prefix, as the relay reads it
+        const m = /^([A-Z]+|\d+)/.exec(b.trip || '');   // 2_1400 → 2, 12S_1000_O → 12, B1_1058 → B (not B1, no route)
         if (m) ri = D.routeByShort[m[1]] ?? D.routes.findIndex(r => r.short.startsWith(m[1] + ' '));
         if (ri === -1) ri = undefined;
       }

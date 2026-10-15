@@ -51,9 +51,10 @@ def text(ts):
 
 def alert(b, eid):
     a = {'id': eid, 'title': '', 'text': '', 'url': '', 'cause': '', 'effect': '', 'start': None, 'end': None, 'routeIds': [], 'stops': []}
+    periods = []
     for f, v in fields(b):
         if f == 1:
-            p = dict(fields(v)); a['start'] = p.get(1, a['start']); a['end'] = p.get(2, a['end'])
+            p = dict(fields(v)); periods.append((p.get(1), p.get(2)))
         elif f == 5:
             e = dict(fields(v))
             if 2 in e: a['routeIds'].append(e[2].decode())
@@ -63,6 +64,12 @@ def alert(b, eid):
         elif f == 8: a['url'] = text(v)
         elif f == 10: a['title'] = text(v)
         elif f == 11: a['text'] = text(v)
+    # An alert can name more than one active period (a stop closed on the 19th, and again on the 21st), and the app
+    # reads one. The earliest not yet over is kept, so the closure is in force on the 19th; this runs hourly, so the
+    # next period takes over once that one ends. (Each period overwrote the one before, and the 19th went unclosed.)
+    if periods:
+        ahead = [p for p in periods if p[1] is None or p[1] >= time.time()]
+        a['start'], a['end'] = min(ahead, key=lambda p: p[0] or 0) if ahead else periods[-1]
     a['routeIds'] = sorted(set(a['routeIds'])); a['stops'] = sorted(set(a['stops']))
     return a
 

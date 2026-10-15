@@ -9,8 +9,11 @@
 //     them, minutes after they're posted (the GTFS-realtime alerts feed lags them, and misses some).
 // Decoded here with a plain protobuf reader (the schema is small and fixed),
 // so the app needs no protobuf library and gets a few kilobytes, not fifty.
-// A bus off its scheduled trips (a detour) isn't in GTFS-realtime at all, so for
-// a route the feed has no bus on, the tracker site's own API fills in positions.
+// A detoured trip comes in the feed twice (see decode()), and a bus the feed
+// has on no trip at all is filled in from the tracker site's own API, for a
+// route the feed has no bus on.
+// Every answer carries `now`, the relay's clock, beside `t`, the feed's: a feed
+// that has stopped moving shows its age to a client without trusting its clock.
 
 import { watchStart, watchStep, watchEnd, detoursJSON, inService } from './detours.js';
 
@@ -65,20 +68,25 @@ export default {
 // minute), each the feed's buses and the tracker's (a detoured bus is only on the tracker), as one row. Nothing
 // written while no bus is out; rows older than fourteen days put away once an hour.
 const SAMPLES = 3, EVERY = 20000, KEEP = 14 * 86400;
+// A run's last sample is skipped past this, so a slow feed can't run it into the next minute's: two runs at once
+// would each read the watch's state and write it back, and the later would undo the earlier.
+const RUN_FOR = 50000;
 async function track(env) {
+  const began = Date.now();
   let W = null;
   try { W = await watchStart(env); } catch (e) { /* the samples still go in */ }
   // Nothing running by the timetable (every route out of its hours): the feed not asked, nothing written.
   if (W && !W.L.anyInHours(Date.now())) return;
   for (let i = 0; i < SAMPLES; i++) {
     if (i) await new Promise(r => setTimeout(r, EVERY));
+    if (Date.now() - began > RUN_FOR) break;
     try {
       const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
       const out = decode(vp, tu);
       try { await fillIn(out, false); } catch (e) { /* the feed's own buses */ }
       if (!out.buses.length) continue;
       const t = Math.floor(Date.now() / 1000);
-      const rows = out.buses.map(b => { const key = b.route || shortOf(b.trip) || ''; return [b.label || b.id, b.trip || '', key, b.lat, b.lon, b.bearing, b.speed, b.ts, W ? +inService(W, out, b, key, t) : 1]; });
+      const rows = out.buses.map(b => { const key = keyOf(b.route) || shortOf(b.trip) || ''; return [b.label || b.id, b.trip || '', key, b.lat, b.lon, b.bearing, b.speed, b.ts, W ? +inService(W, out, b, key, t) : 1]; });
       await env.TRACKS.prepare('INSERT OR REPLACE INTO samples (t, buses) VALUES (?, ?)').bind(t, JSON.stringify(rows)).run();
       if (W) watchStep(W, t, rows);
     } catch (e) { /* a sample missed */ }
@@ -132,11 +140,14 @@ function atStops(out, only) {
   }
   // A bus the tracker site fills in (a detour, off the feed's trips) carries its route as a fifth field: it's on
   // the road for that route, not between trips. One off both is logged in and off a trip: pulling in, at night.
-  return { t: out.t, trips, at: out.buses.map(b => b.src === 'rtpi' ? [b.lat, b.lon, b.ts, b.trip, b.route] : [b.lat, b.lon, b.ts, b.trip]) };
+  return { t: out.t, now: out.now, trips, at: out.buses.map(b => b.src === 'rtpi' ? [b.lat, b.lon, b.ts, b.trip, b.route] : [b.lat, b.lon, b.ts, b.trip]) };
 }
 
+// Upstream asked with a limit: a feed that hangs would hold a rider's poll past the app's own eight seconds, and
+// stretch a minute's tracking run into the next one's.
+const FEED_WAIT = 7000, RTPI_WAIT = 4000;   // under the app's own eight-second wait
 async function feed(name) {
-  const r = await fetch(UPSTREAM + name, { headers: UA, cf: { cacheTtl: TTL, cacheEverything: true } });
+  const r = await fetch(UPSTREAM + name, { headers: UA, cf: { cacheTtl: TTL, cacheEverything: true }, signal: AbortSignal.timeout(FEED_WAIT) });
   if (!r.ok) throw new Error(name + ' ' + r.status);
   return new Uint8Array(await r.arrayBuffer());
 }
@@ -145,16 +156,19 @@ async function feed(name) {
 // asked about those routes alone, and when the feed has no buses at all (nothing is running) only if
 // evenEmpty, for a few-stops answer.
 async function rtpi(path, ttl) {
-  const r = await fetch(RTPI + encodeURIComponent(path), { headers: UA, cf: { cacheTtl: ttl, cacheEverything: true } });
+  const r = await fetch(RTPI + encodeURIComponent(path), { headers: UA, cf: { cacheTtl: ttl, cacheEverything: true }, signal: AbortSignal.timeout(RTPI_WAIT) });
   if (!r.ok) throw new Error('rtpi ' + r.status);
   return r.json();
 }
 const shortOf = trip => { const m = /^([A-Z]+|\d+)/.exec(trip || ''); return m ? m[1] : null; };   // 2_1400 → 2, B1_1329 → B
+// A route as the trip ids and the route lines name it: the tracker site's '16 AM' and '16 PM' are 16 and 16, and
+// 'Pumpkin Walk' Pumpkin (tools/reduce.py's keys for cvtd-shapes.json, which the detour watch reads).
+const keyOf = short => (short || '').split(' ')[0];
 async function fillIn(out, evenEmpty) {
   if (!out.buses.length && !evenEmpty) return;
   const covered = new Set(out.buses.map(b => shortOf(b.trip)));
   const labels = new Set(out.buses.map(b => b.label || b.id));
-  const routes = (await rtpi('routes', 86400)).filter(r => r.shortName && !covered.has(r.shortName));
+  const routes = (await rtpi('routes', 86400)).filter(r => r.shortName && !covered.has(keyOf(r.shortName)));
   const lists = await Promise.allSettled(routes.map(r => rtpi('routes/' + r.id + '/vehicles', 30)));
   const now = Date.now();
   lists.forEach((l, i) => {
@@ -223,12 +237,21 @@ function decode(vp, tu) {
       occ: get(vf, 9),
     });
   }
+  // A detoured trip comes twice. As itself, by its trip_id, it holds only the stops after the way round rejoins its
+  // route, numbered again from nought; as the detour's replacement (GTFS-realtime TripModifications), with no trip_id
+  // but modified_trip (TripDescriptor 7) naming it in affected_trip_id (7.2), it holds every stop still to come, the
+  // way round's own included, numbered through. The replacement is the one kept: with only the first, the stops
+  // before the rejoin read as passed, a Blue Loop bus three minutes off its next stop 'gone' (2026-10-15).
+  const replaced = new Set();
   for (const ent of all(tmsg, 2)) {
     const u = get(fields(ent), 3); if (!u) continue;
     const uf = fields(u);
     const trip = fields(get(uf, 1) || new Uint8Array()), veh = fields(get(uf, 3) || new Uint8Array());
-    const id = get(trip, 1) !== undefined ? str(get(trip, 1)) : null;
-    if (!id) continue;
+    const own = get(trip, 1) !== undefined ? str(get(trip, 1)) : null;
+    const mod = own ? null : fields(get(trip, 7) || new Uint8Array());
+    const id = own || (mod && get(mod, 2) !== undefined ? str(get(mod, 2)) : null);
+    if (!id || (own && replaced.has(id))) continue;
+    if (mod) replaced.add(id);
     const cancelled = get(trip, 4) === 3;   // the trip's schedule_relationship: CANCELED
     const stops = [];
     for (const s of all(uf, 2)) {
@@ -244,6 +267,7 @@ function decode(vp, tu) {
     out.trips[id] = { v: get(veh, 1) !== undefined ? str(get(veh, 1)) : '', ts: get(uf, 4) || 0, s: stops };
     if (cancelled) out.trips[id].c = 1;   // a run that isn't coming: no stops to cut it to
   }
-  if (!out.t) out.t = out.buses.reduce((m, b) => Math.max(m, b.ts || 0), 0) || Math.floor(Date.now() / 1000);
+  out.now = Math.floor(Date.now() / 1000);
+  if (!out.t) out.t = out.buses.reduce((m, b) => Math.max(m, b.ts || 0), 0) || out.now;
   return out;
 }

@@ -106,8 +106,10 @@ def main():
     # Each bus's track: (t, key, xy, metres off, shape, along)
     tracks = defaultdict(list)
     for r in rows:
-        for label, trip, key, lat, lon, bearing, speed, ts in json.loads(r['buses']):
-            if key not in keys: continue
+        # The relay appended an in-service flag (worker/src/index.js) after this was written: [.., ts, live]. A bus
+        # out of service (to the yard, between runs) makes no detour; rows from before the flag have none, and count.
+        for label, trip, key, lat, lon, bearing, speed, ts, *live in json.loads(r['buses']):
+            if key not in keys or (live and not live[0]): continue
             p = flat.xy(lat, lon)
             d, si, m = L.near(p, key)
             if math.dist(p, H) <= HUB_R: d = 0

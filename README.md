@@ -69,16 +69,19 @@ to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
   updates, by way of `worker/`, a Cloudflare Worker at live.cacherider.com:
   the tracker refuses cross-origin requests, so the Worker fetches the two
   feeds, decodes the protobuf to a few kilobytes of JSON and caches it at the
-  edge for ten seconds. `app/rt.js` polls it every 15 s on live screens; a
+  edge for five seconds. `app/rt.js` polls it every 5 s on live screens; a
   departure the feed knows shows its scheduled time crossed out beside the
   estimate, and a Live tag with the late/early word (never early at the
   Transit Center, where routes lay over; no word at all for the Green and
   Blue Loops, which run to their headway), a bus that has already been drops
   out, and Connect buses
-  ride the map beside the shuttle. A detoured bus is off its scheduled trips
-  and missing from GTFS-realtime, so for a route the feed has no bus on the
-  Worker asks the tracker site's own API (`/api/rtpi`) for positions: on the
-  map, no stop times. Each departure row carries its trip index
+  ride the map beside the shuttle. A detoured trip comes in the feed twice,
+  as itself with only the stops after the detour rejoins and as the detour's
+  replacement (GTFS-realtime TripModifications) with every stop to come; the
+  Worker keeps the replacement. A bus the feed has on no trip at all is filled
+  in from the tracker site's own API (`/api/rtpi`), for a route the feed has
+  no bus on: on the map, no stop times. A feed that stops moving is caught by
+  the Worker's own clock, sent with every answer. Each departure row carries its trip index
   (`trips` in `data/cvtd.json`) to match the feed. Deploy with
   `wrangler deploy` from `worker/`.
 - **Android app** — for phones without Chrome (GrapheneOS and the like), a
