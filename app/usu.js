@@ -2,7 +2,7 @@
 // stops and loops come from data/usu.json (snapshotted nightly); the buses
 // from the Passio GO feed, polled by the phone while a live screen is open.
 // Minutes are estimated from a bus's position along its loop.
-import { BASE, D, distance } from './data.js';
+import { BASE, D, distance, bearing } from './data.js';
 import { esc, raw, icon } from './ui.js';
 import { metres, now, dayFrom, clockShort, clockText, DAY_NAMES } from './time.js';
 
@@ -58,6 +58,25 @@ function along(r, lat, lon) {
   }
   return best;
 }
+/** Where a bus sits along its loop, by its heading too. The 8th East and Innovation Campus Expresses go out and
+ *  back over the same road, so the nearest vertex can be the other way's: a bus pulling up to Oakridge Apartments,
+ *  on the way back, was placed on the way out and read as two stops and five minutes off. Of the vertices about as
+ *  near as the nearest, the one whose way runs as the bus is heading; with no heading, or none within a right
+ *  angle of it, the nearest. */
+const SAME_PLACE = 25;   // metres: vertices this much further than the nearest are still where the bus might be
+function alongBus(r, lat, lon, course) {
+  const near = along(r, lat, lon);
+  if (!Number.isFinite(course)) return near;
+  let best = null;
+  for (let i = 0; i + 1 < r.shape.length; i++) {
+    const d = distance(lat, lon, r.shape[i][1], r.shape[i][0]);
+    if (d > near.d + SAME_PLACE) continue;
+    const way = bearing(r.shape[i][1], r.shape[i][0], r.shape[i + 1][1], r.shape[i + 1][0]);
+    const off = Math.abs(((way - course) % 360 + 540) % 360 - 180);
+    if (!best || off < best.off || (off === best.off && d < best.d)) best = { d, i, along: r.cum[i], off };
+  }
+  return best && best.off < 90 ? best : near;
+}
 
 // ---- live
 export const live = { buses: [], at: 0, feedTime: '', error: null, wanted: false, fetching: false };
@@ -87,7 +106,9 @@ async function tick(force) {
       const ri = U.routeById[String(b.routeId)];
       if (ri === undefined || b.outOfService === 1 || b.outdated === 1) continue;
       const lat = +b.latitude, lon = +b.longitude, rt = U.routes[ri];
-      const a = rt.shape.length ? along(rt, lat, lon) : { along: 0, d: 0 };
+      // A report without a place is no bus: one without its longitude, as a NaN, stopped every bus on the map moving.
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      const a = rt.shape.length ? alongBus(rt, lat, lon, b.calculatedCourse === undefined || b.calculatedCourse === null || b.calculatedCourse === '' ? NaN : +b.calculatedCourse) : { along: 0, d: 0 };
       buses.push({ id: String(b.deviceId), name: b.busName || b.bus, ri, lat, lon, course: +b.calculatedCourse || 0, pax: +b.paxLoad || 0, cap: +b.totalCap || 0, along: a.along, off: a.d, created: b.created });
     }
     live.buses = buses; live.at = Date.now(); live.error = null;
