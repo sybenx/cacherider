@@ -576,15 +576,24 @@ test('directions from out of a walk of any stop, on a phone: swiped down, the ca
 test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts', async ({ page }) => {
   // The real feed's, whatever the date: the page stands with a season or without (a route gone from the timetable says
   // so); while one is on, its tab is there and lit on its page, its line's two stops each with their next, its nights
-  // listed, and a stop of it opens. On a phone the card rests at the two stops' next and a tap raises it to the line.
+  // listed, and a stop of it opens. On a phone it opens raised, its title at the top and the countdowns it rests at
+  // scrolled off; 'See the route on the map' lowers it to them, and a tap on them raises it again. The link sits below
+  // the far stop's next times, not over them (the line was a fixed 300 px, its far stop's kicker on two lines).
   await open(page, '#/pumpkin');
   await expect(page.getByRole('heading', { name: 'Pumpkin Walk' })).toBeAttached();
   const tab = page.locator('#tabs a[href="#/pumpkin"], #topnav a[href="#/pumpkin"]').filter({ visible: true });
   if (await tab.count()) {
     await expect(tab.first()).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('.pk-line .pk-lstop')).toHaveCount(2);
+    const link = page.locator('.pk-maplink').filter({ visible: true }), then = page.locator('.pk-lstop.foot .pk-lthen').filter({ visible: true });
+    if (await link.count() && await then.count())
+      expect((await link.boundingBox()).y).toBeGreaterThanOrEqual((await then.boundingBox()).y + (await then.boundingBox()).height - 1);
     const fold = page.locator('#mapcard .pk-fold');
-    if (await fold.isVisible()) {
+    if (await fold.count() && await fold.evaluate(f => getComputedStyle(f).display !== 'none')) {
+      await expect(page.locator('#mapcard .pk-title')).toBeInViewport();
+      await expect(fold).not.toBeInViewport({ ratio: 0.1 });   // (its last pixel or two under the search bar)
+      await link.click();
+      await expect(fold).toBeInViewport();
       await expect(fold.locator('.pk-fcol')).toHaveCount(2);
       await fold.click();
       await expect(page.locator('#mapcard .pk-title')).toBeInViewport();

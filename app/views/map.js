@@ -2920,7 +2920,10 @@ function pageSheet(page, app, fresh) {
     card.classList.remove('peek'); delete card.dataset.tall;
     if (!again) { sheetFolded = false; card.scrollTop = 0; }
     card.classList.add('open');
-    if (card.dataset.opening === page.key || !again) { sheetPlace(card); if (!again) setTimeout(() => { if (card.dataset.opening === page.key && !sheetFolded) sheetPlace(card); }, 400); }
+    // A page that opens raised (page.raise, its head's selector: the Pumpkin Walk's) is scrolled up to it each time the
+    // card is placed, until the rider's finger is on it.
+    const rest = () => { sheetPlace(card); const h = page.raise && card.dataset.opening === page.key && card.querySelector(page.raise); if (h) card.scrollTop += h.getBoundingClientRect().top - card.getBoundingClientRect().top; };
+    if (card.dataset.opening === page.key || !again) { rest(); if (!again) setTimeout(() => { if (card.dataset.opening === page.key && !sheetFolded) rest(); }, 400); }
     return;
   }
   if (card.dataset.opening === page.key) { openingPeek(card); card.classList.add('peek'); card.dataset.tall = '1'; if (!again) setTimeout(() => { if (card.dataset.opening === page.key) openingPeek(card); }, 400); }
@@ -4080,7 +4083,10 @@ async function drawRuns() {
 function placeTimes() {
   if (!rtBase || !map.getSource('rtimes')) return;
   rtAt = map.getZoom().toFixed(2) + '/' + map.getBearing().toFixed(1);
-  const turn = map.getBearing(), pts = [];
+  // (pad: the panel beside it; vine: the Pumpkin Walk's up the map's sides while it's up, views/pumpkin.js)
+  const turn = map.getBearing(), pts = [], cv = map.getContainer(), rm = room(), pp = pad();
+  const vine = document.querySelector('#body.pk-on #pk-deco .pk-edge')?.getBoundingClientRect().width || 0;
+  const clear = { left: rm.left + pp.left + vine, right: cv.clientWidth - rm.right - pp.right - vine, top: rm.top, bottom: cv.clientHeight - rm.bottom };
   for (const line of rtBase.lines) {
     let a = null;
     for (const ll of line) {
@@ -4107,7 +4113,11 @@ function placeTimes() {
     let gx = 0, gy = 0;
     for (let i = 0; i < pts.length; i += 2) { const dx = pts[i] - p.x, dy = pts[i + 1] - p.y; if (dx * dx + dy * dy < 90000) { gx += dx; gy += dy; } }
     const g = Math.hypot(gx, gy) || 1;
-    const score = k => { const [x0, x1, y0, y1] = box[k], m = 40; let n = 0;
+    // A spot running off the map left clear (the screen's edge, the search bar, the card) counts against it, short of
+    // what the route under it counts, so a time faces the way it can be read: '6:00 · starts here' off Greenville, the
+    // Pumpkin Walk's west corner, ran off the screen's left edge. Never enough to make a time wait: panned to, it's
+    // there (a pan doesn't place them again).
+    const score = k => { const [x0, x1, y0, y1] = box[k], m = 40; let n = x0 < clear.left || x1 > clear.right || y0 < clear.top || y1 > clear.bottom ? 400 : 0;
       for (let i = 0; i < pts.length; i += 2) { const x = pts[i], y = pts[i + 1];
         if (x > x0 && x < x1 && y > y0 && y < y1) n += 1000; else if (x > x0 - m && x < x1 + m && y > y0 - m && y < y1 + m) n++; }
       const cx = (x0 + x1) / 2 - p.x, cy = (y0 + y1) / 2 - p.y;

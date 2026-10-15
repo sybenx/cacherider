@@ -206,6 +206,9 @@ export function render(_, clockNow) {
     // the rider's fix, for the nearest stop, as the home page reads it; the map's frame of vines, put in once; and on a
     // phone, the card's resting countdowns raise it to the line, and 'See the route on the map' lowers it again
     mount: (el, app) => { if (app) window.__app = app; frameMap(); wire(el); },
+    // On a phone it opens raised (map.js pageSheet), the walk, its stops and their times first, the map a swipe down:
+    // the user's choice, 2026-10-15, at its resting height the map most of the screen and the page a strip of two times
+    raise: '.pk-headx',
   };
 }
 

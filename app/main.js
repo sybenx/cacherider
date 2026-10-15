@@ -325,7 +325,7 @@ export async function render(tick = false) {
       journey: goMap ? goJ : view && view.journey || null,   // a way from the directions page, drawn
       // A search in the panel beside the map: its first few stops ringed on the map, and its places' spots.
       searchMarks: isDesktop() && name === 'search' && q.q ? searchMarksOf(side) : null,
-      page: stopMap ? { key: [name, seg[1], seg[2]].filter(Boolean).join('/'), html: String(view.html), mount: view.mount } : null,   // a stop's page, the map's sheet
+      page: stopMap ? { key: [name, seg[1], seg[2]].filter(Boolean).join('/'), html: String(view.html), mount: view.mount, raise: view.raise } : null,   // a stop's page, the map's sheet
     }, app, clockNow);
   }
   if (!(mapOpen || isDesktop()) && app.mapMod && app.mapMod.away) app.mapMod.away();   // the map behind a phone's page: its next address is new to it

@@ -1323,11 +1323,13 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .pk-title { font: 600 3rem/1 var(--font-heading); letter-spacing: -.01em; margin-top: 6px; }
 .pk-headx .pk-sub { color: var(--cr-muted); }
 /* the line: its top stop and its foot, the shuttles on the road between */
-.pk-line { position: relative; height: 300px; margin: 26px 20px 0; }
+/* its foot in the flow, 200 px down, so the line is as tall as that stop is: at 300 px fixed, its kicker on two
+   lines on a phone ('The walk's far end · Stop 8001'), the link below was drawn over its next times */
+.pk-line { position: relative; display: flow-root; margin: 26px 20px 0; }
 .pk-rail { position: absolute; left: 9px; top: 24px; height: 200px; border-left: 2px dashed rgba(232,97,28,.55); }
 .pk-lstop { position: absolute; left: 0; right: 0; padding-left: 40px; display: flex; flex-direction: column; gap: 8px; }
 .pk-lstop.top { top: 0; }
-.pk-lstop.foot { top: 200px; }
+.pk-lstop.foot { position: relative; margin-top: 200px; }
 .pk-ring { position: absolute; left: 0; top: 14px; width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--pk-orange); background: var(--color-bg); }
 .pk-lrow { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
 .pk-lname { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
