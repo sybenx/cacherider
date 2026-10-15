@@ -783,6 +783,20 @@ test('directions arriving by a time: the shuttle the way picked, when it is the 
   await expect(page.locator('a.walkall b.hill').filter({ visible: true }).first()).toHaveText(/steep/i);   // the word first, not the feet alone
 });
 
+test('directions: a ride no quicker than walking, sparing little of it, isn\'t offered (Logan\'s court to the Center)', async ({ page }) => {
+  // From the Municipal Court, just after the 9 and the 6 had gone at 6:18, the Green Loop came first: on at 355 North
+  // Main, south round its loop and back up to Zions, 22 minutes with 11 on foot, where the walk is 10. The 9 and the 6
+  // from across the road are the ways; walking beats the Green on every count.
+  await open(page);
+  const d = new Date(); d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  await go(page, '#/go/@41.74061,-111.83124:Transit%20Center/at/41.73999,-111.83690/Logan%20Municipal%20Court?t=' + ymd + '-0618');
+  await expect(page.locator('.jsum').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.jrow .badge[title="Green Loop"]').filter({ visible: true })).toHaveCount(0);
+  await expect(page.locator('.jsum .badge').filter({ visible: true }).first()).toHaveText('9');
+  await expect(page.locator('a.walkall').filter({ visible: true }).first()).toContainText('Quicker on foot');
+});
+
 test('directions arriving by a time on a later day: that day said, no bus missed', async ({ page }) => {
   // Richmond to Utah Podiatry, by 8 AM on a weekday to come: the 15 at 6:40 was 'Today' and 'Missed it? The next 15
   // leaves at 8:10' (gone by the time picked, 8:00, not by the clock), as if the 15 ran hourly.

@@ -188,7 +188,11 @@ export function render({ to, from, at, plan, t }, clockNow) {
   const { found, c, lateBy, sh } = waysFor(origin, dest, fixed, clockNow);   // the shuttle too, while it runs
   const also = shuttleNote(origin.si !== undefined ? stop(origin.si) : origin, d, fixed || c, sh, lateBy ? [] : found.plans);
   if (found.walk !== undefined) {
-    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk${hillWords(origin.si !== undefined ? stop(origin.si) : origin, d)}` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div></div></div>`);
+    // Over a busy road on the way (the Wolf Pack Way stop to the Rush FunPlex, over US 91): where to cross, as the walk
+    // beside a bus says it, and the Crosswalks chip where crossing straight over is the other way to go.
+    const here = origin.si !== undefined ? stop(origin.si) : origin, w = found.walk ? wayOf(here, d) : null;
+    const xing = w && w.over && w.over.length && (w.alt || !useCrossings()) ? html`<div class="section between otherways"><span></span><span class="chips-inline"><button type="button" class="chip" data-xing aria-pressed="${useCrossings() ? 'true' : 'false'}">Crosswalks</button></span></div>` : '';
+    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${found.walk ? `It's a ${metres(found.walk)} walk${hillWords(here, d)}` : "You're there"}</b><div class="sub">${found.walk ? html`No bus to catch. <a href="${walkHref(d.lat, d.lon, name)}" target="_blank" rel="noopener">Walk there</a>` : spot ? 'This is the spot.' : 'This is the stop.'}</div>${w ? crossNote(w) : ''}</div></div>${xing}`);
     return { html: parts.join(''), mount, title: 'Directions' };
   }
   if (!found.plans.length) return { html: parts.concat(noWay(e, to, hubBay, also)).join(''), mount, title: 'Directions', journey: noWayJourney(e, to, parts, hubBay, also) };

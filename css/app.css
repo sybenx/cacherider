@@ -645,7 +645,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .mapcard.open:has(> .hubsheet) { top: var(--hub-top, 0px); max-height: none; padding-top: var(--hub-room, 0px); background: transparent; border-top: 0; box-shadow: none; pointer-events: none; scrollbar-width: none; }
 .mapcard.open:has(> .hubsheet)::-webkit-scrollbar { display: none; }
 .mapcard.open:has(> .hubsheet) > * { pointer-events: auto; display: flow-root; }
-.mapcard.hubfold { overflow-y: hidden; }
+/* only while a board is in it: a card put in its place (a spot's long press at the Center) scrolls as any card does */
+.mapcard.hubfold:is(:has(> .hubsheet), :has(> .pagesheet), :has(> .routesheet)) { overflow-y: hidden; }
 /* the board's room a registered length, so a fold eases it: its padding and the ground painted from it move as one */
 @property --hub-room { syntax: '<length>'; inherits: true; initial-value: 0px; }
 .mapcard.hubslide { transition: --hub-room .28s cubic-bezier(.2, .7, .2, 1); }   /* folded to its countdown: a swipe up or a tap opens it, it doesn't scroll */   /* margins kept inside, no gap that's the map's */

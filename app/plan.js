@@ -226,6 +226,10 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   for (let k = starts.length - 1; k >= 0; k--) if (starts[k].walk === null) starts.splice(k, 1);
   // Standing at the stop wanted, or within its walk: no bus to catch.
   const apart = Math.round(distance(o.lat, o.lon, d.lat, d.lon));
+  // Walking the whole way, timed as any walk is: a way by bus that's no quicker and spares less than WALK_LESS of it
+  // isn't offered (from Logan's court, round the Green Loop's south end to Zions, 22 minutes with 11 on foot, beside
+  // the 10 to walk there; Route 9 from across the road the rider's way). Null on a steep walk avoided: nothing beaten.
+  const foot = walkTo(o, d, apart);
   if (origin.si === dest || apart <= WALK_FROM) return { walk: apart, plans: [] };
   // No stop within a walk of where they're going, or of where they are: no bus goes, and nothing to search (a
   // search with nowhere to arrive ran every day of the week through every first stop before saying so).
@@ -238,7 +242,8 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
     if (!servicesOn(clockNow.ymd).size) return { plans: [] };
     const upto = new Map(starts.filter(st => !at.has(st.si)).map(st => [st.si, by - st.walk]));
     while (upto.size) {
-      const plans = search(starts, wanted, at, spot ? d : dest, clockNow.ymd, clockNow.min, live, 0, by, upto);
+      const plans = search(starts, wanted, at, spot ? d : dest, clockNow.ymd, clockNow.min, live, 0, by, upto, o, foot);
+      if (plans.walked) return { walk: apart, plans: [] };
       if (plans.length) return { plans };
     }
     return { plans: [] };
@@ -246,7 +251,8 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   for (let day = 0; day < days; day++) {
     const ymd = dayFrom(clockNow.ymd, day).ymd;
     if (!servicesOn(ymd).size) continue;
-    const plans = search(starts, wanted, at, spot ? d : dest, ymd, day === 0 ? clockNow.min : 0, day === 0 && live, day);   // live: the feed's word on today's buses, not a later day's or a time far ahead
+    const plans = search(starts, wanted, at, spot ? d : dest, ymd, day === 0 ? clockNow.min : 0, day === 0 && live, day, null, null, o, foot);   // live: the feed's word on today's buses, not a later day's or a time far ahead
+    if (plans.walked) return { walk: apart, plans: [] };   // every way found beaten on foot: the walk, not tomorrow's buses
     if (plans.length) return { plans };
   }
   // Within a walk, with no bus there worth taking: the walk.
@@ -254,7 +260,7 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   return { plans: [] };
 }
 
-function search(starts, wanted, at, dest, ymd, min0, live, day, by = null, upto = null) {
+function search(starts, wanted, at, dest, ymd, min0, live, day, by, upto, from, foot) {
   const cache = new Map(), spot = typeof dest === 'object', end = spot ? dest : stop(dest);
   const found = [];
   const done = (legs, walk0, walkEnd) => {
@@ -324,9 +330,18 @@ function search(starts, wanted, at, dest, ymd, min0, live, day, by = null, upto 
   // A way with a steep walk (up or down, geo.js isSteep) never beats a flat one out of the list: the climb down the
   // bluff to Crocket Avenue, sooner by the clock, isn't a better way than Route 3 to Riverside Drive.
   const legEnd = (x, end) => x === undefined || x === null ? end : typeof x === 'object' ? x : pt(x);
-  const tripFrom = origin.si !== undefined ? stop(origin.si) : origin, tripTo = typeof dest === 'object' ? dest : stop(dest);
+  const tripFrom = from, tripTo = typeof dest === 'object' ? dest : stop(dest);
   const ok = q => !!q && Number.isFinite(q.lat) && Number.isFinite(q.lon);
   for (const p of found) p.hill = p.legs.some(l => { if (l.kind !== 'walk') return false; const a = legEnd(l.from, tripFrom), b = legEnd(l.to, tripTo); return ok(a) && ok(b) && steepWalk(a, b); });
+  // Beaten on foot: no sooner than walking there, and either not WALK_LESS minutes less of it, or the minutes it spares
+  // on foot (each counted as two of riding or waiting) not worth the time it adds: from the Wolf Pack Way stop to the
+  // Rush FunPlex, 22 minutes on foot, the 5 and the 16 took two and a half hours to spare five.
+  const had = found.length;
+  if (foot !== null) for (let i = found.length - 1; i >= 0; i--) {
+    const p = found[i], long = p.arrive - p.leave;
+    if (foot <= long && (foot < p.walk + WALK_LESS || 2 * foot <= long + p.walk)) found.splice(i, 1);
+  }
+  if (had && !found.length) return Object.assign([], { walked: true });
   found.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
   const kept = [];
   for (const p of found) {

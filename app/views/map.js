@@ -1221,9 +1221,10 @@ function fitPeek(card) {
   // a swipe up out of sight).
   const starts = card.querySelectorAll('.gonone .farstarts .row'), none = starts[starts.length - 1] || card.querySelector('.gonone .empty');   // down to the last start, when there's a list of them
   if (none) { card.style.setProperty('--peek', Math.min(none.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 8, (starts.length ? 0.75 : 0.6) * map.getContainer().clientHeight) + 'px'); return; }   // the starts are the answer, the map above has only the two ends: more room for them
-  // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it).
-  const h = card.querySelector('.head');
-  if (h) card.style.setProperty('--peek', Math.round(h.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 2) + 'px');
+  // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it); a spot's head
+  // with its routes in it (at the Center, fourteen) down to where they start: swiped down, the card grew past the screen.
+  const h = card.querySelector('.head'), rr = h && h.querySelector(':scope > .roadroutes');
+  if (h) card.style.setProperty('--peek', Math.round(Math.min((rr ? rr.getBoundingClientRect().top : h.getBoundingClientRect().bottom) - card.getBoundingClientRect().top + card.scrollTop + 2, 0.6 * map.getContainer().clientHeight)) + 'px');
 }
 function wireGrip(app) {
   const card = col.querySelector('#mapcard');
@@ -2891,8 +2892,9 @@ export async function show(o, app, clockNow) {
   // The minute or the feed: a phone's route sheet redrawn in place, its scroll kept.
   if (o.tick && o.routeArgs && app.route.name === 'map' && !wide() && col.querySelector('#mapcard.open > .routesheet')) sheetCard(o.routeArgs, clockNow);
   // The board is a phone's card whenever the Transit Center is up: redrawn for the minute, and put back when the
-  // layout turned phone under it (a tablet turned upright) with the address unchanged.
-  if (o.hub && app.route.name === 'map' && !wide() && (o.tick ? !!col.querySelector('#mapcard.open > .hubsheet') : !col.querySelector('#mapcard.open > .hubsheet'))) hubCard(clockNow);
+  // layout turned phone under it (a tablet turned upright) with the address unchanged. Not over another card the
+  // rider opened there (a long press's nearest stops): a location fix or coming back to the app swapped it out.
+  if (o.hub && app.route.name === 'map' && !wide() && (o.tick ? !!col.querySelector('#mapcard.open > .hubsheet') : !col.querySelector('#mapcard.open'))) hubCard(clockNow);
   if (o.tick) hubBadges();
   if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
   // Off the Center to another tab: a page that frames something of its own (a stop, a route, a way) gets north up and
