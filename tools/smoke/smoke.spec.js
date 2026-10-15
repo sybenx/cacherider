@@ -833,8 +833,11 @@ test('directions: a walk over a busy road goes by its crossing, said', async ({ 
   await expect(page.getByText(/(crow flies, but|sidewalks, paths and streets,) over a busy road/).filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('a.walkall')).toHaveCount(0);   // three miles: not a walk worth offering beside the bus
   // Straight over US 91 it's the stop across from the Eccles Ice Center instead, the same bus, sooner: said, and the
-  // Crosswalks chip there to take it. (Only while Route 5 runs: no way, or tomorrow's on another route, nothing to compare.)
-  if (await page.locator('.jsum').filter({ visible: true }).count() && !(await page.getByText(/nothing more today/).filter({ visible: true }).count())) {
+  // Crosswalks chip there to take it. (Only while the way is Route 5 alone: no way, or tomorrow's, nothing to compare;
+  // and Route 16 PM up Main to Preston, its afternoon trips out of the Center, is the way straight over too, the same
+  // bus to the same stop, so there's no other way to say.)
+  const rides = await page.locator('.jsum .js-legs .badge').filter({ visible: true }).allInnerTexts();
+  if (rides.length === 1 && rides[0].trim() === '5' && !(await page.getByText(/nothing more today/).filter({ visible: true }).count())) {
     await expect(page.locator('.straightalt').filter({ visible: true }).first()).toContainText(/Straight across Main Street \(no crosswalk\).*min (sooner|later)/);
     await expect(page.locator('.chip[data-xing]').filter({ visible: true }).first()).toBeVisible();
   }
