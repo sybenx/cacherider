@@ -6,6 +6,12 @@
 # the test runs: on this machine, never on GitHub. Installed by
 #   git config core.hooksPath tools/hooks
 # Run it by hand any time: cd tools/smoke && npm test. A push that must go regardless: git push --no-verify.
+# One run at a time: every worktree's run serves the app on port 8795, and when sessions in several worktrees pushed at
+# once, each run's start killed the server of the one before it, failing that push. A run waits for its turn
+# (tools/smoke/wait-turn.sh, a lock in the repository's shared .git), saying whose run it's waiting on. A run by hand
+# takes the same turn, so it neither kills nor is killed by a push's:
+#   cd tools/smoke && sh wait-turn.sh npx playwright test -g 'search'      (npm test takes it too)
+hooks="$(cd "$(dirname "$0")" && pwd)"   # wait-turn.sh beside this hook: a worktree branched before it existed waits too
 root="$(git rev-parse --show-toplevel)"
 touched=0; lines=0
 while read -r local_ref local_sha remote_ref remote_sha; do
@@ -21,12 +27,10 @@ done
 if [ "$touched" = 0 ]; then echo "Smoke test skipped: nothing a rider gets is in this push."; exit 0; fi
 cd "$root/tools/smoke" || exit 1
 [ -d node_modules ] || npm ci --silent || exit 1
-# A test server left behind by a run that was cut short (its port, 8795, still held) stopped the next run before it
-# began: 'Process from config.webServer was not able to start'. Freed first.
-for p in $(lsof -ti tcp:8795 2>/dev/null); do kill "$p" 2>/dev/null; done
 npx --no-install playwright install chromium >/dev/null 2>&1
 echo "Smoke test before the push…"
-if ! npx --no-install playwright test --reporter=dot; then
+# With the turn, a server left on the port by a run cut short is stopped; one serving a run still going, waited for.
+if ! sh "$hooks/../smoke/wait-turn.sh" npx --no-install playwright test --reporter=dot; then
   echo
   echo "Smoke test failed: the push is stopped. See above; tools/smoke/test-results has a trace of each failure."
   exit 1

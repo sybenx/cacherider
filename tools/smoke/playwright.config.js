@@ -2,7 +2,7 @@
 // (tools/serve.py: byte ranges for the tiles, nothing cached). Run here, before a push (tools/hooks/pre-push); not on GitHub. Live data is the real feed's, so the checks are the
 // ones that hold at any hour: each screen comes up, nothing says 'Something went wrong', nothing throws.
 const { defineConfig, devices } = require('@playwright/test');
-const PORT = 8795;   // not the preview's 8794
+const PORT = 8795;   // not the preview's 8794; one run at a time on it, each taking its turn (wait-turn.sh)
 
 module.exports = defineConfig({
   testDir: '.',

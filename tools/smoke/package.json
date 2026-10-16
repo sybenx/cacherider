@@ -3,7 +3,7 @@
   "private": true,
   "description": "Every flow in the app, driven in a real browser before a push (tools/hooks/pre-push), on this machine. Dev-only: the app itself has no dependencies.",
   "scripts": {
-    "test": "playwright test"
+    "test": "sh wait-turn.sh playwright test"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"
