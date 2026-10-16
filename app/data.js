@@ -306,25 +306,36 @@ function unannounced(list, byStop) {
   const ymd = now().ymd, out = [];
   for (const d of list) {
     const ris = D.routes.map((r, i) => i).filter(i => D.routes[i].short.split(' ')[0] === d.route);
-    const [lat0, lon0] = d.leaves, [lat1, lon1] = d.rejoins;
     const gone = new Set();
+    // A point lies between two stops when it's nearer each than they are to each other.
+    const between = ([la, lo], a, b) => { const ab = distance(a.lat, a.lon, b.lat, b.lon); return distance(a.lat, a.lon, la, lo) < ab && distance(la, lo, b.lat, b.lon) < ab; };
     for (const ri of ris) for (const seq of Object.values(D.routes[ri].stops || {})) {
-      // The stops near where the buses left the line and near where they came back, the closest pair in order: a line
-      // that passes the same corner twice (out and back) would otherwise take in the whole run between.
-      const near = (lat, lon) => seq.map((si, k) => distance(lat, lon, D.stops[si].lat, D.stops[si].lon) < 300 ? k : -1).filter(k => k >= 0);
-      let i = -1, j = -1;
-      for (const a of near(lat0, lon0)) for (const b of near(lat1, lon1)) if (b > a && (i < 0 || b - a < j - i)) { i = a; j = b; }
-      if (i < 0) continue;
-      // The stops at either end are the nearest to where the buses left and came back, and may lie outside the stretch
-      // they went round: one before the corner they left at, or past the one they came back at, is still served (the
-      // bus's track ends at the corner, short of it). A point lies between two stops when it's nearer each than they
-      // are to each other. Route 2's 979 North 200 East, past its corner at 1000 North, was counted skipped, and kept its
-      // detour from matching Connect's notice of the other three.
-      const between = ([la, lo], a, b) => { const ab = distance(a.lat, a.lon, b.lat, b.lon); return distance(a.lat, a.lon, la, lo) < ab && distance(la, lo, b.lat, b.lon) < ab; };
-      for (let k = i; k <= j; k++) {
+      // Where in the line's stops the buses left it and came back: between stop k and the next, k and how far along the
+      // straight way from one to the other it falls (a point behind the first, where the line bends, held at its start,
+      // so the line's pass the other way along the same street keeps its order); at a stop, the stop. The stops between
+      // are those gone round; one before where they left, or past where they came back, is served (the bus's track ends
+      // at the corner, short of it: Route 2's 979 North 200 East, past its corner at 1000 North, was counted skipped).
+      // The stops within 300 m of each end, as it was, missed one a long block off: the Blue Loop's way round on 15 Oct
+      // came back 307 m past 950 South Main St, and read as announced with nothing skipped. A detour faked round each
+      // stop of every route's line: 94% found exactly (68% before), a stop the buses passed counted in 12 of 8556 (176).
+      const at = ([la, lo]) => {
+        const out = [], kx = 111320 * Math.cos(la * Math.PI / 180), xy = s => [(s.lon - lo) * kx, (s.lat - la) * 110540];
+        seq.forEach((si, k) => {
+          const s = D.stops[si], n = D.stops[seq[k + 1]];
+          if (distance(la, lo, s.lat, s.lon) <= TRACK_ON) out.push(k);
+          if (!n || !between([la, lo], s, n)) return;
+          const [ax, ay] = xy(s), [bx, by] = xy(n), dx = bx - ax, dy = by - ay;
+          out.push(k + Math.min(0.99, Math.max(0.01, -(ax * dx + ay * dy) / (dx * dx + dy * dy))));
+        });
+        return out;
+      };
+      // The closest pair in order: a line that passes the same corner twice (out and back) would otherwise take in the
+      // whole run between.
+      let i = null, j = null;
+      for (const a of at(d.leaves)) for (const b of at(d.rejoins)) if (b > a && (i === null || b - a < j - i)) { i = a; j = b; }
+      if (i === null) continue;
+      for (let k = Math.floor(i) + 1; k < j; k++) {
         const s = D.stops[seq[k]];
-        if (k === j && j > i && between(d.rejoins, D.stops[seq[j - 1]], s)) continue;   // past where they came back
-        if (k === i && i < j && between(d.leaves, s, D.stops[seq[i + 1]])) continue;   // before where they left
         if (!s.hub && pathDistance(s.lat, s.lon, d.way) > TRACK_ON) gone.add(s.id);
       }
     }
@@ -333,8 +344,12 @@ function unannounced(list, byStop) {
     const announced = !ids.length || ids.every(id => (byStop[id] || []).some(a => alertOn(a, ymd) && ris.some(ri => a.ri.includes(ri))));
     // The streets of the way round: those between the one it left and the one it came back to.
     const st = d.streets || [], by = st.length > 2 ? st.slice(1, -1) : st.slice(1);
+    // Since when they've gone round: the relay's first bus that way, unless one has gone along the usual way since
+    // (`along`), the run counted again after it. The Blue Loop's on 15 Oct, first round at 2:14 PM, one along at 4:57
+    // and 9 in a row after, read 'every Blue Loop bus since 2:14 PM'.
+    const from = d.along > d.first ? d.along : d.first;
     out.push({ id: 'seen' + d.id, d, ri: ris, who: ris.length ? routeWord(ris[0]) : 'Route ' + d.route, n: d.streak, gone: ids, on, by, announced,
-      since: clockText(now(new Date(d.first * 1000)).min), last: clockText(now(new Date(d.last * 1000)).min) });
+      since: clockText(now(new Date(from * 1000)).min), last: clockText(now(new Date(d.last * 1000)).min) });
   }
   return out;
 }

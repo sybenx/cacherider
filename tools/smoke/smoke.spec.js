@@ -1311,6 +1311,39 @@ test('alerts and detours: the list, one on the map', async ({ page }) => {
   if (await onMap.count()) { await onMap.click(); await expect(page).toHaveURL(/#\/map\/alert\//); await mapReady(page); }
 });
 
+test('a way round the buses took: the stop it skipped a long block from where they came back, those either side served; since when the run began again', async ({ page }) => {
+  // The relay's Blue Loop way round of 15 Oct (its detour 92), staged with no notices: south on Main, west at 1000
+  // South, back on Main 307 m past 950 South Main St, which it skipped (the stops near each end, as it was, missed it).
+  // 995 South Main, before where they left, and 670 South Main St, past where they came back, are served. Its first bus
+  // round at 2:14 PM, one along the usual way at 4:57 and 9 in a row round since: since 4:57, not 2:14.
+  const path = [[41.71021, -111.83466], [41.71026, -111.83703], [41.71131, -111.83886], [41.71259, -111.83907], [41.71405, -111.83734], [41.71643, -111.83571]];
+  const d = { id: 92, route: 'B', streak: 9, trips: 18, first: 1792095244, last: 1792116480, along: 1792105064, leaves: path[0], rejoins: path[path.length - 1], paths: [path], path };
+  const none = r => r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ fetched: new Date().toISOString(), alerts: [] }) });
+  await page.route(/^https:\/\/live\.cacherider\.com\/alerts/, none);
+  await page.route(/\/data\/alerts\.json/, none);
+  await page.route(/^https:\/\/live\.cacherider\.com\/detours/, r => r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ t: Math.floor(Date.now() / 1000), detours: [d] }) }));
+  await open(page);
+  const skipped = '7547677', served = ['7547682', '7547688'];   // 950 South Main St; 995 South Main, 670 South Main St
+  const on = await page.evaluate(ids => import('/app/data.js').then(m => m.D.routes.some(r => r.short === 'B' && Object.values(r.stops).some(seq => ids.every(id => seq.includes(m.D.stopById[id]))))), [skipped, ...served]);
+  test.skip(!on, 'the Blue Loop no longer stops at 950 South Main St and those either side');
+  await expect.poll(() => page.evaluate(() => import('/app/data.js').then(m => (m.A.seen || []).some(u => u.id === 'seen92'))), { timeout: 30_000 }).toBe(true);   // the relay's detours in, after the first page
+  const u = await page.evaluate(async () => {
+    const m = await import('/app/data.js'), t = await import('/app/time.js'), u = m.A.seen.find(u => u.id === 'seen92');
+    return { gone: u.gone, announced: u.announced, words: m.lastBuses(u), along: t.clockText(t.now(new Date(1792105064e3)).min), first: t.clockText(t.now(new Date(1792095244e3)).min) };
+  });
+  expect(u.gone).toContain(skipped);
+  for (const id of served) expect(u.gone).not.toContain(id);
+  expect(u.announced).toBe(false);
+  // (its day may follow the time: '4:57 PM on Thu 15 Oct')
+  const since = new RegExp(`Every Blue Loop bus since ${u.along.replace(/\W/g, '\\$&')}\\b[^(]*\\(9 in a row\\)`);
+  expect(u.words).toMatch(since);
+  expect(u.words).not.toContain(u.first);
+  await go(page, '#/stop/' + skipped);
+  const callout = page.locator('.callout.unann').filter({ visible: true }).first();
+  await expect(callout).toContainText(since);
+  await expect(callout).toContainText('has skipped this stop');
+});
+
 test('settings and about: the clock and units turned and back', async ({ page }) => {
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();
