@@ -1990,7 +1990,10 @@ function applySelection() {
   // A shuttle loop lit (its page, its bus) the same: the other loops' stops and Connect's faded, but for the Connect
   // stops it shares; the loop's line came up and every other route's went down, and every stop stayed as bright.
   const loops = JR ? [] : hiLoops, shared = loops.length && U ? U.stops.flatMap((u, i) => U.shared[i] && u.routes.some(ri => loops.includes(U.routes[ri].id)) ? [D.stops[U.shared[i].j].id] : []) : [];
-  const fade = (lit.size > 0 || loops.length > 0) && !JR, theirs = fade ? ['any', false, ...[...lit].map(r => ['in', r, ['get', 'routes']]), ...(shared.length ? [['in', ['get', 'id'], ['literal', shared]]] : [])] : true;
+  // A bus picked (or ringed on its route's list): its own route's stops, the rest faded as a route's are (the user:
+  // 'they should only highlight their own stops'). A shuttle bus's loop is lit already (hiLoops).
+  const sb = JR ? null : findBus(selectedBus || ringed), own = new Set([...lit, ...(sb ? [sb.ri] : [])]);
+  const fade = (own.size > 0 || loops.length > 0) && !JR, theirs = fade ? ['any', false, ...[...own].map(r => ['in', r, ['get', 'routes']]), ...(shared.length ? [['in', ['get', 'id'], ['literal', shared]]] : [])] : true;
   map.setPaintProperty('stops', 'circle-opacity', fade ? ['case', theirs, 1, 0.28] : ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1]);
   map.setPaintProperty('stops', 'circle-stroke-opacity', fade ? ['case', theirs, 1, 0.28] : 1);
   map.setPaintProperty('stop-labels', 'text-opacity', fade ? ['case', theirs, 1, 0.4] : 1);
