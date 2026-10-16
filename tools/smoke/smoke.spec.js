@@ -1953,6 +1953,71 @@ test('a closed stop the buses go round: dotted from where they leave the line to
   await check('seen990102');
 });
 
+test('a bus\'s card on a detour: a stop closed by notice not listed, those a way round skipped asked; on its route\'s line, before the next it calls at', async ({ page }) => {
+  // The Blue Loop's bus at South Walmart (Back) on 16 Oct: its card had Macey's (520 West 100 North, closed by Connect's
+  // notice) 'in 1 min', and 453 West 100 North and 950 South Main St, which the relay's way round (its detour 103) went
+  // round, 'in 1 min' and 'in 2 min': the feed knows no detours. Staged: the notice, the way round three in a row, and
+  // the bus a block short of South Walmart (Back), the feed's word on the stops after it a minute or two apart, as it
+  // was; then on past it, bound for Macey's by the feed, where the route's line had no row for it.
+  const SOUTH = '7547682', MACEYS = '7547683', STADIUM = '7547676', MAIN950 = '7547677', RIVERWOODS = '7547688';
+  const path = [[41.71025, -111.83727], [41.71106, -111.83883], [41.71223, -111.83922], [41.71399, -111.8374], [41.71667, -111.83559]];
+  const key = path.map(([la, lo]) => la.toFixed(4) + ',' + lo.toFixed(4)).join(';');
+  let T = Math.floor(Date.now() / 1000), feed = null;
+  const json = body => ({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  const alerts = () => ({ alerts: [{ id: 'a990103', title: 'Stop Closure: 520 West 100 North Providence', text: 'Due to construction the stop at 520 West 100 North (Macey\'s) is closed.', url: '', cause: '', effect: '', start: T - 86400, end: T + 2 * 86400, routeIds: [], routes: ['B'], stops: [MACEYS], global: false }] });
+  await page.route(/^https:\/\/live\.cacherider\.com\/alerts/, r => r.fulfill(json(alerts())));
+  await page.route(/\/data\/alerts\.json/, r => r.fulfill(json(alerts())));
+  await page.route(/^https:\/\/live\.cacherider\.com\/detours/, r => r.fulfill(json({ t: T, detours: [{ id: 990103, route: 'B', streak: 3, trips: 3, first: T - 5400, last: T - 900, along: null, leaves: path[0], rejoins: path[path.length - 1], paths: [path], path }] })));
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill(json(feed)) : r.abort());
+  await open(page);
+  await page.evaluate(([k, w]) => localStorage.setItem('cr-ways-2', JSON.stringify({ [k]: { way: w, streets: [], at: Date.now() } })), [key, path]);   // as traced
+  // A Blue Loop trip today calling at the five in a row; the bus a block short of the first, and then halfway on to the next.
+  const pick = await page.evaluate(async ids => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), B = d.D.routeByShort.B, si = d.D.stopById[ids[0]];
+    if (B === undefined || si === undefined) return null;
+    for (const row of d.timesOn(si, c.ymd).filter(x => x.r === B)) {
+      const st = d.tripStops(row.trip), te = d.tripEnd(row.trip), k = st.findIndex(x => x[1] === si && x[0] === row.min);
+      if (k < 1 || !te || st.length < k + 7 || ids.some((id, i) => d.D.stops[st[k + i][1]].id !== id)) continue;
+      const S = i => d.D.stops[st[i][1]], a = S(k - 1), s = S(k), m = S(k + 1);
+      return { id: d.D.trips[row.trip], k, min: row.min, pts: [...st, [te.min, te.si]].map(([m, x]) => [m, d.D.stops[x].id]), at: Date.now() + ((row.min - c.min) * 60 - 40 - c.sec) * 1000,
+        short: [a.lat + (s.lat - a.lat) * 0.8, a.lon + (s.lon - a.lon) * 0.8, d.bearing(a.lat, a.lon, s.lat, s.lon)], past: [(s.lat + m.lat) / 2, (s.lon + m.lon) / 2, d.bearing(s.lat, s.lon, m.lat, m.lon)] };
+    }
+    return null;
+  }, [SOUTH, MACEYS, STADIUM, MAIN950, RIVERWOODS]);
+  test.skip(!pick, 'no Blue Loop trip today by South Walmart (Back), Macey\'s, 453 West 100 North, 950 South Main St and The Riverwoods in a row');
+  await page.clock.setFixedTime(new Date(pick.at));
+  T = Math.floor(pick.at / 1000);
+  const base = T + 40 - pick.min * 60;
+  const feedFrom = (K, [lat, lon, bearing]) => ({ t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing, speed: 8, ts: T }],
+    trips: { [pick.id]: { v: '9001', ts: T, s: pick.pts.slice(K).map(([m, sid], i) => [sid, K + i, i < 5 ? T + 20 + [0, 50, 70, 100, 120][i] : base + m * 60, 0]) } } });
+  feed = feedFrom(pick.k, pick.short);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await expect.poll(() => page.evaluate(() => import('/app/data.js').then(m => (m.A.seen || []).some(u => u.id === 'seen990103'))), { timeout: 30_000 }).toBe(true);
+  expect(await page.evaluate(() => import('/app/data.js').then(m => m.A.seen.find(u => u.id === 'seen990103').gone.sort()))).toEqual([STADIUM, MAIN950]);   // skipped, not the notice's
+  await go(page, '#/map');
+  await mapReady(page);
+  await expect.poll(() => page.evaluate(async () => !!(await import('/app/rt.js')).findBus('c:9001')), { timeout: 20_000 }).toBe(true);
+  await go(page, '#/map/bus/c:9001?tap=1');
+  const rows = page.locator('#mapcard .nextstops a.ns'), row = id => page.locator(`#mapcard .nextstops a.ns[href="#/stop/${id}"]`);
+  const hrefs = () => rows.evaluateAll(as => as.map(a => a.getAttribute('href')));
+  // Macey's not listed; the two gone round each its '?' by its minutes, as on the route's line; The Riverwoods its minutes.
+  await expect.poll(hrefs, { timeout: 20_000 }).toEqual([SOUTH, STADIUM, MAIN950, RIVERWOODS, pick.pts[pick.k + 5][1]].map(id => '#/stop/' + id));
+  await expect(row(SOUTH)).toHaveClass(/\bhere\b/);
+  for (const id of [STADIUM, MAIN950]) { await expect(row(id).locator('.nm > .qmark')).toHaveCount(1); await expect(row(id).locator('.when')).toHaveText(/^in \d+ min$/); }
+  await expect(row(RIVERWOODS).locator('.qmark')).toHaveCount(0);
+  await expect(row(RIVERWOODS).locator('.when')).toHaveText(/^in \d+ min$/);
+  // On past South Walmart (Back), bound for Macey's by the feed: the card from 453 West 100 North, and on the route's line
+  // the bus's row just before it.
+  feed = feedFrom(pick.k + 1, pick.past);
+  await expect.poll(hrefs, { timeout: 20_000 }).toEqual([STADIUM, MAIN950, RIVERWOODS, ...pick.pts.slice(pick.k + 5, pick.k + 7).map(x => x[1])].map(id => '#/stop/' + id));
+  await expect(row(STADIUM)).toHaveClass(/\bhere\b/);
+  await go(page, '#/map/route/B');
+  const bus = page.locator('a.busrow[data-ring="c:9001"]').filter({ visible: true });
+  await expect(bus).toHaveCount(1);
+  await expect.poll(() => bus.evaluate(a => a.nextElementSibling && a.nextElementSibling.getAttribute('href'))).toBe('#/stop/' + STADIUM);
+});
+
 test('settings and about: the clock and units turned and back', async ({ page }) => {
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();

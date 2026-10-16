@@ -2,7 +2,7 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes, tripStops, routeOrder, liftHex } from '../data.js';
+import { D, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes, maySkip, tripStops, routeOrder, liftHex } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo, isDue } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, minsOut, lastTag, fillLater, moved, detourNotice, lively, schedOf, heardName, routeList, routeHref } from '../ui.js';
 import { busOn, busDelay, AT_STOP } from '../rt.js';
@@ -271,8 +271,12 @@ function comingLine(si, first, clockNow) {
   const j = callAt(st, on.next, clockNow.min - (busDelay(b) ?? 0));
   if (j < 0 || j > k) return '';
   const at = distance(b.lat, b.lon, stop(on.next).lat, stop(on.next).lon) <= AT_STOP;   // at its stop: that ring is its dot
+  // The stops on its way here it calls at, as its card lists them: not one Connect's notice closes to its route (the
+  // feed, knowing no detours, still predicts it), unless the bus is at it.
+  const ahead = [];
+  for (let i = j; i < k; i++) if ((i === j && at) || !closedRoutes(st[i][1], clockNow.ymd).has(first.r)) ahead.push(i);
   // The stops it has still to call at, this one counted, the one it's at not (map.js yourStop): at this one, here.
-  const away = k - j + (at ? 0 : 1);
+  const away = j === k && at ? 0 : ahead.length - (at ? 1 : 0) + 1;
   const words = away === 0 ? 'here' : `${away} ${away === 1 ? 'stop' : 'stops'} away`;
   // Each stop's call on this trip with the feed's word on it, as the stop's own row has it.
   const call = i => lively({ min: st[i][0], r: first.r, h: first.h, dir: first.dir, si: st[i][1], trip: first.trip, day: 0, ymd: first.ymd });
@@ -281,14 +285,16 @@ function comingLine(si, first, clockNow) {
     // The feed's minute alone, in its blue: the timetable's, struck above it, is the big time's to say. This stop's is
     // the big time itself, said twice above: its ring and name end the line at the rider, no third time.
     const tm = mine ? '' : t.gone ? '—' : loopArrival(t) ? minsOut(t, 17, clockNow) : time(t.min, 17, !!t.live);
-    return html`<div class="croute${mine ? ' here' : ''}"><i class="c-ring${ring ? ' on' : ''}"></i><span class="c-t">${tm}</span><span class="c-n">${mine ? stop(si).name : heardName(st[i][1]).name}</span></div>`;
+    // A stop an unannounced way round has skipped: its '?', as on the route's line and the bus's card.
+    const q = !mine && maySkip(stop(st[i][1]).id, first.r) ? html.raw('<span class="qmark" title="May be skipped: unannounced detour">?</span>') : '';
+    return html`<div class="croute${mine ? ' here' : ''}"><i class="c-ring${ring ? ' on' : ''}"></i><span class="c-t">${tm}</span><span class="c-n">${mine ? stop(si).name : heardName(st[i][1]).name}${q}</span></div>`;
   };
   // Its words without a Live of their own: the eye above says Live or Estimated, and the line is only drawn live.
   const rows = [html`<div class="busrow${at ? ' at' : ''}"><i></i><span>Bus ${b.label} · ${words}</span></div>`];
-  if (j < k) {
-    rows.push(row(j));
-    const between = k - j - 1;
-    if (between === 1) rows.push(row(j + 1));
+  if (ahead.length) {
+    rows.push(row(ahead[0]));
+    const between = ahead.length - 1;
+    if (between === 1) rows.push(row(ahead[1]));
     else if (between > 1) rows.push(html`<div class="rs-foldsum"><span>${between} stops</span></div>`);
   }
   rows.push(row(k, true));

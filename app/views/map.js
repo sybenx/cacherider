@@ -1173,11 +1173,19 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   // Where its buses are, both ways' on a line: a row for each, just before the stop it calls at next on the way it's
   // on; one at a stop (within AT_STOP of it) fills that stop's ring on the line too.
   const buses = rtStale() ? [] : rt.buses.filter(b => b.ri === ri && (line || b.dir === null || String(b.dir) === d));
+  // Its next by the feed a stop Connect's notice closes to it (the feed knows no detours): before the next it calls at,
+  // as its card has it, on round to the start on a line that comes back to it. The Blue Loop's bus bound for Macey's,
+  // closed, had no row on the line, Macey's not listed today.
+  const round = seq.length > 1 && seq[0] === seq[seq.length - 1];
   const along = b => {
     const n = nextStopOf(b);
     if (n === undefined) return -1;
-    const i = stops.findIndex(x => x.si === n && (x.k === null || b.dir === null || x.k === String(b.dir) || x.turn));
-    return i >= 0 ? i : seq.indexOf(n);
+    let i = stops.findIndex(x => x.si === n && (x.k === null || b.dir === null || x.k === String(b.dir) || x.turn));
+    if (i < 0) i = seq.indexOf(n);
+    for (let hops = 0; i >= 0 && hops < seq.length && closedRoutes(seq[i], clockNow.ymd).has(ri); hops++) {
+      if (i + 1 < seq.length) i++; else if (round) i = 1; else break;
+    }
+    return i;
   };
   // A bus at its stop keeps its row (its words, Live, the tap that rings it), only its dot given to the stop's ring.
   const busBefore = new Map(), busAt = new Map(), atStop = new Set();
@@ -1273,7 +1281,7 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   const alerts = routeAlerts(ri, clockNow.ymd).map(a => html`<details class="callout alert rs-alert"><summary>${icon('ban', 20)}<b>${a.title}</b><span class="more">More</span></summary><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></details>`);
   // Come from a stop's badge: the answer for that stop first, so the list below is for those who want the route.
   // (on its way, on an out-and-back's line: the time its row shows; at a stop both ways serve, the sooner, and its way)
-  const yours = hereIx >= 0 ? yourStop(ri, here, outBack && !twice && !stops[hereIx].end ? stops[hereIx].k : null, hereIx, seq.length, along, buses, clockNow, twice && soonest ? names[dirs.indexOf(String(soonest.dir))] : '') : '';
+  const yours = hereIx >= 0 ? yourStop(ri, here, outBack && !twice && !stops[hereIx].end ? stops[hereIx].k : null, hereIx, seq, along, buses, clockNow, twice && soonest ? names[dirs.indexOf(String(soonest.dir))] : '') : '';
   const ink = dark() ? lift('#' + r.color) : sinkLine('#' + r.color);   // the line's colour, as the map draws it
   // Each way's first and last from its end, above the list (the morning's and evening's notes aren't again): one loop's
   // runs, whichever way the feed calls them, as one. An out-and-back's next run back is its far end's row on the line.
@@ -1519,9 +1527,9 @@ function follow(ri, along, buses, clockNow) {   // along: a bus's place on the r
 }
 
 /** The stop a rider came from: this route's next bus there (on way `k`, where given), and which bus it is and how far
- *  off; or that it's done there for the day, and when it's back. `h`: its place on the route's list of `len`; `along`:
- *  a bus's; `way`: which way that bus is going ('to Preston'), at a stop both ways serve. */
-function yourStop(ri, si, k, h, len, along, buses, clockNow, way = '') {
+ *  off; or that it's done there for the day, and when it's back. `h`: its place on the route's list of stops `seq`;
+ *  `along`: a bus's; `way`: which way that bus is going ('to Preston'), at a stop both ways serve. */
+function yourStop(ri, si, k, h, seq, along, buses, clockNow, way = '') {
   const s = stop(si), name = halfWord(ri) ? halfWord(ri).slice(1) + ' runs' : routeName(ri, false);   // 'No more Blue Loop here', 'No more morning runs here'
   const closed = closedRoutes(si, clockNow.ymd).has(ri);
   const t = closed ? null : nextAt(si, 1, clockNow, 8, x => x.r === ri && (k === null || String(x.dir) === k))[0];
@@ -1537,12 +1545,17 @@ function yourStop(ri, si, k, h, len, along, buses, clockNow, way = '') {
     const lt = lively(t);
     line = html`${badge(ri, 20)}${when(lt, 22)}<span class="rel">${relative(lt, clockNow)}</span>${lt.live ? liveMark(lt.live.est ? 'Estimated' : 'Live') : sched(lt)}`;
     // Which bus: the one on that trip. How far: stops from where it calls next to here, round the loop for a loop; the
-    // one it's at (within AT_STOP) not counted, so at this one it's here (home.js comingLine says the same).
+    // one it's at (within AT_STOP) not counted, so at this one it's here (home.js comingLine says the same); nor one
+    // Connect's notice closes to it, as its card leaves it out.
     const b = buses.find(x => x.trip === D.trips[t.trip]);
     if (b) {
-      const i = along(b), n = nextStopOf(b);
-      const at = i >= 0 && distance(b.lat, b.lon, stop(n).lat, stop(n).lon) <= AT_STOP;
-      const away = i < 0 ? null : (h - i + len) % len + (at ? 0 : 1);
+      const i = along(b), len = seq.length;
+      const at = i >= 0 && distance(b.lat, b.lon, stop(seq[i]).lat, stop(seq[i]).lon) <= AT_STOP;
+      let away = null;
+      if (i >= 0) {
+        away = at && i === h ? 0 : 1;
+        for (let p = i; p !== h; p = (p + 1) % len) if (!(p === i && at) && !closedRoutes(seq[p], clockNow.ymd).has(ri)) away++;
+      }
       sub = `Bus ${b.label}${away === null ? '' : away === 0 ? ' · here' : ` · ${away} ${away === 1 ? 'stop' : 'stops'} away`}`;
     }
     if (way) sub = [way[0].toUpperCase() + way.slice(1), sub].filter(Boolean).join(' · ');   // 'To Preston · Bus 1124 · 3 stops away'
@@ -3202,11 +3215,16 @@ function connectCard(b, app, bare = false) {
   // Which of its route's buses today it is, under the route it's of: 'Bus 2 of 3 · B2', as Connect's dispatch numbers
   // them (the vehicle's own number is the line above's). Only here: on a ring 'B2' would read as a route of that name.
   const nth = off ? null : busNth(b, clockNow);
+  // A stop an unannounced way round has skipped: its minutes with its '?', as the route's line, the stop's page and the
+  // map have it (never a time dropped on the buses' word, only a question asked). The Blue Loop's bus at South Walmart
+  // (Back) on 16 Oct had 453 West 100 North and 950 South Main St, gone round, a plain 'in 1 min' and 'in 2 min'. (One
+  // closed by notice isn't listed: busStops.) The '?' by its name, not under the street it's on.
+  const maybeName = si => { const h = heardName(si); return html`${h.name}<span class="qmark" title="May be skipped: unannounced detour">?</span>${h.addr ? html`<span class="addr">${h.addr}</span>` : ''}`; };
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<span class="nth">${nthWords(b.ri, nth)}</span>` : ''}</span></div>
     ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may have moved on' : b.free ? 'its last run was ' + routeName(b.ri) + '. Not one to wait for' : 'its last run is over. Not one to wait for'}.</span></div>` : ''}${alsoHere(b.id)}</div>
-    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
+    ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${maySkip(D.stops[n.si].id, b.ri) ? maybeName(n.si) : heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
   card.classList.remove('hidden');
   requestAnimationFrame(() => card.classList.add('open'));

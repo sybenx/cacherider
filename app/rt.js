@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip, busOf } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -527,7 +527,9 @@ export function lateWords(delay) {
   return 'On time';
 }
 /** A Connect bus's next stops with predicted minutes, for its card, from the one it reaches next (busPlace), in the
- *  order it calls; `end` marks the trip's final stop. */
+ *  order it calls; `end` marks the trip's final stop. Not a stop Connect's notice closes to its route: the feed knows
+ *  no detours and gives it a minute all the same (the Blue Loop's bus at South Walmart (Back) on 16 Oct, Macey's 'in
+ *  1 min', closed), and the route's line, the stop's page and the map leave its times out. */
 export function busStops(b, n = 5) {
   const p = busPlace(b), u = p ? p.u : rt.trips[b.trip];
   if (!u) return [];
@@ -543,9 +545,10 @@ export function busStops(b, n = 5) {
     const leaves = isLoop(b.ri) ? Math.max(h.at, Math.min(h.sched, h.at + 10)) : Math.max(h.at, h.sched);
     return Math.max(min, leaves + sched[k][0] - h.sched);
   };
+  const ymd = now().ymd;
   return u.stops.filter(([, , , rel]) => rel !== 1)
     .map(([sid, seq, time]) => ({ si: D.stopById[sid], seq, min: held(D.stopById[sid], toMin(time)), time, end: seq === u.end }))
-    .filter(x => x.si !== undefined && x.seq >= from && x.time >= rt.t - 30).sort((a, b) => a.seq - b.seq).slice(0, n);
+    .filter(x => x.si !== undefined && x.seq >= from && x.time >= rt.t - 30 && !closedRoutes(x.si, ymd).has(b.ri)).sort((a, b) => a.seq - b.seq).slice(0, n);
 }
 /** Where a Connect bus is along its run, for its card and its way on drawn from it: the trip it's on, the place in that
  *  trip's stops of the one it reaches next (the end counted last, as withEnd has it), and the feed's word on that trip,
