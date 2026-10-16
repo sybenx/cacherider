@@ -2133,6 +2133,89 @@ test('a picked bus\'s way on through a stop closed with no way round known: left
   await expect.poll(clear, { timeout: 20_000 }).toBe(true);
 });
 
+// The relay's Blue Loop ways round of 16 Oct, as it had them that afternoon: its detour 92 (30 in a row) off the line on
+// 1200 South 23 m short of Macey's, and 103 (3 in a row) 25 m past it, each on past Macey's, up by the highway and back
+// on Main 300 m past 950 South Main St. Each its tracks as the relay sent them, the longest of each as traced (blueTraced).
+const BLUE_ROUND = {
+  92: { leaves: [41.71025, -111.83675], rejoins: [41.71676, -111.83555], n: 30, paths: [[[41.71025, -111.83675], [41.71034, -111.83817], [41.71195, -111.83897], [41.71225, -111.83925], [41.71369, -111.83777], [41.71676, -111.83555]],
+    [[41.71025, -111.83724], [41.71136, -111.83885], [41.71198, -111.83898], [41.7167, -111.83558]], [[41.71025, -111.83656], [41.71147, -111.83884], [41.71279, -111.83884], [41.7147, -111.83679], [41.71835, -111.83526]]] },
+  103: { leaves: [41.71026, -111.83733], rejoins: [41.71698, -111.83546], n: 3, paths: [[[41.71026, -111.83733], [41.71128, -111.83886], [41.71212, -111.83906], [41.71214, -111.83907], [41.71311, -111.83846], [41.71698, -111.83546]],
+    [[41.71025, -111.83727], [41.71106, -111.83883], [41.71223, -111.83922], [41.71399, -111.8374], [41.71667, -111.83559]], [[41.71026, -111.83741], [41.71076, -111.83878], [41.7123, -111.8393], [41.7143, -111.8371], [41.71671, -111.83557]]] },
+};
+const blueRound = (relay, id) => { const w = BLUE_ROUND[id]; return { id, route: 'B', streak: w.n, trips: w.n, first: relay.T - 7200, last: relay.T - 600, along: null, leaves: w.leaves, rejoins: w.rejoins, paths: w.paths, path: w.paths[0] }; };
+const blueTraced = ids => Object.fromEntries(ids.map(id => BLUE_ROUND[id].paths[0]).map(p => [p.map(([la, lo]) => la.toFixed(4) + ',' + lo.toFixed(4)).join(';'), { way: p, streets: [], at: Date.now() }]));
+const BLUE_STOPS = { SOUTH: '7547682', MACEYS: '7547683', STADIUM: '7547676', MAIN950: '7547677', RIVERWOODS: '7547688' };
+/** Whether the Blue Loop still calls at South Walmart (Back), Macey's, 453 West 100 North, 950 South Main St and The
+ *  Riverwoods in a row. */
+const blueInRow = page => page.evaluate(ids => import('/app/data.js').then(m => { const B = m.D.routeByShort.B; return B !== undefined && Object.values(m.D.routes[B].stops).some(seq => seq.some((si, k) => ids.every((id, i) => seq[k + i] !== undefined && m.D.stops[seq[k + i]].id === id))); }), Object.values(BLUE_STOPS));
+
+test('a way round leaving the line by a stop it goes on past: placed at the stop, not on the line\'s way back by there; the stops after it skipped', async ({ page }) => {
+  // The Blue Loop's way round of 16 Oct (the relay's detour 92) left 1200 South 23 m short of Macey's, and that read as
+  // on the line's way back from 453 West 100 North to 950 South Main St, the two stops a long diagonal apart and it 380 m
+  // off the straight way between: 950 South Main St alone skipped, 453 West 100 North served. Its 103, leaving 25 m past
+  // Macey's, skipped both. Staged alone with no notices: both skipped, Macey's (gone by on the way round) and the stops
+  // either side served, and 453 West 100 North's page says the buses have skipped it.
+  const { SOUTH, MACEYS, STADIUM, MAIN950, RIVERWOODS } = BLUE_STOPS;
+  const relay = { T: Math.floor(Date.now() / 1000), feed: null };
+  relay.alerts = () => [];
+  relay.detours = () => [blueRound(relay, 92)];
+  await stageRelay(page, relay);
+  await open(page);
+  test.skip(!(await blueInRow(page)), 'the Blue Loop no longer calls at South Walmart (Back), Macey\'s, 453 West 100 North, 950 South Main St and The Riverwoods in a row');
+  await page.evaluate(w => localStorage.setItem('cr-ways-2', JSON.stringify(w)), blueTraced([92]));   // as traced
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await expect.poll(() => page.evaluate(() => import('/app/data.js').then(m => (m.A.seen || []).some(u => u.id === 'seen92'))), { timeout: 30_000 }).toBe(true);
+  const u = await page.evaluate(() => import('/app/data.js').then(m => { const u = m.A.seen.find(u => u.id === 'seen92'); return { gone: [...u.gone].sort(), announced: u.announced }; }));
+  expect(u.gone).toEqual([STADIUM, MAIN950]);
+  for (const id of [SOUTH, MACEYS, RIVERWOODS]) expect(u.gone).not.toContain(id);
+  expect(u.announced).toBe(false);
+  await go(page, '#/stop/' + STADIUM);
+  await expect(page.locator('.callout.unann').filter({ visible: true }).first()).toContainText('has skipped this stop');
+});
+
+test('a closed stop the buses go by on their way round: the roads they drive solid, the closed stops still closed; dotted where they leave the line', async ({ page }) => {
+  // Connect's notices of 16 Oct closed Macey's (520 West 100 North) and 950 South Main St to the Blue Loop, and the
+  // relay's ways round (its detours 92 and 103) had its buses down Main, along 1200 South past Macey's, up by the
+  // highway and back on Main, skipping 453 West 100 North and 950 South Main St. No way round skipped all three, Macey's
+  // gone by, so the Blue Loop's line was cut from South Walmart (Back) to The Riverwoods as a notice's is, every road of
+  // it another route's, and nothing was dotted; and with 92 alone, 1200 South west of Main was dotted under the buses
+  // going out along it, and Main north of South Walmart (Back) under them coming down it. Staged as the relay had them,
+  // the Blue Loop's dots as the map has them: none along 1200 South west of Main or anywhere on Main, the roads they
+  // drive, Macey's and 950 South Main St still closed; dotted out along 1200 South east of Main, the stretch they leave.
+  const { MACEYS, MAIN950 } = BLUE_STOPS;
+  const relay = { T: Math.floor(Date.now() / 1000), feed: null };
+  relay.alerts = () => [stopClosure(relay, 'a990106', ['B', '11'], [MACEYS]), { ...stopClosure(relay, 'a990107', ['B'], [MAIN950]), title: 'Blue Loop Detour' }];
+  relay.detours = () => [blueRound(relay, 92), blueRound(relay, 103)];
+  await stageRelay(page, relay);
+  await open(page);
+  // On the Blue Loop's line: 1200 South west of Main; Main between 1200 South and South Walmart (Back), and between 950
+  // South Main St and where they come back (its way up, by its way down); 1200 South east of Main.
+  const driven = [[41.71022, -111.836], [41.7114, -111.83462], [41.715, -111.83478]], left = [[41.71013, -111.8318]];
+  const there = await blueInRow(page) && await page.evaluate(async pts => {
+    const d = await import('/app/data.js'), j = await (await fetch('/data/cvtd-shapes.json')).json();
+    const lines = j.lines.filter(l => l.key === 'B').map(l => l.coords.map(([lo, la]) => [la, lo]));
+    return pts.every(([la, lo]) => lines.some(l => d.pathDistance(la, lo, l) < 4));
+  }, [...driven, ...left]);
+  test.skip(!there, 'the Blue Loop no longer calls at Macey\'s and the stops either side, or its line has moved');
+  await page.evaluate(w => localStorage.setItem('cr-ways-2', JSON.stringify(w)), blueTraced([92, 103]));   // as traced
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await expect.poll(() => page.evaluate(() => import('/app/data.js').then(m => ['seen92', 'seen103'].every(id => (m.A.seen || []).some(u => u.id === id)))), { timeout: 30_000 }).toBe(true);
+  await page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
+  await go(page, '#/map');
+  await mapReady(page);
+  // How far each point is from the Blue Loop's dots, and whether Macey's and 950 South Main St are drawn closed.
+  const drawn = () => page.evaluate(([pts, ids]) => import('/app/data.js').then(m => {
+    const map = window.__map, dots = map && map.getSource('lclosed'), stops = map && map.getSource('stops');
+    if (!dots || !stops) return null;
+    const B = m.D.routeByShort.B, lines = dots.serialize().data.features.filter(f => f.properties.route === B).map(f => f.geometry.coordinates.map(([lo, la]) => [la, lo]));
+    const shut = id => !!(stops.serialize().data.features || []).find(f => f.properties.id === id && f.properties.closed);
+    return [...pts.map(([la, lo]) => Math.round(Math.min(9999, ...lines.map(l => m.pathDistance(la, lo, l))))), ...ids.map(shut)];   // (9999: none)
+  }), [[...driven, ...left], [MACEYS, MAIN950]]);
+  await expect.poll(async () => { const d = await drawn(); return d && d.map((e, i) => i < driven.length ? e > 25 : i < driven.length + left.length ? e < 10 : e); }, { timeout: 20_000 }).toEqual([true, true, true, true, true, true]);
+});
+
 test('settings and about: the clock and units turned and back', async ({ page }) => {
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();

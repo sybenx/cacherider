@@ -329,8 +329,14 @@ function unannounced(list, byStop) {
   for (const d of list) {
     const ris = D.routes.map((r, i) => i).filter(i => D.routes[i].short.split(' ')[0] === d.route);
     const gone = new Set();
-    // A point lies between two stops when it's nearer each than they are to each other.
-    const between = ([la, lo], a, b) => { const ab = distance(a.lat, a.lon, b.lat, b.lon); return distance(a.lat, a.lon, la, lo) < ab && distance(la, lo, b.lat, b.lon) < ab; };
+    // A point lies between two stops when it's nearer each than they are to each other: firmly, or only loosely, where
+    // the way through it is longer than a way only ever heading for the next stop can be (√2 the straight way, round a
+    // block's corner, and 45 m either side, as near as a stop is to a way round to be on it); a line passing it turns
+    // back round a block.
+    const between = ([la, lo], a, b) => {
+      const ab = distance(a.lat, a.lon, b.lat, b.lon), pa = distance(a.lat, a.lon, la, lo), pb = distance(la, lo, b.lat, b.lon);
+      return pa < ab && pb < ab && (pa + pb > Math.SQRT2 * ab + 2 * TRACK_ON ? 'loose' : 'firm');
+    };
     for (const ri of ris) for (const seq of Object.values(D.routes[ri].stops || {})) {
       // Where in the line's stops the buses left it and came back: between stop k and the next, k and how far along the
       // straight way from one to the other it falls (a point behind the first, where the line bends, held at its start,
@@ -340,16 +346,25 @@ function unannounced(list, byStop) {
       // The stops within 300 m of each end, as it was, missed one a long block off: the Blue Loop's way round on 15 Oct
       // came back 307 m past 950 South Main St, and read as announced with nothing skipped. A detour faked round each
       // stop of every route's line: 94% found exactly (68% before), a stop the buses passed counted in 12 of 8556 (176).
+      // Loosely between two stops only where it's nowhere firmly (at a stop, or firmly between two others): the Blue
+      // Loop's way round on 16 Oct (the relay's detour 92) left 1200 South 23 m from 520 West 100 North and read as on
+      // the line's way back from 453 West 100 North to 950 South Main St, 380 m off it, which came out the closest pair:
+      // 453 West 100 North served, where the same way round leaving 25 m on (its detour 103) skipped both. Route 11's
+      // round Macey's, off its line at 1700 South and Main, three sides of a block from 410 West 1700 South to 520 West
+      // 100 North, is nowhere firmly and keeps its loose place. The detours faked round each stop, and each two, leaving
+      // and coming back on the line's own shape a quarter, half and three quarters of the way to the next stop: 94.5%
+      // found exactly (94.2%), none worse, a stop the buses passed counted no more often (24 of 13725).
       const at = ([la, lo]) => {
         const out = [], kx = 111320 * Math.cos(la * Math.PI / 180), xy = s => [(s.lon - lo) * kx, (s.lat - la) * 110540];
         seq.forEach((si, k) => {
-          const s = D.stops[si], n = D.stops[seq[k + 1]];
-          if (distance(la, lo, s.lat, s.lon) <= TRACK_ON) out.push(k);
-          if (!n || !between([la, lo], s, n)) return;
+          const s = D.stops[si], n = D.stops[seq[k + 1]], how = n && between([la, lo], s, n);
+          if (distance(la, lo, s.lat, s.lon) <= TRACK_ON) out.push([k, 'firm']);
+          if (!how) return;
           const [ax, ay] = xy(s), [bx, by] = xy(n), dx = bx - ax, dy = by - ay;
-          out.push(k + Math.min(0.99, Math.max(0.01, -(ax * dx + ay * dy) / (dx * dx + dy * dy))));
+          out.push([k + Math.min(0.99, Math.max(0.01, -(ax * dx + ay * dy) / (dx * dx + dy * dy))), how]);
         });
-        return out;
+        const firm = out.filter(x => x[1] === 'firm');
+        return (firm.length ? firm : out).map(x => x[0]);
       };
       // The closest pair in order: a line that passes the same corner twice (out and back) would otherwise take in the
       // whole run between.
