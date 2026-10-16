@@ -1601,6 +1601,55 @@ test('a way round the buses took: the stop it skipped a long block from where th
   await expect(callout).toContainText('has skipped this stop');
 });
 
+test('a detour past another route\'s stop: its badge marked, said on the stop\'s page; the closed stop across the road pointing to it', async ({ page }, info) => {
+  // The Blue Loop's way round of 15 Oct, staged on the relay: west along 1200 South past 45 West 1200 South (South
+  // Walmart, the 11's and the Green Loop's) and north to Main, four buses in a row, the first a day ago, and the same way
+  // round again from 200 m on, two in a row (the relay kept the Blue Loop's twice on 16 Oct, and the stop said it twice). No notices, then one closing the
+  // Blue Loop's own stop across the road, 520 West 100 North. The old page said nothing at South Walmart: its way
+  // skipped no stop the app could find, which read as announced, and announced ones were left out.
+  const t = Math.floor(Date.now() / 1000), WALMART = '7565655', ACROSS = '7547683';
+  const way = [[41.71038, -111.83466], [41.71024, -111.83626], [41.71025, -111.83723], [41.71111, -111.83884], [41.71203, -111.839], [41.71275, -111.83889], [41.71477, -111.83675], [41.71657, -111.83564]];
+  const detours = { t, detours: [{ id: 9001, route: 'B', streak: 4, trips: 4, first: t - 86400, last: t - 600, along: null, leaves: way[0], rejoins: way[way.length - 1], paths: [way], path: way },
+    // and the relay's second way round of the same buses, leaving 200 m on, two in a row and later: one note, the surer
+    { id: 9002, route: 'B', streak: 2, trips: 2, first: t - 3600, last: t - 300, along: null, leaves: way[2], rejoins: way[way.length - 1], paths: [way.slice(2)], path: way.slice(2) }] };
+  let alerts = [];
+  const json = body => ({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  await page.route(/^https:\/\/live\.cacherider\.com\/detours/, r => r.fulfill(json(detours)));
+  await page.route(/^https:\/\/live\.cacherider\.com\/alerts/, r => r.fulfill(json({ alerts })));
+  await page.route(/\/data\/alerts\.json/, r => r.fulfill(json({ alerts })));
+  await open(page, '#/stop/' + WALMART);
+  const there = await page.evaluate(async ([a, b]) => { const d = await import('/app/data.js'); const B = d.D.routeByShort.B, s = d.D.stopById[a]; return s !== undefined && d.D.stopById[b] !== undefined && B !== undefined && !d.D.stops[s].routes.includes(B); }, [WALMART, ACROSS]);
+  test.skip(!there, 'the feed no longer has the Blue Loop, South Walmart or its stop across the road');
+  const head = page.locator('.head').filter({ visible: true }).first();
+  const mark = head.locator('a.badgelink.detoured');
+  await expect(mark).toHaveCount(1);
+  await expect(mark).toHaveAttribute('aria-label', /^The Blue Loop: on a detour past this stop/);
+  await expect(mark.locator('.badge')).toHaveText('B');
+  const said = page.locator('.callout.past').filter({ visible: true });
+  await expect(said).toHaveCount(1);
+  await expect(said).toContainText('The Blue Loop stops here on its detour');
+  await expect(said).not.toContainText(/wave/i);
+  await expect(said.getByRole('link', { name: 'Show on the map' })).toHaveAttribute('href', '#/map/alert/seen9001');
+  await expect(said).toContainText(/Every Blue Loop bus since [\d:]+( [AP]M)? yesterday \(4 in a row\) has come this way, the latest at/);   // its day said
+  await expect(said).toContainText('not posted by Connect.');
+  // its next bus timed from its own stop across the road, on the way round itself
+  await expect(said).toContainText(/(Next one .+|No more today\. The next is .+): due at 520 West 100 North at .+, here about then\./);
+  // Connect's notice closing the stop across the road: named under it, and that stop's page sends its riders here.
+  alerts = [{ id: 'smoke1', title: 'Stop Closure: 520 West 100 North', text: 'Due to construction the stop at 520 West 100 North is closed.', url: '', cause: '', effect: '', start: t - 86400, end: t + 2 * 86400, routeIds: [], routes: ['B'], stops: [ACROSS], global: false }];
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await expect(page.locator('.callout.past').filter({ visible: true })).toContainText('Seen from Connect\'s buses. Connect has a notice out for the Blue Loop.');
+  // that stop closed, its next bus timed from the one before it, 995 South Main, a walk up the way round before here
+  await expect(page.locator('.callout.past').filter({ visible: true })).toContainText(/: due at 995 South Main at .+, \d min before here\./);
+  await go(page, '#/stop/' + ACROSS);
+  await expect(page.locator('.callout.alert').filter({ visible: true }).first()).toContainText('Blue Loop buses stop at 45 West 1200 South (stop 1107) on their way round, across the road.');
+  // Back at South Walmart, the marked badge opens the way round on the map.
+  await go(page, '#/stop/' + WALMART);
+  await page.locator('.head a.badgelink.detoured').filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/#\/map\/alert\/seen9001$/);
+  await mapReady(page);
+});
+
 test('settings and about: the clock and units turned and back', async ({ page }) => {
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();

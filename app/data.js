@@ -367,9 +367,11 @@ function seenAt(epoch) {
   const c = now(new Date(epoch * 1000)), today = now().ymd, back = dayDiff(c.ymd, today);
   return clockText(c.min) + (back <= 0 ? '' : back === 1 ? ' yesterday' : back < 7 ? ' on ' + dayName(c.ymd) : ' on ' + fmtDay(c.ymd));
 }
-/** The unannounced detours that may skip a stop, and those that pass it on their way round (its buses likely stop). */
+/** The unannounced detours that may skip a stop; and every detour that passes it on its way round, announced or not (a
+ *  stop passed on a detour is served: the Blue Loop's round by 45 West 1200 South on 15 Oct, under Connect's notice,
+ *  was left out, and that stop's page said nothing of it). */
 export const skipsAt = id => (A.seen || []).filter(u => !u.announced && u.gone.includes(id));
-export const passesAt = id => (A.seen || []).filter(u => !u.announced && u.on.includes(id));
+export const passesAt = id => (A.seen || []).filter(u => u.on.includes(id));
 /** Whether a route may be skipping a stop, by an unannounced detour. */
 export const maySkip = (id, ri) => skipsAt(id).some(u => u.ri.includes(ri)) && !closedRoutes(D.stopById[id], now().ymd).has(ri);   // closed by the agency: its word, not our question
 /** What the tracks show, said as it is and no further: 'The last 3 Route 12 buses', or with more in a row, 'Every

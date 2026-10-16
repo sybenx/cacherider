@@ -1,8 +1,8 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
-import { relative, fmtDay, dayName, clockText, dayFrom, isGone } from '../time.js';
-import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow, replaceTo } from '../ui.js';
+import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, routeAlerts, timesOn, familyNow, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
+import { relative, fmtDay, dayName, clockText, dayFrom, isGone, minsTo } from '../time.js';
+import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, routeLinkItems, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow, replaceTo } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -27,9 +27,13 @@ export function render({ id, full, run, on }, clockNow) {
   const sd = side(si);
   const eyebrow = `${s.town} · Stop ${s.code || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces
   const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
+  // Routes that don't call here going past on a detour: theirs too while it lasts, each badge marked as on a detour and
+  // a way to where its buses go.
+  const visiting = detoursPast(si, clockNow);
+  const routeRow = visiting.length ? html`<div class="badges wide">${html.raw(routeLinkItems(si))}${visiting.map(({ ri, u, name }) => html`<a class="badgelink detoured" href="#/map/alert/${u.id}" style="--rc:#${D.routes[ri].color}" aria-label="${cap(name)}: on a detour past this stop, the way its buses go">${badge(ri, 30)}<span class="dtag">Detour</span></a>`)}</div>` : routeLinks(si);
   // Across the road, the stop for the other way and the commonest wrong one to stand at: a pill of its own under the
   // routes, room enough to say where that side's next bus is going.
-  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${routeLinks(si)}<div class="golinks"><a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>${tpLine(si)}${s.twin ? acrossRow(si, clockNow) : ''}</div>`);
+  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${routeRow}<div class="golinks"><a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>${tpLine(si)}${s.twin ? acrossRow(si, clockNow) : ''}</div>`);
   if (g) parts.push(html.raw(pointerDial(s.lat, s.lon, g, s.name)));   // the compass: which way and how far, turning with the phone
 
   const aside = [];   // the shuttle stop on the same pole
@@ -50,23 +54,26 @@ export function render({ id, full, run, on }, clockNow) {
   const alerts = stopAlerts(si, clockNow.ymd);
   const closed = closedRoutes(si, clockNow.ymd);
   const allClosed = s.out || (closed.size && s.routes.every(ri => closed.has(ri)));   // out of the timetable (data.js): every route skips it
-  // Where its buses stop instead, seen from them on their way round (announced or not): the nearest such stop.
+  // Where its buses stop instead, seen from them on their way round (announced or not): the nearest such stop, not this
+  // one or one a notice closes to them. A way round that skips this stop, wherever it goes; one of a route a notice
+  // closes here, within a short walk: the Blue Loop's stop at South Walmart, closed, has its buses going by the stop
+  // across the road.
   const instead = list => {
-    const alt = list.flatMap(u => u.on.map(id => ({ u, t: D.stops[stopIndex(id)] }))).map(x => ({ ...x, d: distance(s.lat, s.lon, x.t.lat, x.t.lon) })).sort((x, y) => x.d - y.d)[0];
-    return alt ? html`<div class="sub">${routeNames(alt.u.ri)} buses came past <a href="#/stop/${alt.t.id}">${alt.t.name}</a> (stop ${alt.t.code}) on their way round, a ${walkMins(s.lat, s.lon, alt.t.lat, alt.t.lon)} min walk from here.</div>` : '';
+    const alt = list.flatMap(u => u.on.filter(id => id !== s.id && !u.ri.every(ri => closedRoutes(stopIndex(id), clockNow.ymd).has(ri))).map(id => ({ u, t: D.stops[stopIndex(id)] })))
+      .map(x => ({ ...x, d: distance(s.lat, s.lon, x.t.lat, x.t.lon) })).filter(x => x.d <= (x.u.gone.includes(s.id) ? Infinity : 500)).sort((x, y) => x.d - y.d)[0];
+    const twin = s.twin && D.stops[s.twin[0]] === alt?.t;
+    return alt ? html`<div class="sub">${alt.u.who} buses stop at <a href="#/stop/${alt.t.id}">${alt.t.name}</a> (stop ${alt.t.code}) on their way round, ${twin ? 'across the road' : `a ${walkMins(s.lat, s.lon, alt.t.lat, alt.t.lon)} min walk from here`}.</div>` : '';
   };
   // A way the bus calls here only when asked (16 northbound at Pepperidge Farms): said once, with the number to ask.
   const req = nextAt(si, 60, clockNow).find(t => t.req);
   if (req) parts.push(html`<div class="notice">${icon('info', 16)}<span>${headsign(req)}, the bus stops here only on request: pull the cord to get off, or call <a href="tel:${D.agency.phone}">${D.agency.phone}</a> ahead to be picked up.</span></div>`);
   if (dayAlert(clockNow.ymd)) parts.push(html`<div class="notice">${icon('info', 16)}<span>Service changes today · <a href="#/about/alerts">see alert</a></span></div>`);
-  // A bus stop that is also a POOL pickup: the on-demand ride goes from here too.
-  if (poolAt(si)) parts.push(html`<div class="notice">${icon('info', 16)}<span>Also a <b>POOL</b> pickup: ${D.agency.brand}'s on-demand ride around ${POOL.towns.slice(0, 3).join(', ')}, zero fare, booked in the On-Demand app or on <a href="tel:${POOL.phone}">${POOL.phone}</a>. <a href="${POOL.url}" target="_blank" rel="noopener">How it works</a></span></div>`);
   // Out of the timetable (data.js, tools/gone.py): where its routes still stop nearest, notice or not.
   const served = s.out ? D.stops.map((x, i) => ({ x, i, d: distance(s.lat, s.lon, x.lat, x.lon) })).filter(({ x, i }) => !x.out && !x.hub && x.routes.some(ri => s.routes.includes(ri)) && !closedRoutes(i, clockNow.ymd).size).sort((a, b) => a.d - b.d)[0] : null;
   const outLine = s.out ? html`<div class="sub">It's out of ${D.agency.brand}'s timetable for now.${served ? html` The nearest stop ${routeNames(s.routes)} ${s.routes.length > 1 ? 'still serve' : 'still serves'}: <a href="#/stop/${served.x.id}">${served.x.name}</a>, ${m2(served.d)} away.` : ''}</div>` : '';
   if (s.out && !alerts.length) parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">No buses stop here right now</b>${outLine}</div></div>`);
   if (alerts.length) {
-    const who = routeNames([...closed]);
+    const who = cap(routeNames([...closed]));   // 'The Blue Loop skips this stop', not 'the'
     // When it ends: the alert's day, and no hour (an alert 'ending Wednesday' ends some time that day, the feed's end
     // its last minute). 'Until Tue 29 Sep' read as back that morning, and 'today' on the day as closed all of it.
     // On the day it stays closed here (a walk to a stop that's served, not a wait at one that may be skipped).
@@ -74,28 +81,44 @@ export function render({ id, full, run, on }, clockNow) {
     const ends = end && !onEnd ? ' · the detour ends ' + (end === dayFrom(clockNow.ymd, 1).ymd ? 'tomorrow' : fmtDay(end)) : '';
     const head = allClosed ? (onEnd ? 'No buses stop here until the detour ends, later today' : `No buses stop here${ends || ' during the detour'}`)
       : closed.size ? `${who} ${closed.size > 1 ? 'skip' : 'skips'} this stop${onEnd ? ' until the detour ends, later today' : ends || ' right now'}` : 'Service alert for this stop';
-    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size || s.out ? 'warnmark' : ''}">${head}</b>${outLine}${instead((A.seen || []).filter(u => u.gone.includes(s.id)))}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}${a.stillOn ? html`<span class="muted"> ${D.agency.brand} took this notice down, but its buses are still going round (${a.stillOn.n} in a row, the latest at ${a.stillOn.last}).</span>` : ''}</div>`)}</div></div>`);
+    parts.push(html`<div class="callout alert">${icon('ban', 20)}<div><b class="${closed.size || s.out ? 'warnmark' : ''}">${head}</b>${outLine}${instead((A.seen || []).filter(u => u.gone.includes(s.id) || u.ri.some(ri => closed.has(ri))))}${alerts.map(a => html`<div class="sub"><b>${a.title}</b>${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}${a.stillOn ? html`<span class="muted"> ${D.agency.brand} took this notice down, but its buses are still going round (${a.stillOn.n} in a row, the latest at ${a.stillOn.last}).</span>` : ''}</div>`)}</div></div>`);
   }
 
   // Unannounced detours, apart from the agency's notices and never in their red: a question, what it rests on, where
   // to wait instead, and that it's ours. Nothing dropped from the times.
   const fine = html`<div class="fine">Unannounced: seen from ${D.agency.brand}'s buses, not posted by ${D.agency.brand}.</div>`;
-  const onMap = u => html`<div class="sub"><a href="#/map/alert/${u.id}">The way they went, on the map</a></div>`;
+  const onMap = u => html`<div class="sub"><a href="#/map/alert/${u.id}">Show on the map</a></div>`;
   const qbadge = u => html`<span class="qbadge" style="--rc:#${D.routes[u.ri[0]].color};--rt:#${D.routes[u.ri[0]].text}">?</span>`;
   for (const u of skipsAt(s.id).filter(u => !u.ri.every(ri => closed.has(ri)))) {
     parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} ${u.n >= 4 ? 'has' : 'have'} skipped this stop</b><div class="sub">${u.n >= 4 ? 'They have gone' : 'They went'} around it${u.by.length ? ' by ' + u.by.join(' and ') : ''}, the latest at ${u.last}.</div>${instead([u])}${onMap(u)}${fine}</div></div>`);
   }
-  for (const u of passesAt(s.id)) {
-    const names = u.gone.map(id => D.stops[stopIndex(id)].name);
-    // When the next comes past: its time at the last stop it serves before going round (the nearest of the route's
-    // stops to where the buses leave the line that they haven't skipped), a minute or two before here.
-    const [lla, llo] = u.d.leaves;
-    const before = u.ri.flatMap(ri => Object.values(D.routes[ri].stops || {}).flat().map(si => ({ ri, si }))).filter(x => !u.gone.includes(D.stops[x.si].id))
-      .map(x => ({ ...x, d: distance(lla, llo, D.stops[x.si].lat, D.stops[x.si].lon) })).sort((x, y) => x.d - y.d)[0];
-    const t = before && before.d < 400 ? nextAt(before.si, 1, clockNow, 8, x => x.r === before.ri)[0] : null;
-    const nextLine = t ? html`<div class="sub">${t.day === 0 ? html`Next one: it leaves <a href="#/stop/${D.stops[before.si].id}">${D.stops[before.si].name}</a> ${relative(t, clockNow)} (${clockText(t.min)}${t.live ? ', ' + liveWord(t).toLowerCase() : ''}) and comes past here a minute or two after. Wave it down.` : html`No more today; the next is ${t.day === 1 ? 'tomorrow' : dayName(t.ymd)} ${clockText(t.min)} from ${D.stops[before.si].name}.`}</div>` : '';
-    parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} came past this stop</b><div class="sub">On their way around ${names.length === 1 ? names[0] : names.length + ' of their usual stops: ' + names.join(', ')}.</div>${nextLine}${fine}</div></div>`);
+  // A route that doesn't call here, going past on a detour, announced or not: a bus stops at any stop it passes (Connect's
+  // dispatcher: 'it's never wave it down'), so said as theirs, with how sure (the buses in a row: 'have come this way',
+  // not the card's 'came past', which can read as driven by) and when the next is here. Its route's notices a link
+  // away, if any.
+  for (const { ri, ris, u, name } of visiting) {
+    const notes = new Set(ris.flatMap(r => routeAlerts(r, clockNow.ymd))).size;
+    parts.push(html`<div class="callout unann past"><span class="detoured" style="--rc:#${D.routes[ri].color}">${badge(ri, 24)}</span><div><b>${cap(name)} stops here on its detour</b>
+      <div class="sub">${lastBuses(u)} ${u.n >= 4 ? 'has' : 'have'} come this way, the latest at ${u.last}.</div>${pastNext(u, ris, s, clockNow)}${onMap(u)}
+      <div class="fine">Seen from ${D.agency.brand}'s buses${notes ? html`. <a href="#/about/alerts">${D.agency.brand} has ${notes > 1 ? 'notices' : 'a notice'} out for ${name}</a>` : html`, not posted by ${D.agency.brand}`}.</div></div></div>`);
   }
+  // One of its own routes going round, unannounced, and past here on the way: once a route, by the surer way round, and
+  // its next one timed as a visiting route's is (pastNext: not from a stop closed to it, 'Monday 6:21 AM' at South
+  // Walmart when the Blue Loop ran all day).
+  const own = new Map();
+  for (const u of passesAt(s.id).filter(u => !u.announced && !visiting.some(v => u.ri.includes(v.ri)))) {
+    const o = own.get(u.d.route);
+    if (!o || u.n > o.n || (u.n === o.n && u.d.last > o.d.last)) own.set(u.d.route, u);
+  }
+  for (const u of own.values()) {
+    const names = u.gone.map(id => D.stops[stopIndex(id)].name);
+    const nextLine = pastNext(u, u.ri, s, clockNow);
+    parts.push(html`<div class="callout unann">${qbadge(u)}<div><b>${lastBuses(u)} ${u.n >= 4 ? 'has' : 'have'} come this way</b><div class="sub">On their way around ${names.length === 1 ? names[0] : names.length + ' of their usual stops: ' + names.join(', ')}.</div>${nextLine}${fine}</div></div>`);
+  }
+
+  // A bus stop that is also a POOL pickup: the on-demand ride goes from here too. After the notices and detours, which
+  // change; this doesn't.
+  if (poolAt(si)) parts.push(html`<div class="notice">${icon('info', 16)}<span>Also a <b>POOL</b> pickup: ${D.agency.brand}'s on-demand ride around ${POOL.towns.slice(0, 3).join(', ')}, zero fare, booked in the On-Demand app or on <a href="tel:${POOL.phone}">${POOL.phone}</a>. <a href="${POOL.url}" target="_blank" rel="noopener">How it works</a></span></div>`);
 
   if (allClosed) {
     // Nothing to schedule here; the callout above has said why.
@@ -191,6 +214,83 @@ function tpLine(si) {
   if (!ris.length) return '';
   return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Route/, 'route')}: buses don't leave before their scheduled time.</span></span>`;
 }
+const cap = w => w ? w[0].toUpperCase() + w.slice(1) : w;
+
+/** Routes that don't call at a stop whose buses go past it on a way round, seen from them (the relay's detours,
+ *  announced or not): each once, by the surer way round (the more buses in a row, then the later), as the detour's card
+ *  says them (a route can have two on the relay: the Blue Loop's at South Walmart, 17 and 2 in a row, were two notes on
+ *  that stop's page), its halves a notice doesn't close here (16 AM and PM, one route to a rider),
+ *  and the half on the road now or next for its badge. A route that calls here anyway isn't one; nor is any at a stop
+ *  closed to all its own routes (works there likely stop every bus). */
+function detoursPast(si, clockNow) {
+  const s = stop(si), shut = closedRoutes(si, clockNow.ymd), out = new Map();
+  if (s.out || (s.routes.length && s.routes.every(ri => shut.has(ri)))) return [];
+  for (const u of passesAt(s.id)) {
+    const ris = u.ri.filter(r => !shut.has(r));
+    if (!ris.length || u.ri.some(r => s.routes.includes(r))) continue;
+    const o = out.get(u.d.route);
+    if (!o || u.n > o.u.n || (u.n === o.u.n && u.d.last > o.u.d.last)) out.set(u.d.route, { ris, u });
+  }
+  return [...out.values()].map(x => {
+    const now = familyNow(x.ris[0], clockNow), ri = x.ris.includes(now) ? now : x.ris[0];
+    return { ...x, ri, name: x.ris.length > 1 ? x.u.who : routeName(ri) };
+  });
+}
+const PACE = 5;   // metres a second: a bus in town, its corners and lights
+/** The stop a route's buses are timed from on their way round: on the way of the route they go (the way whose line
+ *  comes back near where they rejoined it, further on: not the other way's stop across the road), its stop nearest
+ *  where they leave the line, or the one before it they still serve (not skipped, not closed to them). */
+function timingStop(u, ris, ymd) {
+  const [la, lo] = u.d.leaves, [ra, ro] = u.d.rejoins;
+  let best = null;
+  for (const ri of ris) {
+    const ways = Object.values(D.routes[ri].stops || {});
+    for (const seq of ways) {
+      const dl = seq.map(si => distance(la, lo, D.stops[si].lat, D.stops[si].lon));
+      let a = -1;
+      for (let k = 0; k < seq.length; k++) if (dl[k] < 400 && (a < 0 || dl[k] < dl[a])) a = k;
+      if (a < 0 || (ways.length > 1 && !seq.slice(a + 1).some(si => distance(ra, ro, D.stops[si].lat, D.stops[si].lon) < 500))) continue;
+      let k = a;
+      while (k >= 0 && (u.gone.includes(D.stops[seq[k]].id) || closedRoutes(seq[k], ymd).has(ri))) k--;
+      if (k >= 0 && dl[k] < 600 && (!best || dl[k] < best.d)) best = { si: seq[k], d: dl[k] };
+    }
+  }
+  return best;
+}
+/** When a route's next bus comes past a stop on its way round: its time at the stop it's timed from (timingStop), then
+ *  on along the way round at a bus's pace in town; said 'about', with what it goes by. A bus that has left that stop
+ *  but isn't here yet is still the next. */
+function pastNext(u, ris, s, clockNow) {
+  const own = timingStop(u, ris, clockNow.ymd);
+  if (!own) return '';
+  const at = D.stops[own.si], [ha, hoff] = along(u.d.way, s.lat, s.lon), [ta, toff] = along(u.d.way, at.lat, at.lon);
+  const m = Math.round((toff <= 45 ? ha - ta : own.d + ha) / PACE / 60);   // that stop on the way round itself, or before it
+  const f = x => ris.includes(x.r);
+  let t = timesOn(own.si, clockNow.ymd).filter(x => f(x) && x.min >= clockNow.min - 90 - Math.max(m, 0)).map(x => lively({ ...x, day: 0, ymd: clockNow.ymd }))
+    .filter(x => !x.cancelled && !x.held).map(x => ({ x, here: { ...x, gone: false, min: x.min + m } })).filter(y => !isGone(y.here, clockNow)).sort((a, b) => a.here.min - b.here.min)[0];
+  if (!t) { const x = nextAt(own.si, 40, clockNow, 8, f).find(x => x.day > 0); t = x && { x, here: { ...x, min: x.min + m } }; }
+  if (!t) return '';
+  const { x, here } = t, rel = relative(here, clockNow);
+  const live = x.live ? ' (' + liveWord(x).toLowerCase() + ')' : '';
+  const by = at === s ? html`its own time here${live}` : html`due at <a href="#/stop/${at.id}">${at.name}</a> at ${clockText(x.min)}${live}${m > 0 ? `, ${m} min before here` : m < 0 ? `, ${-m} min after here` : ', here about then'}`;
+  return here.day === 0 || minsTo(here, clockNow) < 180
+    ? html`<div class="sub">Next one ${rel === 'now' ? 'any minute' : rel}, about ${clockText(here.min)}: ${by}.</div>`
+    : html`<div class="sub">No more today. The next is ${here.day === 1 ? 'tomorrow' : dayName(here.ymd)} about ${clockText(here.min)}: ${by}.</div>`;
+}
+/** Along a way ([lat, lon] points, in the order the buses go): metres from its start to its point nearest a place, and
+ *  how far the place is from it. */
+function along(way, lat, lon) {
+  const k = 111320 * Math.cos(lat * Math.PI / 180), xy = ([a, b]) => [(b - lon) * k, (a - lat) * 110540];
+  let best = Infinity, at = 0, run = 0;
+  for (let i = 0; i + 1 < way.length; i++) {
+    const [ax, ay] = xy(way[i]), [bx, by] = xy(way[i + 1]), dx = bx - ax, dy = by - ay, n = Math.hypot(dx, dy);
+    const f = n ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (n * n))) : 0, d = Math.hypot(ax + f * dx, ay + f * dy);
+    if (d < best) { best = d; at = run + f * n; }
+    run += n;
+  }
+  return [at, best];
+}
+
 function describeDays(r) {
   // Which days a route runs at all: from the services its departures carry.
   const days = new Set();
