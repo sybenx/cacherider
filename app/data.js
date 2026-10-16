@@ -25,7 +25,7 @@ export function load() {
       D.stops.push({ id: x.id, code: x.code || '', name: x.name, town: x.town || '', lat: x.lat, lon: x.lon, routes: ris, hub: false, by: '', twin: null, out: true });
     }
     D.stopById = Object.fromEntries(D.stops.map((s, i) => [s.id, i]));
-    apart(D.routes);
+    oneColour(D.routes); apart(D.routes); oneColour(D.routes);   // its halves one colour, drawn apart from the rest as one
     for (const r of D.routes) r.tpSet = new Set(r.tp || []);
     // The feed's long names pad the number ('Route 03'): said as riders say it, 'Route 3'.
     for (const r of D.routes) if (r.long) r.long = r.long.replace(/^(Route\s+)0+(?=\d)/i, '$1');
@@ -106,6 +106,24 @@ function apart(routes) {
   // And any badge whose text can't be read on it at all, whatever the shade (under 3:1: the Pumpkin Walk's purple on its
   // orange, 1.8), black or white, whichever reads.
   for (const r of routes) if (/^[0-9a-f]{6}$/i.test(r.color || '') && /^[0-9a-f]{6}$/i.test(r.text || '') && contrast(r.color, r.text) < 3) r.text = contrast(r.color, '000000') >= contrast(r.color, 'FFFFFF') ? '000000' : 'FFFFFF';
+}
+/** One colour for a route's halves (16 AM and PM: one route to a rider, one badge, one line): the half's whose colour
+ *  stands off both the light map's land and the dark map's paper the better (the lesser of its two contrasts the
+ *  greater). 16 AM's navy was 1.5:1 on the dark paper, its badge all but lost there, and its runs are before dawn, when
+ *  a phone is likeliest dark; 16 PM's blue reads on both. Before apart(), so it's that colour that's drawn apart from
+ *  the rest; after, so the halves come out of it the same (each moved apart from the others on its own). */
+function oneColour(routes) {
+  const lin = c => (c /= 255) <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const lum = hex => { const [r, g, b] = [0, 2, 4].map(i => lin(parseInt(hex.slice(i, i + 2), 16))); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const reads = r => Math.min(contrast(r.color, 'EFEEEA'), contrast(r.color, '101214'));
+  const fams = new Map();
+  routes.forEach((r, i) => { if (/^[0-9a-f]{6}$/i.test(r.color || '') && !r.op) { const k = familyKey(i); (fams.get(k) || fams.set(k, []).get(k)).push(r); } });
+  for (const rs of fams.values()) {
+    if (rs.length < 2) continue;
+    const best = rs.reduce((a, b) => reads(b) > reads(a) ? b : a);
+    for (const r of rs) if (r !== best) for (const k of ['color', 'text', 'dcolor', 'gtfsColor', 'gtfsText']) { if (best[k] === undefined) delete r[k]; else r[k] = best[k]; }
+  }
 }
 
 // ---- service alerts: detours, closed stops, late starts, from data/alerts.json (hourly)
@@ -657,11 +675,60 @@ export function prevTrip(ti, ymd) {
  *  runs each), one route to a rider. Itself alone for most. */
 export const familyKey = ri => D.routes[ri].short.replace(/\s+(AM|PM)$/i, '');
 export const family = ri => D.routes.map((r, i) => i).filter(i => familyKey(i) === familyKey(ri));
+/** One of a route's halves: a rider's one route, its badge the number alone, the half said in words where it matters. */
+export const isHalf = ri => family(ri).length > 1;
+/** A family's routes by its key ('16'): its halves; none for a key no route has. */
+export const familyOf = k => D.routes.map((r, i) => i).filter(i => familyKey(i) === k);
+/** Another operator's route run on the agency's road (opOf), every stop of it a stop of one route's (its halves
+ *  together): that route's key ('16' for the Preston commuter, a midday 16), the narrowest such where two would hold
+ *  it; null where none does. From the timetable's stops alone. */
+let roads = null;
+export function roadOf(ri) {
+  if (!roads) {
+    roads = new Map();
+    const stopsOf = k => new Set(familyOf(k).flatMap(i => Object.values(D.routes[i].stops || {}).flat()));
+    const keys = [...new Set(D.routes.map((r, i) => r.op ? null : familyKey(i)).filter(k => k !== null))].map(k => ({ k, s: stopsOf(k) }));
+    D.routes.forEach((r, i) => {
+      if (!r.op) return;
+      const own = Object.values(r.stops || {}).flat();
+      const fits = own.length ? keys.filter(x => own.every(si => x.s.has(si))).sort((a, b) => a.s.size - b.s.size) : [];
+      roads.set(i, fits.length ? fits[0].k : null);
+    });
+  }
+  return roads.get(ri) ?? null;
+}
+/** A route's road as a rider has it: its family (16 AM and PM), with another operator's route on that road (the
+ *  Preston commuter's midday run), or the road of the operator's route asked about. The day's last bus, the way on from
+ *  a stop and a search for the number go by it. */
+export const corridorKey = ri => opOf(ri) ? roadOf(ri) ?? 'op:' + ri : familyKey(ri);
+export const corridor = ri => D.routes.map((r, i) => i).filter(i => corridorKey(i) === corridorKey(ri));
+/** Another operator's routes on a route's road: the Preston commuter on 16's. */
+export const kinOf = ri => corridor(ri).filter(i => !!opOf(i) && i !== ri);
+/** The part of the day a route's runs are: the middle of its day, from its first run's start to its last's end, on
+ *  any of its days ('morning' 16 AM, 'midday' the Preston commuter, 'evening' 16 PM). For saying a half in words. */
+const partOf = new Map();   // route → { lo, hi, part }: its day's first start and last end, and the part of the day
+function spanOf(ri) {
+  if (!partOf.has(ri)) {
+    metaOf(-1);
+    let lo = Infinity, hi = -Infinity;
+    for (const [ti, x] of tripMeta) {
+      if (x.r !== ri || !x.seq.length) continue;
+      const st = x.seq.map(p => p[0]), e = tripEnd(ti);
+      lo = Math.min(lo, ...st); hi = Math.max(hi, e ? e.min : Math.max(...st));
+    }
+    const mid = (lo + hi) / 2;
+    partOf.set(ri, { lo, hi, part: !isFinite(mid) ? '' : mid < 660 ? 'morning' : mid < 900 ? 'midday' : mid < 1020 ? 'afternoon' : 'evening' });
+  }
+  return partOf.get(ri);
+}
+export const dayPart = ri => spanOf(ri).part;
 /** Of a route's family, the half on the road now or next today (its soonest run not yet finished); the route itself
- *  when it's alone or nothing more runs today. */
-export function familyNow(ri, clockNow) {
-  const fam = family(ri);
-  if (fam.length < 2) return ri;
+ *  when it's alone or nothing more runs today. At a stop (`si`), of the halves that call there only: a stop of 16 PM's
+ *  alone is never 16 AM's. */
+export function familyNow(ri, clockNow, si) {
+  let fam = family(ri);
+  if (si !== undefined) { const at = fam.filter(r => Object.values(D.routes[r].stops || {}).some(s => s.includes(si))); if (at.length) fam = at; if (!at.includes(ri) && at.length) ri = at[0]; }
+  if (fam.length < 2) return fam[0] ?? ri;
   let best = null;
   for (const r of fam) {
     const done = new Set();
@@ -674,7 +741,8 @@ export function familyNow(ri, clockNow) {
       if (!best || k < best.k) best = { r, k };
     }
   }
-  return best ? best.r : ri;
+  // Nothing more today: the half that starts the day (the morning's), its runs the next to come.
+  return best ? best.r : fam.reduce((a, b) => spanOf(b).lo < spanOf(a).lo ? b : a);
 }
 export function lastTripOn(ri, ymd, dir) {
   const seen = new Set(Object.values(D.routes[ri].stops || {}).flat());
@@ -796,14 +864,17 @@ export function dirName(ri, dir) {
 }
 
 const lastCache = new Map();
-/** 'Last full run', 'Last run (partial, to 290 South 100 East)', or null, for a departure on its service day. */
+/** 'Last full run', 'Last run (partial, to 290 South 100 East)', or null, for a departure on its service day. The last
+ *  of its road's (corridor): a route's halves and another operator's run on it count as one, so 16 AM's 7:43 isn't
+ *  the last at 2281 North Main with the Preston commuter's 12:38 and 16 PM's 7:23 PM still to come. */
 export function lastRun(t) {
   if (t.trip === undefined || t.si === undefined) return null;
-  const ymd = t.ymd || now().ymd, key = t.si + '|' + ymd + '|' + t.r;
+  const ymd = t.ymd || now().ymd, key = t.si + '|' + ymd + '|' + corridorKey(t.r);
   let words = lastCache.get(key);
   if (!words) {
     words = new Map();
-    const rows = timesOn(t.si, ymd).filter(x => x.r === t.r && x.trip !== undefined);
+    const road = new Set(corridor(t.r));
+    const rows = timesOn(t.si, ymd).filter(x => road.has(x.r) && x.trip !== undefined);
     const last = rows[rows.length - 1];
     if (last) {
       const m = metaOf(last.trip);
@@ -1006,6 +1077,34 @@ export function search(q, limit = 40) {
   return hits.slice(0, limit);
 }
 
+/** A route's runs on a day, each its first stop and minute, soonest first: the Preston commuter's 12:00 from Preston.
+ *  Once a day and set of alerts (a closed stop drops its times). */
+const runsAt = new Map();
+export function runsOf(ri, ymd) {
+  const k = ri + ':' + ymd, had = runsAt.get(k);
+  if (had && had.A === A) return had.out;
+  const out = [], done = new Set();
+  for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const t of timesOn(si, ymd)) {
+    if (t.r !== ri || done.has(t.trip)) continue;
+    done.add(t.trip);
+    const st = tripStops(t.trip), te = tripEnd(t.trip);
+    if (st.length) out.push({ trip: t.trip, min: st[0][0], si: st[0][1], end: te ? te.min : st[st.length - 1][0] });
+  }
+  out.sort((a, b) => a.min - b.min);
+  runsAt.set(k, { A, out });
+  return out;
+}
+/** A route's next run from where its runs start, in the week ahead, with its day (0 today) and ymd; `now` when one's on
+ *  the road (begun, not ended). Null when none runs in the week. */
+export function nextRunOf(ri, clockNow = now()) {
+  for (let day = 0; day < 8; day++) {
+    const ymd = dayFrom(clockNow.ymd, day).ymd, runs = runsOf(ri, ymd);
+    if (!day) { const on = runs.find(x => x.min <= clockNow.min && x.end >= clockNow.min); if (on) return { ...on, day, ymd, now: true }; }
+    const n = runs.find(x => day || x.min >= clockNow.min);
+    if (n) return { ...n, day, ymd, now: false };
+  }
+  return null;
+}
 /** The routes a search names: by number ('12', 'route 12', '#12', '01'; '16' is both of 16's), by letter ('B'), or by
  *  name ('blue', 'green loop'); 'routes', every one. What a routes grid was for, typed. */
 export function searchRoutes(q) {

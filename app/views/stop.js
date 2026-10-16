@@ -2,7 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, routeAlerts, timesOn, familyNow, dayAlert, quietWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom, isGone, minsTo } from '../time.js';
-import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, routeLinkItems, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow, replaceTo } from '../ui.js';
+import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, routeLinkItems, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow, replaceTo, oneEach } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -126,8 +126,8 @@ export function render({ id, full, run, on }, clockNow) {
     const resume = nextServiceDay(clockNow);
     parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${D.agency.brand} doesn't run on ${dayName(clockNow.ymd)}s. ${resume ? `Service resumes ${fmtDay(resume, true)}${nt && nt <= resume ? ', on the new timetable' : ''}.` : ''}</div></div></div>`);
   } else if (!td.all.length) {
-    const only = s.routes.map(ri => D.routes[ri]);
-    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>No ${dayName(clockNow.ymd)} service at this stop</b><div class="sub">${only.length === 1 ? `Route ${only[0].short} ${describeDays(only[0])}.` : 'The routes here skip today.'} Other routes are running today.</div></div></div>`);
+    const only = oneEach(s.routes).map(ri => D.routes[ri]);   // 16 AM and PM, one route
+    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>No ${dayName(clockNow.ymd)} service at this stop</b><div class="sub">${only.length === 1 ? `${routeName(D.routes.indexOf(only[0]), false)} ${describeDays(only[0])}.` : 'The routes here skip today.'} Other routes are running today.</div></div></div>`);
   } else if (!td.left.length && td.last && !(next[0] && next[0].day === 0)) {   // a late last bus is still coming
     parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>Last bus today left at ${clockText(td.last.min)}</b><div class="sub">The next one is ${next[0] ? (next[0].day === 1 ? 'tomorrow' : dayName(next[0].ymd)) + ' at ' + clockText(next[0].min) : 'not in the timetable'}.</div></div></div>`);
   } else if (nt) {
@@ -212,7 +212,7 @@ export function render({ id, full, run, on }, clockNow) {
 function tpLine(si) {
   const ris = stop(si).routes.filter(ri => timed(si, ri));
   if (!ris.length) return '';
-  return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Route/, 'route')}: buses don't leave before their scheduled time.</span></span>`;
+  return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Routes\b/, 'routes')}: buses don't leave before their scheduled time.</span></span>`;   // 'routes 2 and 5', but 'Route 16', its name
 }
 const cap = w => w ? w[0].toUpperCase() + w.slice(1) : w;
 

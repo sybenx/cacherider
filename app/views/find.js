@@ -1,9 +1,9 @@
 // Search: one list for a street, a stop, a place, an address, a route, the shuttle or a bus by its number, the same wherever it's asked
 // (the Stops tab's page, the Map tab's box, the header's box on a wide screen). Only where a result leads differs:
 // on the map it shows there (forMap), and while one end of a journey is being chosen it's that end (forPick).
-import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets } from '../data.js';
-import { metres, clockText, now } from '../time.js';
-import { routeName, html, icon, badge, badges, stopRow, esc, headsign } from '../ui.js';
+import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets, opOf, roadOf, familyKey, familyOf, family, isHalf, corridorKey, dayPart, nextRunOf } from '../data.js';
+import { metres, clockText, now, dayName } from '../time.js';
+import { routeName, html, icon, badge, badges, stopRow, esc, headsign, routeList, routeHref } from '../ui.js';
 import { parseAddress, geocode, townState, spotKey, spotOf, atPath, byWalk, steepWalk } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, live, hasData, nearestUSU, isStale, lastSeen } from '../usu.js';
 import { rt, rtStale, rtHasData, rtSeen, offDuty } from '../rt.js';
@@ -62,10 +62,17 @@ function resultsOf(q, clockNow, pick, later) {
     ${us.routes.length ? html`<div class="section">${icon('route', 16)}Shuttle routes</div><div class="list">${us.routes.map(ri => { const r = U.routes[ri]; const n = live.buses.filter(b => b.ri === ri).length; return html`<a class="row" href="#/usu/route/${r.id}">${chip(ri, 36)}<div class="mid"><span class="name">${r.name}</span><span class="sub">${r.stops.length} stops · ${hasData() ? (n ? n + (n === 1 ? ' bus' : ' buses') + ' on the road' : 'no bus on the road') : 'finding buses…'}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`; })}</div>` : ''}`.s : '';
   // A route named ('12', 'blue'): its page first, above any stop with the number in its address. Not while an end of a
   // journey is being picked: a route is neither.
-  const ris = pick ? [] : searchRoutes(q);
+  // '16': Route 16 once (16 AM and PM, one route, its page the half on the road now or next), and another operator's
+  // run on its road after it (the Preston commuter's, a midday 16), as the routes list has them.
+  const named0 = pick ? [] : searchRoutes(q), { list, others } = routeList();
+  // One half asked for by its name ('16 pm', as Google Maps has it): that half, its page its own.
+  const half = ri => isHalf(ri) && family(ri).filter(x => named0.includes(x)).length === 1 ? family(ri).find(x => named0.includes(x)) : null;
+  const ris = [...list, ...others].filter(ri => named0.some(x => x === ri || (!opOf(x) && !opOf(ri) && familyKey(x) === familyKey(ri)) || (!!opOf(ri) && corridorKey(x) === corridorKey(ri)))).map(ri => half(ri) ?? ri);
   let bus = pick ? { html: '' } : busRows(q);
   if (bus.guess && (hits.length || places.length || campusHtml || spots.length || ris.length)) bus = { html: '' };   // a number guessed a bus's, and found as something else: that alone
-  let routeHtml = ris.length ? html`<div class="list">${ris.map(ri => html`<a class="row" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span><span class="sub">${D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`)}</div>`.s : '';
+  const routeSub = ri => opOf(ri) && roadOf(ri) !== null ? runWords(ri, clockNow, ris.some(x => x !== ri && corridorKey(x) === corridorKey(ri)))
+    : [half(ri) === ri && dayPart(ri) ? dayPart(ri).replace(/^./, c => c.toUpperCase()) + ' runs' : '', D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')].filter(Boolean).join(' · ');
+  let routeHtml = ris.length ? html`<div class="list">${ris.map(ri => html`<a class="row" href="${half(ri) === ri ? '#/map/route/' + encodeURIComponent(D.routes[ri].short) : routeHref(ri)}">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span><span class="sub">${routeSub(ri)}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`)}</div>`.s : '';
   // A bus asked for by its number: it first, as a route asked for is; buses its first figures start, after the stops.
   if (bus.first) routeHtml = bus.html + routeHtml;
   const busAfter = bus.first ? '' : bus.html;
@@ -138,6 +145,18 @@ function busRows(q) {
     return html`<a class="row busfound" href="#/map/bus/${encodeURIComponent(b.id)}?find=1">${lead}<div class="mid"><span class="name">Bus ${b.u ? b.name : b.label}</span><span class="sub">${sub}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`;
   };
   return { html: html`${first ? '' : html`<div class="section">${icon('hub', 16)}${exact ? 'Bus number ' + n : 'Buses numbered ' + n + '…'}</div>`}<div class="list">${hits.map(row)}</div>`.s, first };
+}
+
+/** Another operator's run on one of the agency's roads, said as a route found: under its road's route, 'Midday run by
+ *  PRT · 12:00 PM from Preston'; found alone ('preston'), whose road it is, 'Route 16's midday run, by PRT · …'. When it
+ *  next leaves from where its runs start, or that it's on the road now. */
+function runWords(ri, clockNow, under) {
+  const op = opOf(ri), part = dayPart(ri), who = op.short || op.name, road = familyOf(roadOf(ri))[0];
+  const lead = under ? (part ? part[0].toUpperCase() + part.slice(1) + ' run' : 'A run') + ' by ' + who : `${routeName(road, false)}'s ${part ? part + ' ' : ''}run, by ${who}`;
+  const n = nextRunOf(ri, clockNow), s = n && stop(n.si), town = s ? (s.town || '').replace(/,\s*[A-Z][a-z]+$/, '') : '';
+  const from = !s ? '' : s.hub ? 'the ' + D.hub.name : town && town !== D.hub.town ? town : s.name;
+  const when = !n ? '' : n.now ? 'running now, by its timetable' : clockText(n.min) + (n.day === 0 ? '' : n.day === 1 ? ' tomorrow' : ' ' + dayName(n.ymd)) + ' from ' + from;
+  return [lead, when].filter(Boolean).join(' · ');
 }
 
 /** The Transit Center as one row in a search, for its bays' one address: the Transit Center tab, every route. */

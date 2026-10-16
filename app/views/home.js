@@ -4,7 +4,7 @@
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes, tripStops, routeOrder, liftHex } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo, isDue } from '../time.js';
-import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, minsOut, lastTag, fillLater, moved, detourNotice, lively, schedOf, heardName } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, minsOut, lastTag, fillLater, moved, detourNotice, lively, schedOf, heardName, routeList, routeHref } from '../ui.js';
 import { busOn, busDelay, AT_STOP } from '../rt.js';
 import { lightInks } from '../ink.js';
 import { pumpkinRoute } from './pumpkin.js';
@@ -160,9 +160,10 @@ function chips(clockNow) {
   // A route named in words, not a number (the Pumpkin Walk, a season's), the width of the grid: its badge is wider than
   // a tile (it spilled out of one), and a route like that is worth seeing. Not another operator's: its badge is its
   // initials ('PRT'), a tile's as any.
-  const connect = D.routes.map((r, i) => { const worded = !/\d/.test(r.short) && r.short.length > 2 && !r.op;
+  // Route 16 one tile (its halves, 16 AM and PM, one route), the Preston commuter's after it: fifteen, three rows of five.
+  const connect = routeList().list.map(i => { const r = D.routes[i], worded = !/\d/.test(r.short) && r.short.length > 2 && !r.op;
     // The Pumpkin Walk's tile opens its own page (its tab), not its route's.
-    const href = i === pumpkinRoute() ? '#/pumpkin' : '#/map/route/' + encodeURIComponent(r.short);
+    const href = i === pumpkinRoute() ? '#/pumpkin' : routeHref(i);
     return html`<a href="${href}"${worded ? html.raw(' class="wide"') : ''} aria-label="${routeName(i, false)}">${badge(i, 36)}${worded ? html`<span class="rt-when">${wordedWhen(i, clockNow)}</span>` : ''}</a>`; });
   const campus = U ? U.routes.map((r, ri) => r.stops.length ? html`<a href="#/usu/route/${r.id}" aria-label="${r.name}">${chip(ri, 36)}</a>` : '') : [];
   return html`<div class="land-eye"><span>Routes</span></div><div class="routes">${connect}</div>${campus.some(Boolean) ? html`<div class="land-eye"><span>Aggie Shuttle</span></div><div class="routes campus">${campus}</div>` : ''}`;
@@ -229,7 +230,7 @@ function stopHeroBlock(si, why, clockNow) {
   const then = next.slice(1, 2);   // one, so a moved time and its estimate have room
   // Escaped like every other place it's shown: the feed's headsign, its route's description or a place's name from
   // OpenStreetMap, none of them markup (a name with a tag in it was put on the page as one).
-  const dest = String(headsign(first)), long = D.routes[first.r].long;
+  const dest = String(headsign(first)), long = routeName(first.r, false);   // 'Route 16', either half
   const thenRow = then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${when(t, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : '';
   const top = html`<span class="stopname">${s.name}</span>${big}
     <div class="who">${badge(first.r, 44)}<div class="mid"><span class="dest">${dest}</span>${dayWord || dest !== long ? html`<span class="sub">${[dayWord, dest !== long ? long : ''].filter(Boolean).join(' · ')}</span>` : ''}${lastTag(first)}</div>${sideVal}</div>`;

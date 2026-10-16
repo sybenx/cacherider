@@ -1,6 +1,6 @@
 // Boot, the hash router, and the pieces every screen shares: the tab bar, the
 // desktop header, the location sheet, the minute tick.
-import { D, load, BASE, pref, loadAlerts, loadPlaces, loadPool, A, distance } from './data.js';
+import { D, load, BASE, pref, loadAlerts, loadPlaces, loadPool, A, distance, familyOf, familyNow, family } from './data.js';
 import { now, is24, set24, isKm, setKm, clock, dayFrom, MON_SHORT } from './time.js';
 import { html, icon } from './ui.js';
 import { loadGrid , loadElevation, loadWalks, loadWalkNet, spotKey } from './geo.js';
@@ -235,10 +235,13 @@ export async function render(tick = false) {
   stopOfMap = pageNow && !!app.route && (app.route.name === 'map' || (stopOfMap && (app.route.name === 'stop' || app.route.name === 'usu')));
   renderTabs();
   // A route on a wide screen is a page beside the map, as a stop is; on a phone, the Map tab with its stops as the card.
-  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: dec(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus, every: q.every === '1' } : null;
+  const clockNow = now();
+  // A route by its number where the timetable splits it in halves ('#/map/route/16', a badge's or a tile's): the half on
+  // the road now or next, at the stop it was opened from one that calls there. Each half's own address stays its own.
+  const halfOf = (short, at) => { const fam = D.routeByShort[short] === undefined ? familyOf(short) : []; return fam.length ? D.routes[familyNow(fam[0], clockNow, D.stopById[at])].short : short; };
+  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: halfOf(dec(seg[2] || ''), seg[4]), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus, every: q.every === '1' } : null;
   // The Transit Center on a phone is the map too, at the Center, the board its card; on a wide screen a page beside it.
   const hubMap = seg[0] === 'hub' && !isDesktop();
-  const clockNow = now();
   // Directions: on a wide screen the page beside the map, the way drawn there.
   const goArgs = seg[0] === 'go' ? { to: seg[1], from: seg[2] === 'at' ? undefined : seg[2], at: seg[2] === 'at' && seg[3] ? { lat: +seg[3].split(',')[0], lon: +seg[3].split(',')[1], label: dec(seg[4] || '') } : null } : null;
   // Directions are the map: on a phone, whenever there's a way to draw, the map with it drawn and the ways as its card.
@@ -627,7 +630,7 @@ function wireHover() {
     if (b === last) return;
     last = b;
     if (!b) return app.mapMod.hover();
-    if (b.dataset.r !== undefined) return app.mapMod.hover({ rs: [+b.dataset.r] });
+    if (b.dataset.r !== undefined) return app.mapMod.hover({ rs: family(+b.dataset.r) });   // a 16 badge, both halves' lines
     if (b.dataset.u !== undefined) return app.mapMod.hover({ us: [b.dataset.u] });
     const id = decodeURIComponent((b.getAttribute('href') || '').replace(/^#\/stop\//, '').split(/[/?]/)[0]), si = D.stopById[id];
     app.mapMod.hover(si === undefined ? {} : { stop: id, rs: D.stops[si].routes });

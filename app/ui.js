@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough } from './data.js';
+import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
@@ -27,15 +27,30 @@ html.raw = raw;
 
 export const icon = (name, size = 20, sw = 1.5, fill = 'none') => raw(iconSvg(name, size, sw, fill));
 
-/** The route badge in the agency's colour. '16 AM' sets its suffix small, as the design draws it. */
+/** The route badge in the agency's colour. A route the timetable splits by time of day (16 AM and 16 PM) is one route
+ *  to a rider, one badge, its number alone: which half, where it matters, is said in words (its page). */
 export function badge(ri, size = 36) {
-  const r = route(ri);
-  const m = /^(\S+)\s+(\S+)$/.exec(r.short);
-  const label = m ? esc(m[1]) + '<small>' + esc(m[2]) + '</small>' : esc(r.short);
-  return raw(`<span class="badge badge-${size}" data-r="${ri}" style="background:#${r.color};color:#${r.text}" title="${esc(r.long)}">${label}</span>`);
+  const r = route(ri), label = isHalf(ri) ? familyKey(ri) : r.short;
+  return raw(`<span class="badge badge-${size}" data-r="${ri}" style="background:#${r.color};color:#${r.text}" title="${esc(routeName(ri, false))}">${esc(label)}</span>`);
 }
+/** Badges for routes, one a family (a stop of both 16s has one 16). */
+export const oneEach = ris => [...new Map(ris.map(ri => [familyKey(ri), ri])).values()];
 export function badges(ris, size = 24, wide = false) {
-  return raw(`<div class="badges${wide ? ' wide' : ''}">${ris.map(ri => badge(ri, size).s).join('')}</div>`);
+  return raw(`<div class="badges${wide ? ' wide' : ''}">${oneEach(ris).map(ri => badge(ri, size).s).join('')}</div>`);
+}
+/** A route's page: a family's by its number ('#/map/route/16'), which opens the half on the road now or next. */
+export const routeHref = ri => '#/map/route/' + encodeURIComponent(isHalf(ri) ? familyKey(ri) : D.routes[ri].short);
+/** Every route once, for a list or a grid of them: the timetable's order, a family once, and another operator's route
+ *  on a route's road right after it (Route 16, then the Preston commuter, its midday run). `others`: the operators'
+ *  routes on no road of the agency's, left for a list of their own. */
+export function routeList() {
+  const out = [], others = [];
+  for (const ri of D.routes.keys()) {
+    if (opOf(ri)) { if (roadOf(ri) === null) others.push(ri); continue; }
+    if (out.some(x => !opOf(x) && familyKey(x) === familyKey(ri))) continue;
+    out.push(ri, ...kinOf(ri));
+  }
+  return { list: out, others };
 }
 
 /** A stop's route badges, each a link to its route's page: in the direction that calls here, landing on this stop. */
@@ -43,14 +58,18 @@ export function routeLinks(si, size = 30) {
   return raw(`<div class="badges wide">${routeLinkItems(si, size)}</div>`);
 }
 export function routeLinkItems(si, size = 30) {
-  return stop(si).routes.map(ri => routeBadgeLink(ri, si, size)).join('');
+  return oneEach(stop(si).routes).map(ri => routeBadgeLink(ri, si, size, undefined, true)).join('');
 }
 /** One route badge as a link to the route's page, landing on this stop: in `dir` when that direction calls here
- *  (a departure knows its own), else the first that does. */
-export function routeBadgeLink(ri, si, size, dir) {
-  const r = D.routes[ri], dirs = Object.keys(r.stops || {});
-  const d = dir !== undefined && routeOrder(ri, String(dir)).includes(si) ? String(dir) : dirs.find(k => routeOrder(ri, k).includes(si)) ?? dirs[0] ?? '0';
-  return `<a class="badgelink" href="#/map/route/${encodeURIComponent(r.short)}/${d}/${esc(stop(si).id)}" aria-label="Route ${esc(r.short)}: every stop">${badge(ri, size).s}</a>`;
+ *  (a departure knows its own), else the first that does. `any`: a family's badge, to whichever half is on the road
+ *  now or next here (main.js); else this half's, a departure's own. */
+export function routeBadgeLink(ri, si, size, dir, any = false) {
+  const fam = any && isHalf(ri) ? family(ri).filter(x => Object.values(D.routes[x].stops || {}).some(s => s.includes(si))) : [ri];
+  const r = D.routes[fam[0] ?? ri], dirs = Object.keys(r.stops || {});
+  const on = k => fam.some(x => routeOrder(x, k).includes(si));
+  const d = dir !== undefined && on(String(dir)) ? String(dir) : dirs.find(on) ?? dirs[0] ?? '0';
+  const href = any ? routeHref(ri) : '#/map/route/' + encodeURIComponent(D.routes[ri].short);
+  return `<a class="badgelink" href="${href}/${d}/${esc(stop(si).id)}" aria-label="${esc(routeName(ri, false))}: every stop">${badge(ri, size).s}</a>`;
 }
 
 /** '8:06 AM' as the heading type, the meridiem small. */
@@ -94,15 +113,16 @@ export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
  *  crossed out beside 'on time', the two saying different things. */
 export const moved = t => !!(t && t.live && Math.abs(t.live.delay || 0) >= 2);
 export { isLoop };
-/** A route as riders say it: 'Route 12', or a loop by its name, 'the Blue Loop'. Never 'Route B'. */
-export const routeName = (ri, the = true) => isLoop(ri) || named(ri) ? (the ? 'the ' : '') + nameOf(ri) : 'Route ' + D.routes[ri].short;
+/** A route as riders say it: 'Route 12', or a loop by its name, 'the Blue Loop'. Never 'Route B'. Either half of 16
+ *  is 'Route 16'. */
+export const routeName = (ri, the = true) => isLoop(ri) || named(ri) ? (the ? 'the ' : '') + nameOf(ri) : 'Route ' + familyKey(ri);
 /** A route called by a name, not a number, besides the loops: the Pumpkin Walk ('Route Pumpkin Walk', it was); and
  *  another operator's, by its timetable's name ('the Preston / Logan Commuter', not 'Route PRT'). */
 const named = ri => (!/\d/.test(D.routes[ri].short) && D.routes[ri].short.length > 2) || !!D.routes[ri].op;
 const nameOf = ri => isLoop(ri) || D.routes[ri].op ? D.routes[ri].long : D.routes[ri].short;
-/** Several: 'Routes 2, 3 and 5', 'Route 12 and the Blue Loop', 'the Blue and Green Loops'. */
+/** Several: 'Routes 2, 3 and 5', 'Route 12 and the Blue Loop', 'the Blue and Green Loops'. A family once: 'Route 16'. */
 export function routeNames(ris) {
-  const nums = [...new Set(ris.filter(ri => !isLoop(ri) && !named(ri)))].sort((a, b) => +D.routes[a].short - +D.routes[b].short || D.routes[a].short.localeCompare(D.routes[b].short)).map(ri => D.routes[ri].short);
+  const nums = [...new Set(oneEach(ris.filter(ri => !isLoop(ri) && !named(ri))))].sort((a, b) => parseInt(D.routes[a].short) - parseInt(D.routes[b].short) || D.routes[a].short.localeCompare(D.routes[b].short)).map(familyKey);
   const loops = [...new Set(ris.filter(ri => isLoop(ri) || named(ri)))].map(nameOf);
   const and = xs => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1] : xs[0] || '';
   const num = nums.length ? (nums.length > 1 ? 'Routes ' : 'Route ') + and(nums) : '';

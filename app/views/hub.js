@@ -1,7 +1,7 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf } from '../data.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey } from '../data.js';
 import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone } from '../time.js';
 import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
@@ -19,7 +19,7 @@ const PARKED = 1;   // metres a second: slower than this, stopped (faster, it's 
 /** The scheduled time crossed out, for a time the feed has moved off it: placed before the estimate. */
 const was = (sched, est) => html.raw(Math.abs(est - sched) >= 2 ? `<s class="was">${clock(sched).h}</s>` : '');   // moved enough to say so, as ui's moved()
 
-const keyOf = ri => D.routes[ri].short.replace(/\s+(AM|PM)$/, '');
+const keyOf = familyKey;
 function keys() {
   const out = [];
   for (const b of D.hub.bays) for (const ri of b.routes) if (!out.includes(keyOf(ri))) out.push(keyOf(ri));
@@ -340,7 +340,7 @@ export function bays(bay, clockNow) {
 /** The picked route: where its bus is, in words, and its next three departures. */
 function picked(s, clockNow) {
   const r = D.routes[s.ris[0]];
-  const title = s.loop ? r.long : s.ris.length > 1 ? `Route ${s.k} ${s.ris.map(ri => D.routes[ri].short.replace(/^\S+\s+/, '')).join(' & ')}` : r.long;
+  const title = s.loop ? r.long : s.ris.length > 1 ? 'Route ' + s.k : r.long;   // 16 AM and PM: Route 16, one route
   const desc = (r.desc || '').replace(/^.*?\s+-\s+/, '').replace(/,\s*/g, ' · ');
   const dep = s.dep;
   const words = !dep ? 'Nothing scheduled in the next week.'
@@ -367,7 +367,7 @@ function picked(s, clockNow) {
     return html`<a class="cell${i === 0 ? ' first' : ''}" href="${stopHref(t)}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}<small>${c.ap}</small></span></span><span class="rel">${rel}</span>${lastTag(t)}</a>`;
   });
   return html`<div class="tc-pick blueprint">${corners()}
-    <div class="top">${baySi !== undefined ? html.raw(routeBadgeLink(ri, baySi, 44, s.deps[0] && s.deps[0].dir)) : badge(ri, 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
+    <div class="top">${baySi !== undefined ? html.raw(routeBadgeLink(ri, baySi, 44, s.deps[0] && s.deps[0].dir, true)) : badge(ri, 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
     ${lateLine}<span class="words">${words}</span>${s.bus ? html`<div class="golinks"><a class="golink" href="#/map/bus/${encodeURIComponent(s.bus)}">${icon('map', 16)}Where it is on the map</a></div>` : ''}
     ${cells.length ? html`<div class="cells">${cells}</div>` : ''}</div>`;
 }

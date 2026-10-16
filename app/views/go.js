@@ -1,6 +1,6 @@
 // Directions to a stop or a spot: from where the rider is, or from a stop they name. Each way there is one card: the walk
 // to the first stop, the bus, where to change, where to get off, in order, with when.
-import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn } from '../data.js';
+import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn, corridor, tripEnd } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, dayFrom, isGone } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName, replaceTo } from '../ui.js';
@@ -534,8 +534,13 @@ function timeline(p, J) {
     // has the answer in the same place.
     let missed = '';
     if (today && !l.u && isGone({ min: l.on }, clockNow) && first) {   // gone as the stop's own list drops it (time.js), not a minute later
-      const n = nextAt(l.from, 6, clockNow).find(t => t.r === l.r && t.min > l.on && t.day === 0);
-      missed = html`<span class="sub missed">Missed it? ${n ? html`The next ${badge(l.r, 18)} leaves at <b>${clockText(n.min)}</b>` : 'No more today on this route'}</span>`;
+      // Of its road's (16 AM's last gone, 16 PM's or the Preston commuter's midday run, its own badge), one that gets to
+      // where this one was going: 16 AM's ride in ends at USU, 16 PM's at the Transit Center, and the commuter calls at
+      // few of 16's stops.
+      const road = new Set(corridor(l.r));
+      const reaches = t => { const st = tripStops(t.trip), k = st.findIndex(([m, si]) => si === l.from && m === t.min), e = tripEnd(t.trip); return k >= 0 && (st.slice(k + 1).some(([, si]) => si === l.to) || (!!e && e.si === l.to)); };
+      const n = nextAt(l.from, 12, clockNow).find(t => road.has(t.r) && t.min > l.on && t.day === 0 && (t.r === l.r || reaches(t)));
+      missed = html`<span class="sub missed">Missed it? ${n ? html`The next ${badge(n.r, 18)} leaves at <b>${clockText(n.min)}</b>` : 'No more today on this route'}</span>`;
     }
     // A shuttle at a time picked has no times, only its longest wait: be at the stop by a time, nothing claimed after.
     out.push(tl(l.t.every ? null : l.on, 'on', html`<span class="name">${stopWords(l.from)}</span>${addrLine(l.from)}${l.t.every ? html`<span class="sub">Be at the stop by <b>${clockText(l.on)}</b></span>` : ''}

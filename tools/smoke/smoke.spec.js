@@ -994,14 +994,76 @@ test('another operator\'s route, kept by hand (the Preston commuter): at its sto
   await expect(page.locator(`.jrow .badge[data-r="${pick.ri}"]`).filter({ visible: true }).first()).toBeVisible({ timeout: 20_000 });
 });
 
+test('Route 16 is one route: one badge at 2281 N Main with PRT\'s, the last full run the road\'s, search "16"', async ({ page }) => {
+  // 16 AM and 16 PM (GTFS's halves of Route 16) are one route to a rider; PRT's Preston commuter is its midday run. At
+  // 2281 N Main all three call: the header had three badges, and 16 AM's 7:43 was marked the last full run with PRT's
+  // 12:38 and 16 PM's 7:23 PM still to come.
+  await open(page);
+  const k = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), si = d.D.stopById['7607775'];
+    if (si === undefined) return null;
+    const ri = d.D.stops[si].routes.find(r => d.isHalf(r)), op = d.D.stops[si].routes.find(r => d.opOf(r) && d.roadOf(r) !== null);
+    return ri === undefined ? null : { key: d.familyKey(ri), op: op === undefined ? null : d.D.routes[op].short };
+  });
+  test.skip(!k, '2281 N Main, or a route split in halves there, not in the timetable');
+  await go(page, '#/stop/7607775');
+  const head = page.locator('.head').filter({ has: page.locator('h1') }).filter({ visible: true }).first();
+  await expect(head.locator('h1')).toHaveText('2281 N Main');
+  expect(await head.locator('.badges .badge').allInnerTexts()).toEqual([k.key, ...(k.op ? [k.op] : [])]);
+  const tp = head.locator('.tpline');
+  if (await tp.count()) { await expect(tp).toContainText('A timed stop for Route ' + k.key + ':'); await expect(tp).not.toContainText(/\b(AM|PM)\b/); }
+  // The whole day here (today's, or the next day with buses): the last full run is the day's last bus alone.
+  await go(page, '#/stop/7607775/all');
+  const rows = page.locator('.list .row').filter({ visible: true });
+  await expect(rows.first()).toBeVisible();
+  await expect(page.locator('.list .lastrun').filter({ visible: true })).toHaveCount(1);
+  await expect(rows.last().locator('.lastrun')).toHaveCount(1);
+  for (const t of await page.locator('.list .row .badge').filter({ visible: true }).allInnerTexts()) expect([k.key, k.op]).toContain(t.trim());
+  // Search '16': the route once, to its own address (the half on the road now or next), and PRT's midday run after it.
+  await go(page, '#/search?q=' + encodeURIComponent(k.key));
+  const r16 = page.locator(`a.row[href="#/map/route/${encodeURIComponent(k.key)}"]`).filter({ visible: true });
+  await expect(r16).toHaveCount(1);
+  await expect(r16).toContainText('Route ' + k.key);
+  await expect(page.locator(`a.row[href^="#/map/route/${encodeURIComponent(k.key + ' ')}"]`)).toHaveCount(0);
+  if (k.op) await expect(page.locator(`a.row[href="#/map/route/${encodeURIComponent(k.op)}"]`).filter({ visible: true })).toContainText(new RegExp('run by ' + k.op));
+  // Its address opens a half, named in words; its badge the number alone.
+  await r16.click();
+  await expect(page).toHaveURL(new RegExp('#/map/route/' + k.key + '$'));
+  const rh = page.locator('.routehead').filter({ visible: true }).first();
+  await expect(rh.locator('.rs-name .name')).toHaveText('Route ' + k.key);
+  await expect(rh.locator('.rs-name .sub')).toContainText(/^(Morning|Midday|Afternoon|Evening) runs · /);
+  await expect(rh.locator('.rs-name .badge')).toHaveText(k.key);
+  // At noon on a day both halves run, the morning's done and the evening's to come: neither half's line is done for the
+  // day on the map (it was 16 AM's, drawn faded beside 16 PM's along Main).
+  const at = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), fam = d.familyOf(d.familyKey(d.D.stops[d.D.stopById['7607775']].routes.find(r => d.isHalf(r))));
+    for (let k = 0; k < 8; k++) {
+      const ymd = t.dayFrom(c.ymd, k).ymd;
+      if (fam.every(r => d.runsOf(r, ymd).length)) return Date.now() + ((t.dayDiff(c.ymd, ymd) * 1440 + 720 - c.min) * 60 - c.sec) * 1000;
+    }
+    return null;
+  });
+  if (at) {
+    await page.clock.setFixedTime(new Date(at));
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+    const done = await page.evaluate(async () => {
+      const d = await import('/app/data.js'), m = await import('/app/views/map.js'), r = m.doneToday();
+      return d.familyOf(d.familyKey(d.D.stops[d.D.stopById['7607775']].routes.find(x => d.isHalf(x)))).filter(x => r.routes && r.routes.has(x)).map(x => d.D.routes[x].short);
+    });
+    expect(done, 'a half done at noon with the other still to run').toEqual([]);
+  }
+});
+
 test('route: both ways, its sibling, a stop on it', async ({ page }) => {
   await open(page, '#/map/route/2');
   await mapReady(page);
   await expect(page.getByText(/stops, in order|stops left/i).filter({ visible: true }).first()).toBeVisible();
   const ways = page.locator('a[href^="#/map/route/2/"]');
   if (await ways.count()) { await ways.last().click(); await expect(page).toHaveURL(/#\/map\/route\/2\//); }
-  await go(page, '#/map/route/16%20PM');
-  await expect(page.getByText(/Also Route 16 AM/).filter({ visible: true }).first()).toBeVisible();
+  await go(page, '#/map/route/16%20PM');   // a half's own address, as old links have it: the page says which half, and links the other
+  await expect(page.locator('.routehead .sub').filter({ visible: true }).first()).toContainText(/^Evening runs/);
+  await expect(page.getByText(/Also its morning runs/).filter({ visible: true }).first()).toBeVisible();
   await page.locator('a[href^="#/stop/"]').filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/#\/stop\//);
 });

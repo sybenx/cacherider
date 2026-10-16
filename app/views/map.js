@@ -2,9 +2,9 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
+import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
-import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo } from '../ui.js';
+import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, routeHref } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -64,6 +64,7 @@ const townIcon = (far, near) => ['step', ['zoom'], far, 14, near];
 /** Within a layer, what's still running drawn over what's done, at any zoom: in at the streets the done lines are
  *  their own colours again, and the shuttle's done loops covered the Evening Express where they share a road. */
 const RUNNING_ON_TOP = ['case', DONE, 0, 1];
+const NOT_KIN = ['!', ['to-boolean', ['get', 'kin']]];   // a line of the road's own route (shapes(): `kin`)
 /** The shuttle's loops: one with a bus out on it now over one within its hours with none, over one done for the day.
  *  Its hours alone don't say: the Evening Express is listed 7 AM to 10 PM, and drawn over the day's loops all day. */
 const U_ON_TOP = ['case', ['==', ['get', 'on'], true], 2, DONE, 0, 1];
@@ -146,7 +147,9 @@ function style(sat = true) {
       // at a Connect stop stands off its dot, up and right, the stop still seen and tapped. Its area isn't drawn: a wash
       // of the walk round the pickups read as a cloud the stops were in, not as which were POOL's.
       { id: 'pool-stops', type: 'symbol', source: 'pool', filter: ['==', ['get', 'kind'], 'stop'], minzoom: 11.5, layout: { 'icon-image': townIcon(['case', ['get', 'closed'], 'poolp-off', DONE, 'poolp-done', 'poolp-on'], ['case', ['get', 'closed'], 'poolp-off', 'poolp-on']), 'icon-size': ['interpolate', ['linear'], ['zoom'], 11.5, 0.6, 15, 0.85, 17, 1], 'icon-offset': ['case', ['>=', ['get', 'stop'], 0], ['literal', [11, -11]], ['literal', [0, 0]]], 'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: {} },
-      { id: 'route-lines', type: 'line', source: 'lines', layout: { 'line-join': 'round', 'line-cap': 'round', 'line-sort-key': RUNNING_ON_TOP }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
+      // Another operator's route on a road of the agency's (the Preston commuter's, on 16's, its line cut from 16's) isn't
+      // drawn again over it: one line a road, its own only when it's lit (route-on, route-hover), its page or a pick.
+      { id: 'route-lines', type: 'line', source: 'lines', filter: NOT_KIN, layout: { 'line-join': 'round', 'line-cap': 'round', 'line-sort-key': RUNNING_ON_TOP }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-opacity': 0.75 } },
       { id: 'route-on', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 6, 17, 10], 'line-opacity': 1 } },
       // A route under the pointer on a desktop (on the map, or its badge in the panel): drawn up, over the rest.
       { id: 'route-hover', type: 'line', source: 'lines', filter: ['in', ['get', 'route'], ['literal', []]], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', col], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 14, 7, 17, 11], 'line-opacity': 1 } },
@@ -163,7 +166,7 @@ function style(sat = true) {
       // stop's name or a time: placed after them, they give way, and they push nothing else aside.
       // Every line's way, far in, with nothing picked: which way the buses go along the street the rider's on (a picked
       // route's arrows, route-arrows, from 14).
-      { id: 'route-arrows-all', type: 'symbol', source: 'lines', minzoom: 16.5, layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['slice', ['get', col], 1], '-' + flavor[0]], 'icon-offset': [0, 3.5] } },
+      { id: 'route-arrows-all', type: 'symbol', source: 'lines', minzoom: 16.5, filter: NOT_KIN, layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['slice', ['get', col], 1], '-' + flavor[0]], 'icon-offset': [0, 3.5] } },
       { id: 'route-arrows', type: 'symbol', source: 'lines', minzoom: 14, filter: ['in', ['get', 'route'], ['literal', []]], layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['slice', ['get', col], 1], '-' + flavor[0]], 'icon-offset': [0, 3.5] } },
       { id: 'runs-arrows', type: 'symbol', source: 'runs', minzoom: 14, filter: ['to-boolean', ['get', 'arrow']], layout: { ...ARROWS, 'icon-image': ['concat', 'arw-', ['get', 'hex'], '-' + flavor[0]], 'icon-offset': ['interpolate', ['linear'], ['zoom'], 14, ['array', 'number', 2, ['get', 'o14']], 17, ['array', 'number', 2, ['get', 'o17']]] }, paint: { 'icon-opacity': ['get', 'op'] } },
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
@@ -590,7 +593,7 @@ function shapes() {
   if (!shapesFC) shapesFC = Promise.all([
     fetch(BASE + 'data/cvtd-shapes.json').then(r => r.json()),
     fetch(BASE + 'data/crossings.json').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-  ]).then(([j, x]) => { XINGS = x || {}; const ris = lineRoutes(j.lines); return { type: 'FeatureCollection', features: j.lines.flatMap((l, k) => { if (ris[k] === undefined) return []; const raw = '#' + route(ris[k]).color, c = sinkLine(raw), dc = lift(raw); return [{ type: 'Feature', properties: { color: c, dcolor: dc, soft: mix(c, paperOf(false), 0.35), dsoft: mix(dc, paperOf(true), 0.35), gone: faded(c, false), dgone: faded(dc, true), route: ris[k], shape: l.shape }, geometry: { type: 'LineString', coordinates: l.coords } }]; }) }; })
+  ]).then(([j, x]) => { XINGS = x || {}; const ris = lineRoutes(j.lines); return { type: 'FeatureCollection', features: j.lines.flatMap((l, k) => { if (ris[k] === undefined) return []; const raw = '#' + route(ris[k]).color, c = sinkLine(raw), dc = lift(raw); return [{ type: 'Feature', properties: { color: c, dcolor: dc, soft: mix(c, paperOf(false), 0.35), dsoft: mix(dc, paperOf(true), 0.35), gone: faded(c, false), dgone: faded(dc, true), route: ris[k], shape: l.shape, kin: !!opOf(ris[k]) && roadOf(ris[k]) !== null }, geometry: { type: 'LineString', coordinates: l.coords } }]; }) }; })
     .catch(e => { console.warn('shapes', e); shapesFC = null; return null; });
   return shapesFC;
 }
@@ -1045,7 +1048,8 @@ async function made(app) {
  *  phone's sheet comes back up. */
 function pickRoute(ri, app) {
   const h = '#/map/route/' + encodeURIComponent(D.routes[ri].short);
-  if (location.hash === h || location.hash.startsWith(h + '/') || location.hash.startsWith(h + '?')) {
+  // Up by its own address, or by its family's ('#/map/route/16', this half the one it opened)
+  if ([h, routeHref(ri)].some(h => location.hash === h || location.hash.startsWith(h + '/') || location.hash.startsWith(h + '?'))) {
     // A bus ringed on it (?bus=): the route itself now, the address too, and the bus let go.
     if (location.hash.includes('?')) location.hash = location.hash.split('?')[0];
     frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
@@ -1082,9 +1086,9 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   // the Pumpkin Walk's may be after 20 Oct): said so, its name and badge as any route's. Its list threw, with no stop
   // to start it from: 'Something went wrong' beside the map, nothing on a phone's.
   if (!seq.length) {
-    const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</div></div></div>`;
+    const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${routeSub(ri) ? html`<span class="sub">${routeSub(ri)}</span>` : ''}</div></div></div>`;
     const body = html`<div class="routesheet"><div class="empty"><p>No trips in ${D.agency.brand}'s timetable for this route right now.</p></div></div>`;
-    return { head, body, anchor: null, title: routeName(ri, false), ri };
+    return { head, body, anchor: null, title: routeTitle(ri), ri };
   }
   const here = at !== undefined ? D.stopById[at] : undefined;   // from a stop's badge: that stop, marked, in view
   // Its row: on a line where the stop is twice (the Transit Center at both ends), the one on the way given. A stop
@@ -1166,7 +1170,7 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   const k = first && !last ? stops.findIndex(x => x.si === first.f.si && (x.k === null || x.k === wayIn)) : -1, morning = k > 0 && !done;
   const rows = morning ? [html`<div class="endservice firstrun"><span>First run starts here · ${clockText(first.f.min)}</span></div>`, ...rowsOf(each.slice(k)),
       html`<div class="endservice firstrun"><span>Then from ${stop(seq[0]).hub ? 'the ' + D.hub.name : stop(seq[0]).name}</span></div>`, ...rowsOf(each.slice(0, k))]
-    : [...rowsOf(top), endRow, ...(rest.length ? [html`<div class="endservice"><span>End of service today</span></div>`, ...rowsOf(rest)] : [])];
+    : [...rowsOf(top), endRow, ...(rest.length ? [html`<div class="endservice"><span>${halfWord(ri) ? `End of${halfWord(ri)} runs today` : 'End of service today'}</span></div>`, ...rowsOf(rest)] : [])];
   const count = !whole ? `${coming.length} of ${seq.length} stops left` : split ? `${seq.length} stops · tonight's first` : `${seq.length} stops, ${outBack ? 'out and back' : 'in order'}`;
   // The head is what a swiped-down sheet keeps: the route, and which way with how much of it is left.
   const keep = every ? '?every=1' : '';   // a way's chip keeps every stop, asked for
@@ -1179,17 +1183,19 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   // The route's other half (16 PM from 16 AM), a tap away, with when it next leaves today: one route to a rider. And
   // another operator's route on its road, every stop of it this one's (the Preston commuter on 16's), and on that
   // route's page the route whose road it is: the next bus that way is either.
-  const stopsOf = x => new Set(family(x).flatMap(y => Object.values(D.routes[y].stops || {}).flat()));
-  const onRoad = (x, y) => { const of = stopsOf(y); return Object.values(D.routes[x].stops || {}).flat().every(si => of.has(si)); };
   // (Of a route split in halves, the half on the road now or next: 16 PM at noon, not 16 AM's 'no more runs today'.)
-  const kin = [...new Set(D.routes.map((_, x) => x).filter(x => !family(ri).includes(x) && !!opOf(x) !== !!opOf(ri) && (opOf(x) ? onRoad(x, ri) : onRoad(ri, x))).map(x => familyNow(x, clockNow)))];
-  const also = [...family(ri).filter(x => x !== ri), ...kin].map(x => {
-    const next = Object.keys(D.routes[x].stops || {}).flatMap(k => runsOn(x, clockNow.ymd, k)).filter(t => !isGone(t, clockNow)).sort((p, q) => p.min - q.min)[0];
-    const lt = next ? null : lastTripOn(x, clockNow.ymd), out = lt && lt.start[0] <= clockNow.min && lt.end[0] >= clockNow.min;
-    const from = next && kin.includes(x) ? ' from ' + endName(next.si) : '';   // another's run starts elsewhere: noon is Preston's, not here
-    return html`<a class="rs-also" href="#/map/route/${encodeURIComponent(D.routes[x].short)}">${badge(x, 22)}<span class="rs-also-t">Also ${routeName(x, false)}${next ? ` · next run ${clockText(next.min)}${from}` : out ? ' · its last run on the road now' : ' · no more runs today'}</span>${icon('fwd', 16)}</a>`;
+  // Its road's (data.js corridor): the other half, 'its evening runs'; another operator's run on it, 'its midday run, by
+  // PRT'; from that run's own page, the route whose road it is.
+  const kin = opOf(ri) ? [...new Set(corridor(ri).filter(x => !opOf(x)).map(x => familyNow(x, clockNow)))] : kinOf(ri);
+  // The one running or leaving first, first; each with where its next run leaves from (4:34 PM is 16 PM's from USU, not
+  // the Transit Center's). Another operator's has no live word: running now is its timetable's.
+  const also = [...family(ri).filter(x => x !== ri), ...kin].map(x => ({ x, n: nextRunOf(x, clockNow) })).sort((a, b) => (a.n ? a.n.day * 1440 + (a.n.now ? -1 : a.n.min) : 1e5) - (b.n ? b.n.day * 1440 + (b.n.now ? -1 : b.n.min) : 1e5)).map(({ x, n }) => {
+    const next = n && !n.now && n.day === 0 ? n : null, ran = runsOn(x, clockNow.ymd).length > 0;
+    const who = opOf(x) ? `its ${dayPart(x) ? dayPart(x) + ' ' : ''}run by ${opOf(x).short || opOf(x).name}` : family(x).includes(ri) ? `its ${dayPart(x) || 'other'} runs` : routeName(x, false);
+    const when = n && n.now ? (opOf(x) ? ' · running now, by its timetable' : ' · on the road now') : next ? ` · next run ${clockText(next.min)} from ${endName(next.si)}` : ran ? ' · no more runs today' : ' · none today';
+    return html`<a class="rs-also" href="#/map/route/${encodeURIComponent(D.routes[x].short)}">${badge(x, 22)}<span class="rs-also-t">Also ${who}${when}</span>${icon('fwd', 16)}</a>`;
   });
-  const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</div></div>${also}${chipsRow}</div>`;
+  const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${routeSub(ri) ? html`<span class="sub">${routeSub(ri)}</span>` : ''}</div></div>${also}${chipsRow}</div>`;
   // Alerts folded to their titles: the line on the map already shows where; the words are a tap away.
   const alerts = routeAlerts(ri, clockNow.ymd).map(a => html`<details class="callout alert rs-alert"><summary>${icon('ban', 20)}<b>${a.title}</b><span class="more">More</span></summary><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></details>`);
   // Come from a stop's badge: the answer for that stop first, so the list below is for those who want the route.
@@ -1204,8 +1210,18 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus; for a way
   // of a line (an old address, '/15/1'), on its half. Else at the top: the stops still to come start there.
   const anchor = here !== undefined ? 'here' : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : wayAt >= 0 ? 'rs-way' : null;
-  return { head, body, anchor, title: routeName(ri, false), ri };
+  return { head, body, anchor, title: routeTitle(ri), ri };
 }
+/** Under a route's name on its page: its half of the day where the timetable splits it ('Morning runs', 16 AM's), and
+ *  where it goes. */
+function routeSub(ri) {
+  const half = isHalf(ri) && dayPart(ri) ? dayPart(ri).replace(/^./, c => c.toUpperCase()) + ' runs' : '';
+  return [half, (D.routes[ri].desc || '').replace(/^.*? - /, '').replace(/,\s*/g, ' · ')].filter(Boolean).join(' · ');
+}
+/** A route page's title: 'Route 16 · morning runs' for a half. */
+const routeTitle = ri => routeName(ri, false) + (isHalf(ri) && dayPart(ri) ? ' · ' + dayPart(ri) + ' runs' : '');
+/** ' morning', for a half's notes: 'Today's last morning run…'. */
+const halfWord = ri => isHalf(ri) && dayPart(ri) ? ' ' + dayPart(ri) : '';
 
 // A route's stops are drawn as a line (the Pumpkin Walk's page, 15 Oct; tried on the Blue Loop and Route 15 first): a
 // rail in the route's colour, a ring at each stop, a bus a dot on it between the stops it's between or the ring of the
@@ -1287,12 +1303,12 @@ function routeLast(ri, ways, clockNow) {
   const lines = ways.map(({ k, si, way }) => {
     const ts = si === undefined ? [] : timesOn(si, ymd).filter(x => x.r === ri && (k === undefined || String(x.dir) === String(k))).map(x => x.min);
     if (!ts.length) return '';
-    const first = Math.min(...ts), last = Math.max(...ts), from = endName(si);
+    const first = Math.min(...ts), last = Math.max(...ts), from = endName(si), hw = halfWord(ri);   // ' morning': 16 AM's last isn't the day's
     // A route that runs once a day (the Preston commuter): no first and last, its one run.
     if (first === last) return t <= last ? html`<span>Today's only run${way} leaves ${from} at <b>${clockText(first)}</b>${t === last ? ' · now' : ''}</span>` : html`<span class="gone">Today's only run${way} left ${from} at ${clockText(last)}</span>`;
-    if (t < first) return html`<span>First${way} leaves ${from} at <b>${clockText(first)}</b> · last ${clockText(last)}</span>`;
-    if (t <= last) return html`<span>Last${way} leaves ${from} at <b>${clockText(last)}</b> · ${last === t ? 'now' : 'in ' + hm(last - t)}</span>`;
-    return html`<span class="gone">Last${way} left ${from} at ${clockText(last)}</span>`;
+    if (t < first) return html`<span>First${hw ? hw + ' run' : ''}${way} leaves ${from} at <b>${clockText(first)}</b> · last ${clockText(last)}</span>`;
+    if (t <= last) return html`<span>Last${hw ? hw + ' run' : ''}${way} leaves ${from} at <b>${clockText(last)}</b> · ${last === t ? 'now' : 'in ' + hm(last - t)}</span>`;
+    return html`<span class="gone">Last${hw ? hw + ' run' : ''}${way} left ${from} at ${clockText(last)}</span>`;
   }).filter(Boolean);
   return lines.length ? html`<div class="re-last">${lines}</div>` : '';
 }
@@ -1433,13 +1449,17 @@ function follow(ri, along, buses, clockNow) {   // along: a bus's place on the r
  *  off; or that it's done there for the day, and when it's back. `h`: its place on the route's list of `len`; `along`:
  *  a bus's; `way`: which way that bus is going ('to Preston'), at a stop both ways serve. */
 function yourStop(ri, si, k, h, len, along, buses, clockNow, way = '') {
-  const s = stop(si), name = routeName(ri, false);   // 'No more Blue Loop here'
+  const s = stop(si), name = halfWord(ri) ? halfWord(ri).slice(1) + ' runs' : routeName(ri, false);   // 'No more Blue Loop here', 'No more morning runs here'
   const closed = closedRoutes(si, clockNow.ymd).has(ri);
   const t = closed ? null : nextAt(si, 1, clockNow, 8, x => x.r === ri && (k === null || String(x.dir) === k))[0];
   let line, sub = '';
   if (closed) line = html`<span class="rel warnmark">Not served today · detour</span>`;
   else if (!t) line = html`<span class="rel">Nothing scheduled in the next week</span>`;
-  else if (t.day > 0) line = html`<span class="rel">No more ${name} here today · next ${t.day === 1 ? 'tomorrow' : dayName(t.ymd)} ${clockText(t.min)}</span>`;
+  else if (t.day > 0) {
+    // A half done for the day here, its other half still to call: that, not tomorrow's (16 AM's page at noon).
+    const o = isHalf(ri) ? nextAt(si, 1, clockNow, 1, x => family(ri).includes(x.r) && x.r !== ri && (k === null || String(x.dir) === k))[0] : null;
+    line = html`<span class="rel">No more ${name} here today · ${o ? `${dayPart(o.r)} runs from ${clockText(o.min)}` : `next ${t.day === 1 ? 'tomorrow' : dayName(t.ymd)} ${clockText(t.min)}`}</span>`;
+  }
   else {
     const lt = lively(t);
     line = html`${badge(ri, 20)}${when(lt, 22)}<span class="rel">${relative(lt, clockNow)}</span>${lt.live ? liveMark(lt.live.est ? 'Estimated' : 'Live') : sched(lt)}`;
@@ -1503,7 +1523,7 @@ function firstRunNote(ri, d, clockNow, dirWord) {
   // Left by the feed's word, not the clock's: a bus out early is gone from its first stop, a late one not yet.
   const row = timesOn(f.si, clockNow.ymd).find(t => t.trip === f.trip), t = row ? lively({ ...row, day: 0, ymd: clockNow.ymd }) : { min: f.min };
   if (t.gone || t.min < clockNow.min) return null;
-  return { f: { ...f, min: t.min }, note: html`<div class="notice lastrun-note">${icon('sun', 16)}<span>Today's first run${dirWord} leaves ${runFrom(ri, f.si)}at <b>${clockText(t.min)}</b>.</span></div>` };
+  return { f: { ...f, min: t.min }, note: html`<div class="notice lastrun-note">${icon('sun', 16)}<span>Today's first${halfWord(ri)} run${dirWord} leaves ${runFrom(ri, f.si)}at <b>${clockText(t.min)}</b>.</span></div>` };
 }
 function lastRun(ri, d, seq, clockNow, dirWord) {
   const lt = lastTripOn(ri, clockNow.ymd, d);
@@ -1539,8 +1559,8 @@ function lastRun(ri, d, seq, clockNow, dirWord) {
   const where = partial ? html`only part of the route, ending at <b>${stop(re.end).name}</b>${about}`
     : onward.length ? html`out to ${far} and back, ending at ${ends}${about}` : html`the whole route, ending at ${ends}${about}`;
   const lv = lively({ ...t, day: 0 });   // by the feed's word: a late last run is still to leave, as its own row says
-  const lead = !isGone(lv, clockNow) ? html`Today's last run${dirWord} leaves ${from}at <b>${clockText(lv.min)}</b> and runs ${where}.`
-    : html`Today's last run${dirWord} left ${from}at ${clockText(t.min)}${bus ? html` and is on the road now, bus ${bus.label}` : ''}. It runs ${where}.`;
+  const lead = !isGone(lv, clockNow) ? html`Today's last${halfWord(ri)} run${dirWord} leaves ${from}at <b>${clockText(lv.min)}</b> and runs ${where}.`
+    : html`Today's last${halfWord(ri)} run${dirWord} left ${from}at ${clockText(t.min)}${bus ? html` and is on the road now, bus ${bus.label}` : ''}. It runs ${where}.`;
   return { note: html`<div class="notice lastrun-note">${icon('moon', 16)}<span>${lead}</span></div>`, out: t.min <= clockNow.min, endSi, endAt, endMin: endAt ?? endMin, turnSi: turn ? turn.si : null };
 }
 
@@ -2429,8 +2449,11 @@ export function doneToday(c = now()) {
     lastDay = c.ymd;
     lastRows = [];
     for (let ri = 0; ri < D.routes.length; ri++) for (const [dir, seq] of Object.entries(D.routes[ri].stops || {})) {
-      // this way's calls only: the Center's stop is the end of one way and the start of the other
-      const rows = seq.map(si => timesOn(si, c.ymd).filter(t => t.r === ri && !t.prov && String(t.dir) === dir).reduce((m, t) => !m || t.min > m.min ? t : m, null));
+      // this way's calls only: the Center's stop is the end of one way and the start of the other. A half of a route (16
+      // AM) by its family's last call at each stop, its other half's: one route, one line, not done at 8 AM with the
+      // evening's runs still to come over the same road.
+      const fam = new Set(family(ri));
+      const rows = seq.map(si => timesOn(si, c.ymd).filter(t => fam.has(t.r) && !t.prov && String(t.dir) === dir).reduce((m, t) => !m || t.min > m.min ? t : m, null));
       for (let i = rows.length - 1; i >= 0 && rows[i] === null; i--) rows[i] = i ? rows[i - 1] : null;   // the last stop, no call of its own: as the one before
       lastRows.push([ri, seq, rows]);
     }
@@ -2604,7 +2627,7 @@ function notice(clockNow) {
     t0 = Math.min(...deps.map(t => t.min));
     const early = [...new Set(deps.filter(t => t.min === t0).map(t => t.r))].sort((a, b) => a - b);
     const pulse = nextPulse(1, clockNow).find(p => p.ymd === resume);
-    const names = early.map(ri => isLoop(ri) ? D.routes[ri].long : D.routes[ri].short);
+    const names = [...new Set(early.map(ri => isLoop(ri) ? D.routes[ri].long : familyKey(ri)))];   // 16, not '16 AM'
     const which = early.length && early.length < 5 ? ` (${early.every(ri => !isLoop(ri)) ? (names.length > 1 ? 'routes ' : 'route ') : ''}${names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]})` : '';
     if (isFinite(t0)) first = ` The first leave the ${D.hub.name} at ${clockText(t0)}${which}${pulse && pulse.min > t0 ? `; most routes start at ${clockText(pulse.min)}` : ''}.`;
   }
@@ -3104,7 +3127,7 @@ function connectCard(b, app, bare = false) {
   const late = dl !== null && !isLoop(b.ri) ? lateWords(heldAt(nextStopOf(b) ?? (at && at.si), dl)) : '';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
-    <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : r.long}</span></div>
+    <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span></div>
     ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may have moved on' : b.free ? 'its last run was ' + routeName(b.ri) + '. Not one to wait for' : 'its last run is over. Not one to wait for'}.</span></div>` : ''}${alsoHere(b.id)}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
@@ -3195,7 +3218,7 @@ function linesBy(features, keyOf, at, within = 50) {
  *  a family (16 AM and PM), the half on the road now. */
 function routesBy(at) {
   if (!drawn.lines) return [];
-  return linesBy(drawn.lines.features, f => f.properties.route === undefined ? undefined : familyKey(f.properties.route), at).map(f => familyNow(f.properties.route, now())).sort((a, b) => a - b);
+  return linesBy(drawn.lines.features, f => f.properties.route === undefined || f.properties.kin ? undefined : familyKey(f.properties.route), at).map(f => familyNow(f.properties.route, now())).sort((a, b) => a - b);
 }
 /** The shuttle's loops whose published lines pass within 50 m of a spot (not a loop traced stop to stop: a straight
  *  line between stops isn't the road), as route indexes. */
@@ -4331,12 +4354,20 @@ function busPath(b, clockNow) {
  *  its next bus goes, or the day's last when they've all gone, so a stop late at night still shows the way. */
 function stopPaths(si, ris, clockNow) {
   const out = [], ts = timesOn(si, clockNow.ymd).sort((a, b) => a.min - b.min);
-  for (const ri of ris) {
-    const own = ts.filter(t => t.r === ri);
+  // A road's routes as one (data.js corridor: 16 AM, 16 PM and the Preston commuter's midday run), one way on each way
+  // from here: the road's own route's next run, 16's, in its colour; another operator's on it only where the road's own
+  // route doesn't call here that way, or when it's the one picked (its page). Three strands side by side read as three
+  // routes, and PRT's olive bold along Main beside 16's took the road from it. (The commuter's ways are numbered as
+  // 16's are, tools/prt.json.)
+  const roads = new Map();
+  for (const ri of ris) (roads.get(corridorKey(ri)) || roads.set(corridorKey(ri), new Set()).get(corridorKey(ri))).add(ri);
+  for (const road of roads.values()) {
+    const all = ts.filter(t => road.has(t.r));
+    const own = [...new Set(all.map(t => t.dir))].flatMap(d => { const way = all.filter(t => t.dir === d), ours = way.filter(t => !opOf(t.r)); return ours.length ? ours : way; });
     for (const d of new Set(own.map(t => t.dir))) {
       const list = own.filter(t => t.dir === d), t = list.find(t => t.min >= clockNow.min) || list[list.length - 1];
       const k = tripStops(t.trip).findIndex(x => x[1] === si && x[0] === t.min);   // by minute: a loop's trip passes its first stop twice
-      if (k >= 0) out.push({ ri, stops: pathFrom(t.trip, k + 1, ri, clockNow) });
+      if (k >= 0) out.push({ ri: t.r, stops: pathFrom(t.trip, k + 1, t.r, clockNow) });
     }
   }
   return out;
