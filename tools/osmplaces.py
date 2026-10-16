@@ -21,6 +21,7 @@ WALK = 1200                           # metres from the nearest stop: further, a
 
 QUERY = f"""[out:json][timeout:120];
 (
+  {{POLES}}
   nwr["name"]["amenity"]({BOX}); nwr["name"]["shop"]({BOX}); nwr["name"]["leisure"]({BOX});
   nwr["name"]["office"]({BOX}); nwr["name"]["tourism"]({BOX}); nwr["name"]["healthcare"]({BOX});
   nwr["name"]["building"~"school|university|college|hospital|civic|public|stadium|government|retail|commercial"]({BOX});
@@ -68,6 +69,10 @@ def dist(a, b, c, d):
 
 D = json.load(open(os.path.join(ROOT, 'data', 'cvtd.json')))
 stops = [s for s in D['stops'] if not s.get('hub')] + [s for s in D['stops'] if s.get('hub')][:1]
+# The bus stops' poles round the hub, for its bays' places (tools/reduce.py): the feed's can be metres off, Route 9's
+# 9 m north of Route 1's at the Transit Center, where their poles stand side by side.
+HUB_R = 200   # metres round the hub
+QUERY = QUERY.replace('{POLES}', f'node["highway"="bus_stop"](around:{HUB_R},{D["hub"]["lat"]},{D["hub"]["lon"]});' if D.get('hub') else '')
 
 # Overpass is often busy: a few tries, the main server and a mirror in turn, and an answer cut short or older than the
 # file already published turned away (tools/overpass.py). OSM_CACHE=file (working on this script): the answer kept
@@ -212,6 +217,11 @@ areas += [h for h in halls if not any(a['name'] == h['name'] for a in areas)]
 print('buildings: ' + ', '.join(f"{h['name']} ({', '.join(h['names'])})" for h in halls), file=sys.stderr)
 # An answer that found far fewer places than the file riders have is a bad answer, not a valley that lost them.
 overpass.enough(len(out), len(WAS.get('places') or []), 'places', 0.9)
-json.dump({'from': 'OpenStreetMap contributors', 'osm': base, 'campus': campus, 'places': out, 'areas': areas, 'streets': streets}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
+# The hub's poles: where each stands and what it says it's for ([lat, lon, ref, route_ref, name]).
+poles = [[round(e['lat'], 6), round(e['lon'], 6), e['tags'].get('ref', ''), e['tags'].get('route_ref', ''), e['tags'].get('name', '')]
+         for e in els if e.get('type') == 'node' and e.get('tags', {}).get('highway') == 'bus_stop' and D.get('hub')
+         and dist(e['lat'], e['lon'], D['hub']['lat'], D['hub']['lon']) <= HUB_R + 20]
+print(f'{len(poles)} bus stop poles round the hub', file=sys.stderr)
+json.dump({'from': 'OpenStreetMap contributors', 'osm': base, 'campus': campus, 'places': out, 'areas': areas, 'streets': streets, 'poles': poles}, open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(f'{len(areas)} areas: ' + ', '.join(a['name'] for a in areas), file=sys.stderr)
 print(f'{len(out)} places, {os.path.getsize(OUT) // 1024} KB, campus {campus or "none"}', file=sys.stderr)

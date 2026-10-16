@@ -269,6 +269,41 @@ for i in hub_stops:
     s = stops[i]
     bays.append({'stop': i, 'routes': s['routes'], 'lat': s['lat'], 'lon': s['lon']})
     s['hub'] = True
+# Each bay at its pole in OpenStreetMap where one's mapped (tools/osmplaces.py, the last night's poles): the feed has
+# Route 9's 9 m north of Route 1's, one behind the other at the Transit Center, where the poles stand 17 m apart, 9's
+# to the north-west. A pole is a bay's only when it says so: its ref the bay's stop code ('100', Route 1's), or its ref
+# or name one of the bay's routes ('9', 'Route 15', 'GREEN' for the Green Loop, 'Blue Loop'). A pole that only lists a
+# route among others (Route 1's, '1;9') could be the bay across the drive, and a pole whose ref is another bay's code
+# is that bay's. The surest first, then the nearest, within 40 m, one pole to a bay; none, and the bay is where the
+# feed has it. The stop moves with its bay, so its dot and the planner's walks to it are where the badge is.
+def _poles():
+    try: return json.load(open(os.path.join(a.out, 'osm-places.json'))).get('poles') or []
+    except Exception: return []
+def _said(x):   # 'Route 09' and '9' alike
+    x = re.sub(r'^route\s+', '', x.strip().lower())
+    return x.lstrip('0') or x if x.isdigit() else x
+def _names(ri):   # how a pole might name a route: its short name, its long name, a loop's colour ('green')
+    r = routes[ri]; long_ = _said(r.get('long') or '')
+    return ({_said(r['short']), long_} | ({long_.split(' ')[0]} if long_.endswith(' loop') else set())) - {''}
+_codes = {(stops[b['stop']].get('code') or '').lower() for b in bays} - {''}
+def _sure(b, p):
+    code, ref, name = (stops[b['stop']].get('code') or '').lower(), _said(p[2]), _said(p[4])
+    if code and ref == code: return 2
+    if ref in _codes: return 0
+    names = set().union(*(_names(ri) for ri in b['routes']))
+    return 1 if ref in names or name in names else 0
+_pl = _poles()
+_pairs = sorted(((_sure(b, p), -dist(b['lat'], b['lon'], p[0], p[1]), k, n) for k, b in enumerate(bays) for n, p in enumerate(_pl)
+                 if dist(b['lat'], b['lon'], p[0], p[1]) <= 40), reverse=True)
+_bay_took, _pole_took = set(), set()
+for sure, neg, k, n in _pairs:
+    if sure == 0 or k in _bay_took or n in _pole_took: continue
+    p, b = _pl[n], bays[k]
+    print(f"bay {', '.join(routes[r]['short'] for r in b['routes'])}: at OSM's pole '{p[4] or p[2]}' ({'stop code' if sure == 2 else 'route named'} {p[2]}), {-neg:.0f} m from the feed's", file=sys.stderr)
+    b['lat'], b['lon'] = stops[b['stop']]['lat'], stops[b['stop']]['lon'] = round(p[0], 5), round(p[1], 5)
+    _bay_took.add(k); _pole_took.add(n)
+for k, b in enumerate(bays):
+    if k not in _bay_took: print(f"bay {', '.join(routes[r]['short'] for r in b['routes'])}: no OSM pole{'' if _pl else 's'}, the feed's place", file=sys.stderr)
 pulse_set = set(route_idx[r['id']] for r in routes if r['short'] in hub['pulse_routes'])
 pulse = {}
 for sv in services:

@@ -1251,6 +1251,8 @@ test('Transit Center: the board, a route picked from the strip, the bays', async
     await expect(page).toHaveURL(/#\/hub$/);
   }
   if (phone(info)) await expect(page.locator('.hbay').filter({ visible: true }).first()).toBeVisible();
+  // A bay stands at its pole (OSM's, tools/reduce.py) with its stop: the badge, the stop's dot and the walks to it one place.
+  expect(await page.evaluate(async () => { const d = await import('/app/data.js'); return d.D.hub.bays.filter(b => b.lat !== d.D.stops[b.stop].lat || b.lon !== d.D.stops[b.stop].lon).length; })).toBe(0);
 });
 
 test('Transit Center on a wide screen: the map left where it is, the bays on the tab again', async ({ page }, info) => {
