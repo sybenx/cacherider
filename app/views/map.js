@@ -976,7 +976,12 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   const names = dirs.map(k => { const n = dirName(ri, k); return n && !n.places ? 'to ' + n.text : ''; });
   const apart = dirs.length > 1 && names.every(Boolean) && new Set(names).size === names.length;
   const dirWord = apart ? ' ' + names[dirs.indexOf(d)] : '';   // ' to Preston', for the notes that speak of this way
-  const seq = d === undefined ? [] : routeOrder(ri, d);
+  // Its ways as one line where they make one (lineOf: an out-and-back out and back, two ways that are one loop once),
+  // no way to pick; else the way's own list. Each stop with the way it's on.
+  const line = d === undefined ? null : lineOf(ri);
+  const stops = line ? line.stops : d === undefined ? [] : routeOrder(ri, d).map(si => ({ si, k: d }));
+  const seq = stops.map(x => x.si);
+  const outBack = line && !line.same;   // an out-and-back's line
   // A route the timetable lists with no trips in it (a season's route after its season, its row left in the feed, as
   // the Pumpkin Walk's may be after 20 Oct): said so, its name and badge as any route's. Its list threw, with no stop
   // to start it from: 'Something went wrong' beside the map, nothing on a phone's.
@@ -986,34 +991,64 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
     return { head, body, anchor: null, title: isLoop(ri) ? r.long : 'Route ' + r.short, ri };
   }
   const here = at !== undefined ? D.stopById[at] : undefined;   // from a stop's badge: that stop, marked, in view
-  // Where its buses are: a row for each, just before the stop it calls at next; one at a stop (within AT_STOP of it)
-  // fills that stop's ring on the line too.
-  const buses = rtStale() ? [] : rt.buses.filter(b => b.ri === ri && (b.dir === null || String(b.dir) === d));
+  // Its row: on a line where the stop is twice (the Transit Center at both ends), the one on the way given. A stop
+  // both ways serve (16's in Lewiston and Richmond; a badge on a stop's page gives the way out): the one whose bus
+  // comes first, its answer that bus, which way it's going said.
+  const twice = outBack && here !== undefined && seq.indexOf(here) !== seq.lastIndexOf(here);
+  const soonest = twice ? nextAt(here, 1, clockNow, 8, t => t.r === ri)[0] : null;
+  const hereIx = here === undefined ? -1 : (i => i >= 0 ? i : seq.indexOf(here))(stops.findIndex(x => x.si === here && !x.end && (x.k === null || x.k === (soonest ? String(soonest.dir) : d))));
+  // Where its buses are, both ways' on a line: a row for each, just before the stop it calls at next on the way it's
+  // on; one at a stop (within AT_STOP of it) fills that stop's ring on the line too.
+  const buses = rtStale() ? [] : rt.buses.filter(b => b.ri === ri && (line || b.dir === null || String(b.dir) === d));
+  const along = b => {
+    const n = nextStopOf(b);
+    if (n === undefined) return -1;
+    const i = stops.findIndex(x => x.si === n && (x.k === null || b.dir === null || x.k === String(b.dir) || x.turn));
+    return i >= 0 ? i : seq.indexOf(n);
+  };
   // A bus at its stop keeps its row (its words, Live, the tap that rings it), only its dot given to the stop's ring.
   const busBefore = new Map(), busAt = new Map(), atStop = new Set();
   for (const b of buses) {
-    const n = nextStopOf(b);
-    if (n === undefined || !seq.includes(n)) continue;
-    busBefore.set(n, [...(busBefore.get(n) || []), b]);
-    if (distance(b.lat, b.lon, stop(n).lat, stop(n).lon) <= AT_STOP) { busAt.set(n, [...(busAt.get(n) || []), b]); atStop.add(b.id); }
+    const i = along(b);
+    if (i < 0) continue;
+    busBefore.set(i, [...(busBefore.get(i) || []), b]);
+    if (distance(b.lat, b.lon, stop(seq[i]).lat, stop(seq[i]).lon) <= AT_STOP) { busAt.set(i, [...(busAt.get(i) || []), b]); atStop.add(b.id); }
   }
+  // The way its line starts on and the way it ends on: an out-and-back's out and back; one loop's any (undefined).
+  const wayIn = line ? (outBack ? line.ways[0] : undefined) : d, wayOut = line ? (outBack ? line.ways[1] : undefined) : d;
   // Before the first run has left, the morning's word; the evening's once it's near (the first run the last too, a
   // peak route's only one, that says the more).
-  const first = firstRunNote(ri, d, clockNow, dirWord), lt = first && lastTripOn(ri, clockNow.ymd, d);
-  const last = first && lt && lt.trip !== first.f.trip ? null : lastRun(ri, d, seq, clockNow, dirWord);
-  // Each stop with its next call. Late in the day most of a route is done, its next calls tomorrow's: the stops a bus
-  // still has to reach today come first, and the whole route, the next day's times and all, is behind a button.
-  const each = seq.map(si => {
-    const bus = (busBefore.get(si) || []).map(b => busRow(b, ri, atStop.has(b.id)));
+  const first = firstRunNote(ri, wayIn, clockNow, dirWord), lt = first && lastTripOn(ri, clockNow.ymd, wayOut);
+  const last = first && lt && lt.trip !== first.f.trip ? null : lastRun(ri, wayOut, outBack ? routeOrder(ri, wayOut) : seq, clockNow, dirWord);
+  const E = seq[seq.length - 1];   // an out-and-back's last stop
+  // Each stop with its next call, on its way where the line has two. Late in the day most of a route is done, its
+  // next calls tomorrow's: the stops a bus still has to reach today come first, and the whole route, the next day's
+  // times and all, is behind a button.
+  const wayAt = outBack && dir === line.ways[1] ? stops.findIndex(x => x.turn) : -1;   // a way given: its half's first stop, landed on
+  const each = stops.map((x, i) => {
+    const si = x.si, bus = (busBefore.get(i) || []).map(b => busRow(b, ri, atStop.has(b.id)));
+    const ring = (busAt.get(i) || []).length;   // the line's ring for it: how many buses there
+    const o = { si, i, k: x.k, turn: !!x.turn, end: !!x.end, here: i === hereIx, ring, bus };
     // A stop the route's detour skips: say so, rather than the first bus after the detour's end, days off.
-    const ring = (busAt.get(si) || []).length;   // the line's ring for it: how many buses there
-    if (closedRoutes(si, clockNow.ymd).has(ri)) return { si, today: false, closed: true, bus, row: routeRow(si, ri, null, clockNow, { none: 'detour', warn: true, here: si === here, ring }) };
-    const n = nextAt(si, 1, clockNow, 8, t => t.r === ri)[0];
-    return { si, n, today: !!n && n.day === 0, bus, row: routeRow(si, ri, n, clockNow, { none: 'not today', here: si === here, ring }) };
+    const id = i === wayAt ? 'rs-way' : '';
+    if (closedRoutes(si, clockNow.ymd).has(ri)) return { ...o, today: false, closed: true, row: routeRow(si, ri, null, clockNow, { none: 'detour', warn: true, here: o.here, ring, turn: o.turn, id }) };
+    if (x.end) return o;   // an out-and-back's last stop: below, once the stops before it are known
+    const n = nextAt(si, 1, clockNow, 8, t => t.r === ri && (!outBack || String(t.dir) === x.k))[0];
+    return { ...o, n, today: !!n && n.day === 0, row: routeRow(si, ri, n, clockNow, { none: 'not today', here: o.here, ring, turn: o.turn, id }) };
   });
-  const onward = follow(ri, seq, buses, clockNow);
+  // An out-and-back's last stop, where its runs end: nobody boards there (the timetable has no time for it), so the
+  // drop-off, still to come today while the last open stop before it is; its time the last run's end, the feed's,
+  // once it's out. Its bay not named where the line starts there too (it read as another place).
+  const z = each[each.length - 1];
+  if (z && z.end && !z.closed) {
+    const prev = each.slice(0, -1).reverse().find(x => !x.closed);
+    z.today = !!prev && prev.today;
+    const s = stop(z.si), endAt = last && last.out && last.endSi === z.si && last.endAt !== null ? time(last.endAt, 17, true) : '';
+    z.row = html`<div class="croute endstop${z.here ? ' here' : ''}"${z.here ? html.raw(' id="here"') : ''}><i class="c-ring${z.ring ? ' on' : ''}">${z.ring > 1 ? html`<b>${z.ring}</b>` : ''}</i><span class="c-t">${endAt}</span><span class="c-n">${s.hub ? D.hub.name : heard(z.si)}<small>Ends here · drop-off only${s.hub && z.si !== seq[0] ? ' · ' + s.name : ''}</small></span></div>`;
+  }
+  const onward = follow(ri, along, buses, clockNow);
   const coming = each.filter(x => x.today);
-  const whole = full || !coming.length || coming.length === each.length || (here !== undefined && !coming.some(x => x.si === here));
+  const whole = full || !coming.length || coming.length === each.length || (here !== undefined && !coming.some(x => x.here));
   // The whole route, once some of it is done for the day: tonight's stops first, then a break, then the stops whose
   // next bus is the next day's, each part in route order. A stop a detour skips stays with tonight's.
   const split = whole && coming.length > 0 && coming.length < each.length;
@@ -1022,26 +1057,29 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   const rest = split ? each.filter(x => !x.today && !x.closed) : done ? each : [];
   // Its key stops (foldRows) and the stops between folded, a tap to open in place; every stop asked for (?every=1),
   // each its row.
-  const rowsOf = !every ? xs => foldRows(xs, ri, d, seq, here, busAt) : xs => xs.flatMap(x => [...x.bus, x.row]);
+  const rowsOf = !every ? xs => foldRows(xs, ri, seq) : xs => xs.flatMap(x => [...x.bus, x.row]);
   // The last run's final stop, which the timetable leaves out (nobody boards there): where the bus ends its day.
-  // An out-and-back's far end isn't an end: the bus turns round there and its way back is the other list.
-  const other = dirs.length > 1 ? dirs.find(k => k !== d) : null;
+  // An out-and-back's far end isn't an end: the bus turns round there, and on its line the way back follows (a way's
+  // own list, where the ways don't make one, links to the other). Its line's own last stop is its last row already.
+  const other = !line && dirs.length > 1 ? dirs.find(k => k !== d) : null;
   const endRing = html`<i class="c-ring"></i>`;
   const endRow = last && last.out && last.turnSi !== null && other !== null && (top.length || !whole) ? html`<a class="croute endstop" href="${base}/${other}">${endRing}<span class="c-t">${icon('swap', 16)}</span><span class="c-n">${stop(last.turnSi).name}<small>Turns round here · back${last.endSi !== null && stop(last.endSi).hub ? ' to the ' + D.hub.name : ''} about ${clockText(last.endMin)}</small></span><span class="c-r">${icon('fwd', 18)}</span></a>`
-    : last && last.out && last.endSi !== null && (top.length || !whole) ? html`<div class="croute endstop">${endRing}<span class="c-t">${last.endAt !== null ? time(last.endAt, 17, true) : ''}</span><span class="c-n">${stop(last.endSi).hub ? D.hub.name : stop(last.endSi).name}<small>Ends here · drop-off only${stop(last.endSi).hub ? ' · ' + stop(last.endSi).name : ''}</small></span></div>` : '';
+    : last && last.out && last.endSi !== null && !(outBack && last.endSi === E) && (top.length || !whole) ? html`<div class="croute endstop">${endRing}<span class="c-t">${last.endAt !== null ? time(last.endAt, 17, true) : ''}</span><span class="c-n">${stop(last.endSi).hub ? D.hub.name : stop(last.endSi).name}<small>Ends here · drop-off only${stop(last.endSi).hub ? ' · ' + stop(last.endSi).name : ''}</small></span></div>` : '';
   // Before the day's first run, where it starts partway along (6 at 100 North 600 West, not the Transit Center): the
   // list starts where it does, marked, and the stops before it, whose first bus is the run after, come after.
-  const k = first && !last ? seq.indexOf(first.f.si) : -1, morning = k > 0 && !done;
+  const k = first && !last ? stops.findIndex(x => x.si === first.f.si && (x.k === null || x.k === wayIn)) : -1, morning = k > 0 && !done;
   const rows = morning ? [html`<div class="endservice firstrun"><span>First run starts here · ${clockText(first.f.min)}</span></div>`, ...rowsOf(each.slice(k)),
       html`<div class="endservice firstrun"><span>Then from ${stop(seq[0]).hub ? 'the ' + D.hub.name : stop(seq[0]).name}</span></div>`, ...rowsOf(each.slice(0, k))]
     : [...rowsOf(top), endRow, ...(rest.length ? [html`<div class="endservice"><span>End of service today</span></div>`, ...rowsOf(rest)] : [])];
-  const count = !whole ? `${coming.length} of ${seq.length} stops left` : split ? `${seq.length} stops · tonight's first` : `${seq.length} stops, in order`;
+  const count = !whole ? `${coming.length} of ${seq.length} stops left` : split ? `${seq.length} stops · tonight's first` : `${seq.length} stops, ${outBack ? 'out and back' : 'in order'}`;
   // The head is what a swiped-down sheet keeps: the route, and which way with how much of it is left.
   const keep = every ? '?every=1' : '';   // a way's chip keeps every stop, asked for
+  // A line's address needs no way (one given is kept, its half landed on again); a way's list's does.
+  const wayPath = line && dir === undefined ? '' : '/' + d;
   // The key stops' switch keeps the rest of the address: the stop it was opened from, the whole route, the bus.
   const q = (o => { const p = Object.entries(o).filter(([, v]) => v).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&'); return p ? '?' + p : ''; });
-  const switchTo = html`<a class="rs-every" href="${base}/${d}${at !== undefined ? '/' + encodeURIComponent(at) : ''}${q({ all: full ? 1 : 0, every: every ? 0 : 1, bus })}">${every ? 'Key stops' : 'Every stop'}</a>`;
-  const chipsRow = html`<div class="rs-ways">${dirs.length > 1 ? dirs.map((k, i) => html`<a class="chip${k === d ? ' on' : ''}" href="${base}/${k}${keep}">${apart ? names[i] : r.dirs[+k] || (k === '0' ? 'Outbound' : 'Return')}</a>`) : ''}<span class="rs-count">${count} · ${switchTo}</span></div>`;
+  const switchTo = html`<a class="rs-every" href="${base}${at !== undefined ? '/' + d + '/' + encodeURIComponent(at) : wayPath}${q({ all: full ? 1 : 0, every: every ? 0 : 1, bus })}">${every ? 'Key stops' : 'Every stop'}</a>`;
+  const chipsRow = html`<div class="rs-ways">${!line && dirs.length > 1 ? dirs.map((k, i) => html`<a class="chip${k === d ? ' on' : ''}" href="${base}/${k}${keep}">${apart ? names[i] : r.dirs[+k] || (k === '0' ? 'Outbound' : 'Return')}</a>`) : ''}<span class="rs-count">${count} · ${switchTo}</span></div>`;
   // The route's other half (16 PM from 16 AM), a tap away, with when it next leaves today: one route to a rider.
   const also = family(ri).filter(x => x !== ri).map(x => {
     const next = Object.keys(D.routes[x].stops || {}).flatMap(k => runsOn(x, clockNow.ymd, k)).filter(t => !isGone(t, clockNow)).sort((p, q) => p.min - q.min)[0];
@@ -1052,28 +1090,58 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   // Alerts folded to their titles: the line on the map already shows where; the words are a tap away.
   const alerts = routeAlerts(ri, clockNow.ymd).map(a => html`<details class="callout alert rs-alert"><summary>${icon('ban', 20)}<b>${a.title}</b><span class="more">More</span></summary><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></details>`);
   // Come from a stop's badge: the answer for that stop first, so the list below is for those who want the route.
-  const yours = here !== undefined && seq.includes(here) ? yourStop(ri, here, seq, buses, clockNow) : '';
+  // (on its way, on an out-and-back's line: the time its row shows; at a stop both ways serve, the sooner, and its way)
+  const yours = hereIx >= 0 ? yourStop(ri, here, outBack && !twice && !stops[hereIx].end ? stops[hereIx].k : null, hereIx, seq.length, along, buses, clockNow, twice && soonest ? names[dirs.indexOf(String(soonest.dir))] : '') : '';
   const ink = dark() ? lift('#' + r.color) : sinkLine('#' + r.color);   // the line's colour, as the map draws it
-  // (Each way's first and last from its end are said above the list: the morning's and evening's notes aren't again.)
-  const body = html`<div class="routesheet">${alerts}${yours}${routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, dirs, names, apart, clockNow)}${onward.now || ''}<div class="list rs-list line"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || ''}
-    ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}/${d}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}</div>`;
-  // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus. Else at
-  // the top: the stops still to come start there.
-  const anchor = here !== undefined ? 'here' : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : null;
+  // Each way's first and last from its end, above the list (the morning's and evening's notes aren't again): one loop's
+  // runs, whichever way the feed calls them, as one. An out-and-back's next run back is its far end's row on the line.
+  const lastWays = line && line.same ? [{ k: undefined, si: seq[0], way: '' }] : (line ? line.ways : dirs).map(k => ({ k, si: routeOrder(ri, k)[0], way: apart ? ' ' + names[dirs.indexOf(k)] : '' }));
+  const body = html`<div class="routesheet">${alerts}${yours}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || ''}<div class="list rs-list line"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || ''}
+    ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}${wayPath}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}</div>`;
+  // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus; for a way
+  // of a line (an old address, '/15/1'), on its half. Else at the top: the stops still to come start there.
+  const anchor = here !== undefined ? 'here' : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : wayAt >= 0 ? 'rs-way' : null;
   return { head, body, anchor, title: isLoop(ri) ? r.long : 'Route ' + r.short, ri };
 }
 
 // A route's stops are drawn as a line (the Pumpkin Walk's page, 15 Oct; tried on the Blue Loop and Route 15 first): a
 // rail in the route's colour, a ring at each stop, a bus a dot on it between the stops it's between or the ring of the
 // stop it's at filled; above them the next run back from the far end and each way's first or last from its end.
-/** The next run back from the far end, large, as the Pumpkin Walk's stops are: an out-and-back's other way, from its
- *  first stop, which this way's list can't show without a tap on its chip; a loop's end is its first row, so nothing.
+/** A route's ways as one line, where they make one: an out-and-back (15 out to Richmond and back; 11, 12, 16 AM and PM
+ *  too), one way starting where the other ends, drawn out to the far end and back, the far end once (turn) and the last
+ *  stop marked (end); or two ways that are one loop, the same stops in the same order but for the return to where it
+ *  starts (1, 2, 5, 7 and 8: the feed calls a weekday's runs one way and a Saturday's the other), drawn once. Its stops
+ *  in order, each with the way it's on (null: either). Null where the ways are anything else: each its own list, as
+ *  before. From the timetable alone. */
+function lineOf(ri) {
+  const dirs = Object.keys(D.routes[ri].stops || {});
+  if (dirs.length !== 2) return null;
+  const [P, Q] = dirs.map(k => routeOrder(ri, k));
+  if (!P.length || !Q.length) return null;
+  // A way's return to where it starts left off (to another of the Center's bays, 9 to 30 m off, on 1, 2, 5, 7 and 8).
+  const home = (x, y) => x === y || (stop(x).hub && stop(y).hub) || distance(stop(x).lat, stop(x).lon, stop(y).lat, stop(y).lon) <= AT_STOP;
+  const once = s => s.length > 1 && home(s[s.length - 1], s[0]) ? s.slice(0, -1) : s;
+  if (once(P).join() === once(Q).join()) { const s = once(P.length >= Q.length ? P : Q); return { same: true, ways: dirs, stops: s.map(si => ({ si, k: null })) }; }
+  // Out first: the way starting where the other ends; where each does (out from the Transit Center and back to it),
+  // the one from the hub.
+  const pq = P[P.length - 1] === Q[0], qp = Q[Q.length - 1] === P[0];
+  if (!pq && !qp) return null;
+  const [a, b] = pq && (!qp || stop(P[0]).hub || !stop(Q[0]).hub) ? dirs : [dirs[1], dirs[0]];
+  const A = routeOrder(ri, a), B = routeOrder(ri, b);
+  // Its far end somewhere else: two loops round opposite ways from one bay meet at their ends too, and don't turn there.
+  if (B[0] === A[0] || stop(B[0]).hub) return null;
+  const stops = [...A.slice(0, -1).map(si => ({ si, k: a })), { si: B[0], k: b, turn: true }, ...B.slice(1).map(si => ({ si, k: b }))];
+  if (B.length > 1) stops[stops.length - 1].end = true;
+  return { same: false, ways: [a, b], stops };
+}
+/** The next run back from the far end, large, as the Pumpkin Walk's stops are: two ways that don't make one line
+ *  (lineOf), the other way's from its first stop, which this way's list can't show without a tap on its chip.
  *  Inside the half hour the minutes, further off the clock time. */
 function routeEnds(ri, dirs, d, clockNow) {
   const here0 = routeOrder(ri, d)[0];
   const cols = dirs.filter(k => k !== d).map(k => {
     const si = routeOrder(ri, k)[0];
-    // Both ways from one stop (1, 2, 5, 7 and 8 from the Transit Center, round in opposite ways): no way back to say.
+    // Both ways from one stop: no way back to say.
     if (si === undefined || si === here0) return '';
     const n0 = nextAt(si, 1, clockNow, 8, t => t.r === ri && String(t.dir) === String(k))[0], n = n0 && lively(n0);
     const left = n && n.day === 0 ? minsTo(n, clockNow) : null, c = n && clock(n.min);
@@ -1093,14 +1161,15 @@ function endName(si) {
 /** Each way's first or last bus from its end (its list's first stop), as a line of words: before the day's first, when
  *  it leaves and the last; through the day, the last and how long till it (the last a rider can catch, not its drop-off
  *  at the far end); once it's gone, said so, greyed. Not where its last trip starts: a loop's are cut wherever the feed
- *  cuts them ('Last leaves 55 North Main', the Blue Loop's). */
-function routeLast(ri, dirs, names, apart, clockNow) {
+ *  cuts them ('Last leaves 55 North Main', the Blue Loop's). `ways`: each { k, si, way }, its way (undefined: any), its
+ *  end and its words (' to Richmond', where the ways have names). */
+function routeLast(ri, ways, clockNow) {
   const ymd = clockNow.ymd, t = clockNow.min;
   const hm = m => m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}`;
-  const lines = dirs.map((k, i) => {
-    const si = routeOrder(ri, k)[0], ts = si === undefined ? [] : timesOn(si, ymd).filter(x => x.r === ri && String(x.dir) === String(k)).map(x => x.min);
+  const lines = ways.map(({ k, si, way }) => {
+    const ts = si === undefined ? [] : timesOn(si, ymd).filter(x => x.r === ri && (k === undefined || String(x.dir) === String(k))).map(x => x.min);
     if (!ts.length) return '';
-    const first = Math.min(...ts), last = Math.max(...ts), way = apart ? ' ' + names[i] : '', from = endName(si);
+    const first = Math.min(...ts), last = Math.max(...ts), from = endName(si);
     if (t < first) return html`<span>First${way} leaves ${from} at <b>${clockText(first)}</b> · last ${clockText(last)}</span>`;
     if (t <= last) return html`<span>Last${way} leaves ${from} at <b>${clockText(last)}</b> · ${last === t ? 'now' : 'in ' + hm(last - t)}</span>`;
     return html`<span class="gone">Last${way} left ${from} at ${clockText(last)}</span>`;
@@ -1119,7 +1188,7 @@ function changes(ri, seq) {
 }
 /** A route's key stops, drawn as a line: its ends, its timed stops (where its buses hold: the timetable's own), its
  *  changes (changes), the Transit Center, the rider's stop, a stop a bus is at or
- *  a detour skips, and each part's first and last; the stops between folded, a count and their times, a tap to open in
+ *  a detour skips, where an out-and-back turns round, and each part's first and last; the stops between folded, a count and their times, a tap to open in
  *  place (kept open through the minute's redraws and the buses' moves: openFolds). A bus between two folded stops
  *  keeps its row, between two folds. From the timetable alone, nothing picked by hand. */
 const openFolds = new Set();   // route/way/stop of each stop in a fold the rider opened: open again whatever fold it's in
@@ -1131,20 +1200,21 @@ document.addEventListener('click', e => {
   const f = sum.parentElement, opening = !f.open;
   for (const k of f.dataset.stops.split(' ')) opening ? openFolds.add(k) : openFolds.delete(k);
 }, true);
-function foldRows(xs, ri, d, seq, here, busAt) {
+function foldRows(xs, ri, seq) {
   const change = changes(ri, seq);
   // Its far end: the stop farthest from where it starts, so a fold doesn't hide the way round (the Blue Loop's run
   // south to the Riverwoods was one fold between two stops on Main 300 m apart; 3, 6 and 9 go round too, unnamed).
   const s0 = stop(seq[0]), far = seq.reduce((a, si) => distance(s0.lat, s0.lon, stop(si).lat, stop(si).lon) > distance(s0.lat, s0.lon, stop(a).lat, stop(a).lon) ? si : a, seq[0]);
   const key = (x, i) => i === 0 || i === xs.length - 1 || x.si === seq[0] || x.si === seq[seq.length - 1] || x.si === far || timed(x.si, ri) || stop(x.si).hub
-    || change.has(x.si) || x.si === here || x.closed || maySkip(stop(x.si).id, ri) || (busAt.get(x.si) || []).length;
+    || change.has(x.si) || x.here || x.closed || x.turn || x.end || maySkip(stop(x.si).id, ri) || x.ring;
   const out = [];
   let held = [];
   const fold = () => {
     if (held.length === 1) out.push(held[0].row);
     else if (held.length > 1) {
       // Remembered by its stops, not its first: a bus coming to that stop, or its row splitting the fold, closed it.
-      const ids = held.map(x => ri + '/' + d + '/' + x.si), open = ids.some(k => openFolds.has(k));
+      // Each by its way too, a stop on a line both ways (16's along Main) its own on each.
+      const ids = held.map(x => ri + '/' + x.k + '/' + x.si), open = ids.some(k => openFolds.has(k));
       // Its times first to last in route order; where they don't run on (a bus just past its first stop, that one's
       // next the trip after), from the first.
       const ts = held.map(x => x.n && x.n.day === 0 ? lively(x.n).min : null), a = ts[0] !== null ? clock(ts[0]) : null, z = ts[ts.length - 1];
@@ -1174,7 +1244,11 @@ function routeRow(si, ri, next0, clockNow, opts = {}) {
   const mark = !t ? '' : t.live ? liveMark(t.live.est ? 'Estimated' : 'Live') : sched(t);
   const tp = timed(si, ri);
   const ring = opts.ring === null || opts.ring === undefined ? '' : html`<i class="c-ring${opts.ring ? ' on' : ''}">${opts.ring > 1 ? html`<b>${opts.ring}</b>` : ''}</i>`;
-  return html`<a class="croute${opts.here ? ' here' : ''}${tp ? ' tp' : ''}"${opts.here ? html.raw(' id="here"') : ''} href="#/stop/${s.id}">${ring}<span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${heard(si, s.town && s.town !== 'Logan' ? ', ' + s.town : '')}${tp ? timedMark() : ''}${maySkip(s.id, ri) ? html.raw('<span class="qmark" title="May be skipped: unannounced detour">?</span>') : ''}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
+  // An out-and-back's far end (opts.turn): the bus turns round there, under its name. Where it goes then is the rows
+  // after it and the end's last run above the list: said here too, it wrapped to four lines on a phone.
+  const turn = opts.turn ? html`<small class="c-turn">${icon('swap', 14)}Turns round here</small>` : '';
+  const id = opts.here ? 'here' : opts.id;
+  return html`<a class="croute${opts.here ? ' here' : ''}${tp ? ' tp' : ''}"${id ? html.raw(` id="${id}"`) : ''} href="#/stop/${s.id}">${ring}<span class="c-t">${!t ? '—' : when(t, 17)}</span><span class="c-n">${heard(si, s.town && s.town !== 'Logan' ? ', ' + s.town : '')}${tp ? timedMark() : ''}${maySkip(s.id, ri) ? html.raw('<span class="qmark" title="May be skipped: unannounced detour">?</span>') : ''}${turn}${others.length ? html`<span class="c-b">${badges(others, 20)}</span>` : ''}</span><span class="c-r"><span>${rel}</span>${mark}</span></a>`;
 }
 
 // ---- staying on the bus. A bus swaps routes at the Transit Center all day (9 and 1 on a Saturday): its next
@@ -1207,9 +1281,8 @@ function tripRows(ti, from, clockNow, dim) {
 
 /** `later`: the next trip of the bus furthest along this route, dimmed, under the list. `now`: a bus that ran this
  *  route and is past the Transit Center on its next one, bright, at the top: where it's going now. */
-function follow(ri, seq, buses, clockNow) {
+function follow(ri, along, buses, clockNow) {   // along: a bus's place on the route's list, -1 off it
   const out = {};
-  const along = b => seq.indexOf(nextStopOf(b));
   const lead = buses.filter(b => along(b) >= 0).sort((a, b) => along(b) - along(a))[0];
   if (lead) {
     const ti = D.trips.indexOf(lead.trip), nti = ti >= 0 ? nextOf(lead, ti, clockNow) : undefined, tr = nti !== undefined && tripRoute(nti);
@@ -1235,12 +1308,13 @@ function follow(ri, seq, buses, clockNow) {
   return out;
 }
 
-/** The stop a rider came from: this route's next bus there, and which bus it is and how far off; or that it's done
- *  there for the day, and when it's back. */
-function yourStop(ri, si, seq, buses, clockNow) {
+/** The stop a rider came from: this route's next bus there (on way `k`, where given), and which bus it is and how far
+ *  off; or that it's done there for the day, and when it's back. `h`: its place on the route's list of `len`; `along`:
+ *  a bus's; `way`: which way that bus is going ('to Preston'), at a stop both ways serve. */
+function yourStop(ri, si, k, h, len, along, buses, clockNow, way = '') {
   const s = stop(si), name = isLoop(ri) ? D.routes[ri].long : 'Route ' + D.routes[ri].short;   // 'No more Blue Loop here'
   const closed = closedRoutes(si, clockNow.ymd).has(ri);
-  const t = closed ? null : nextAt(si, 1, clockNow, 8, x => x.r === ri)[0];
+  const t = closed ? null : nextAt(si, 1, clockNow, 8, x => x.r === ri && (k === null || String(x.dir) === k))[0];
   let line, sub = '';
   if (closed) line = html`<span class="rel warnmark">Not served today · detour</span>`;
   else if (!t) line = html`<span class="rel">Nothing scheduled in the next week</span>`;
@@ -1252,11 +1326,12 @@ function yourStop(ri, si, seq, buses, clockNow) {
     // one it's at (within AT_STOP) not counted, so at this one it's here (home.js comingLine says the same).
     const b = buses.find(x => x.trip === D.trips[t.trip]);
     if (b) {
-      const n = nextStopOf(b), k = seq.indexOf(n), h = seq.indexOf(si);
-      const at = k >= 0 && distance(b.lat, b.lon, stop(n).lat, stop(n).lon) <= AT_STOP;
-      const away = k < 0 ? null : (h - k + seq.length) % seq.length + (at ? 0 : 1);
+      const i = along(b), n = nextStopOf(b);
+      const at = i >= 0 && distance(b.lat, b.lon, stop(n).lat, stop(n).lon) <= AT_STOP;
+      const away = i < 0 ? null : (h - i + len) % len + (at ? 0 : 1);
       sub = `Bus ${b.label}${away === null ? '' : away === 0 ? ' · here' : ` · ${away} ${away === 1 ? 'stop' : 'stops'} away`}`;
     }
+    if (way) sub = [way[0].toUpperCase() + way.slice(1), sub].filter(Boolean).join(' · ');   // 'To Preston · Bus 1124 · 3 stops away'
   }
   return html`<a class="twin blueprint yourstop" href="#/stop/${s.id}">${corners()}<span style="color:var(--color-accent-700)">${icon('pin', 22)}</span>
     <div class="mid"><span class="eyebrow">Your stop</span><span class="name">${heard(si)}</span><div class="when">${line}</div>${sub ? html`<span class="rel">${sub}</span>` : ''}</div>
@@ -1276,14 +1351,15 @@ function busRow(b, ri, at = false) {
 /** Today's last run this way, while it's still to come or on the road: when and where it leaves, where and about
  *  when it ends. An out-and-back (15's to Preston and back) is one run of two timetable trips, so the note says the
  *  bus comes back, not that it ends at the far end; and each way has its own last run, the other way's list its own. */
-/** A way's runs today, each trip once with where and when it starts, in order: found once per route, way and day. */
+/** A way's runs today (`d` undefined: every way's), each trip once with where and when it starts, in order: found once
+ *  per route, way and day. */
 const runsCache = new Map();
 function runsOn(ri, ymd, d) {
   const k = ri + ':' + ymd + ':' + d;
   if (!runsCache.has(k)) {
     const out = [], done = new Set();
     for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const t of timesOn(si, ymd)) {
-      if (t.r !== ri || String(t.dir) !== String(d) || done.has(t.trip)) continue;
+      if (t.r !== ri || (d !== undefined && String(t.dir) !== String(d)) || done.has(t.trip)) continue;
       done.add(t.trip);
       const st = tripStops(t.trip);
       if (st.length) out.push({ trip: t.trip, min: st[0][0], si: st[0][1] });

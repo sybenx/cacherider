@@ -734,6 +734,61 @@ test('a route drawn as a line: its key stops, a fold kept open through a redraw,
   await expect(page).not.toHaveURL(/every=1/);
 });
 
+test('a two-way route as one line: out to its far end and back, both ways\' buses on it, a way\'s old address on its half', async ({ page }) => {
+  // Route 15 out to Richmond and back is one list, no way to pick: the far end once, marked where it turns round, the
+  // last stop the drop-off. A bus each way, drawn at a weekday's 2:12 PM (every stop to come, the line in order), sits
+  // before the stop it calls at next, the way out's before the turn and the way back's after it. (The whole route asked
+  // for: late in the day the far end's last run back is gone before the line's last stop is.)
+  await open(page, '#/map/route/15?all=1');
+  await expect(page.locator('.rs-list.line').filter({ visible: true }).first()).toBeAttached();
+  await expect(page.locator('.rs-ways .chip').filter({ visible: true })).toHaveCount(0);
+  await expect(page.locator('.c-turn').filter({ visible: true })).toHaveCount(1);
+  await expect(page.locator('.rs-count').filter({ visible: true }).first()).toContainText(/out and back|stops left|tonight/i);
+  const r = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), rtm = await import('/app/rt.js'), m = await import('/app/views/map.js'), t = await import('/app/time.js');
+    const ri = d.D.routeByShort['15'], nowS = Math.floor(Date.now() / 1000);
+    let c = null;
+    for (let i = 0; i < 9 && !c; i++) { const x = new Date(Date.now() + i * 864e5); x.setHours(14, 12, 0, 0); const k = t.now(x); if (k.dow > 0 && k.dow < 6 && d.timesOn(d.routeOrder(ri, '0')[0], k.ymd).some(y => y.r === ri)) c = k; }
+    if (!c) return null;
+    // a bus on a trip each way, its next stop the trip's sixth
+    const placed = {};
+    rtm.rt.trips = {}; rtm.rt.buses = [];
+    for (const k of ['0', '1']) {
+      const s0 = d.routeOrder(ri, k)[0], row = d.timesOn(s0, c.ymd).find(y => y.r === ri && String(y.dir) === k && d.tripStops(y.trip).length > 8);
+      const st = d.tripStops(row.trip), [, prev] = st[4], [, next] = st[5], id = d.D.trips[row.trip], P = d.D.stops[prev];
+      rtm.tripOf(id);
+      rtm.rt.trips[id] = { v: 'T' + k, ts: nowS, at: new Map([[d.D.stops[next].id, { seq: 5, time: nowS + 60, skipped: false }]]), first: null, last: null, lastDelay: 0, ti: row.trip, stops: [[d.D.stops[next].id, 5, nowS + 60, 0]], end: st.length - 1 };
+      rtm.rt.buses.push({ id: 'c:T' + k, label: 'T' + k, trip: id, ri, lat: P.lat + 0.002, lon: P.lon, course: 0, speed: 8, ts: nowS, h: null, dir: +k });
+      placed[k] = d.D.stops[next].id;
+    }
+    rtm.rt.at = Date.now();
+    const div = document.createElement('div');
+    div.innerHTML = String(m.routePage({ short: '15', every: true }, c).html);
+    const list = [...div.querySelector('.rs-list.line').children], at = el => list.indexOf(el);
+    const bus = k => div.querySelector('#bus-cT' + k), turn = div.querySelector('.c-turn').closest('.croute');
+    return {
+      chips: div.querySelectorAll('.rs-ways .chip').length, last: list[list.length - 1].textContent,
+      out: bus('0') && bus('0').nextElementSibling.getAttribute('href') === '#/stop/' + placed['0'] && at(bus('0')) < at(turn),
+      back: bus('1') && bus('1').nextElementSibling.getAttribute('href') === '#/stop/' + placed['1'] && at(bus('1')) > at(turn),
+      // a stop of the way back, from its badge (the way given): its row in that half
+      badge: (await import('/app/ui.js')).routeBadgeLink(ri, d.routeOrder(ri, '1').slice(-4)[0], 20).match(/href="([^"]+)"/)[1],
+    };
+  });
+  test.skip(!r, 'no weekday of Route 15 in the timetable this week');
+  expect(r.chips).toBe(0);
+  expect(r.last).toContain('Ends here');
+  expect(r.out).toBe(true);
+  expect(r.back).toBe(true);
+  // An old address with a way lands on its half: the way back, its first row the far end
+  await go(page, '#/map/route/15/1?all=1');
+  await expect(page.locator('#rs-way').filter({ visible: true })).toBeInViewport();
+  await expect(page.locator('#rs-way').filter({ visible: true })).toContainText('Turns round here');
+  // A stop badge's link to a stop on the way back: that stop's row, and the rider's stop above the list
+  await go(page, r.badge);
+  await expect(page.locator('#here').filter({ visible: true })).toHaveCount(1);
+  await expect(page.locator('.yourstop').filter({ visible: true }).first()).toBeVisible();
+});
+
 test('route: both ways, its sibling, a stop on it', async ({ page }) => {
   await open(page, '#/map/route/2');
   await mapReady(page);
