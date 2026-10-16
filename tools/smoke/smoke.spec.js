@@ -2018,6 +2018,121 @@ test('a bus\'s card on a detour: a stop closed by notice not listed, those a way
   await expect.poll(() => bus.evaluate(a => a.nextElementSibling && a.nextElementSibling.getAttribute('href'))).toBe('#/stop/' + STADIUM);
 });
 
+// A picked bus's way on (its strand), staged on the relay: `relay.alerts()` Connect's notices, `relay.detours()` the ways
+// round, `relay.feed` the buses, `relay.T` its clock.
+async function stageRelay(page, relay) {
+  const json = body => ({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  await page.route(/^https:\/\/live\.cacherider\.com\/alerts/, r => r.fulfill(json({ alerts: relay.alerts() })));
+  await page.route(/\/data\/alerts\.json/, r => r.fulfill(json({ alerts: relay.alerts() })));
+  await page.route(/^https:\/\/live\.cacherider\.com\/detours/, r => r.fulfill(json({ t: relay.T, detours: relay.detours() })));
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => relay.feed ? r.fulfill(json(relay.feed)) : r.abort());
+}
+const stopClosure = (relay, id, routes, stops) => ({ id, title: 'Stop Closure', text: 'Due to construction the stop is closed.', url: '', cause: '', effect: '', start: relay.T - 86400, end: relay.T + 2 * 86400, routeIds: [], routes, stops, global: false });
+/** A trip today of a route calling at the stops in a row: where the first is in it, its stops' minutes, when it's 40 s
+ *  short of the first, and a spot a block short of it, heading there. Null when none runs today. */
+const tripThrough = (page, short, ids) => page.evaluate(async ([short, ids]) => {
+  const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), R = d.D.routeByShort[short], si = d.D.stopById[ids[0]];
+  if (R === undefined || si === undefined) return null;
+  for (const row of d.timesOn(si, c.ymd).filter(x => x.r === R)) {
+    const st = d.tripStops(row.trip), te = d.tripEnd(row.trip), k = st.findIndex(x => x[1] === si && x[0] === row.min);
+    if (k < 1 || !te || ids.some((id, i) => !st[k + i] || d.D.stops[st[k + i][1]].id !== id)) continue;
+    const a = d.D.stops[st[k - 1][1]], s = d.D.stops[si];
+    return { id: d.D.trips[row.trip], k, min: row.min, pts: [...st, [te.min, te.si]].map(([m, x]) => [m, d.D.stops[x].id]), at: Date.now() + ((row.min - c.min) * 60 - 40 - c.sec) * 1000,
+      short: [a.lat + (s.lat - a.lat) * 0.75, a.lon + (s.lon - a.lon) * 0.75, d.bearing(a.lat, a.lon, s.lat, s.lon)] };
+  }
+  return null;
+}, [short, ids]);
+/** Bus 9001 on the trip at a spot [lat, lon, heading], its next stop by the feed the trip's K-th, the stops after a
+ *  minute or so apart; the app opened again with it and its card up on the map. */
+async function busOnTrip(page, relay, p, K, [lat, lon, bearing]) {
+  await page.clock.setFixedTime(new Date(p.at));
+  relay.T = Math.floor(p.at / 1000);
+  const T = relay.T, base = T + 40 - p.min * 60;
+  relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: p.id, lat, lon, bearing, speed: 8, ts: T }],
+    trips: { [p.id]: { v: '9001', ts: T, s: p.pts.slice(K).map(([m, sid], i) => [sid, K + i, base + m * 60 + 60, 0]) } } };
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  // The map's own, taken at its next look at a source: the strand drawn is its 'runs' source's.
+  await page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
+  await go(page, '#/map');
+  await mapReady(page);
+  await expect.poll(() => page.evaluate(async () => !!(await import('/app/rt.js')).findBus('c:9001')), { timeout: 20_000 }).toBe(true);
+  await go(page, '#/map/bus/c:9001?tap=1');
+}
+/** The picked bus's strand as the map drew it, [lon, lat] each, and its fade. */
+const strandDrawn = page => page.evaluate(() => {
+  const m = window.__map, s = m && m.getSource('runs'), f = s && (s.serialize().data.features || []).find(f => f.properties.strand === 0);
+  return f ? { line: f.geometry.coordinates, ramp: m.getPaintProperty('runs', 'line-gradient') } : null;
+});
+const KXY = [Math.cos(41.74 * Math.PI / 180) * 111320, 110540];   // degrees to metres in the valley, as the map's
+/** Metres from a point [lat, lon] to a line of [lon, lat]. */
+function offLine(line, [lat, lon]) {
+  const [KX, KY] = KXY;
+  return Math.min(...line.slice(1).map(([bx, by], k) => {
+    const [ax, ay] = line[k], vx = (bx - ax) * KX, vy = (by - ay) * KY, px = (lon - ax) * KX, py = (lat - ay) * KY, L2 = vx * vx + vy * vy;
+    const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0;
+    return Math.hypot(px - t * vx, py - t * vy);
+  }));
+}
+const stopAt = (page, id) => page.evaluate(id => import('/app/data.js').then(m => { const s = m.D.stops[m.D.stopById[id]]; return [s.lat, s.lon]; }), id);
+
+test('a picked bus\'s way on round a detour: along the way round its buses take, from the bus when it\'s on it', async ({ page }) => {
+  // The Blue Loop's bus short of South Walmart (Back) on 16 Oct: Connect's notice closes Macey's (520 West 100 North),
+  // and the relay's way round (its detours 92 and 103) had the buses off 1200 South by Macey's, up by the highway and
+  // back on Main, skipping 453 West 100 North and 950 South Main St. The bus's way on was drawn bright out along 1200
+  // South to 453 West 100 North and back up Main, over the dots. Staged: the notice, the way round three in a row, the
+  // bus a block short of South Walmart (Back): its strand by the way round's far corner and nowhere near 453 West 100
+  // North. Then the bus at that corner, on its way round, bound for 453 West 100 North by the feed: its strand from
+  // the bus, on round by the highway.
+  test.setTimeout(180_000);   // the app staged twice
+  const SOUTH = '7547682', MACEYS = '7547683', STADIUM = '7547676', MAIN950 = '7547677', RIVERWOODS = '7547688';
+  const path = [[41.71025, -111.83727], [41.71106, -111.83883], [41.71223, -111.83922], [41.71399, -111.8374], [41.71667, -111.83559]];
+  const relay = { T: Math.floor(Date.now() / 1000), feed: null };
+  relay.alerts = () => [stopClosure(relay, 'a990104', ['B'], [MACEYS])];
+  relay.detours = () => [{ id: 990104, route: 'B', streak: 3, trips: 3, first: relay.T - 5400, last: relay.T - 900, along: null, leaves: path[0], rejoins: path[path.length - 1], paths: [path], path }];
+  await stageRelay(page, relay);
+  await open(page);
+  const key = path.map(([la, lo]) => la.toFixed(4) + ',' + lo.toFixed(4)).join(';');
+  await page.evaluate(([k, w]) => localStorage.setItem('cr-ways-2', JSON.stringify({ [k]: { way: w, streets: [], at: Date.now() } })), [key, path]);   // as traced
+  const pick = await tripThrough(page, 'B', [SOUTH, MACEYS, STADIUM, MAIN950, RIVERWOODS]);
+  test.skip(!pick, 'no Blue Loop trip today by South Walmart (Back), Macey\'s, 453 West 100 North, 950 South Main St and The Riverwoods in a row');
+  await busOnTrip(page, relay, pick, pick.k, pick.short);
+  await expect.poll(() => page.evaluate(() => import('/app/data.js').then(m => (m.A.seen || []).some(u => u.id === 'seen990104'))), { timeout: 30_000 }).toBe(true);
+  const stadium = await stopAt(page, STADIUM);
+  // By the highway, where the buses go round; not out to 453 West 100 North, where they don't.
+  await expect.poll(async () => { const s = await strandDrawn(page); return s && [offLine(s.line, path[2]) < 15, offLine(s.line, stadium) > 60]; }, { timeout: 20_000 }).toEqual([true, true]);
+  // On its way round, at its far corner: from the bus, on by the highway.
+  await busOnTrip(page, relay, pick, pick.k + 2, [path[2][0], path[2][1], 40]);
+  await expect.poll(async () => { const s = await strandDrawn(page); return s && [offLine(s.line.slice(0, 2), path[2]) < 5, offLine(s.line, path[3]) < 15, offLine(s.line, stadium) > 60]; }, { timeout: 20_000 }).toEqual([true, true, true]);
+});
+
+test('a picked bus\'s way on through a stop closed with no way round known: left to the dots', async ({ page }) => {
+  // Route 11's 760 South Gateway Drive closed by a notice alone, where only the 11 runs, and no way round seen: its
+  // line dotted there (from the corner after 358 North Gateway Dr), and its bus's strand clear along the dots.
+  const GW358 = '7565913', GW760 = '7565914', E690 = '7565915';
+  const relay = { T: Math.floor(Date.now() / 1000), feed: null };
+  relay.alerts = () => [stopClosure(relay, 'a990105', ['11'], [GW760])];
+  relay.detours = () => [];
+  await stageRelay(page, relay);
+  await open(page);
+  const p11 = await tripThrough(page, '11', [GW358, GW760, E690]);
+  test.skip(!p11, 'no Route 11 trip today by 358 North, 760 South Gateway Drive and 690 South 100 East in a row');
+  await busOnTrip(page, relay, p11, p11.k, p11.short);
+  const gw760 = await stopAt(page, GW760), [KX, KY] = KXY;
+  const clear = async () => {
+    const s = await strandDrawn(page);
+    if (!s) return null;
+    const r = s.ramp.slice(3), z = r.findIndex((x, i) => i % 2 && /,0\)$/.test(x));   // [share, colour, …]: the first clear
+    if (z < 0) return 'none clear';
+    const L = [0];
+    for (let k = 1; k < s.line.length; k++) L.push(L[k - 1] + Math.hypot((s.line[k][0] - s.line[k - 1][0]) * KX, (s.line[k][1] - s.line[k - 1][1]) * KY));
+    const d = (r[z - 1] + r[z + 1]) / 2 * L[L.length - 1], k = Math.max(1, L.findIndex(x => x >= d)), t = (d - L[k - 1]) / (L[k] - L[k - 1] || 1);   // halfway along the clear stretch
+    const [ax, ay] = s.line[k - 1], [bx, by] = s.line[k];
+    return Math.hypot((ax + (bx - ax) * t - gw760[1]) * KX, (ay + (by - ay) * t - gw760[0]) * KY) < 200;
+  };
+  await expect.poll(clear, { timeout: 20_000 }).toBe(true);
+});
+
 test('settings and about: the clock and units turned and back', async ({ page }) => {
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();

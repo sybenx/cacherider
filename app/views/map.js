@@ -618,11 +618,19 @@ function poolImage(hex, darkPaper = dark(), hollow = false, done = false) {
 }
 /** An arrow for a line, pointing along it (+x, as line placement lays an icon): a chevron in the line's colour edged
  *  in the paper's, drawn at twice the size for a sharp screen. Made on demand, one per colour and look. */
-/** The way-on strands' layers, one each; and a strand's fade, full strength at its start to a trace at its end. */
+/** The way-on strands' layers, one each; and a strand's fade, full strength at its start to a trace at its end. `gaps`:
+ *  where it's clear, [from, to] as shares of its length, each fading out over `e` inside its ends (a stretch closed to
+ *  its route with no way round known, left to the route's dots: aroundClosed). */
 const RUN_STRANDS = ['runs', 'runs-1', 'runs-2', 'runs-3', 'runs-4', 'runs-5', 'runs-6', 'runs-7'];
-function fadeRamp(col) {
+function fadeRamp(col, gaps = [], e = 0) {
   const [r, g, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
-  return ['interpolate', ['linear'], ['line-progress'], 0, `rgba(${r},${g},${b},1)`, 1, `rgba(${r},${g},${b},0.08)`];
+  const ink = a => `rgba(${r},${g},${b},${a})`, at = p => ink(+(1 - 0.92 * p).toFixed(3));
+  const pts = [[0, ink(1)]];
+  for (const [p, q] of gaps) if (q - p > 2 * e) pts.push([p, at(p)], [p + e, ink(0)], [q - e, ink(0)], [q, at(q)]);
+  pts.push([1, ink(0.08)]);
+  const ramp = [];
+  for (const [x, c] of pts) if (x >= 0 && x <= 1 && (!ramp.length || x > ramp[ramp.length - 2])) ramp.push(x, c);
+  return ['interpolate', ['linear'], ['line-progress'], ...ramp];
 }
 const ARROWS = { 'symbol-placement': 'line', 'symbol-spacing': 120, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': false, 'icon-ignore-placement': true, 'icon-padding': 1 };
 function arrowImage(hex, darkPaper) {
@@ -827,7 +835,7 @@ async function loadShapes(m = map, all = true) {
   const c = now(), key = closedKeyOf(c), lk = linesKeyOf(c);
   if (drawn.key !== key + '|' + lk) {
     // The detours' dots by the notices and the day alone: not cut again for a last bus moving on.
-    if (drawn.cutKey !== key) { drawn.cut = closedSegments(fc); drawn.cutKey = key; }
+    if (drawn.cutKey !== key) { drawn.cut = closedSegments(fc); drawn.cutKey = key; drawRunsSoon(); }   // a way on round them too: a picked stop's has no feed to redraw it
     const gaps = Object.fromEntries(Object.entries(drawn.cut.gaps).map(([sh, g]) => [sh, [...g]]));
     const { done, gaps: by } = passedSegments(fc);
     for (const [sh, g] of Object.entries(by)) (gaps[sh] ||= []).push(...g);
@@ -4530,18 +4538,132 @@ function fadePieces(path, hex, props) {
   return out;
 }
 /** A strand's arrows, in its lane: the way in a few long stretches (its pieces are too short to carry one each), each
- *  as strong as the strand is there, so where a loop comes back past, the sooner way's arrows are the plain ones. */
-function arrowLines(path, hex, lane) {
+ *  as strong as the strand is there, so where a loop comes back past, the sooner way's arrows are the plain ones. None
+ *  in its `gaps` ([from, to] metres along: aroundClosed). */
+function arrowLines(path, hex, lane, gaps = []) {
   const c = lineInk('#' + hex).slice(1).toLowerCase(), L = [0];
   for (let i = 1; i < path.length; i++) L.push(L[i - 1] + Math.hypot((path[i][0] - path[i - 1][0]) * KX, (path[i][1] - path[i - 1][1]) * KY));
   const T = L[L.length - 1], N = Math.max(1, Math.min(6, Math.round(T / 700))), out = [];
+  const walk = gaps.length ? path.map((p, i) => [L[i], p]) : null;
   for (let n = 0, i = 0; n < N; n++) {
-    const z = T * (n + 1) / N, pts = [path[i]];
+    const z = T * (n + 1) / N, i0 = i, pts = [path[i]];
     while (i + 1 < path.length && L[i + 1] <= z) pts.push(path[++i]);
     if (n === N - 1) while (i + 1 < path.length) pts.push(path[++i]);
-    if (pts.length > 1) out.push({ type: 'Feature', properties: { arrow: true, hex: c, op: Math.max(0.35, 1 - 0.92 * (n + 0.5) / N), o14: [0, lane * 8], o17: [0, lane * 12] }, geometry: { type: 'LineString', coordinates: pts } });
+    const props = { arrow: true, hex: c, op: Math.max(0.35, 1 - 0.92 * (n + 0.5) / N), o14: [0, lane * 8], o17: [0, lane * 12] };
+    for (const line of walk ? lessGaps(L[i0], L[i], gaps).map(([a, b]) => slice(walk, a, b)) : [pts]) if (line.length > 1) out.push({ type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: line } });
   }
   return out;
+}
+/** [a, b] less the gaps in it. */
+function lessGaps(a, b, gaps) {
+  const out = [];
+  for (const [p, q] of gaps) { if (q <= a || p >= b) continue; if (p > a + 1) out.push([a, p]); a = Math.max(a, q); }
+  if (b > a + 1) out.push([a, b]);
+  return out;
+}
+/** A way on (`path`, its `stops` at their places `at` along it) through a stretch its route `ri` is closed on, by
+ *  Connect's notice or skipped by a way round the buses have been seen taking, as the route's line dots it
+ *  (closedSegments). Where a way round fits (the surer first, as the dots and the detour's card take it): along it, from
+ *  where they leave the line to where they come back. A run with none: kept, its points from the served stop before it
+ *  to the one after marked to be left to the dots (onDots). Null where the way on passes no such stretch. Else the way
+ *  on again, each point's kind (0 the route's road, 1 the way round, 2 by a run with no way round) and where each old
+ *  point went (`to`: one gone round, the point where the buses come back). */
+function aroundClosed(path, at, stops, ri, ymd, ends) {
+  const ways = (A.seen || []).filter(u => u.ri.includes(ri) && u.d.way.length > 1).sort((u, v) => v.n - u.n || v.d.last - u.d.last);
+  const n = stops.length, own = m => stops[m][2] === undefined, sid = m => D.stops[stops[m][1]].id;
+  const out = m => own(m) && (closedRoutes(stops[m][1], ymd).has(ri) || ways.some(u => u.gone.includes(sid(m))));
+  const cuts = [], left = [];
+  for (let i = 0, floor = 0; i < n; i++) {
+    if (!out(i)) continue;
+    let j = i; while (j + 1 < n && out(j + 1)) j++;
+    // widened back no further than the run before, nor off the line before the buses came back from the way round before
+    const was = cuts[cuts.length - 1], c = ways.map(u => wayFits(path, at, stops, i, j, u, floor, was ? was.b.k + 1 : 0, ends)).find(Boolean);
+    if (c) { cuts.push(c); i = c.j; } else { left.push([i, j]); i = j; }
+    floor = i + 1;
+  }
+  if (!cuts.length && !left.length) return null;
+  const P = [], kind = [], to = new Array(path.length);
+  const put = (p, t) => { const q = P[P.length - 1]; if (!q || q[0] !== p[0] || q[1] !== p[1]) { P.push(p); kind.push(t); } };
+  let k = 0;
+  for (const c of cuts) {
+    for (; k <= c.a.k; k++) { put(path[k], 0); to[k] = P.length - 1; }
+    for (const p of [c.a.p, ...c.part, c.b.p]) put(p, 1);
+    for (; k <= c.b.k; k++) to[k] = P.length - 1;
+  }
+  for (; k < path.length; k++) { put(path[k], 0); to[k] = P.length - 1; }
+  for (const [i, j] of left) for (let v = to[i > 0 ? at[i - 1] : 0]; v <= to[j + 1 < n ? at[j + 1] : path.length - 1]; v++) if (!kind[v]) kind[v] = 2;
+  return { path: P, kind, to };
+}
+/** A way round (`u`) fitted to a closed run of a way on's stops (`i` to `j`), widened over the stops either side it
+ *  passes (one it went by, closed or not, is no place to leave the line: the Blue Loop's went by Macey's, closed, and
+ *  skipped the two after): where they left, on the road to the run's first stop near the way round's start, and where
+ *  they came back, on the road from its last near its end. A way on starting or ending in the run (the bus on its way
+ *  round now) takes the way round from or to its nearest point. Null where it skips none of the run, or doesn't fit. */
+function wayFits(path, at, stops, i, j, u, floor, after, ends) {
+  const n = stops.length, way = u.d.way.map(([la, lo]) => [lo, la]);
+  const by = m => stops[m][2] === undefined && pathDistance(D.stops[stops[m][1]].lat, D.stops[stops[m][1]].lon, u.d.way) <= 45;
+  while (i > floor && by(i - 1)) i--;
+  while (j + 1 < n && by(j + 1)) j++;
+  if (i > 0 && j < n - 1 && !stops.slice(i, j + 1).some(x => u.gone.includes(D.stops[x[1]].id))) return null;
+  const lo = i > 0 ? Math.max(at[i - 1], after) : 0;
+  let a = i > 0 ? nearOn(path, way[0], lo, at[i]) : { k: 0, p: path[0], e: 0 };
+  let b = j < n - 1 ? nearOn(path, way[way.length - 1], at[j], at[j + 1]) : { k: path.length - 1, p: path[path.length - 1], e: 0 };
+  if (a.e > 75 || b.e > 75) return null;   // metres: a bus's first report off the line, a corner past its turn, as wayCut's
+  // Off and on again on a slant, not straight across: the Blue Loop's way round ends on the highway 55 m short of Main,
+  // and the strand stepped sideways onto it.
+  if (i > 0) a = moveAlong(path, a, -1.5 * a.e, lo, at[i]);
+  if (j < n - 1) b = moveAlong(path, b, 1.5 * b.e, at[j], at[j + 1]);
+  // Begun or ended in the run: the way round from or to where the bus is on it (`ends`: a loop's way on ends back at its
+  // bus), else the stop it starts or ends at. The feed's stop behind a bus out on its way round can be one it skipped.
+  let part = way;
+  if (i === 0) { const s = nearOn(part, ends.from || path[0]); if (s.e > 150) return null; part = [s.p, ...part.slice(s.k + 1)]; }
+  if (j === n - 1) { const s = nearOn(part, ends.to || path[path.length - 1]); if (s.e > 150) return null; part = [...part.slice(0, s.k + 1), s.p]; b = { k: path.length - 1, p: s.p, e: 0 }; }
+  return { i, j, a, b, part };
+}
+/** The nearest point to `p` on a line's stretch from point k0 to k1: its leg (k, from line[k]), the point, metres off. */
+function nearOn(line, [x, y], k0 = 0, k1 = line.length - 1) {
+  let best = { k: -1, p: null, e: Infinity };
+  for (let k = k0; k < k1; k++) {
+    const [ax, ay] = line[k], [bx, by] = line[k + 1], vx = (bx - ax) * KX, vy = (by - ay) * KY, px = (x - ax) * KX, py = (y - ay) * KY, L2 = vx * vx + vy * vy;
+    const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0, e = Math.hypot(px - t * vx, py - t * vy);
+    if (e < best.e) best = { k, p: [ax + (bx - ax) * t, ay + (by - ay) * t], e };
+  }
+  return best;
+}
+/** A point on a line's leg k moved d metres on along it (back, for d < 0), no further than its points lo and hi. */
+function moveAlong(line, { k, p }, d, lo, hi) {
+  for (let left = Math.abs(d); left > 0;) {
+    if (d > 0 ? k + 1 > hi : k < lo) break;
+    const q = d > 0 ? line[k + 1] : line[k], s = Math.hypot((q[0] - p[0]) * KX, (q[1] - p[1]) * KY);
+    if (s >= left) { const t = left / s; return { k, p: [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t] }; }
+    left -= s; p = q;
+    if (d > 0 ? k + 1 >= hi : k <= lo) break;
+    k += d > 0 ? 1 : -1;
+  }
+  return { k, p };
+}
+/** Where a way on, by a closed run no way round is known for (kind 2), runs along its route's dotted line the way the
+ *  route goes there (not the road's other pass, an out-and-back's): [from, to] metres along it, a block or so at least. */
+function onDots(path, kind, ri) {
+  const { STEP, NEAR, SCRAP } = VOUCH, segs = [];
+  for (const f of drawn.cut ? drawn.cut.closed.features : []) if (f.properties.route === ri) { const c = f.geometry.coordinates; for (let k = 1; k < c.length; k++) segs.push([c[k - 1], c[k]]); }
+  if (!segs.length) return [];
+  const on = (x, y, hx, hy) => segs.some(([[ax, ay], [bx, by]]) => {
+    const vx = (bx - ax) * KX, vy = (by - ay) * KY, px = (x - ax) * KX, py = (y - ay) * KY, L2 = vx * vx + vy * vy;
+    const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0;
+    return Math.hypot(px - t * vx, py - t * vy) <= NEAR && vx * hx + vy * hy > 0.5 * Math.sqrt(L2) * Math.hypot(hx, hy);
+  });
+  const runs = [];
+  for (let k = 0, d = 0; k + 1 < path.length; k++) {
+    const [ax, ay] = path[k], [bx, by] = path[k + 1], hx = (bx - ax) * KX, hy = (by - ay) * KY, len = Math.hypot(hx, hy);
+    if (kind[k] === 2 && kind[k + 1] === 2) for (let s = 0; s < len; s += STEP) {
+      if (!on(ax + (bx - ax) * s / len, ay + (by - ay) * s / len, hx, hy)) continue;
+      const last = runs[runs.length - 1], d1 = d + Math.min(len, s + STEP);
+      if (last && last[1] >= d + s - 0.01) last[1] = d1; else runs.push([d + s, d1]);
+    }
+    d += len;
+  }
+  return runs.filter(([p, q]) => q - p >= SCRAP);
 }
 /** The way on from what's picked, drawn: a bus's from the bus, a stop's from the stop, each along its route's shape,
  *  bright there and fading round to where it comes back to itself. Nothing picked, or nothing to draw: cleared. */
@@ -4567,17 +4689,19 @@ async function drawRuns() {
   const loops = loopsInPlay().map(ri => ({ ri, path: ub ? loopPath(ri, [ub.lon, ub.lat], ub.along) : loopPath(ri, [U.stops[usi].lon, U.stops[usi].lat], U.routes[ri].stopAlong[usi]) })).filter(w => w.path.length > 1);
   if (!wants.length && !loops.length) { if (runsKey !== null) { runsKey = null; map.getSource('runs').setData(empty); } return; }
   const pick = [sb, selected, selectedU, uHilite].join('|');
-  const key = (ap ? ap.bus.id + '@' + ap.bus.lat.toFixed(4) + ',' + ap.bus.lon.toFixed(4) : c ? c.id + '@' + c.lat.toFixed(4) + ',' + c.lon.toFixed(4) : ub ? ub.id + '@' + ub.lat.toFixed(4) + ',' + ub.lon.toFixed(4) : pick) + '|' + (dark() ? 'd' : 'l') + '|' + wants.map(w => w.ri + ':' + w.stops.map(x => x[1]).join('.')).join(';') + '|' + loops.map(w => w.ri).join('.');
+  const key = (ap ? ap.bus.id + '@' + ap.bus.lat.toFixed(4) + ',' + ap.bus.lon.toFixed(4) : c ? c.id + '@' + c.lat.toFixed(4) + ',' + c.lon.toFixed(4) : ub ? ub.id + '@' + ub.lat.toFixed(4) + ',' + ub.lon.toFixed(4) : pick) + '|' + (dark() ? 'd' : 'l') + '|' + wants.map(w => w.ri + ':' + w.stops.map(x => x[1]).join('.')).join(';') + '|' + loops.map(w => w.ri).join('.') + '|' + drawn.cutKey;   // and the detours as drawn: a way round traced along the streets, a notice come or gone
   if (key === runsKey) return;
   const fc = wants.length ? await shapes() : null;
   if (!map || !map.getSource('runs') || pick !== [selectedBus || ringed, selected, selectedU, uHilite].join('|')) return;   // moved on while the shapes came
   const n = wants.length + loops.length, feats = [], wf = n === 1 ? 1 : n === 2 ? 0.75 : 0.6;   // strands side by side, each narrower
   // One line a strand, faded along itself by its layer's gradient in its route's colour.
   let ns = 0;
-  const strand = (path, hex, ln) => {
+  const strand = (path, hex, ln, gaps = []) => {
     const k = ns++;
     if (k >= RUN_STRANDS.length) return [];   // more ways than layers: no stop in the valley has them
-    map.setPaintProperty(RUN_STRANDS[k], 'line-gradient', fadeRamp(lineInk('#' + hex)));
+    let T = 0;
+    if (gaps.length) for (let i = 1; i < path.length; i++) T += Math.hypot((path[i][0] - path[i - 1][0]) * KX, (path[i][1] - path[i - 1][1]) * KY);
+    map.setPaintProperty(RUN_STRANDS[k], 'line-gradient', fadeRamp(lineInk('#' + hex), T ? gaps.map(([a, b]) => [a / T, b / T]) : [], T ? 8 / T : 0));
     return [{ type: 'Feature', properties: { strand: k, wf, lane: ln }, geometry: { type: 'LineString', coordinates: path } }];
   };
   const lane = idx => (idx - (n - 1) / 2) * wf * 1.15;
@@ -4593,6 +4717,21 @@ async function drawRuns() {
       path.push(...(path.length && part.length ? part.slice(1) : part));
       i = j + 1;
     }
+    // Through a stretch its route is closed on: along the way round the buses have been taking there, or where none is
+    // known, left to the route's dots (aroundClosed). Each point's kind goes with it as the way's cut at the bus below.
+    // The Blue Loop's bus short of South Walmart (Back) on 16 Oct had its way on drawn bright out along 1200 South to
+    // 453 West 100 North and back up Main past 950 South Main St, over the dots, while its buses went round by the highway.
+    const at = [];   // each stop's place on it: runPath begins and ends each leg on the stop itself
+    for (let m = 0, k = 0; m < w.stops.length; m++) {
+      const s = D.stops[w.stops[m][1]];
+      let f = k; while (f < path.length && !(path[f][0] === s.lon && path[f][1] === s.lat)) f++;
+      if (f < path.length) k = f;
+      at.push(k);
+    }
+    let kind = path.map(() => 0);
+    const round = !w.open && w.stops.length > 2 && w.stops[w.stops.length - 1][1] === w.stops[0][1];
+    const ar = path.length > 1 ? aroundClosed(path, at, w.stops, w.ri, clockNow.ymd, { from: w.from, to: round ? w.from : undefined }) : null;
+    if (ar) { firstLegs = ar.to[Math.min(firstLegs, path.length) - 1] + 1; path = ar.path; kind = ar.kind; }
     // From the bus itself: the way cut at the bus's nearest point along its first two legs only (an out-and-back road
     // comes past again on the way back), headed its way when it's moving, unless the bus is off the line altogether, a
     // detour. Two: the stop it passed and the one it reaches next are by the feed's word, held to its place as the crow
@@ -4609,11 +4748,12 @@ async function drawRuns() {
         if (e < best) { best = e; bi = i; }
       }
       if (bi >= 0 && best < 150) {
-        const round = !w.open && w.stops.length > 2 && w.stops[w.stops.length - 1][1] === w.stops[0][1];
-        path = [w.from, ...path.slice(bi + 1), ...(round ? [...path.slice(1, bi + 1), w.from] : [])];
+        const recut = (a, first) => [first, ...a.slice(bi + 1), ...(round ? [...a.slice(1, bi + 1), first] : [])];
+        path = recut(path, w.from); kind = recut(kind, 0);
       }
     }
-    if (path.length > 1) feats.push(...strand(path, D.routes[w.ri].color, lane(idx)), ...arrowLines(path, D.routes[w.ri].color, lane(idx)));
+    const gaps = kind.includes(2) ? onDots(path, kind, w.ri) : [];
+    if (path.length > 1) feats.push(...strand(path, D.routes[w.ri].color, lane(idx), gaps), ...arrowLines(path, D.routes[w.ri].color, lane(idx), gaps));
   }
   for (const [k, w] of loops.entries()) { const hx = uline(w.ri).slice(1), ln = lane(wants.length + k);
     feats.push(...(U.routes[w.ri].shape.length ? strand(w.path, hx, ln) : fadePieces(w.path, hx, { wf, lane: ln, approx: true })), ...arrowLines(w.path, uline(w.ri).slice(1), lane(wants.length + k))); }
