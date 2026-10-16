@@ -167,9 +167,10 @@ export function render(_, clockNow) {
       <div class="pk-lthen">${n && n.then.length ? html`<span class="w">then</span>${n.then.map(x => html`<span>${x}</span>`)}` : ''}${mark(n)}</div></div>`; };
   const buses = B !== undefined ? onTheLine(ri, A, B, clockNow) : null;
   const { top: atTop, foot: atFoot, mid } = spread(buses || []);
-  const busAt = b => html`<div class="pk-bus ${b.kind}" style="top:${b.y}px"><i></i>${b.label
-    ? html`<span class="pk-blab"><b>To ${said(placeOf(b.kind === 'down' ? B : A))}</b>there ${clock(Math.round(b.there)).h}</span>` : ''}</div>`;
-  const line = B !== undefined ? html`<div class="pk-line"><i class="pk-rail"></i>${stopAt(A, true, atTop)}${stopAt(B, false, atFoot)}${mid.map(busAt)}</div>
+  // A shuttle on the road: a row of its own between the two stops, in its order down the line, its dot on the rail.
+  // Placed at its share of the way beside the stops' own words, its label landed on them ('then 8:15 8:20').
+  const road = b => html`<div class="pk-road ${b.kind}"><i></i><span class="pk-blab"><b>${b.kind === 'wait' ? 'Waiting' : 'To ' + said(placeOf(b.kind === 'down' ? B : A))}</b>${b.there !== null ? 'there ' + clock(Math.round(b.there)).h : ''}</span></div>`;
+  const line = B !== undefined ? html`<div class="pk-line">${stopAt(A, true, atTop)}<div class="pk-roads">${mid.map(road)}</div>${stopAt(B, false, atFoot)}</div>
       ${buses && !buses.length && night && k0 === 0 && clockNow.min >= night.first - 10 && clockNow.min <= night.last + 15 ? html`<p class="pk-quiet">No shuttle in the feed just now: the times are the timetable's.</p>` : ''}` : '';
 
   // The night: how much of it is left, now on it, and the last shuttle back from the far end.
@@ -238,20 +239,13 @@ function wire(el) {
   el.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.pk-fold')) { e.preventDefault(); raise(); } });
 }
 
-/** The shuttles on the line laid out on its 200 px: those within a dot's width of either stop go to it (nearest first),
- *  the rest kept a dot and a gap apart in their order (two at one place were one blob), each one's place `y`; labelled
- *  where there's room beside it, between the two stops' words, the sooner there first. */
-const RAIL = 200, NEAR = 16, GAP = 32, LAB = 24;
+/** The shuttles on the line: those within a dot's width of either stop go to it (nearest first: its ring filled), the
+ *  rest on the road between, in their order down the line. */
+const NEAR = 0.08;   // of the way from a stop: at it
 function spread(buses) {
-  const at = b => b.p * RAIL, top = [], foot = [], mid = [];
-  for (const b of buses) (at(b) < NEAR ? top : at(b) > RAIL - NEAR ? foot : mid).push({ ...b });
+  const top = [], foot = [], mid = [];
+  for (const b of buses) (b.p < NEAR ? top : b.p > 1 - NEAR ? foot : mid).push(b);
   top.sort((a, b) => a.p - b.p); foot.sort((a, b) => b.p - a.p); mid.sort((a, b) => a.p - b.p);
-  mid.forEach((b, i) => { b.y = Math.max(at(b), NEAR + 4, i ? mid[i - 1].y + GAP : 0); });
-  for (let i = mid.length - 1; i >= 0; i--) mid[i].y = Math.min(mid[i].y, RAIL - NEAR - 4, i < mid.length - 1 ? mid[i + 1].y - GAP : RAIL);
-  const told = [];
-  for (const b of [...mid].sort((a, b) => (a.there ?? Infinity) - (b.there ?? Infinity)))
-    if (b.kind !== 'wait' && b.there !== null && b.y > 0.3 * RAIL && b.y < 0.82 * RAIL && told.every(y => Math.abs(y - b.y) >= LAB)) { b.label = true; told.push(b.y); }
-  for (const b of mid) b.y = Math.round(b.y);
   return { top, foot, mid };
 }
 
