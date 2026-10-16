@@ -116,13 +116,34 @@ export function relative(dep, clockNow, opts = {}) {
   return dayName(dayFrom(clockNow.ymd, dep.day).ymd);
 }
 
-/** Headway between departures, when they are regular: 'Every 30 min until 8:36 PM'. */
-export function cadence(mins) {
-  if (mins.length < 3) return '';
-  const gaps = mins.slice(1).map((m, i) => m - mins[i]);
-  const g = gaps[0];
-  if (gaps.every(x => Math.abs(x - g) <= 2)) return 'Every ' + g + ' min until ' + clockText(mins[mins.length - 1]);
-  return '';
+/** A few times, the meridiem once a run of them: '7:50 AM, 4:45 and 5:45 PM'. */
+export function clockAnd(mins) {
+  const ws = mins.map(clock).map((c, i, cs) => c.h + (c.ap && (i === cs.length - 1 || cs[i + 1].ap !== c.ap) ? ' ' + c.ap : ''));
+  return ws.length > 1 ? ws.slice(0, -1).join(', ') + ' and ' + ws[ws.length - 1] : ws[0] || '';
+}
+/** How a route leaves a stop over the day, from its departures' minutes: three or fewer, or a few at odd gaps, their
+ *  times ('7:50 AM, 4:45 and 5:45 PM'); evenly, how often, at which minutes of the hour, and until when ('Every 30 min
+ *  at :00 and :30 until 8:00 PM', 'Every hour at :30 until 7:30 PM'); gaps that wander, their span ('Every 13–18 min
+ *  until 8:28 PM'); a break in the day, each side of it. `from`: when it starts said too (it isn't soon). */
+export function howOften(mins, from = false) {
+  const ms = [...new Set(mins)].sort((a, b) => a - b);
+  const gaps = ms.slice(1).map((m, i) => m - ms[i]);
+  const common = gaps.length ? gaps.slice().sort((a, b) => gaps.filter(x => x === b).length - gaps.filter(x => x === a).length || a - b)[0] : 0;
+  const one = (ms, from) => {
+    const gaps = ms.slice(1).map((m, i) => m - ms[i]), g = gaps[0], lo = Math.min(...gaps), hi = Math.max(...gaps);
+    const span = (from ? ' from ' + clockText(ms[0]) : '') + ' until ' + clockText(ms[ms.length - 1]);
+    if (ms.length <= 3) return clockAnd(ms);
+    if (lo === hi) {
+      if (g === 30 || g === 60) return (g === 30 ? 'Every 30 min at ' : 'Every hour at ') + [...new Set(ms.map(m => m % 60))].sort((a, b) => a - b).map(m => ':' + String(m).padStart(2, '0')).join(' and ') + span;
+      if (g < 60 || ms.length > 6) return (g % 60 === 0 ? `Every ${g / 60} hours` : `Every ${g} min`) + span;
+    }
+    if (ms.length <= 6) return clockAnd(ms);
+    return (hi <= 2 * lo ? `Every ${lo}–${hi} min` : `About every ${common} min`) + span;
+  };
+  // A break in the day (a gap more than twice the usual), when there are too many to list: each side said on its own.
+  const parts = [[ms[0]]];
+  for (let i = 1; i < ms.length; i++) { if (ms.length > 6 && gaps[i - 1] > 2 * common) parts.push([]); parts[parts.length - 1].push(ms[i]); }
+  return parts.map((p, i) => i === 0 ? one(p, from) : 'then ' + one(p, true).replace(/^[A-Z]/, c => c.toLowerCase())).join('; ');
 }
 
 // Miles or kilometres: the rider's choice on the About page, miles until they choose; these are American streets.

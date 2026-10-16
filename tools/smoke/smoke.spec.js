@@ -1363,6 +1363,63 @@ test('Transit Center: the board, a route picked from the strip, the bays', async
   expect(await page.evaluate(async () => { const d = await import('/app/data.js'); return d.D.hub.bays.filter(b => b.lat !== d.D.stops[b.stop].lat || b.lon !== d.D.stops[b.stop].lon).length; })).toBe(0);
 });
 
+test('Transit Center: the rest of the day, a line a route with its last bus, a tap to its every time; after the last, the next day\'s', async ({ page }) => {
+  // A rider at the Center coming back later: when's the last 3, is there a 16 this afternoon. Under the next hour, each
+  // route's line says its last departure today, the day's last bus beside the heading; a line opens its route's card,
+  // with every time it leaves today. After the day's last bus, the next day with buses, from its first. The clock set
+  // from the timetable (three hours into the first day with buses from here, then a minute past its last), the feed
+  // down so every time is the timetable's.
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => r.abort());
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+    const key = ri => d.D.routes[ri].short.replace(/\s+(AM|PM)$/i, '');
+    for (let day = 0; day < 8; day++) {
+      const ymd = t.dayFrom(c.ymd, day).ymd, per = {};
+      for (const b of d.D.hub.bays) for (const x of d.timesOn(b.stop, ymd)) if (b.routes.includes(x.r)) (per[key(x.r)] ||= []).push(x);
+      for (const ms of Object.values(per)) ms.sort((a, b) => a.min - b.min);
+      const all = Object.values(per).flat().map(x => x.min);
+      if (!all.length) continue;
+      const last = Math.max(...all), at = Math.min(Math.min(...all) + 180, last - 60), start = Date.now() - (c.min * 60 + c.sec) * 1000 + day * 864e5;
+      // each route still to leave then, and its last time: the line it's on says it, and when that run goes only part
+      // of the way (the night's 8:30s), says so
+      const lasts = Object.entries(per).filter(([, ms]) => ms.some(x => x.min >= at)).map(([k, ms]) => { const x = ms[ms.length - 1]; return [k, t.clockText(x.min), /^Last run \(partial/.test(d.lastRun({ ...x, ymd }) || '')]; });
+      return { lasts, last: t.clockText(last), at: start + (at * 60 + 30) * 1000, after: start + ((last + 1) * 60 + 30) * 1000 };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no buses from the Center this week');
+  const board = async when => {
+    await page.clock.setFixedTime(new Date(when));
+    await page.evaluate(() => history.replaceState(null, '', '#/hub'));   // the board afresh at that time, nothing picked
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+    const sec = page.locator('.tcd').filter({ visible: true }).first();
+    await expect(sec).toBeAttached({ timeout: 20_000 });
+    return sec;
+  };
+  let sec = await board(pick.at);
+  await expect(sec.locator('.section > span').first()).toHaveText(/^The rest of today$/i);
+  await expect(sec.locator('.section .note')).toHaveText('Last bus ' + pick.last);
+  for (const [k, last, part] of pick.lasts) {
+    const href = '#/hub/' + encodeURIComponent(k), row = sec.locator(`a.tcd-row[href="${href}"], .tcd-row:not(.tcd-none):has(a[href="${href}"])`);
+    await expect(row, `Route ${k}'s line`).toContainText(last.replace(' ', '\u00a0'));
+    if (part) await expect(row, `Route ${k}'s last run, part way`).toContainText(last.replace(' ', '\u00a0') + ' part way');
+  }
+  // a line of one route: its card, every time it leaves today
+  const one = sec.locator('a.tcd-row').first();
+  const href = await one.getAttribute('href');
+  await one.click();
+  await expect(page).toHaveURL(new RegExp(href.replace(/[/#]/g, '\\$&') + '$'));
+  await expect(page.locator('.tc-pick').filter({ visible: true })).toBeVisible();
+  await expect(page.locator('.tc-day').filter({ visible: true })).toContainText('today from here');
+  // a minute past the day's last bus: the next day's, each route from its first (its first bus the next hour's heading)
+  sec = await board(pick.after);
+  await expect(sec.locator('.section > span').first()).not.toHaveText(/^The rest of today$/i);
+  await expect(sec.locator('.section .note')).toHaveCount(0);
+  await expect(sec.locator('.tcd-row:not(.tcd-none)', { hasText: ' from ' }).first()).toBeVisible();
+});
+
 test('Transit Center on a wide screen: the map left where it is, the bays on the tab again', async ({ page }, info) => {
   test.skip(phone(info), 'on a phone the Center is the map, flown to');
   // From the Stops page, its panel already beside the map: from the Map tab the panel comes in, and the map keeps the

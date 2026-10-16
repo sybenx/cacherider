@@ -1,8 +1,8 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey } from '../data.js';
-import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone } from '../time.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun } from '../data.js';
+import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone, fmtDay, howOften, clockAnd } from '../time.js';
 import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
@@ -109,6 +109,7 @@ export function render({ bay }, clockNow) {
   parts.push(loops(st, pick, clockNow));
   if (pick) parts.push(picked(st[pick], clockNow), dayTimes(st[pick], clockNow));
   parts.push(nextHour(st, pick, clockNow));
+  if (!pick) parts.push(restOfDay(st, clockNow));
   parts.push(footnote(st));
   return { html: parts.join(''), mount, title: H.name, keepScroll: true, key: 'hub' };
 }
@@ -161,6 +162,75 @@ function nextHour(st, pick, clockNow) {
   });
   return html`<div class="tcb"><div class="section between"><span>${title}</span>${rows.some(r => r.t.live) ? html`<span class="note">crossed out · scheduled</span>` : ''}</div>
     ${out.length ? out : html`<p class="tc-foot">Nothing leaves in the next hour.</p>`}</div>`;
+}
+
+/** The rest of the day from here, a line a route: how often it leaves and until when, or the few times it has left
+ *  (time.js howOften), routes that leave alike on one line, and the day's last bus. The next hour above has each
+ *  departure; this is for a rider coming back later (when's the last 3? is there a 16 this afternoon?), a route's every
+ *  time a tap away (its card). A row a group would be thirty, all but the same. A night's last run that goes only part
+ *  of the way (the 8:30s) is said apart, lest 'until 8:30 PM' read as the last one out to the end; a run cancelled, by
+ *  its time. Once today's are all gone, the next day with buses, each route from its first. The timetable's minutes:
+ *  the feed's word on a late bus is the list above's, and here says only whether it's gone (time.js). */
+let dayKey = null, dayKept = '', dayAlerts = null;
+function restOfDay(st, clockNow) {
+  // Worked out once a minute and once a feed, as the board is (board()): every departure of the day is weighed.
+  const key = clockNow.ymd + ':' + clockNow.min + ':' + rt.at + ':' + rtStale();
+  if (key === dayKey && A === dayAlerts) return dayKept;
+  dayKey = key; dayAlerts = A;
+  return (dayKept = dayOf(st, clockNow));
+}
+function dayOf(st, clockNow) {
+  const ks = keys().filter(k => st[k]);
+  const bays = k => D.hub.bays.filter(b => st[k].ris.some(ri => b.routes.includes(ri)));
+  const on = ymd => Object.fromEntries(ks.map(k => {
+    const seen = new Set(), out = [];
+    for (const b of bays(k)) for (const t of timesOn(b.stop, ymd)) if (st[k].ris.includes(t.r) && b.routes.includes(t.r) && !seen.has(t.trip)) { seen.add(t.trip); out.push({ ...t, ymd }); }
+    return [k, out.sort((a, b) => a.min - b.min)];
+  }));
+  let day = 0, ymd = clockNow.ymd, per = on(ymd);
+  const ran = new Set(ks.filter(k => per[k].length));   // today, gone or not: done for the day, not off it
+  // Still to leave: not gone by the feed's word where it has one (a late bus still to come), the clock's where not; a
+  // run the feed has cancelled kept in its place, to be said, unless no run comes after it.
+  for (const k of ks) {
+    const ts = per[k].map(t => lively({ ...t, day: 0 })).filter(t => !isGone(t, clockNow) || (t.cancelled && minsTo(t, clockNow) >= 0));
+    while (ts.length && ts[ts.length - 1].cancelled) ts.pop();
+    per[k] = ts;
+  }
+  if (!ks.some(k => per[k].length)) {
+    for (day = 1; day < 8; day++) { ymd = dayFrom(clockNow.ymd, day).ymd; per = on(ymd); if (ks.some(k => per[k].length)) break; }
+    if (day === 8) return '';
+  }
+  const rows = new Map(), none = new Map();
+  for (const k of ks) {
+    const ts = per[k];
+    if (!ts.length) {
+      // Nothing here: done for the day, not running that day, or a detour taking it past its bay.
+      const why = bays(k).some(b => st[k].ris.some(ri => closedRoutes(b.stop, ymd).has(ri))) ? 'On a detour, not stopping here' + (day === 0 ? ' today' : ' on ' + dayName(ymd))
+        : day === 0 && ran.has(k) ? 'No more today' : 'Not running ' + (day === 0 ? 'today' : 'on ' + dayName(ymd));
+      none.set(why, [...(none.get(why) || []), k]);
+      continue;
+    }
+    const last = ts[ts.length - 1], part = /^Last run \(partial/.test(lastRun(last) || '');   // lastRun: data.js, as the list above tags it
+    const full = part ? ts.slice(0, -1) : ts, cx = full.filter(t => t.cancelled).map(schedOf);
+    const from = day > 0 || (full.length && minsTo({ min: schedOf(full[0]), day: 0 }, clockNow) > 60);
+    const w = [full.length ? howOften(full.map(schedOf), from) : '', part ? clockText(schedOf(last)) + ' part way' : ''].filter(Boolean).join(', then ')
+      + (cx.length ? `; the ${clockAnd(cx)} ${cx.length > 1 ? 'are' : 'is'} cancelled` : '');
+    const said = w.replace(/ (AM|PM)\b/g, '\u00a0$1');   // a time kept whole on its line
+    rows.set(said, [...(rows.get(said) || []), k]);
+  }
+  // In order of number, another operator's after, the loops last: where a rider looks for theirs.
+  const rank = k => (st[k].loop ? 2000 : st[k].op ? 1000 : 0) + (parseInt(k) || 999);
+  const ri = k => (per[k][0] || {}).r ?? st[k].ris[0];   // the half on the road (16 AM, 16 PM): its badge
+  const link = k => html`<a href="#/hub/${encodeURIComponent(k)}" aria-label="${nameOfKey(k, st[k].ris[0])}">${badge(ri(k), 26)}</a>`;
+  const line = (g, w, cls = '') => g.length === 1
+    ? html`<a class="tcd-row${cls}" href="#/hub/${encodeURIComponent(g[0])}" aria-label="${nameOfKey(g[0], st[g[0]].ris[0])}: ${w}"><span class="tcb-badges">${badge(ri(g[0]), 26)}</span><span class="tcd-w">${w}</span></a>`
+    : html`<div class="tcd-row${cls}"><span class="tcb-badges">${g.map(link)}</span><span class="tcd-w">${w}</span></div>`;
+  const byRank = m => [...m].map(([w, g]) => [w, g.sort((a, b) => rank(a) - rank(b))]).sort((a, b) => rank(a[1][0]) - rank(b[1][0]));
+  const all = ks.flatMap(k => per[k].filter(t => !t.cancelled).map(schedOf));
+  // Another day: its first bus is the next hour's heading just above ('Tomorrow from 9:30 AM').
+  const head = day === 0 ? html`<span>The rest of today</span><span class="note">Last bus ${clockText(Math.max(...all))}</span>` : html`<span>${day === 1 ? 'Tomorrow · ' : ''}${fmtDay(ymd, true)}</span>`;
+  return html`<section class="tcd"><div class="section between">${head}</div>${byRank(rows).map(([w, g]) => line(g, w))}${byRank(none).map(([w, g]) => line(g, w, ' tcd-none'))}
+    ${day === 0 ? html`<p class="day-hint">Tap a route for all its times today.</p>` : ''}</section>`;
 }
 
 /** On a Saturday, how often routes leave together and until when: ' · a group every 30 min until 6:00 PM'. */
@@ -315,7 +385,7 @@ export function hubSheet({ bay }, clockNow) {
   const { st, pick } = board(bay, clockNow);
   return pick
     ? { pick, head: picked(st[pick], clockNow), body: html`${detourNotice(clockNow)}${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
-    : { pick, head: together(st, clockNow), body: html`${getHere()}${detourNotice(clockNow)}${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` };
+    : { pick, head: together(st, clockNow), body: html`${getHere()}${detourNotice(clockNow)}${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${restOfDay(st, clockNow)}${footnote(st)}` };
 }
 
 /** The bays for the map, one badge a route (16 AM and PM as one), at its bay's stop as the timetable places it: the
