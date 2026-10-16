@@ -1,5 +1,5 @@
 // The schedule, loaded once, and the questions the screens ask of it.
-import { now, dayFrom, dayDiff, setZone, dayName, clockText, isGone } from './time.js';
+import { now, dayFrom, dayDiff, setZone, dayName, fmtDay, clockText, isGone } from './time.js';
 
 export let D = null;           // the reduced feed
 export const BASE = new URL('..', import.meta.url).href;   // the app's root, wherever it is served from
@@ -340,8 +340,11 @@ function unannounced(list, byStop) {
       }
     }
     const ids = [...gone];
-    const on = D.stops.filter(s => !s.hub && !gone.has(s.id) && pathDistance(s.lat, s.lon, d.way) <= TRACK_ON).map(s => s.id);
-    const announced = !ids.length || ids.every(id => (byStop[id] || []).some(a => alertOn(a, ymd) && ris.some(ri => a.ri.includes(ri))));
+    // Not one the agency's notice closes to its routes, passed or not: the Blue Loop's way round on 15 Oct went by
+    // 520 West 100 North, closed for construction, and offered it as where to wait instead.
+    const shut = id => (byStop[id] || []).some(a => alertOn(a, ymd) && ris.some(ri => a.ri.includes(ri)));
+    const on = D.stops.filter(s => !s.hub && !gone.has(s.id) && !shut(s.id) && pathDistance(s.lat, s.lon, d.way) <= TRACK_ON).map(s => s.id);
+    const announced = !ids.length || ids.every(shut);
     // The streets of the way round: those between the one it left and the one it came back to.
     const st = d.streets || [], by = st.length > 2 ? st.slice(1, -1) : st.slice(1);
     // Since when they've gone round: the relay's first bus that way, unless one has gone along the usual way since
@@ -349,9 +352,16 @@ function unannounced(list, byStop) {
     // and 9 in a row after, read 'every Blue Loop bus since 2:14 PM'.
     const from = d.along > d.first ? d.along : d.first;
     out.push({ id: 'seen' + d.id, d, ri: ris, who: ris.length ? routeWord(ris[0]) : 'Route ' + d.route, n: d.streak, gone: ids, on, by, announced,
-      since: clockText(now(new Date(from * 1000)).min), last: clockText(now(new Date(d.last * 1000)).min) });
+      since: seenAt(from), last: seenAt(d.last) });
   }
   return out;
+}
+/** When a bus was seen going round, its day said when it wasn't today: at six in the morning, yesterday's '8:08 PM'
+ *  read as last night's an hour ago or this evening's to come. '8:08 PM', '8:08 PM yesterday', '8:08 PM on Tuesday',
+ *  '8:08 PM on Tue 29 Sep'. */
+function seenAt(epoch) {
+  const c = now(new Date(epoch * 1000)), today = now().ymd, back = dayDiff(c.ymd, today);
+  return clockText(c.min) + (back <= 0 ? '' : back === 1 ? ' yesterday' : back < 7 ? ' on ' + dayName(c.ymd) : ' on ' + fmtDay(c.ymd));
 }
 /** The unannounced detours that may skip a stop, and those that pass it on their way round (its buses likely stop). */
 export const skipsAt = id => (A.seen || []).filter(u => !u.announced && u.gone.includes(id));
@@ -363,7 +373,7 @@ export const maySkip = (id, ri) => skipsAt(id).some(u => u.ri.includes(ri)) && !
 export const lastBuses = u => u.n >= 4 ? `Every ${u.who} bus since ${u.since} (${u.n} in a row)` : `The last ${u.n} ${u.who} buses`;
 const routeWord = ri => { const r = D.routes[ri]; return /^[A-Z]$/.test(r.short) ? r.long : 'Route ' + r.short.split(' ')[0]; };
 /** Metres from a point to a path of [lat, lon] points. */
-function pathDistance(lat, lon, path) {
+export function pathDistance(lat, lon, path) {
   const k = 111320 * Math.cos(lat * Math.PI / 180), xy = ([a, b]) => [(b - lon) * k, (a - lat) * 110540];
   let best = Infinity;
   for (let i = 0; i + 1 < path.length; i++) {

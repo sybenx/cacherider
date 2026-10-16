@@ -325,7 +325,7 @@ export async function render(tick = false) {
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       campus: mapU && !seg[2],   // the home page's shuttle line: campus, its loops drawn
       routeShort: routeArgs ? routeArgs.short : seasonRoute ? seasonRoute.short : null, routeArgs: routeArgs || seasonRoute,
-      alertId: mapA ? seg[2] : null, run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route' || name === 'pumpkin', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
+      alertId: mapA ? seg[2] : null, alertTap: mapA && q.tap === '1', run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route' || name === 'pumpkin', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
       busId: mapB && seg[2] ? dec(seg[2]) : null,   // a bus from the Transit Center's board: it, on its way in
       busTap: mapB && q.tap === '1',   // or tapped on the map: its card, the map left where it is

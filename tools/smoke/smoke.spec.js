@@ -1308,7 +1308,102 @@ test('alerts and detours: the list, one on the map', async ({ page }) => {
   await open(page, '#/about/alerts');
   await expect(page.getByText(/Nothing from|alert|detour|Detour/).filter({ visible: true }).first()).toBeVisible();
   const onMap = page.locator('a[href^="#/map/alert/"]').filter({ visible: true }).first();
-  if (await onMap.count()) { await onMap.click(); await expect(page).toHaveURL(/#\/map\/alert\//); await mapReady(page); }
+  if (await onMap.count()) { await onMap.click(); await expect(page).toHaveURL(/#\/map\/alert\//); await mapReady(page); await expect(page.locator('#mapcard.open .eyebrow')).toBeVisible(); }   // its card on the map
+});
+
+test('a detour\'s dots tapped: a notice\'s card, its words a tap away; a way round the buses took, how many in a row; Back puts each away', async ({ page }, info) => {
+  // Staged, the notices and the relay's detours made up: a route's stop closed by a notice (its stretch dotted), then
+  // the buses seen going round it unannounced (the way round dotted too). Each tapped where it's drawn, found by a
+  // spot's marker put there first (the map's own sum, not the test's), the markers let through to the map for it.
+  let alerts = [], detours = [];
+  await page.route(/^https:\/\/live\.cacherider\.com\/alerts/, r => r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ fetched: new Date().toISOString(), alerts }) }));
+  await page.route(/\/data\/alerts\.json/, r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ fetched: new Date().toISOString(), alerts }) }));
+  await page.route(/^https:\/\/live\.cacherider\.com\/detours/, r => r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ t: Math.floor(Date.now() / 1000), detours }) }));
+  await open(page, '#/map');
+  // A stop in the middle of a route, the next a long block on: the point halfway along the line between them is on the
+  // dots, no stop near it to take the tap and no other route's line near it to vouch for the road (closedSegments).
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), D = d.D, j = await (await fetch('/data/cvtd-shapes.json')).json();
+    const m = (p, q) => d.distance(p[1], p[0], q[1], q[0]), keyOf = ri => D.routes[ri].short.split(' ')[0];
+    const lineKey = l => l.key !== undefined ? l.key : D.routes[l.route] && keyOf(l.route);
+    const offLine = (p, c) => { let best = Infinity; for (let k = 0; k + 1 < c.length; k += 1) { const a = c[k], b = c[k + 1], kx = 111320 * Math.cos(p[1] * Math.PI / 180), ax = (a[0] - p[0]) * kx, ay = (a[1] - p[1]) * 110540, bx = (b[0] - p[0]) * kx, by = (b[1] - p[1]) * 110540, vx = bx - ax, vy = by - ay, n = vx * vx + vy * vy, t = n ? Math.max(0, Math.min(1, -(ax * vx + ay * vy) / n)) : 0; best = Math.min(best, Math.hypot(ax + t * vx, ay + t * vy)); } return best; };
+    const clear = (p, own) => D.stops.every(s => d.distance(p[1], p[0], s.lat, s.lon) > 200) && j.lines.every(l => lineKey(l) === own || offLine(p, l.coords) > 100);
+    for (const [ri, r] of D.routes.entries()) {
+      if (/\s/.test(r.short) || (D.hub.loops || []).includes(ri)) continue;
+      const own = keyOf(ri), mine = j.lines.filter(l => lineKey(l) === own);
+      for (const seq of Object.values(r.stops || {})) for (let k = 1; k + 1 < seq.length; k++) {
+        const [a, b, c] = [seq[k - 1], seq[k], seq[k + 1]].map(si => D.stops[si]);
+        if (a.hub || b.hub || c.hub || d.distance(b.lat, b.lon, c.lat, c.lon) < 450 || d.distance(a.lat, a.lon, b.lat, b.lon) < 200) continue;
+        for (const l of mine) {
+          const near = s => l.coords.map((p, i) => ({ i, d: m(p, [s.lon, s.lat]) })).filter(x => x.d < 30).map(x => x.i);
+          const ib = near(b), ic = near(c), pair = ib.flatMap(x => ic.filter(y => y > x).map(y => [x, y])).sort((p, q) => (p[1] - p[0]) - (q[1] - q[0]))[0];
+          if (!pair) continue;
+          const run = l.coords.slice(pair[0], pair[1] + 1), lens = run.slice(1).map((p, i) => m(run[i], p)), half = lens.reduce((x, y) => x + y, 0) / 2;
+          let at = run[0];
+          for (let i = 0, gone = 0; i < lens.length; gone += lens[i++]) if (gone + lens[i] >= half) { const t = (half - gone) / lens[i]; at = [run[i][0] + (run[i + 1][0] - run[i][0]) * t, run[i][1] + (run[i + 1][1] - run[i][1]) * t]; break; }
+          if (!clear(at, own)) continue;
+          // the way round: from stop a to stop c, out 250 m to one side of the line between them, and back
+          const kx = 111320 * Math.cos(a.lat * Math.PI / 180), ex = (c.lon - a.lon) * kx, ey = (c.lat - a.lat) * 110540, el = Math.hypot(ex, ey);
+          for (const side of [1, -1]) {
+            const off = f => [a.lon + (c.lon - a.lon) * f - side * ey / el * 250 / kx, a.lat + (c.lat - a.lat) * f + side * ex / el * 250 / 110540];
+            const P = off(0.2), Q = off(0.8), tap = [(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2];
+            if (!clear(tap, null) || offLine([b.lon, b.lat], [[a.lon, a.lat], P, Q, [c.lon, c.lat]]) < 120) continue;
+            return { short: r.short, own, name: r.long, stop: { id: b.id, name: b.name }, at: { lat: at[1], lon: at[0] }, tap: { lat: tap[1], lon: tap[0] }, way: [[a.lat, a.lon], [P[1], P[0]], [Q[1], Q[0]], [c.lat, c.lon]] };
+          }
+        }
+      }
+    }
+    return null;
+  });
+  test.skip(!pick, 'no stop with a long clear block after it');
+  const tapAt = async (lat, lon) => {
+    await go(page, '#/map');
+    await page.waitForTimeout(600);
+    await go(page, `#/map/at/${lat.toFixed(5)},${lon.toFixed(5)}/Here`);
+    const box = await still(page.locator('.spot-marker'));
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  };
+  const now = Math.floor(Date.now() / 1000);
+  // The notice's dots: its card, the route as a row to its page, the notice's title, its words unfolded, its stop.
+  alerts = [{ id: 'a990001', title: `Route ${pick.own} Detour: smoke test`, text: `Due to construction, the stop at ${pick.stop.name} is closed. Please use the stops either side.`, url: '', start: now - 3600, end: now + 7 * 86400, routeIds: [], routes: [pick.short], stops: [pick.stop.id] }];
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await mapReady(page);
+  await page.addStyleTag({ content: '.maplibregl-marker { pointer-events: none !important; }' });   // a bus going by, or the spot's own pin, not in the way
+  await tapAt(pick.at.lat, pick.at.lon);
+  await expect(page).toHaveURL(/#\/map\/alert\/a990001\?tap=1$/);
+  const card = page.locator('#mapcard.open');
+  if (phone(info)) await expect(card).toHaveClass(/\bpeek\b/);   // low, as a road's card: the dots tapped still in view
+  await expect(card.locator('.eyebrow')).toHaveText(/Detour/i);
+  await expect(card.locator(`a.roadroute[href="#/map/route/${encodeURIComponent(pick.short)}"]`)).toBeVisible();
+  await expect(card.locator('summary')).toContainText('smoke test');
+  await expect(card.getByText('Please use the stops either side')).toBeHidden();
+  await card.locator('summary').click();
+  await expect(card.getByText('Please use the stops either side')).toBeVisible();
+  await expect(card.locator('p', { hasText: 'Closed:' }).locator(`a[href="#/stop/${pick.stop.id}"]`)).toBeVisible();   // a notice closes its stops
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/map$/);
+  await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);
+  // The buses seen going round the stop, three in a row, and no notice: unannounced, its way round dotted, its card
+  // the count, since when, the stop it skipped. (The way as the streets have it, stored as the app keeps a traced one.)
+  alerts = [];
+  const path = pick.way, key = path.map(([la, lo]) => la.toFixed(4) + ',' + lo.toFixed(4)).join(';');
+  detours = [{ id: 990002, route: pick.own, streak: 3, trips: 3, first: now - 3000, last: now - 600, along: null, leaves: path[0], rejoins: path[path.length - 1], paths: [path], path }];
+  await page.evaluate(([k, w]) => localStorage.setItem('cr-ways-2', JSON.stringify({ [k]: { way: w, streets: [], at: Date.now() } })), [key, path]);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await mapReady(page);
+  await page.addStyleTag({ content: '.maplibregl-marker { pointer-events: none !important; }' });
+  await tapAt(pick.tap.lat, pick.tap.lon);
+  await expect(page).toHaveURL(/#\/map\/alert\/seen990002\?tap=1$/);
+  await expect(card.locator('.eyebrow')).toHaveText(/Unannounced detour/i);
+  await expect(card).toContainText(/The last 3 .+ buses went this way/);
+  await expect(card).toContainText(/Seen since \d/);
+  await expect(card.locator('p', { hasText: 'Skipped:' }).locator(`a[href="#/stop/${pick.stop.id}"]`)).toBeVisible();   // the buses skip it
+  await expect(card).toContainText(/not posted by/);
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/map$/);
+  await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);
 });
 
 test('a way round the buses took: the stop it skipped a long block from where they came back, those either side served; since when the run began again', async ({ page }) => {

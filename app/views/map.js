@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pref } from '../data.js';
+import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pathDistance, pref } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -249,11 +249,13 @@ function stopInks(dk, ri) {
 function closedSegments(fc) {
   const ymd = now().ymd;
   const byRoute = {};   // route index → set of closed stop ids
-  for (const a of activeAlerts(ymd)) for (const ri of a.ri || []) for (const id of a.stops || []) (byRoute[ri] ||= new Set()).add(id);
+  // and by whose word each is closed (route:stop → the notices' ids, a detour's 'seen…'): a tap on the dots says it
+  const why = {}, closes = (ri, id, by) => { (byRoute[ri] ||= new Set()).add(id); (why[ri + ':' + id] ||= new Set()).add(by); };
+  for (const a of activeAlerts(ymd)) for (const ri of a.ri || []) for (const id of a.stops || []) closes(ri, id, a.id);
   // And a detour seen from the buses and not announced: the stretch they've been leaving out dotted as a notice's is,
   // its stops with their '?'; lighter while only two in a row have gone round (u.n), as its way round is.
   const unsure = new Set();
-  for (const u of A.seen || []) if (!u.announced) for (const ri of u.ri) for (const id of u.gone) if (!(byRoute[ri] && byRoute[ri].has(id))) { (byRoute[ri] ||= new Set()).add(id); if (u.n < 3) unsure.add(ri + ':' + id); }
+  for (const u of A.seen || []) if (!u.announced) for (const ri of u.ri) for (const id of u.gone) if (!(byRoute[ri] && byRoute[ri].has(id))) { closes(ri, id, u.id); if (u.n < 3) unsure.add(ri + ':' + id); }
   const cuts = [];
   for (const [ri, ids] of Object.entries(byRoute)) {
     const r = D.routes[+ri];
@@ -265,12 +267,14 @@ function closedSegments(fc) {
         if (!ids.has(D.stops[seq[i]].id)) continue;
         let j = i; while (j + 1 < seq.length && ids.has(D.stops[seq[j + 1]].id)) j++;
         const from = D.stops[seq[Math.max(0, i - 1)]], to = D.stops[seq[Math.min(seq.length - 1, j + 1)]];
-        const key = from.id + '>' + to.id;
+        const key = from.id + '>' + to.id, run = seq.slice(i, j + 1);
         i = j;
         if (done.has(key)) continue;
         done.add(key);
-        const sure = !seq.slice(i, j + 1).some(si => unsure.has(ri + ':' + D.stops[si].id));
-        for (const cut of cutShape(shapes, from, to, seq.slice(i, j + 1).map(si => D.stops[si]))) cuts.push({ ...cut, ri: +ri, r, sure });
+        // (the whole run: `i` is its last stop by now, and a run of closed stops was dotted from the last of them on)
+        const sure = !run.some(si => unsure.has(ri + ':' + D.stops[si].id));
+        const by = [...new Set(run.flatMap(si => [...(why[ri + ':' + D.stops[si].id] || [])]))].join();
+        for (const cut of cutShape(shapes, from, to, run.map(si => D.stops[si]))) cuts.push({ ...cut, ri: +ri, r, sure, why: by });
       }
     }
   }
@@ -284,7 +288,7 @@ function closedSegments(fc) {
   for (const c of cuts) {
     for (const [d0, d1] of unvouched(c, grid)) {
       const lc = sinkLine('#' + c.r.color), dc = lift('#' + c.r.color);
-      out.push({ type: 'Feature', properties: { color: lc, dcolor: dc, gone: faded(lc, false), dgone: faded(dc, true), done: doneToday().routes.has(c.ri), route: c.ri, sure: c.sure ? 0.9 : 0.55 }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
+      out.push({ type: 'Feature', properties: { color: lc, dcolor: dc, gone: faded(lc, false), dgone: faded(dc, true), done: doneToday().routes.has(c.ri), route: c.ri, sure: c.sure ? 0.9 : 0.55, why: c.why }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
       (gaps[c.shape] ||= []).push([(c.base + d0) % c.total, (c.base + d1) % c.total]);
     }
   }
@@ -606,35 +610,116 @@ function lineRoutes(lines) {
   for (const l of lines) { const o = theirs.get(l.key) || theirs.set(l.key, []).get(l.key); if (!o.includes(l.route)) o.push(l.route); }
   return lines.map(l => l.key === undefined ? (D.routes[l.route] ? l.route : undefined) : (ours.get(l.key) || [])[theirs.get(l.key).indexOf(l.route)]);
 }
-/** A way round on the map: its route lit, its card up, the way and its stops in view. */
+/** A detour on the map, by its address's ids (#/map/alert/<id>[,<id>…]: the agency's notices, and the ways round seen
+ *  from the buses, 'seen…'): its routes lit and its card up; opened from a page (the alerts, a stop's), what it closes
+ *  and the way round in view; its dots tapped on the map (`tap`), the map where it is. One asked for before its word
+ *  is in (a link, a reload: the relay's detours come after the page) is opened when it comes (loadShapes). */
 let wantSeen = null;
-function openSeen(u) {
+function openDetour(ids, tap) {
+  const items = detourOf(ids);
+  if (!items) { wantSeen = { hash: location.hash, ids, tap }; return; }
   wantSeen = null;
-  selected = null; uHilite = ''; hiLines = u.ri; hiLoops = []; focusRoute = u.ri.length === 1 ? u.ri[0] : undefined; applySelection();
-  detourCard(u);
-  const b = new maplibregl.LngLatBounds();
-  for (const [la, lo] of u.d.way) b.extend([lo, la]);
-  for (const id of [...u.gone, ...u.on]) { const t = D.stops[D.stopById[id]]; b.extend([t.lon, t.lat]); }
-  frame(b, { maxZoom: 16.5, duration: 700 });
+  const ris = detourRoutes(items.filter(x => ids.includes(x.id)));   // the routes of what was tapped or linked, not of a notice said with it
+  selected = null; uHilite = ''; hiLines = ris; hiLoops = []; focusRoute = ris.length === 1 ? ris[0] : undefined; applySelection();
+  detourCard(items, ris, tap);
+  if (tap) return;
+  const b = new maplibregl.LngLatBounds(), at = id => { const si = D.stopById[id]; if (si !== undefined) b.extend([D.stops[si].lon, D.stops[si].lat]); };
+  for (const x of items) if (isWay(x)) { for (const [la, lo] of x.d.way) b.extend([lo, la]); for (const id of [...x.gone, ...x.on]) at(id); } else for (const id of x.stops || []) at(id);
+  if (b.isEmpty()) for (const ri of ris) b.extend(routeBounds(ri));   // a notice naming no stop: its routes
+  frame(b, { maxZoom: items.some(isWay) ? 16.5 : 16, duration: 700 });   // it was a flat 80 px: under a phone's sheet and the search bar
 }
-/** A way round's card: whose, how many buses went that way and by which streets, the stops they skipped and those
- *  they came past, and whether the agency has announced it; for an unannounced one, that it's ours. */
-function detourCard(u) {
-  const card = col.querySelector('#mapcard');
-  const links = ids => ids.map(id => D.stops[D.stopById[id]]).map(t => html`<a href="#/stop/${t.id}">${t.name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), []);
-  const theirs = u.announced ? activeAlerts(now().ymd).filter(a => a.ri.some(ri => u.ri.includes(ri)) && (a.stops || []).some(id => u.gone.includes(id))) : [];
-  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${u.announced ? 'Detour' : 'Unannounced detour'}</span><div class="dname">${badge(u.ri[0], 30)}<span>${u.who}</span></div></div>
-    <div class="detourcard">
-      <p><b>${lastBuses(u)} went this way</b>${u.by.length ? ', by ' + u.by.join(' and ') : ''}. The latest at ${u.last}.</p>
+const isWay = x => x.id.startsWith('seen');   // a way round the buses took, not a notice
+/** The notices and ways round by their ids, each with the other where they're one detour (oneDetour). Null while one
+ *  of them isn't in. */
+function detourOf(ids) {
+  const items = [];
+  for (const id of ids) {
+    const x = id.startsWith('seen') ? (A.seen || []).find(u => u.id === id) : A.alerts.find(a => a.id === id);
+    if (!x) return null;
+    items.push(x);
+  }
+  for (const x of [...items]) {
+    const also = isWay(x) ? activeAlerts(now().ymd).filter(a => oneDetour(a, x)) : (A.seen || []).filter(u => oneDetour(x, u));
+    for (const y of also) if (!items.includes(y)) items.push(y);
+  }
+  // Two ways round the relay keeps apart that skip the same stops of the same route (where the buses left or came back
+  // a little off): one detour, the surer said. The Blue Loop's on 16 Oct read twice, '2 in a row' over '12 in a row'.
+  const same = (u, v) => u !== v && u.d.route === v.d.route && u.gone.join() === v.gone.join() && (v.n > u.n || v.n === u.n && v.d.last > u.d.last);
+  return items.filter(x => !isWay(x) || !items.some(v => isWay(v) && same(x, v)));
+}
+/** A notice and a way round the buses took are one detour: the same route, the way round announced (unannounced ones
+ *  are kept apart from the notices), and the notice's stops where the buses went round, one they skipped or one within
+ *  300 m of their way. By where, not by skipped stops alone: the Blue Loop's way round on 15 Oct came back to Main short
+ *  of 950 South Main, the stop its notice closes, and skipped none. */
+function oneDetour(a, u) {
+  if (!u.announced || !alertRoutes(a).some(ri => u.ri.includes(ri))) return false;
+  return (a.stops || []).some(id => u.gone.includes(id) || (si => si !== undefined && pathDistance(D.stops[si].lat, D.stops[si].lon, u.d.way) < 300)(D.stopById[id]));
+}
+/** A detour's routes, one of a timetable's halves (16 AM and PM): the half on the road now or next. */
+const detourRoutes = items => [...new Map(items.flatMap(x => isWay(x) ? x.ri : alertRoutes(x)).map(ri => [familyKey(ri), ri])).values()].map(ri => familyNow(ri, now()));
+/** A detour's card: its routes first as rows, each opening its route, as a road's card has them. Then each notice, its
+ *  title, its words a tap away (folded, as on a route's sheet), and the stops it closes; and each way round the buses
+ *  took, how many in a row (the count is how sure: two a doubt, three quite sure, four and on all but certain), since
+ *  when, by which streets, the stops they skipped and those they came past (served: where to wait instead), and that
+ *  it's what the buses showed, posted by the agency or not. The one tapped first. */
+function detourCard(items, ris, tap = false) {
+  const card = col.querySelector('#mapcard'), brand = D.agency.brand;
+  const links = ids => ids.filter(id => D.stopById[id] !== undefined).map(id => D.stops[D.stopById[id]]).map(t => html`<a href="#/stop/${t.id}">${t.name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), []);
+  const known = a => (a.stops || []).filter(id => D.stopById[id] !== undefined);
+  const notices = items.filter(x => !isWay(x)), ways = items.filter(isWay);
+  const kind = notices.length ? (notices.some(a => /detour/i.test(a.title + ' ' + a.text)) ? 'Detour' : notices.flatMap(known).length > 1 ? 'Stops closed' : 'Stop closed')
+    : ways.every(u => u.announced) ? 'Detour' : 'Unannounced detour';
+  const rows = html`<div class="roadroutes">${ris.map(ri => { const r = D.routes[ri]; return html`<a class="roadroute" href="#/map/route/${encodeURIComponent(r.short)}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</a>`; })}</div>`;
+  const notice = a => html`<details class="callout alert rs-alert"><summary>${icon('ban', 20)}<b>${a.title}</b><span class="more">More</span></summary><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></details>
+      ${known(a).length ? html`<p class="muted">Closed: ${links(known(a))}</p>` : ''}
+      ${a.stillOn ? html`<p class="muted">${brand} took this notice down, but its buses are still going round: ${a.stillOn.n} in a row, the latest at ${a.stillOn.last}.</p>` : ''}`;
+  const way = u => html`${notices.length && !u.announced ? html`<span class="eyebrow">Unannounced</span>` : ''}<p><b>${lastBuses(u)} went this way</b>${u.by.length ? ', by ' + u.by.join(' and ') : ''}. ${u.n >= 4 ? 'The' : 'Seen since ' + u.since + ', the'} latest at ${u.last}.</p>
       ${u.gone.length ? html`<p class="muted">Skipped: ${links(u.gone)}</p>` : ''}
       ${u.on.length ? html`<p class="muted">Came past: ${links(u.on)}</p>` : ''}
-      ${u.announced ? html`<p>${D.agency.brand} has announced it${theirs.length ? html`: <a href="#/about/alerts">${theirs[0].title}</a>` : ''}. The line shows the way its buses have been taking.</p>`
-        : html`<p class="fine">Unannounced: seen from ${D.agency.brand}'s buses, not posted by ${D.agency.brand}. Times at skipped stops are kept until it is.</p>`}
-    </div>`.s;
+      ${u.announced ? html`<p class="fine">Seen from ${brand}'s buses: the dots are the way they've been taking.</p>`
+        : html`<p class="fine">Unannounced: seen from ${brand}'s buses, not posted by ${brand}. Times at skipped stops are kept until it is.</p>`}`;
+  card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${kind}</span>${rows}</div>
+    <div class="detourcard">${items.map(x => html`<div class="ditem">${isWay(x) ? way(x) : notice(x)}</div>`)}</div>`.s;
   card.scrollTop = 0;
-  card.classList.remove('hidden', 'peek');
+  card.classList.remove('hidden');
+  // Its dots tapped, on a phone: low, as a road's card, to the first one's lead (fitPeek), the map where it is and the
+  // dots above it; a swipe up for the rest. It came up over 60% of the screen, over the dots that had been tapped.
+  if (tap && !wide()) { fitPeek(card); card.classList.add('peek'); card.dataset.roadPeek = '1'; }
+  else { card.classList.remove('peek'); delete card.dataset.roadPeek; }
   card.classList.add('open');
 }
+/** The detours whose dots are nearest a point on the map, within r px, by their ids: a notice's closed stretch (its
+ *  notices', and an unannounced detour's skipped one) and a way round the buses have been taking. Those as near as the
+ *  nearest, a few px either way, not every one in a thumb's reach; none where a route's solid line is clearly nearer
+ *  (a tap on the road beside a detour, at the town's zoom a thumb's reach is a few blocks: the road's card). */
+function dotsNear(p, r) {
+  const layers = ['route-closed', 'trk-path'].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+  const solid = ['route-hover', 'route-on', 'route-lines', 'usu-line-on', 'usu-lines'].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+  if (!layers.length) return [];
+  const off = g => {   // px from the point to the line
+    let best = Infinity;
+    for (const line of g.type === 'MultiLineString' ? g.coordinates : [g.coordinates]) {
+      const q = line.map(c => map.project(c));
+      for (let k = 0; k < q.length; k++) {
+        const a = q[k], b = q[k + 1] || a, vx = b.x - a.x, vy = b.y - a.y, n = vx * vx + vy * vy;
+        const t = n ? Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / n)) : 0;
+        best = Math.min(best, Math.hypot(a.x + t * vx - p.x, a.y + t * vy - p.y));
+      }
+    }
+    return best;
+  };
+  const box = [[p.x - r, p.y - r], [p.x + r, p.y + r]], near = 4;
+  const dots = map.queryRenderedFeatures(box, { layers }).map(f => ({ f, d: off(f.geometry) })).sort((a, b) => a.d - b.d);
+  if (!dots.length) return [];
+  const line = Math.min(Infinity, ...(solid.length ? map.queryRenderedFeatures(box, { layers: solid }) : []).map(f => off(f.geometry)));
+  if (line < dots[0].d - near) return [];
+  const ids = [];
+  for (const { f } of dots.filter(x => x.d <= dots[0].d + near))
+    for (const id of f.layer.id === 'trk-path' ? [f.properties.id] : String(f.properties.why || '').split(',')) if (id && !ids.includes(id)) ids.push(id);
+  return ids;
+}
+/** A detour's routes by its id, a notice's or a way round's. */
+const routesOfId = id => { const x = id.startsWith('seen') ? (A.seen || []).find(u => u.id === id) : A.alerts.find(a => a.id === id); return !x ? [] : isWay(x) ? x.ri : alertRoutes(x); };
 /** The ways round the buses have been seen to take (data.js's A.seen, announced or not), along the streets, dashed
  *  in the route's colour, fainter while only two buses have gone that way. */
 function trackedPaths() {
@@ -679,7 +764,7 @@ async function loadShapes(m = map, all = true) {
   if (!all) return;
   if (m.getSource('lclosed')) m.getSource('lclosed').setData(drawn.closed);
   if (m.getSource('trk')) m.getSource('trk').setData(trackedPaths());
-  if (wantSeen && location.hash === '#/map/alert/' + wantSeen) { const u = (A.seen || []).find(x => x.id === wantSeen); if (u) openSeen(u); }
+  if (wantSeen && location.hash === wantSeen.hash) openDetour(wantSeen.ids, wantSeen.tap);
 }
 /** Alerts came or the day turned: redraw the hollow stops and the dotted stretches on both maps. The last buses only
  *  moving on: the route lines alone, every fifteen seconds at most (the fade, drawn at the town's zoom, falls ten
@@ -868,6 +953,16 @@ async function made(app) {
       if (st) location.hash = st.f.layer.id === 'usu-stops' ? (wide() ? '#/usu/' : '#/map/usu/') + st.f.properties.id : (wide() ? '#/stop/' : '#/map/') + st.f.properties.id;
       return;
     }
+    // A detour's dots, and no stop there (a notice's stops closed, or the way round its buses have been taking): its
+    // card, what's known of it, the map where it is. Before a place's name and the road: the dots are what's drawn
+    // under the finger, and the shops' names along a way round took a phone's tap, their spots' cards opening.
+    if (!hits.length && !pickFor && !pickTo) {
+      // A route up (its page): its own detours' only, its card over the route's, Back to the route; another route's
+      // dots put the route away, as another route's line does (below).
+      const onRoute = focusRoute !== undefined && /^#\/map\/route\//.test(location.hash);
+      const ids = dotsNear(e.point, r).filter(id => !onRoute || routesOfId(id).some(ri => familyKey(ri) === familyKey(focusRoute)));
+      if (ids.length) { const h = '#/map/alert/' + ids.join(',') + '?tap=1'; if (onRoute) location.hash = h; else if (!cardTo(h)) openDetour(ids, true); return; }
+    }
     // A place's name tapped, and no stop there: its spot, with the stops nearest it, as a search result opens it.
     if (!hits.length && all.length) {
       const f = all.map(f => { const q = map.project(f.geometry.coordinates); return { f, d: Math.hypot(q.x - e.point.x, q.y - e.point.y) }; }).sort((a, b) => a.d - b.d)[0].f, [lon, lat] = f.geometry.coordinates;
@@ -894,9 +989,6 @@ async function made(app) {
       else selectU(best.properties.id, app, best.properties.id === uHilite || U.stopById[best.properties.id] === selectedU);
       return;
     }
-    // A way round the buses have been taking (dashed): its card, what's known of it.
-    const way = map.getLayer('trk-path') && map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ['trk-path'] })[0];
-    if (way) { location.hash = '#/map/alert/' + way.properties.id; return; }
     // No stop there, but a route's line: that route lit up with its times, where the map is. Where several share the
     // road, the card asks which.
     // A route the timetable splits by time of day (16 AM and PM) is one route here: the half on the road now or next.
@@ -1495,6 +1587,10 @@ function fitPeek(card) {
   // a swipe up out of sight).
   const starts = card.querySelectorAll('.gonone .farstarts .row'), none = starts[starts.length - 1] || card.querySelector('.gonone .empty');   // down to the last start, when there's a list of them
   if (none) { card.style.setProperty('--peek', Math.min(none.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 8, (starts.length ? 0.75 : 0.6) * map.getContainer().clientHeight) + 'px'); return; }   // the starts are the answer, the map above has only the two ends: more room for them
+  // A detour's: its head (the routes) and the first one's lead, the notice's title and what it closes, or how many
+  // buses went round and what they skipped; never more than half the map.
+  const lead = card.querySelector(':scope > .detourcard > .ditem:first-child'), lp = lead && [...lead.children].filter(x => x.tagName !== 'SPAN')[1];
+  if (lead) { const last = lp || lead; card.style.setProperty('--peek', Math.round(Math.min(last.getBoundingClientRect().bottom - card.getBoundingClientRect().top + card.scrollTop + 12, 0.5 * map.getContainer().clientHeight)) + 'px'); return; }
   // Down to the bottom of its head, wherever the head sits (a stop's page has its Back row above it). A spot's or a
   // road's head has its routes in it, never more than 40% of the map: at the Center, fourteen, and swiped down the
   // card grew past the screen.
@@ -3066,11 +3162,11 @@ function clearSpot() {
   if (pinMarker) pinMarker.remove();
   if (map) setSpot(null);
 }
-/** The map's own cards (a spot, a road, a bus tapped) by their addresses, so Back puts them away, as it does a stop's
+/** The map's own cards (a spot, a road, a bus, a detour tapped) by their addresses, so Back puts them away, as it does a stop's
  *  sheet: they opened with no entry of their own, and Back left the map (twice, and the app was gone). From the plain
  *  map a new entry; from another such card in its place (Back is the map, not each card on the way). Elsewhere (the
  *  Center, a route, a stop's sheet, directions) the card opens where it is, as it did: false. */
-const CARD_AT = /^#\/map\/(at|bus)\//;
+const CARD_AT = /^#\/map\/(at|bus|alert)\//;
 function cardTo(h) {
   const cur = location.hash;
   if (cur !== '#/map' && !CARD_AT.test(cur)) return false;
@@ -3079,8 +3175,13 @@ function cardTo(h) {
   else location.hash = h;
   return true;
 }
-/** A card of the map's own put away (a tap on nothing, a swipe): its address goes with it, Back to the map. */
-const cardAway = () => { if (CARD_AT.test(location.hash)) closeTo('#/map'); };
+/** A card of the map's own put away (a tap on nothing, a swipe): its address goes with it, Back to the map; a detour's
+ *  opened over a route's page, Back to the route. */
+const cardAway = () => {
+  if (!CARD_AT.test(location.hash)) return;
+  const p = history.state && history.state.prev;
+  closeTo(/^#\/map\/alert\//.test(location.hash) && /^#\/map\/route\//.test(p || '') ? p : '#/map');
+};
 let spotUp = false, spotShown = null;   // a spot tapped or found is on the map (its disc and its card); which
 function setSpot(at) {
   spotUp = !!at; spotShown = at || null;
@@ -3344,7 +3445,7 @@ function busIn(id, app) {
   b.extend([D.hub.lon, D.hub.lat]);
   requestAnimationFrame(() => frame(b, { maxZoom: 16, bearing: 0, duration: 700 }));
 }
-async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, busTap, goPick, page }, app, clockNow) {
+async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, alertTap, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, busTap, goPick, page }, app, clockNow) {
   await init(app);
   // A spot's address that isn't a place (a link cut short, #/map/at/41.7; or #/map/at/abc, #/map/at/95,10) is the map
   // alone: its card threw as the pin was placed, and the map stood there with nothing said.
@@ -3448,26 +3549,11 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
     frame(campusBounds(app.geo), { maxZoom: 16, bearing: 0, duration: 700 });
     return;
   }
-  // An alert from the About page: its route drawn on top, the stops it closes framed (marked already, as every
-  // closed stop is), or the whole route when it names none.
-  if (alertId && /^seen/.test(alertId)) {
-    const u = (A.seen || []).find(x => x.id === alertId);
-    lastFocused = 'a:' + alertId;
-    // Opened before the relay's word is in (a link, a reload): opened when it comes (loadShapes).
-    if (u) openSeen(u); else wantSeen = alertId;
-    return;
-  }
+  // A detour: from the alerts page or a stop's (its routes drawn on top, its card up, the stops it closes and the way
+  // round framed), or its dots tapped on the map (?tap=1: its card, the map where it is).
   if (alertId) {
-    const a = A.alerts.find(x => x.id === alertId);
-    if (!a) return;
-    const ris = alertRoutes(a), sts = (a.stops || []).map(id => D.stopById[id]).filter(si => si !== undefined);
     lastFocused = 'a:' + alertId;
-    selected = null; uHilite = ''; hiLines = ris; hiLoops = []; focusRoute = ris.length === 1 ? ris[0] : undefined; applySelection();
-    col.querySelector('#mapcard').classList.remove('open');
-    const b = new maplibregl.LngLatBounds();
-    if (sts.length) for (const si of sts) b.extend([D.stops[si].lon, D.stops[si].lat]);
-    else for (const ri of ris) b.extend(routeBounds(ri));
-    frame(b, { maxZoom: 16, duration: 700 });   // it was a flat 80 px: under a phone's sheet and the search bar
+    openDetour(alertId.split(','), alertTap);
     return;
   }
   if (routeShort) {
