@@ -1787,6 +1787,62 @@ test('a detour past another route\'s stop: its badge marked, said on the stop\'s
   await mapReady(page);
 });
 
+test('a closed stop the buses go round: dotted from where they leave the line to where they come back, the roads they still drive solid', async ({ page }) => {
+  // Route 11's way round Macey's on 16 Oct (the relay's detour 102, three in a row), with Connect's notice closing 520
+  // West 100 North: the 11 left its line at 1700 South and Main, east and up Gateway Drive, and came back at the
+  // roundabout on 1200 South, so it skipped Main up to 1200 South and 1200 South out to Macey's and back. The map dotted
+  // 1700 South west of Main and Gateway north of 1200 South, both still driven, and left Main and 1200 South solid (the
+  // 12 and the Blue Loop run there as usual). Each tapped on the 11's own line: the dots open the detour's card, the
+  // solid line doesn't. Then the same way round with no notice, unannounced: dotted the same, its card the buses'.
+  const t = Math.floor(Date.now() / 1000), MACEYS = '7547683';
+  const paths = [[[41.70273, -111.83484], [41.70263, -111.831], [41.70395, -111.83004], [41.70585, -111.8301], [41.70641, -111.83012], [41.70864, -111.82994], [41.71014, -111.82899]],
+    [[41.70278, -111.83482], [41.70263, -111.83067], [41.70373, -111.83004], [41.70609, -111.83025], [41.70836, -111.83012], [41.70951, -111.82919]]];
+  const best = paths[0], key = best.map(([la, lo]) => la.toFixed(4) + ',' + lo.toFixed(4)).join(';');
+  const detours = { t, detours: [{ id: 990102, route: '11', streak: 3, trips: 3, first: t - 7200, last: t - 600, along: null, leaves: [41.70278, -111.83482], rejoins: [41.70951, -111.82919], paths, path: paths[0] }] };
+  const notice = { id: 'a990102', title: 'Stop Closure: 520 West 100 North Providence', text: 'Due to construction the stop at 520 West 100 North (Macey\'s) is closed.', url: '', cause: '', effect: '', start: t - 86400, end: t + 2 * 86400, routeIds: [], routes: ['11'], stops: [MACEYS], global: false };
+  let alerts = [notice];
+  const json = body => ({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  await page.route(/^https:\/\/live\.cacherider\.com\/detours/, r => r.fulfill(json(detours)));
+  await page.route(/^https:\/\/live\.cacherider\.com\/alerts/, r => r.fulfill(json({ alerts })));
+  await page.route(/\/data\/alerts\.json/, r => r.fulfill(json({ alerts })));
+  await open(page, '#/map');
+  await page.evaluate(([k, w]) => localStorage.setItem('cr-ways-2', JSON.stringify({ [k]: { way: w, streets: [], at: Date.now() } })), [key, best]);   // as traced
+  // On the 11's line, a stop's or a POOL pickup's tap clear: Main between 1700 and 1200 South, and 1200 South east of
+  // Main (skipped); 1700 South west of Main, and Gateway north of 1200 South (driven).
+  const skipped = [[41.70631, -111.8347], [41.71018, -111.8337]], driven = [[41.70279, -111.83928], [41.7131, -111.83008]];
+  const there = await page.evaluate(async ([id, pts]) => {
+    const d = await import('/app/data.js'), D = d.D, ri = D.routeByShort['11'], si = D.stopById[id], j = await (await fetch('/data/cvtd-shapes.json')).json();
+    if (ri === undefined || si === undefined || !Object.values(D.routes[ri].stops).some(seq => seq.includes(si))) return false;
+    const lines = j.lines.filter(l => l.key === '11').map(l => l.coords.map(([lo, la]) => [la, lo]));
+    return pts.every(([la, lo]) => lines.some(l => d.pathDistance(la, lo, l) < 3));
+  }, [MACEYS, [...skipped, ...driven]]);
+  test.skip(!there, 'Route 11 no longer stops at 520 West 100 North, or its line has moved');
+  const tapAt = async ([lat, lon]) => {
+    await go(page, '#/map');
+    await page.waitForTimeout(600);
+    await go(page, `#/map/at/${lat.toFixed(5)},${lon.toFixed(5)}/Here`);
+    const box = await still(page.locator('.spot-marker'));
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  };
+  const reopen = async () => {
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+    await expect.poll(() => page.evaluate(() => import('/app/data.js').then(m => (m.A.seen || []).some(u => u.id === 'seen990102'))), { timeout: 30_000 }).toBe(true);
+    await mapReady(page);
+    await page.addStyleTag({ content: '.maplibregl-marker { pointer-events: none !important; }' });   // a bus going by, or the spot's own pin, not in the way
+  };
+  const check = async id => {
+    for (const p of skipped) { await tapAt(p); await expect(page, `dotted at ${p}`).toHaveURL(new RegExp(`#/map/alert/${id}\\?tap=1$`)); }
+    for (const p of driven) { await tapAt(p); await expect(page, `solid at ${p}`).toHaveURL(/#\/map\/at\/[^?]+\?road=([^&]*,)?11(,|&|$)/); }   // the road's card
+  };
+  await reopen();
+  await check('a990102');
+  await expect(page.evaluate(() => import('/app/data.js').then(m => m.A.seen.find(u => u.id === 'seen990102').announced))).resolves.toBe(true);
+  alerts = [];
+  await reopen();
+  await check('seen990102');
+});
+
 test('settings and about: the clock and units turned and back', async ({ page }) => {
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();

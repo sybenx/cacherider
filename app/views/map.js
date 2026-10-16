@@ -246,9 +246,10 @@ function stopInks(dk, ri) {
   return { fill: townFade(['case', ring, paperC, own], ['case', ring, paperC, gone]), stroke: townFade(['case', ring, own, edge], ['case', ring, gone, edge]), sel: own };
 }
 
-/** The stretches of route between the served stops either side of each closed run, cut from the drawn shapes:
- *  the dotted lines to draw, and per shape the along-shape gaps where its solid line is left out, so a route
- *  sharing the road underneath still shows through the dots. */
+/** The stretches of route between the served stops either side of each closed run, or where the buses have been seen
+ *  going round it, between where they left the line and came back, cut from the drawn shapes: the dotted lines to
+ *  draw, and per shape the along-shape gaps where its solid line is left out, so a route sharing the road underneath
+ *  still shows through the dots. */
 function closedSegments(fc) {
   const ymd = now().ymd;
   const byRoute = {};   // route index → set of closed stop ids
@@ -259,6 +260,9 @@ function closedSegments(fc) {
   // its stops with their '?'; lighter while only two in a row have gone round (u.n), as its way round is.
   const unsure = new Set();
   for (const u of A.seen || []) if (!u.announced) for (const ri of u.ri) for (const id of u.gone) if (!(byRoute[ri] && byRoute[ri].has(id))) { closes(ri, id, u.id); if (u.n < 3) unsure.add(ri + ':' + id); }
+  // A closed run the buses have been seen going round, announced or not (every stop of it one they skipped): by the
+  // surer way round, as its card says it.
+  const roundOf = (ri, run) => (A.seen || []).filter(u => u.ri.includes(ri) && run.every(si => u.gone.includes(D.stops[si].id))).sort((u, v) => v.n - u.n || v.d.last - u.d.last)[0];
   const cuts = [];
   for (const [ri, ids] of Object.entries(byRoute)) {
     const r = D.routes[+ri];
@@ -277,19 +281,31 @@ function closedSegments(fc) {
         // (the whole run: `i` is its last stop by now, and a run of closed stops was dotted from the last of them on)
         const sure = !run.some(si => unsure.has(ri + ':' + D.stops[si].id));
         const by = [...new Set(run.flatMap(si => [...(why[ri + ':' + D.stops[si].id] || [])]))].join();
-        for (const cut of cutShape(shapes, from, to, run.map(si => D.stops[si]))) cuts.push({ ...cut, ri: +ri, r, sure, why: by });
+        // Gone round: dotted from where the buses left the line to where they came back, by their own tracks, not from
+        // the served stops either side, and no other route's line vouches for it. Route 11's round Macey's on 16 Oct
+        // (520 West 100 North closed) was dotted along 1700 South and up Gateway Drive, both still driven, and solid on
+        // Main and 1200 South, the stretch it skipped, where the 12 and the Blue Loop run as usual.
+        const u = roundOf(+ri, run), way = u ? wayCut(shapes, u, run.map(si => D.stops[si]), +ri) : [];
+        for (const cut of way) {   // each line cut once for a way round: two runs it went round, a stop it made between, are one stretch
+          const k = cut.shape + ':' + u.id + ':' + Math.round(cut.s0);
+          if (cut.pieces.length && !done.has(k)) { done.add(k); cuts.push({ ...cut, ri: +ri, r, sure, why: [...new Set(u.gone.flatMap(id => [...(why[ri + ':' + id] || [])]))].join() }); }
+        }
+        // A line of the route the way round doesn't fit (one reaching the stop by another street): as before.
+        const fit = new Set(way.map(c => c.shape));
+        for (const cut of cutShape(shapes.filter(f => !fit.has(f.properties.shape)), from, to, run.map(si => D.stops[si]))) cuts.push({ ...cut, ri: +ri, r, sure, why: by });
       }
     }
   }
   // A road another route runs on as usual isn't closed to buses: where a closed stretch shares a road with another
   // route's solid line for a block or so, that stretch is vouched for, its dots dropped and its own line drawn solid
-  // again. Two routes both closed on a road vouch for neither. A road merely crossed isn't shared.
+  // again. Two routes both closed on a road vouch for neither. A road merely crossed isn't shared. (Not a stretch the
+  // buses were seen going round: their tracks say where they went.)
   const gaps1 = {};
-  for (const c of cuts) (gaps1[c.shape] ||= []).push([c.s0, c.s1]);
-  const grid = cuts.length ? segmentGrid(openLines(fc, gaps1)) : null;
+  for (const c of cuts) (gaps1[c.shape] ||= []).push(...(c.pieces ? c.pieces.map(([d0, d1]) => [(c.base + d0) % c.total, (c.base + d1) % c.total]) : [[c.s0, c.s1]]));
+  const grid = cuts.some(c => !c.pieces) ? segmentGrid(openLines(fc, gaps1)) : null;
   const out = [], gaps = {};
   for (const c of cuts) {
-    for (const [d0, d1] of unvouched(c, grid)) {
+    for (const [d0, d1] of c.pieces || unvouched(c, grid)) {
       const lc = sinkLine('#' + c.r.color), dc = lift('#' + c.r.color);
       out.push({ type: 'Feature', properties: { color: lc, dcolor: dc, gone: faded(lc, false), dgone: faded(dc, true), done: doneToday().routes.has(c.ri), route: c.ri, sure: c.sure ? 0.9 : 0.55, why: c.why }, geometry: { type: 'LineString', coordinates: slice(c.walk, d0, d1) } });
       (gaps[c.shape] ||= []).push([(c.base + d0) % c.total, (c.base + d1) % c.total]);
@@ -406,6 +422,64 @@ function trimWalk(f, best, from, to, closed) {
   let start = xs.find(w => w < firstClosed - 5); start = start === undefined ? fromAt : start;
   let end = [...xs].reverse().find(w => w > lastClosed + 5); end = end === undefined ? toAt : end;
   return { coords: slice(walk, start, end), shape: f.properties.shape, s0: (f._cum[a] + start) % total, s1: (f._cum[a] + end) % total, walk, start, end, base: f._cum[a], total };
+}
+/** A closed run the buses went round (`u`, a way round the relay saw): on each of the route's shapes passing where they
+ *  left the line, the run's stops and where they came back, in that order, the stretch between (the shortest), less
+ *  what they drove of it: where their way round runs along the line from either end (a bus's last report on the line
+ *  can be a block short of its turn), or for a block or more between (a line out and back on one road), and by a stop
+ *  of the route they made on the way (a stop passed on a detour is served). Each cut's `pieces`: its dotted parts, if
+ *  any are left. */
+function wayCut(shapes, u, closed, ri, most = 6000) {
+  const { STEP, SHARE, SCRAP } = VOUCH, ON = 20;   // metres from the way round: driven (the shapes and the streets are a few apart)
+  const way = u.d.way, made = u.on.map(id => D.stops[D.stopById[id]]).filter(s => s && s.routes.includes(ri));
+  const cuts = [];
+  for (const f of shapes) {
+    const c = f.geometry.coordinates, n = c.length;
+    if (!f._cum) { f._cum = [0]; for (let k = 1; k < n; k++) f._cum.push(f._cum[k - 1] + distance(c[k - 1][1], c[k - 1][0], c[k][1], c[k][0])); }
+    const cum = f._cum, total = cum[n - 1] + distance(c[n - 1][1], c[n - 1][0], c[0][1], c[0][0]);
+    const at = closed.map(s => passes(f, s.lat, s.lon, 60));
+    let best = null;
+    for (const a of passes(f, ...u.d.leaves, 75)) for (const b of passes(f, ...u.d.rejoins, 75)) {
+      const len = (b - a + total) % total;   // wrapping once round a loop
+      if (len < 1 || len >= most || (best && len >= best.len)) continue;
+      if (at.every(ps => ps.some(p => (p - a + total) % total < len))) best = { a, len };
+    }
+    if (!best) continue;
+    let k = 0; while (k + 1 < n && cum[k + 1] <= best.a) k++;
+    const start = best.a - cum[k], end = start + best.len, walk = [];   // from the vertex before where they left, as trimWalk's
+    for (let m = k, d = 0; walk.length <= n; m = (m + 1) % n) {
+      if (walk.length) { const p = walk[walk.length - 1][1]; d += distance(p[1], p[0], c[m][1], c[m][0]); }
+      walk.push([d, c[m]]);
+      if (d >= end) break;
+    }
+    // driven or not, every STEP metres along
+    const runs = [];
+    for (let d = start, i = 1; d <= end; d += STEP) {
+      while (i < walk.length - 1 && walk[i][0] < d) i++;
+      const [a, pa] = walk[i - 1], [b, pb] = walk[i], t = b === a ? 0 : Math.min(1, (d - a) / (b - a)), lo = pa[0] + (pb[0] - pa[0]) * t, la = pa[1] + (pb[1] - pa[1]) * t;
+      const stop = made.some(s => distance(la, lo, s.lat, s.lon) <= 30), v = stop || pathDistance(la, lo, way) <= ON, last = runs[runs.length - 1], d1 = Math.min(d + STEP, end);
+      if (last && last.v === v) { last.d1 = d1; last.stop ||= stop; } else runs.push({ v, stop, d0: d, d1 });
+    }
+    runs.forEach((r, i) => { if (r.v && !r.stop && i && i < runs.length - 1 && r.d1 - r.d0 < SHARE) r.v = false; });   // a street crossed, not driven along
+    const pieces = [];
+    for (const r of runs) if (!r.v) { const last = pieces[pieces.length - 1]; if (last && last[1] >= r.d0 - 0.01) last[1] = r.d1; else pieces.push([r.d0, r.d1]); }
+    const keep = pieces.filter(([p, q]) => q - p >= SCRAP || pieces.length === 1);
+    cuts.push({ shape: f.properties.shape, walk, start, end, base: cum[k], total, s0: (cum[k] + start) % total, s1: (cum[k] + end) % total, pieces: keep });   // none left: all of it driven, still not the old cut
+  }
+  return cuts;
+}
+/** Where along a shape it passes nearest a point, within r metres: a distance along it for each time it goes by. */
+function passes(f, lat, lon, r) {
+  const c = f.geometry.coordinates, cum = f._cum, kx = 111320 * Math.cos(lat * Math.PI / 180), out = [];
+  let best = null;
+  for (let k = 0; k + 1 < c.length; k++) {
+    const ax = (c[k][0] - lon) * kx, ay = (c[k][1] - lat) * 110540, dx = (c[k + 1][0] - lon) * kx - ax, dy = (c[k + 1][1] - lat) * 110540 - ay, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0, e = Math.hypot(ax + t * dx, ay + t * dy);
+    if (e <= r) { if (!best || e < best.e) best = { e, at: cum[k] + t * (cum[k + 1] - cum[k]) }; }
+    else if (best) { out.push(best.at); best = null; }
+  }
+  if (best) out.push(best.at);
+  return out;
 }
 /** The passed stretches (doneToday) cut from their route's shapes as the detours' are: the lines left open there,
  *  and each stretch drawn as its own feature, done (faded at the town's zoom). The stretch a last bus is on, cut up
