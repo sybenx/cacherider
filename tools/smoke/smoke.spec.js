@@ -490,6 +490,38 @@ test('a route\'s card on a phone, as the board: rests at its first stops, folds 
   expect(page.url()).toBe(before);
 });
 
+test('the map\'s search over its card: the Center\'s board raised on a phone, a spot\'s card on a narrow wide screen', async ({ page }, info) => {
+  // Both at the same height, the card after the results in the page: a raised board, reaching up under the search
+  // bar, covered every row, and a tap on one landed on the board. A wide screen's card in its corner did the same to
+  // the rows across it, the window narrow enough for the two to meet.
+  if (!phone(info)) await page.setViewportSize({ width: 900, height: 700 });
+  await open(page, phone(info) ? '#/hub' : '#/map/at/41.73450,-111.83457');
+  await mapReady(page);
+  const card = page.locator('#mapcard.open');
+  await expect(card).toBeVisible();
+  if (phone(info)) await card.evaluate(c => { c.scrollTop = c.scrollHeight; });   // the board up as far as it goes
+  const input = page.locator(phone(info) ? '#mapsearch input' : '#topsearch input');
+  await input.click();
+  await input.fill('main');
+  await expect(page.locator('#mapresults a.stoprow').filter({ visible: true }).first()).toBeVisible();
+  await page.waitForTimeout(500);   // (their next buses filled in after)
+  // A row over the card, its middle where the two meet, in the list's own scroll and not past its foot
+  const c = await card.boundingBox(), res = await page.locator('#mapresults').boundingBox();
+  const at = await page.locator('#mapresults a.stoprow').evaluateAll((rows, [c, res]) => {
+    for (const [i, r] of rows.map(a => a.getBoundingClientRect()).entries()) {
+      const x = (Math.max(r.left, c.x) + Math.min(r.right, c.x + c.width)) / 2, y = (r.top + r.bottom) / 2;
+      if (r.width && y > c.y + 10 && y < res.y + res.height - 10 && x > c.x + 10) return { i, x, y };
+    }
+    return null;
+  }, [c, res]);
+  expect(at, 'a row over the card').not.toBeNull();
+  const on = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('#mapresults'), at);
+  expect(on, 'the row, not the card, under a tap').toBe(true);
+  const row = page.locator('#mapresults a.stoprow').nth(at.i), id = (await row.getAttribute('href')).split('/').pop();
+  await page.mouse.click(at.x, at.y);
+  await expect(page).toHaveURL(new RegExp(id));
+});
+
 test('a steep walk down is steep too: the bluff from 400 North down to Crocket Avenue', async ({ page }) => {
   // From the Center to the closed Crocket Avenue stop the Green Loop and a climb down the bluff came first, not called
   // steep (only up was), and Route 3 to Riverside Drive, flat, second or third (2026-10-09).
