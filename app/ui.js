@@ -95,11 +95,14 @@ export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
 export const moved = t => !!(t && t.live && Math.abs(t.live.delay || 0) >= 2);
 export { isLoop };
 /** A route as riders say it: 'Route 12', or a loop by its name, 'the Blue Loop'. Never 'Route B'. */
-export const routeName = (ri, the = true) => isLoop(ri) ? (the ? 'the ' : '') + D.routes[ri].long : 'Route ' + D.routes[ri].short;
+export const routeName = (ri, the = true) => isLoop(ri) || named(ri) ? (the ? 'the ' : '') + nameOf(ri) : 'Route ' + D.routes[ri].short;
+/** A route called by a name, not a number, besides the loops: the Pumpkin Walk ('Route Pumpkin Walk', it was). */
+const named = ri => !/\d/.test(D.routes[ri].short) && D.routes[ri].short.length > 2;
+const nameOf = ri => isLoop(ri) ? D.routes[ri].long : D.routes[ri].short;
 /** Several: 'Routes 2, 3 and 5', 'Route 12 and the Blue Loop', 'the Blue and Green Loops'. */
 export function routeNames(ris) {
-  const nums = [...new Set(ris.filter(ri => !isLoop(ri)))].sort((a, b) => +D.routes[a].short - +D.routes[b].short || D.routes[a].short.localeCompare(D.routes[b].short)).map(ri => D.routes[ri].short);
-  const loops = [...new Set(ris.filter(isLoop))].map(ri => D.routes[ri].long);
+  const nums = [...new Set(ris.filter(ri => !isLoop(ri) && !named(ri)))].sort((a, b) => +D.routes[a].short - +D.routes[b].short || D.routes[a].short.localeCompare(D.routes[b].short)).map(ri => D.routes[ri].short);
+  const loops = [...new Set(ris.filter(ri => isLoop(ri) || named(ri)))].map(nameOf);
   const and = xs => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1] : xs[0] || '';
   const num = nums.length ? (nums.length > 1 ? 'Routes ' : 'Route ') + and(nums) : '';
   const lp = loops.length > 1 && loops.every(l => / Loop$/.test(l)) ? 'the ' + and(loops.map(l => l.replace(/ Loop$/, ''))) + ' Loops' : loops.length ? 'the ' + and(loops) : '';

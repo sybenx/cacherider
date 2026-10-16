@@ -2623,10 +2623,45 @@ export function liveUpdate(app) {
   if (U && uAge < U_GONE) for (const b of live.buses) place(b, 'u', () => [uQuiet ? OFF_GREY : uink(b.ri), U.routes[b.ri].name + ' · bus ' + b.name + (uQuiet ? ' · not reporting, last heard from at ' + lastSeen() : '')]);
   if (!rtStale()) for (const b of [...rt.buses, ...rt.parked]) place(b, 'c', () => { const off = offDuty(b); return [off ? OFF_GREY : dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label + (off ? ' · ' + off.toLowerCase() : '')]; });
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
+  stackBuses();
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
   if (hubOn) { hubBadges(); hubBuses(); }
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimesSoon(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
+}
+/** Buses at one spot (three Pumpkin Walk shuttles, two of them laid over at Greenville): one marker, how many on it,
+ *  the rest hidden, the bus picked the one shown; drawn one on another, the one under was never seen. Its card names
+ *  the others there (alsoHere). Again at each word from the feed and as the map's zoom or turn changes. */
+const STACK = 14;   // px apart on the screen: one spot
+let stacks = new Map(), stackWired = false;   // a shown bus's id → the ids at its spot, its own first
+function stackBuses() {
+  if (!map) return;
+  if (!stackWired) { stackWired = true; map.on('zoomend', stackBuses); map.on('rotateend', stackBuses); map.on('resize', stackBuses); }
+  if (!map.getContainer().clientWidth) return;   // out of sight: no screen to be at one spot on (shown, the next word from the feed)
+  // Shown for its spot: the bus picked, else one drawn full (on a route's page, the route's own), not one dimmed.
+  const rank = m => m.id === selectedBus ? 0 : m.el.classList.contains('dim') ? 2 : 1;
+  const ms = [...busMarkers.values()].filter(m => m.to).sort((a, b) => rank(a) - rank(b));
+  const pts = ms.map(m => map.project(m.to)), taken = new Set();
+  stacks = new Map();
+  ms.forEach((m, i) => {
+    if (taken.has(i)) return;
+    const at = ms.map((_, j) => j).filter(j => !taken.has(j) && Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) < STACK);
+    at.forEach(j => { taken.add(j); ms[j].el.classList.toggle('stacked', j !== i); });
+    stacks.set(m.id, at.map(j => ms[j].id));
+    let n = m.el.querySelector(':scope > .bus-n');
+    if (at.length > 1) {
+      if (!n) { n = document.createElement('b'); n.className = 'bus-n'; m.el.append(n); }
+      n.textContent = at.length;
+      n.style.setProperty('--unturn', (map.getBearing() - m.marker.getRotation()) + 'deg');   // upright on the screen, the marker turned its way
+    } else if (n) n.remove();
+  });
+}
+/** On a bus's card, the others at its spot, each a tap to its own. */
+function alsoHere(id) {
+  const others = (stacks.get(id) || []).filter(x => x !== id);
+  if (!others.length) return '';
+  const name = x => { const c = findBus(x); if (c) return 'Bus ' + c.label + ' · ' + routeName(c.ri, false); const u = live.buses.find(y => y.id === x); return u ? 'Bus ' + u.name + ' · ' + U.routes[u.ri].name : 'Bus'; };
+  return html`<div class="alsohere">${icon('hub', 15)}<span>Also here: ${others.map((x, k) => html`${k ? ', ' : ''}<a href="#/map/bus/${encodeURIComponent(x)}?tap=1">${name(x)}</a>`)}</span></div>`;
 }
 // A cheap tablet (four cores or fewer, or 4 GB or less) spends its frames on the map: its buses jump to each fix.
 const WEAK = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
@@ -2670,6 +2705,7 @@ function selectBus(id, app) {
   hiLines = []; hiLoops = b && !c ? [U.routes[b.ri].id] : [];
   applySelection();
   for (const [bid, m] of busMarkers) m.el.classList.toggle('on', bid === id);
+  stackBuses();   // the bus picked is the one shown at its spot
   const card = col.querySelector('#mapcard');
   if (card.dataset.roadPeek) { delete card.dataset.roadPeek; card.classList.remove('peek'); }   // a road's low card isn't the rider's size
   busCard(app, true);   // the bus at once; where it's headed next, with its minutes, the moment after
@@ -2688,7 +2724,7 @@ function connectCard(b, app, bare = false) {
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
     <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : r.long}</span></div>
-    ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may have moved on' : b.free ? 'its last run was ' + routeName(b.ri) + '. Not one to wait for' : 'its last run is over. Not one to wait for'}.</span></div>` : ''}</div>
+    ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may have moved on' : b.free ? 'its last run was ' + routeName(b.ri) + '. Not one to wait for' : 'its last run is over. Not one to wait for'}.</span></div>` : ''}${alsoHere(b.id)}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
   card.classList.remove('hidden');
@@ -2717,7 +2753,7 @@ function busCard(app, bare = false) {
     <div class="who">${chip(b.ri, 32)}<span class="name">${r.name}</span></div>
     ${b.cap ? html`<div class="load">${meter(b, true)}<span>${loadWords(b)}</span></div>` : ''}
     ${charter ? html`<div class="hours">${icon('info', 15)}<span>Booked for an event, with no fixed route or stops.</span></div>`
-      : hours(b.ri) ? html`<div class="hours">${icon('clock', 15)}<span>${untilWords(b.ri) ? html`<b>${untilWords(b.ri).replace(/^./, c => c.toUpperCase())}</b> · ` : ''}usually ${hours(b.ri)}</span></div>` : ''}${charter ? '' : offNote([b.ri])}</div>
+      : hours(b.ri) ? html`<div class="hours">${icon('clock', 15)}<span>${untilWords(b.ri) ? html`<b>${untilWords(b.ri).replace(/^./, c => c.toUpperCase())}</b> · ` : ''}usually ${hours(b.ri)}</span></div>` : ''}${charter ? '' : offNote([b.ri])}${alsoHere(b.id)}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:${r.color}"></i>${next.map((n, i) => html`<a class="ns${n.here && i === 0 ? ' here' : ''}" href="#/usu/${U.stops[n.si].id}"><span class="dot"><i style="${n.here && i === 0 ? 'background:' + r.color : ''}"></i></span><span class="nm">${U.stops[n.si].name}</span><span class="when">${n.here && i === 0 ? 'here now' : isStale() ? '' : 'about ' + Math.max(1, n.min) + ' min'}</span></a>`)}</div>` : ''}
     ${charter ? '' : html`<div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`}`;
   card.classList.remove('hidden');

@@ -533,6 +533,11 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
 .bus.dim .bus-marker { opacity: .4; }
 .bus.away { display: none; }   /* on a way drawn, a bus not its own */
+.bus.stacked { visibility: hidden; pointer-events: none; }   /* another at its spot shows for it, with how many (map.js stackBuses) */
+.bus-n { position: absolute; left: 50%; top: 50%; transform-origin: 0 0; transform: rotate(var(--unturn, 0deg)) translate(-21px, -19px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--color-text); color: var(--color-bg); font: 700 0.6875rem/16px var(--font-heading); text-align: center; box-shadow: 0 0 0 2px var(--color-bg); pointer-events: none; }
+#map.bus-small .bus-n { display: none; }
+.alsohere { display: flex; gap: 6px; align-items: baseline; font-size: 0.875rem; color: var(--cr-muted); }
+.alsohere a { color: var(--color-accent-700); }
 /* zoomed out: the circle goes, the arrow takes the route's colour, and nothing is tappable */
 #map.bus-small .bus { pointer-events: none; }
 #map.bus-small .bus-marker { border-color: transparent; background: transparent; box-shadow: none; }
@@ -1323,6 +1328,13 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .pk-lstop.top { top: 0; }
 .pk-lstop.foot { position: relative; margin-top: 200px; }
 .pk-ring { position: absolute; left: 0; top: 14px; width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--pk-orange); background: var(--color-bg); }
+/* a shuttle at the stop: its ring filled, the way it's going in it, and how many when more than one */
+.pk-ring.on { background: var(--pk-orange); box-shadow: 0 0 0 4px var(--color-bg), 0 0 16px 3px rgba(232,97,28,.5); }
+.pk-ring.on::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.pk-ring.on.up::after { border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 7px solid var(--color-bg); margin-top: -1px; }
+.pk-ring.on.down::after { border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid var(--color-bg); margin-top: 1px; }
+.pk-ring.on.wait::after { width: 6px; height: 6px; background: var(--color-bg); }
+.pk-ring > b { position: absolute; left: 13px; top: -10px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: var(--color-text); color: var(--color-bg); font: 700 0.6875rem/15px var(--font-heading); text-align: center; }
 .pk-lrow { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
 .pk-lname { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .pk-lk { font: 600 0.75rem/1 var(--font-heading); letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); }
