@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 // @ts-ignore: the app's own module, plain JS
-import { ART, DECO, PERCH } from '../../../../app/views/pumpkin-art.js';
+import { ART, DECO } from '../../../../app/views/pumpkin-art.js';
 
 const Corners = () => <><i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i></>;
 
@@ -20,18 +20,10 @@ export interface PumpkinVinesProps {
 }
 
 /**
- * Pumpkin vines up both sides of what it frames (the map, in the app), with pumpkins in its top-left and bottom-right
- * corners: decoration over the content that never takes a tap. Frame the subject inside it, about 52 px in from the
- * sides on a phone, so the vines don't cover it.
+ * A pumpkin vine along the bottom edge of the map's search box, the width of it (in the app, the map of the walk), its leaves
+ * hanging, a smiling pumpkin and a plain one sitting on it: decoration over the content that never takes a tap. Both
+ * sides and the card stay clear; frame the subject below it (about 92 px down on a phone).
  */
 export function PumpkinVines({ children, height = '100%' }: PumpkinVinesProps) {
   return <div className="pk-frame" style={{ height }}>{children}<div dangerouslySetInnerHTML={{ __html: DECO }} /></div>;
-}
-
-/**
- * A vine along the top edge of a phone's pull-up card, leaves reaching up and pumpkins sitting on it at each end.
- * Put it first in the card; it rises above the card's edge into what's behind.
- */
-export function PumpkinPerch() {
-  return <div className="pk-perch-part" dangerouslySetInnerHTML={{ __html: PERCH }} />;
 }

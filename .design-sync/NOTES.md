@@ -19,11 +19,10 @@ Project: https://claude.ai/design/p/9263b2fe-9248-4dd0-83ce-6040c1429471 (first 
   (pkg/build.mjs resolves esbuild and typescript through it).
 - Grades live in /root/cr-ds/.design-sync/.cache/review (write them there, not on H:; ds.sh's rsync excludes .cache).
 - Uploads read from `H:\Programs\cacherider\ds-bundle`, a robocopy /MIR of `\\wsl.localhost\pebble-sdk\root\cr-ds\ds-bundle`.
-- Five components share a source file with another (RouteBadges, ScheduledMark, the three Pumpkin art parts):
+- Four components share a source file with another (RouteBadges, ScheduledMark, the two Pumpkin art parts):
   cfg.componentSrcMap pins them, else they land in group "general" without their JSDoc.
 - `#tabs` is hidden by app.css at 840 px and wider; parts.css re-shows `#tabs.cr-tabbar` so TabBar renders in any
-  design. `#pk-deco` (vines) and `.pk-perch` show only inside the app's frame; parts.css shows them in
-  `.pk-frame` / `.pk-perch-part`.
+  design. `#pk-deco` (the vine) shows only inside the app's frame; parts.css shows it in `.pk-frame`.
 
 ## Known render warns
 

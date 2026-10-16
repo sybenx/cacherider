@@ -10,8 +10,7 @@
     "RouteBadges": "src/transit/RouteBadge.tsx",
     "ScheduledMark": "src/transit/LiveMark.tsx",
     "PumpkinDusk": "src/pumpkin-walk/PumpkinArt.tsx",
-    "PumpkinVines": "src/pumpkin-walk/PumpkinArt.tsx",
-    "PumpkinPerch": "src/pumpkin-walk/PumpkinArt.tsx"
+    "PumpkinVines": "src/pumpkin-walk/PumpkinArt.tsx"
   },
   "overrides": {
     "DepartureRow": {
@@ -55,9 +54,6 @@
       "cardMode": "column"
     },
     "PumpkinNights": {
-      "cardMode": "column"
-    },
-    "PumpkinPerch": {
       "cardMode": "column"
     },
     "PumpkinDusk": {

@@ -1,10 +1,6 @@
-/* What a part needs outside the app's own frame, after css/app.css. In the app the Pumpkin Walk's vines show only
-   over its map (#body.pk-on), and the perch only on a phone's card (.mapcard); as parts they show wherever they're put. */
+/* What a part needs outside the app's own frame, after css/app.css. In the app the Pumpkin Walk's vine shows only
+   over its map (#body.pk-on); as a part it shows wherever it's put. */
 .pk-frame { position: relative; overflow: hidden; }
 .pk-frame #pk-deco { display: block; left: 0; right: 0; }
-/* the perch rests on the card's top edge, rising into what's behind (in the app: .mapcard .pk-perch, under the grip) */
-.pk-perch-part { position: relative; height: 0; pointer-events: none; }
-.pk-perch-part .pk-perch { display: block; }
-.pk-perch-part .pk-perch svg { position: absolute; left: 0; top: -42px; width: 100%; height: 46px; overflow: visible; }
 /* The tab bar: the app hides it 840 px and wider (its tabs move to the top bar); a part put in a design shows. */
 #tabs.cr-tabbar { display: grid; }

@@ -38,8 +38,8 @@ North Logan's evening pumpkin walk, served by Connect's shuttle (route 'Pumpkin 
 Park and back, every 5 min, 6 PM to 10 PM). The app's view of it is the night (this project's
 templates/pumpkin-walk-explore, built): background #16112b, text #f3eee6, muted #b9b0c9, pumpkin orange #e8611c, in
 either theme. Its parts: `PumpkinDusk` (the
-banner), `PumpkinVines` (frames the map of the walk: keep the subject about 52 px in from the sides), `PumpkinPerch`
-(a vine on top of a phone's pull-up card), `PumpkinNextShuttle`, `PumpkinNights`. Pumpkins decorate the edges; the
+banner), `PumpkinVines` (a vine along the map's search box, pumpkins sitting on it: keep the subject below it),
+`PumpkinNextShuttle`, `PumpkinNights`. Pumpkins decorate the edges; the
 content stays the app's plain rows and times.
 
 ## Where the truth lives

@@ -2381,7 +2381,7 @@ function keepIn(c, z) {
 function topCover() {
   const top = map.getContainer().getBoundingClientRect().top;
   let cover = 0;
-  for (const el of col.querySelectorAll('.mapbar, #mapnotice')) { const r = el.getBoundingClientRect(); if (r.height && !el.classList.contains('hidden')) cover = Math.max(cover, r.bottom - top); }
+  for (const el of col.querySelectorAll('.mapbar, #mapnotice, #pk-deco .pk-swag')) { const r = el.getBoundingClientRect(); if (r.height && !el.classList.contains('hidden')) cover = Math.max(cover, r.bottom - top); }
   return cover;
 }
 /** The part of the map left clear, as its margins: the search bar and any notice across the top; on a phone the sheet
@@ -3214,7 +3214,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
         if (!fc || lastFocused !== 'r:' + ri) return;
         const b = new maplibregl.LngLatBounds();
         for (const f of fc.features) if (f.properties.route === ri) for (const c of f.geometry.coordinates) b.extend(c);
-        if (!b.isEmpty()) frame(b, { maxZoom: 15.5, duration: 500, margin: wide() ? 72 : 52 });   // inside its vines (views/pumpkin.js)
+        if (!b.isEmpty()) frame(b, { maxZoom: 15.5, duration: 500, margin: wide() ? 56 : 28 });
       });
     }
     if (bus) ringBus(bus); else { wantRing = null; if (ringed) unring(); }
@@ -4083,10 +4083,8 @@ async function drawRuns() {
 function placeTimes() {
   if (!rtBase || !map.getSource('rtimes')) return;
   rtAt = map.getZoom().toFixed(2) + '/' + map.getBearing().toFixed(1);
-  // (pad: the panel beside it; vine: the Pumpkin Walk's up the map's sides while it's up, views/pumpkin.js)
-  const turn = map.getBearing(), pts = [], cv = map.getContainer(), rm = room(), pp = pad();
-  const vine = document.querySelector('#body.pk-on #pk-deco .pk-edge')?.getBoundingClientRect().width || 0;
-  const clear = { left: rm.left + pp.left + vine, right: cv.clientWidth - rm.right - pp.right - vine, top: rm.top, bottom: cv.clientHeight - rm.bottom };
+  const turn = map.getBearing(), pts = [], cv = map.getContainer(), rm = room(), pp = pad();   // (pad: the panel beside it)
+  const clear = { left: rm.left + pp.left, right: cv.clientWidth - rm.right - pp.right, top: rm.top, bottom: cv.clientHeight - rm.bottom };
   for (const line of rtBase.lines) {
     let a = null;
     for (const ll of line) {

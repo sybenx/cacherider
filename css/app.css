@@ -1272,25 +1272,17 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .pk-night.off .h, .pk-night.off .d { color: var(--cr-muted); }
 .pk-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px; }
 
-/* The Pumpkin Walk's vines round the map, and pumpkins in its corners (views/pumpkin.js): over the map, under its
-   buttons, search and card, never taking a tap; and a vine along a phone's card, pumpkins sitting on its edge */
+/* The Pumpkin Walk's vine under the map's search (views/pumpkin-art.js): over the map, under its buttons, search and
+   card, never taking a tap; on a phone along the search box's bottom edge (.mapbar: 10 px down, 50 high), on a wide
+   screen along the top of the map beside the page (which lies over its first 420 px, #side); its stretch of vine
+   repeated the map's width either way, running off its edges */
 #pk-deco { display: none; position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 #body.pk-on #pk-deco { display: block; }
-#pk-deco .pk-edge { position: absolute; top: 0; width: 40px; height: 100%; }
-#pk-deco .pk-left { left: 0; }
-#pk-deco .pk-right { right: 0; transform: scaleX(-1); }
-#pk-deco .pk-cluster { position: absolute; width: 130px; height: 74px; }
-#pk-deco .pk-tl { top: 66px; left: 4px; }   /* under a phone's search */
-#pk-deco .pk-br { bottom: 4px; right: 4px; }
-@media (min-width: 840px) {   /* the map beside the page, which lies over its first 420 px (#side) */
+#pk-deco .pk-swag { position: absolute; top: 59px; left: 0; width: 100%; height: 40px; display: block; }   /* off both edges, carrying on past them; its loops' tops clear of the box, not cut off under it */
+@media (min-width: 840px) {
   #pk-deco { left: 420px; } :root[data-panel="right"] #pk-deco { left: 0; right: 420px; }
-  #pk-deco .pk-tl { top: 6px; }
-  #pk-deco .pk-br { bottom: 26px; }   /* clear of the map's credits */
+  #pk-deco .pk-swag { top: 1px; }   /* under the map's buttons, top right */
 }
-:root[data-theme="light"] #pk-deco .pk-edge { opacity: .85; }
-.pk-perch { display: none; }
-.mapcard .pk-perch { display: block; position: relative; height: 0; pointer-events: none; }
-.mapcard .pk-perch svg { position: absolute; left: 0; width: 100%; height: 46px; top: -66px; overflow: visible; }   /* sitting on the card's edge, the grip's top */
 
 /* ---- The Pumpkin Walk at night (views/pumpkin.js; Claude Design's, templates/pumpkin-walk-explore): its own
    palette in either theme, over a phone's card and a wide screen's page alike. */

@@ -13,7 +13,7 @@ const Walk = () => (
   </svg>
 );
 
-/** On a phone: the map of the walk framed in vines, pumpkins in its corners. */
+/** On a phone: the map of the walk, the vine along the bottom of its search box. */
 export const OverTheMap = () => (
   <div style={{ width: 390, height: 520 }}><PumpkinVines><Walk /></PumpkinVines></div>
 );

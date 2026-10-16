@@ -6,9 +6,9 @@
 // templates/pumpkin-walk-explore).
 import { D, nextAt, timesOn, distance, tripEnd } from '../data.js';
 import { now, dayFrom, dayName, fmtDay, clock, clockText, clockShort, minsTo } from '../time.js';
-import { html, raw, icon, liveMark, liveWord, sched, lively } from '../ui.js';
+import { html, icon, liveMark, liveWord, sched, lively } from '../ui.js';
 import { rt, rtStale } from '../rt.js';
-import { DECO, PERCH } from './pumpkin-art.js';
+import { DECO } from './pumpkin-art.js';
 
 /** The Pumpkin Walk's route, or -1 when the timetable hasn't one. */
 export const pumpkinRoute = () => D ? D.routes.findIndex(r => /^pumpkin/i.test(r.short)) : -1;
@@ -49,7 +49,6 @@ export function pumpkinOn(clockNow = now()) {
   return ns.some((n, k) => n.n && (k > 0 || clockNow.min <= n.last + 15));
 }
 
-const perch = raw(PERCH);   // the vine along a phone's card (pumpkin-art.js; its dusk banner, ART, is Claude Design's part)
 /** The frame put into the map once (it shows while the view is up: #body.pk-on, main.js). */
 function frameMap() {
   const m = document.getElementById('map');
@@ -192,7 +191,7 @@ export function render(_, clockNow) {
   const cityNote = city ? html`<div class="pk-city"><p>The walk is open <b>${city.open}</b>, free, at the park. For the shuttle, park at ${city.park}. ${city.closed}.</p><p><a href="${CITY_SITE}" target="_blank" rel="noopener">North Logan's Pumpkin Walk site</a> has the rest: parking, closures, access.</p></div>` : '';
 
   return {
-    html: html`<div class="pk-page">${perch}${back}${fold}
+    html: html`<div class="pk-page">${back}${fold}
       <div class="pk-headx"><div class="pk-eyes"><span class="pk-season">Seasonal · North Logan</span>${whenRight ? html`<span class="pk-when">${whenRight}</span>` : ''}</div>
         <h1 class="pk-title">Pumpkin Walk</h1><div class="pk-sub">${sub}</div></div>
       ${line}
