@@ -616,7 +616,7 @@ test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts
   }
 });
 
-test('a route drawn as a line (on trial): its key stops, a fold kept open through a redraw, every stop', async ({ page }) => {
+test('a route drawn as a line: its key stops, a fold kept open through a redraw, every stop', async ({ page }) => {
   // The Blue Loop: its stops on a rail, the stops between its key stops folded. A fold opened stays open as the feed
   // redraws the sheet; 'Every stop' unfolds the lot, 'Key stops' folds them again.
   await open(page, '#/map/route/B');
