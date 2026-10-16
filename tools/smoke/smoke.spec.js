@@ -43,9 +43,10 @@ async function still(loc) {
   }
   return a;
 }
-/** A Connect bus on the map, once the live feed has placed one (up to 15 s); null when none is out. */
+/** A Connect bus on the map, once the live feed has placed one (up to 15 s); null when none is out. One alone at its
+ *  spot: a tap on buses at one spot (+N, the others hidden under it) zooms in till they part, no card. */
 async function someBus(page) {
-  const bus = page.locator('.maplibregl-marker.bus:not(.shuttle)').first();
+  const bus = page.locator('.maplibregl-marker.bus:not(.shuttle):not(.stacked):not(:has(> .bus-n))').first();
   try { await bus.waitFor({ state: 'attached', timeout: 15_000 }); return bus; } catch { return null; }
 }
 /** A real stop's id, from the home page's rows. */
