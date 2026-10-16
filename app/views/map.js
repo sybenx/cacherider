@@ -71,7 +71,7 @@ let darkOf = null;   // a Connect route's colour → its dark map shade, drawn a
 /** A route's line on the light map: pale ones sunk to show, and a pair that came out alike parted (ink.js). */
 let lightOf = null;
 function sinkLine(hex) {
-  lightOf ??= lightInks(D.routes.map(r => ({ color: r.color })));
+  lightOf ??= lightInks(D.routes.map(r => ({ color: r.color, second: r.gtfsText })));
   return lightOf.get(hex.slice(1).toUpperCase()) || hex;
 }
 /** A shuttle loop's colour as the map draws it, its lines, stop squares and buses alike: apart from Connect's lines as

@@ -90,6 +90,7 @@ function apart(routes) {
   const DL = routes.map((r, i) => L[i] && toLab(liftHex(toHex(L[i]))));
   spread(DL, NEED_DARK, 52, 95, alike);
   routes.forEach((r, i) => { if (DL[i]) r.dcolor = toHex(DL[i]); });
+  for (const r of routes) r.gtfsText = r.text;   // the feed's own, kept: a line may be drawn in it (ink.js lightInks)
   routes.forEach((r, i) => {
     if (!L[i]) return;
     const hex = toHex(L[i]);

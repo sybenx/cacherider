@@ -37,12 +37,19 @@ function turn(v, deg) {
   return sink(fromOklab([L, C * Math.cos(h), C * Math.sin(h)]));
 }
 
-/** For each route, { color: 'RRGGBB' }: its line's colour on the light map, as a Map from the feed's colour (upper
+/** For each route, { color: 'RRGGBB', second?: its badge's text }: its line's colour on the light map, as a Map from the feed's colour (upper
  *  case, no #) to '#rrggbb'. A pair that comes out closer than CLOSE, one of them sunk here (a pair alike in the feed,
  *  9 and 11, is left alike, as on the dark map), is parted by taking the feed's darker of the two darker, a quarter step of contrast at a
  *  time, to MAX_CONTRAST; still alike, their hues are turned apart, each its own way. */
 export function lightInks(routes) {
   const own = routes.map(r => hexRGB('#' + r.color)), ink = own.map(v => sink(v)), sunk = ink.map((v, k) => v !== own[k] && contrast(own[k], LAND) < MIN_CONTRAST);
+  // A route too pale for the land whose badge has a second colour of its own (its text, neither black nor white, that
+  // reads on the land) is drawn in that: the Pumpkin Walk's purple, its orange darkened coming near Route 2's red and
+  // taking Route 2 to a maroon. Not sunk, so not a pair's to move.
+  routes.forEach((r, k) => {
+    const two = /^[0-9a-f]{6}$/i.test(r.second || '') ? hexRGB('#' + r.second) : null;
+    if (sunk[k] && two && !hueless('#' + r.second) && contrast(two, LAND) >= MIN_CONTRAST) { ink[k] = two; sunk[k] = false; }
+  });
   for (let i = 0; i < routes.length; i++) for (let j = i + 1; j < routes.length; j++) {
     if (routes[i].color.toUpperCase() === routes[j].color.toUpperCase() || !(sunk[i] || sunk[j]) || dist(ink[i], ink[j]) >= CLOSE) continue;
     const dk = lum(own[i]) <= lum(own[j]) ? i : j;   // the darker in the feed goes darker (8, not the Green Loop): the paler keeps what it can
