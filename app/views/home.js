@@ -3,7 +3,7 @@
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
 import { D, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes, tripStops, routeOrder, liftHex } from '../data.js';
-import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo } from '../time.js';
+import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo, isDue } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, minsOut, lastTag, fillLater, moved, detourNotice, lively, schedOf, heardName } from '../ui.js';
 import { busOn, busDelay, AT_STOP } from '../rt.js';
 import { lightInks } from '../ink.js';
@@ -103,7 +103,7 @@ function landing(clockNow, app) {
   // A newcomer may find their own there; either way the page isn't half empty on a first visit.
   if (first && !sv.length) parts.push(saveHint);   // location off, nothing saved: a saved stop is the big one, the rider's way in
   if (first) { const busy = busiest(clockNow); if (busy.length) parts.push(html`<div class="land-eye"><span>Most buses today</span></div><div class="list">${busy.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`); }
-  if (isWide()) parts.push(chips());   // beside the map, every route a tap away: the page has the room, and the map lights it
+  if (isWide()) parts.push(chips(clockNow));   // beside the map, every route a tap away: the page has the room, and the map lights it
   const nt = newTimetable(clockNow);
   if (nt) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   parts.push(detourNotice(clockNow));
@@ -134,11 +134,32 @@ function yoursNotice(yours, clockNow) {
   return lines.length ? html`<div class="callout alert land-alert mine">${icon('ban', 20)}<div class="mine-list">${lines}</div></div>`.s : '';
 }
 
+/** A route named in words (a season's, the Pumpkin Walk), beside its badge on the grid's whole row: when it runs, from
+ *  the timetable at its first stop. Before tonight's first, its hours ('Tonight 6–10 PM'); while it runs, the next one
+ *  and till when ('Next in 4 min · till 10 PM'); after, or on a day without, the next day it runs and its hours. */
+function wordedWhen(ri, clockNow) {
+  const dirs = Object.keys(D.routes[ri].stops || {}), si = dirs.length ? routeOrder(ri, dirs[0])[0] : undefined;
+  if (si === undefined) return '';
+  const on = ymd => timesOn(si, ymd).filter(t => t.r === ri && !t.prov).map(t => t.min);
+  const span = ms => { const a = clock(Math.min(...ms)), b = clock(Math.max(...ms)), h = c => c.h.replace(':00', '');
+    return a.ap === b.ap ? `${h(a)}–${h(b)}${b.ap ? ' ' + b.ap : ''}` : `${h(a)} ${a.ap}–${h(b)} ${b.ap}`; };
+  const today = on(clockNow.ymd), first = today.length ? Math.min(...today) : null, last = today.length ? Math.max(...today) : null;
+  if (first !== null && clockNow.min < first) return `${first >= 17 * 60 ? 'Tonight' : 'Today'} ${span(today)}`;
+  const n = nextAt(si, 1, clockNow, 8, t => t.r === ri)[0];
+  if (!n) return '';
+  if (first !== null && n.day === 0 && clockNow.min <= last) {
+    const m = minsTo(n, clockNow);
+    return `Next ${isDue(n, clockNow) ? 'now' : m <= 30 ? 'in ' + m + ' min' : 'at ' + clockText(n.min)} · till ${clock(last).h.replace(':00', '')}${clock(last).ap ? ' ' + clock(last).ap : ''}`;
+  }
+  return `${n.day === 1 ? 'Tomorrow' : dayName(n.ymd)} ${span(on(n.ymd))}`;
+}
+
 /** Every route as a chip: Connect's badges, then the shuttle's in their own colours. Each lights its route on the map. */
-function chips() {
+function chips(clockNow) {
   // A route named in words, not a number (the Pumpkin Walk, a season's), the width of the grid: its badge is wider than
   // a tile (it spilled out of one), and a route like that is worth seeing.
-  const connect = D.routes.map((r, i) => html`<a href="#/map/route/${encodeURIComponent(r.short)}"${!/\d/.test(r.short) && r.short.length > 2 ? html.raw(' class="wide"') : ''} aria-label="${routeName(i, false)}">${badge(i, 36)}</a>`);
+  const connect = D.routes.map((r, i) => { const worded = !/\d/.test(r.short) && r.short.length > 2;
+    return html`<a href="#/map/route/${encodeURIComponent(r.short)}"${worded ? html.raw(' class="wide"') : ''} aria-label="${routeName(i, false)}">${badge(i, 36)}${worded ? html`<span class="rt-when">${wordedWhen(i, clockNow)}</span>` : ''}</a>`; });
   const campus = U ? U.routes.map((r, ri) => r.stops.length ? html`<a href="#/usu/route/${r.id}" aria-label="${r.name}">${chip(ri, 36)}</a>` : '') : [];
   return html`<div class="land-eye"><span>Routes</span></div><div class="routes">${connect}</div>${campus.some(Boolean) ? html`<div class="land-eye"><span>Aggie Shuttle</span></div><div class="routes campus">${campus}</div>` : ''}`;
 }
