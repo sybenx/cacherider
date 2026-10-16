@@ -528,14 +528,15 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .nobus .title { font-family: var(--font-heading); font-weight: 600; font-size: 1.625rem; line-height: 1.05; }
 .nobus .sub { font-size: 0.9375rem; line-height: 1.45; color: var(--cr-muted); text-wrap: pretty; }
 .bus { cursor: pointer; }
-.bus-marker { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: var(--bus-color); color: var(--bus-ink, #fff); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; transform: scale(var(--bus-scale, 1)); }
+.bus-marker { position: relative; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: var(--bus-color); color: var(--bus-ink, #fff); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; transform: scale(var(--bus-scale, 1)); }
 .bus-marker svg { width: 14px; height: 14px; }
 .bus.on .bus-marker { box-shadow: 0 0 0 3px var(--color-accent); }
 .bus.dim .bus-marker { opacity: .4; }
 .bus.away { display: none; }   /* on a way drawn, a bus not its own */
 .bus.stacked { visibility: hidden; pointer-events: none; }   /* another at its spot shows for it, with how many (map.js stackBuses) */
-.bus-n { position: absolute; left: 50%; top: 50%; transform-origin: 0 0; transform: rotate(var(--unturn, 0deg)) translate(-21px, -19px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--color-text); color: var(--color-bg); font: 700 0.6875rem/16px var(--font-heading); text-align: center; box-shadow: 0 0 0 2px var(--color-bg); pointer-events: none; }
-#map.bus-small .bus-n { display: none; }
+/* upright on the screen, the marker turned to the bus's course (--course) on a map turned to --map-bearing (map.js) */
+.bus-n { position: absolute; left: 50%; top: 50%; transform-origin: 0 0; transform: rotate(calc(var(--map-bearing, 0deg) - var(--course, 0deg))) translate(-21px, -19px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--color-text); color: var(--color-bg); font: 700 0.6875rem/16px var(--font-heading); text-align: center; box-shadow: 0 0 0 2px var(--color-bg); pointer-events: none; }
+#map.bus-small .bus:not(.lit):not(.on) .bus-n { display: none; }   /* far off, but on a bus drawn full size there (lit, picked) */
 .alsohere { display: flex; gap: 6px; align-items: baseline; font-size: 0.875rem; color: var(--cr-muted); }
 .alsohere a { color: var(--color-accent-700); }
 /* zoomed out: the circle goes, the arrow takes the route's colour, and nothing is tappable */
@@ -552,6 +553,16 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
    ARROW_A): far off drawn in strokes of its colour, close in a solid A on a marker squared where Connect's is round. */
 #map.bus-small .bus-marker path { fill: var(--color-bg); stroke: var(--bus-color); stroke-width: 3.5; stroke-linejoin: round; }
 #map.bus-small .bus.on .bus-marker path { stroke: var(--color-accent); }
+/* A Connect bus close in: its route's number upright in its ring, in the ink its badge would have on that colour
+   (ink.js textOn), and a notch on the ring's edge the way it heads, the arrow's work. Far off the hollow arrow, but for a
+   bus lit or picked, full size anywhere. Off duty (grey) or a route named in words, never .num: the arrow. */
+.bus-num, .bus-head { display: none; }
+#map:not(.bus-small) .bus.num .bus-marker > svg, #map .bus.num:is(.lit, .on) .bus-marker > svg { display: none; }
+#map:not(.bus-small) .bus.num :is(.bus-num, .bus-head), #map .bus.num:is(.lit, .on) :is(.bus-num, .bus-head) { display: block; }
+/* px, not rem: it lives in a ring of so many px. Turned back by the bus's turn on the screen (as .bus-n) */
+.bus-num { font: 600 14px/1 var(--font-heading); font-variant-numeric: tabular-nums; color: var(--num-ink); transform: rotate(calc(var(--map-bearing, 0deg) - var(--course, 0deg))); }
+.bus-head { position: absolute; left: 50%; top: 0; width: 12px; height: 9px; transform: translate(-50%, -88%); background: #fff; clip-path: polygon(50% 0, 100% 100%, 0 100%); pointer-events: none; }
+.bus-head::after { content: ''; position: absolute; inset: 30% 25% 17%; background: var(--bus-color); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 
 .bus.shuttle .bus-marker { border-radius: 6px; }
 /* a bus on the lit route keeps its badge and its tap at any zoom, so tapping a stop finds its buses */
@@ -585,6 +596,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
   .bus-marker svg { width: 18px; height: 18px; }
   #map.bus-small .bus-marker svg { width: 26px; height: 26px; }
   #map.bus-small .bus.lit .bus-marker svg, #map.bus-small .bus.on .bus-marker svg { width: 18px; height: 18px; }
+  .bus-num { font-size: 18px; }
+  .bus-head { width: 14px; height: 10px; }
   #map .maplibregl-ctrl-group button { width: 46px; height: 46px; }
 }
 #map .maplibregl-ctrl-group button.satbtn, #map .maplibregl-ctrl-group button.nearbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-text); }

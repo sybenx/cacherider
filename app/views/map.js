@@ -12,7 +12,7 @@ import { rt, findBus, tripOf, busOn, busStops, nextStopOf, lateWords, heldAt, bu
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
-import { lightInks, apartInks, hueless, faint } from '../ink.js';
+import { lightInks, apartInks, hueless, faint, textOn } from '../ink.js';
 import { placeStar } from '../places.js';
 
 // Aerial imagery, for the option: USGS's public-domain mosaic (NAIP over the valley), ends at zoom 16.
@@ -750,6 +750,10 @@ async function made(app) {
   map.on('load', () => { ready = true; zoomBias = biasOf(map.getContainer()); applyBias(); markNear(nearIds, nearBy); addUsuImages(); (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => makeArrows(map), { timeout: 2000 }); loadShapes(); searchKey = null; searchMarks(wantMarks); applySelection(); if (app.geo) placeMe(app.geo); map.resize(); liveUpdate(app); busScale(); if (focusRoute !== undefined) routeTimesSoon(focusRoute, now()); });
   map.on('idle', () => (window.requestIdleCallback || (f => setTimeout(f, 200)))(warmViews, { timeout: 2000 }));
   map.on('zoom', busScale);
+  // The map's turn, for a bus's number to turn back by (app.css .bus-num): at every frame of a twist, not at its end,
+  // or the numbers tilted with the map till the finger let go.
+  const upright = () => map.getContainer().style.setProperty('--map-bearing', map.getBearing() + 'deg');
+  map.on('rotate', upright); upright();
   map.on('rotateend', keepHubTurn);
   map.on('move', quiet);
   map.on('moveend', northAgain);
@@ -1880,6 +1884,7 @@ function applySelection() {
   drawRunsSoon();
   // The picked bus's ring too: cleared with the rest, not left till the feed's next update (up to fifteen seconds).
   for (const [id, m] of busMarkers) { paintBus(m); m.el.classList.toggle('on', id === selectedBus || id === ringed); }
+  stackBuses();   // a bus lit far out is full size, its number shown: the spot it needs is its ring's, now, not at the feed's next word
   dressJourney();
   if (MT.R && map.getLayer('run-hot')) dressForRun(map, MT.R);   // a run up keeps its own dress over all the above
 }
@@ -1929,7 +1934,7 @@ function hubCheck() {
     // Zoomed or panned off the Center, the turn stays: the rider's hands moved the map, not the page. North comes back
     // with the page (the Map tab, another tab).
     if (on) hubBadges(); else { for (const m of hubMarks.values()) m.marker.remove(); hubMarks.clear(); }
-    hubBuses();
+    hubBuses(); stackBuses();   // a bus off its badge again has a spot again
   }
   if (on) easeBays();
 }
@@ -2489,6 +2494,14 @@ function busScale() {
   if (small !== busSmallAt) { busSmallAt = small; c.classList.toggle('bus-small', small); }
 }
 const ARROW = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 20 20l-8-4-8 4z"/></svg>';
+// A Connect bus close in wears its route's number in its ring, upright, and a notch on the ring's edge the way it heads
+// (app.css): Connect's colours come in near pairs (1, 2, 3 and 12; 5 and 15; 6 and 7; 9 and 11), and an arrow alone
+// left the rider guessing which route a bus was. Far off, the hollow arrow.
+const NUM = '<b class="bus-num"></b><i class="bus-head"></i>';
+/** The number on a Connect bus: its route's as its badge sets it large ('16' of 16 AM and 16 PM, never out together),
+ *  or a loop's letter. A route named in words (the Pumpkin Walk) has none and keeps its arrow, as would one of three
+ *  figures, too wide for the ring. */
+const busNum = ri => { const s = D.routes[ri].short.split(' ')[0]; return /^(\d{1,2}|[A-Z])$/.test(s) ? s : ''; };
 /** The ink on a bus's marker: dark on a light colour (the Green Loop's white arrow vanished on its green), white on the rest. */
 function inkOn(hex) {
   const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
@@ -2809,10 +2822,10 @@ export function liveUpdate(app) {
       if (!m) {
         const el = document.createElement('div');
         el.className = kind === 'u' ? 'bus shuttle' : 'bus';
-        el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? ARROW_A : ARROW) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
+        el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? ARROW_A : ARROW + NUM) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
         el.onclick = ev => { ev.stopPropagation(); if (!cardTo('#/map/bus/' + encodeURIComponent(b.id) + '?tap=1')) selectBus(b.id, app); };
         const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'map' }).setLngLat([b.lon, b.lat]);
-        m = { marker, el, ri: b.ri, kind, id: b.id };
+        m = { marker, el, ri: b.ri, kind, id: b.id, num: el.querySelector('.bus-num') };
         busMarkers.set(b.id, m);
         marker.addTo(map);
       } else glide(m, b.lon, b.lat);
@@ -2820,6 +2833,12 @@ export function liveUpdate(app) {
       m.el.title = title;
       m.el.style.setProperty('--bus-color', color); m.el.style.setProperty('--bus-ink', inkOn(color));
       m.marker.setRotation(b.course);
+      m.el.style.setProperty('--course', m.marker.getRotation() + 'deg');   // what its number and its count turn back by
+      // Grey, off duty or not reporting, the arrow: a grey 11 would read as an 11 in service.
+      const num = m.num && color !== OFF_GREY ? busNum(b.ri) : '';
+      m.el.classList.toggle('num', !!num);
+      if (num) { if (m.num.textContent !== num) m.num.textContent = num; m.el.style.setProperty('--num-ink', textOn(color)); }
+      m.off = color === OFF_GREY;
       m.ri = b.ri; m.speed = b.speed; m.to = [b.lon, b.lat];   // where it's gliding to: in or out by that, not by where it's got
       m.el.classList.toggle('on', selectedBus === b.id || ringed === b.id);
       m.el.classList.toggle('edged', kind === 'u' && color !== OFF_GREY && uedge(b.ri));   // a black shuttle by night: outlined far off too
@@ -2830,36 +2849,48 @@ export function liveUpdate(app) {
   if (U && uAge < U_GONE) for (const b of live.buses) place(b, 'u', () => [uQuiet ? OFF_GREY : uink(b.ri), U.routes[b.ri].name + ' · bus ' + b.name + (uQuiet ? ' · not reporting, last heard from at ' + lastSeen() : '')]);
   if (!rtStale()) for (const b of [...rt.buses, ...rt.parked]) place(b, 'c', () => { const off = offDuty(b); return [off ? OFF_GREY : dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label + (off ? ' · ' + off.toLowerCase() : '')]; });
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
-  stackBuses();
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
   if (hubOn) { hubBadges(); hubBuses(); }
+  stackBuses();   // after the Center's: a bus its badge stands on isn't drawn there, and has no spot
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimesSoon(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
 }
 /** Buses at one spot (three Pumpkin Walk shuttles, two of them laid over at Greenville): one marker, how many on it,
  *  the rest hidden, the bus picked the one shown; drawn one on another, the one under was never seen. Its card names
  *  the others there (alsoHere). Again at each word from the feed and as the map's zoom or turn changes. */
 const STACK = 14;   // px apart on the screen: one spot
+/** A bus as drawn, for how near another is one spot with it: its width on the screen, a ring's (`ring`, as scaled) or
+ *  far out an arrow's (STACK; a bus lit or picked is a full ring there), and whether it shows its number. Two buses
+ *  are one spot where either's number would be half covered by the other, an 11 read as a 1: nearer than half their
+ *  widths together. Two arrows, or rings with no number, STACK, as before. */
+function stackSize(m, ring) {
+  const full = m.el.classList.contains('lit') || m.el.classList.contains('on');
+  if (busSmallAt && !full) return { w: STACK, num: false };
+  return { w: ring * (busSmallAt ? 1 : Number(busScaleAt) || 1), num: m.el.classList.contains('num') };
+}
 let stacks = new Map(), stackWired = false;   // a shown bus's id → the ids at its spot, its own first
 function stackBuses() {
   if (!map) return;
   if (!stackWired) { stackWired = true; map.on('zoomend', stackBuses); map.on('rotateend', stackBuses); map.on('resize', stackBuses); }
   if (!map.getContainer().clientWidth) return;   // out of sight: no screen to be at one spot on (shown, the next word from the feed)
-  // Shown for its spot: the bus picked, else one drawn full (on a route's page, the route's own), not one dimmed.
-  const rank = m => m.id === selectedBus ? 0 : m.el.classList.contains('dim') ? 2 : 1;
-  const ms = [...busMarkers.values()].filter(m => m.to).sort((a, b) => rank(a) - rank(b));
+  // Shown for its spot: the bus picked or ringed, else one drawn full (on a route's page, the route's own), in service,
+  // not one grey (a grey arrow off duty stood for the rider's 3, its number hidden under a +1), nor one dimmed. Buses
+  // not drawn (on a way, not its own; at the Center, under their badges) have no spot.
+  const rank = m => m.id === selectedBus || m.el.classList.contains('on') ? 0 : m.el.classList.contains('dim') ? 3 : m.off ? 2 : 1;
+  const ms = [...busMarkers.values()].filter(m => m.to && !m.el.matches('.athub, .away')).sort((a, b) => rank(a) - rank(b));
+  const ring = coarse() ? 30 : 22, size = ms.map(m => stackSize(m, ring));
+  const near = (i, j) => size[i].num || size[j].num ? (size[i].w + size[j].w) / 2 : STACK;
   const pts = ms.map(m => map.project(m.to)), taken = new Set();
   stacks = new Map();
   ms.forEach((m, i) => {
     if (taken.has(i)) return;
-    const at = ms.map((_, j) => j).filter(j => !taken.has(j) && Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) < STACK);
+    const at = ms.map((_, j) => j).filter(j => !taken.has(j) && Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) < near(i, j));
     at.forEach(j => { taken.add(j); ms[j].el.classList.toggle('stacked', j !== i); });
     stacks.set(m.id, at.map(j => ms[j].id));
     let n = m.el.querySelector(':scope > .bus-n');
     if (at.length > 1) {
       if (!n) { n = document.createElement('b'); n.className = 'bus-n'; m.el.append(n); }
-      n.textContent = at.length;
-      n.style.setProperty('--unturn', (map.getBearing() - m.marker.getRotation()) + 'deg');   // upright on the screen, the marker turned its way
+      n.textContent = '+' + (at.length - 1);   // how many more: a bare 2 beside a bus read as Route 2 (upright: app.css)
     } else if (n) n.remove();
   });
 }

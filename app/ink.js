@@ -68,6 +68,10 @@ export function lightInks(routes) {
  *  lifted as the routes are, and a red lifted there came back to Route 2's red: kept apart there too, in the dark
  *  map's own colours. Light map, the loops come in already apart from the feed's colours (tools/usu.py). */
 const DARK_LAND = [0x10, 0x12, 0x14].map(x => x / 255), APART = 0.11;
+/** A route's number on its colour: black or white, whichever reads more, the rule a badge falls back to when the
+ *  agency's own text can't be read on it (data.js). Worked out from the colour drawn, so a bus lifted on the dark map
+ *  gets the ink that reads on its lighter shade. */
+export const textOn = hex => contrast(hexRGB(hex), [0, 0, 0]) >= contrast(hexRGB(hex), [1, 1, 1]) ? '#000' : '#fff';
 /** A colour with no hue: black, a grey. */
 export const hueless = hex => { const [, a, b] = oklab(hexRGB(hex)); return Math.hypot(a, b) < 0.02; };
 /** Too faint on its map's land to read as a line on its own (black on the dark map): drawn outlined. */

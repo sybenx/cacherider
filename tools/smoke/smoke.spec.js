@@ -236,6 +236,30 @@ test('a bus gone quiet: grey after three minutes without a report, off the map a
   await expect(page.getByText(/last heard from at/).filter({ visible: true }).first()).toBeVisible();
 });
 
+test('map: a bus wears its route\'s number, a grey one its arrow, two at one spot a +1', async ({ page }) => {
+  // The relay's answer made up, by the Center: two buses of one route at one spot (one picked, by its address), a third
+  // up the street, a fourth not heard from in five minutes (grey). Their trip one the timetable doesn't know, its route
+  // the id's prefix (rt.js), so they're on duty whatever the day.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page, '#/');
+  const short = await page.evaluate(async () => (await import('/app/data.js')).D.routes.map(r => r.short).find(s => /^\d{1,2}$/.test(s)));
+  const t = Math.floor(Date.now() / 1000), bus = (label, ago, lat, lon) => ({ id: label, label, trip: short + '_9999', lat, lon, bearing: 90, speed: 5, ts: t - ago });
+  feed = { t, trips: {}, buses: [bus('9001', 2, 41.738, -111.833), bus('9002', 2, 41.738, -111.833), bus('9003', 2, 41.7395, -111.8318), bus('9004', 300, 41.738, -111.830)] };
+  // The map up first, then the bus's address: beside a wide screen's pages the first page's map, drawn once the
+  // relay's alerts are in, could land after the address had moved on, and the bus's was taken for done.
+  await go(page, '#/map');
+  await mapReady(page);
+  await go(page, '#/map/bus/c%3A9001');
+  const marker = label => page.locator(`.maplibregl-marker.bus[title*="bus ${label}"]`);
+  await expect(marker('9003').locator('.bus-num')).toBeVisible();   // close in: its number in its ring, not an arrow
+  await expect(marker('9003').locator('.bus-num')).toHaveText(short);
+  await expect(marker('9001').locator('.bus-num')).toHaveText(short);
+  await expect(marker('9001').locator('.bus-n')).toHaveText('+1');   // how many more, never a bare 2 that reads as a route
+  await expect(marker('9004')).toHaveAttribute('title', /not reporting/);
+  await expect(marker('9004')).not.toHaveClass(/\bnum\b/);   // grey: the arrow, not a number that reads as in service
+});
+
 test('search: a route, every route, a street, a place, an address', async ({ page }) => {
   await open(page);
   await go(page, '#/search?q=12');
