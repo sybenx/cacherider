@@ -1123,10 +1123,13 @@ function changes(ri, seq) {
  *  place (kept open through the minute's redraws and the buses' moves: openFolds). A bus between two folded stops
  *  keeps its row, between two folds. From the timetable alone, nothing picked by hand. */
 const openFolds = new Set();   // route/way/stop of each stop in a fold the rider opened: open again whatever fold it's in
-document.addEventListener('toggle', e => {
-  const f = e.target;
-  if (!(f instanceof Element) || !f.matches('details.rs-fold')) return;
-  for (const k of f.dataset.stops.split(' ')) f.open ? openFolds.add(k) : openFolds.delete(k);
+// Kept on the tap itself (a key's Enter is a click too), before the fold opens: kept on its 'toggle', a redraw in
+// between drew it closed, and the toggle that drawing set off forgot it.
+document.addEventListener('click', e => {
+  const sum = e.target instanceof Element && e.target.closest('details.rs-fold > summary');
+  if (!sum) return;
+  const f = sum.parentElement, opening = !f.open;
+  for (const k of f.dataset.stops.split(' ')) opening ? openFolds.add(k) : openFolds.delete(k);
 }, true);
 function foldRows(xs, ri, d, seq, here, busAt) {
   const change = changes(ri, seq);
