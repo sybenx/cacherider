@@ -144,6 +144,59 @@ for tid, rows in by_trip.items():
         si = stop_idx[r['stop_id']]
         times.setdefault(si, {}).setdefault(t['service_id'], []).append([mins(r['departure_time']), ri, hi, di, trip_index(tid)])
         stop_routes.setdefault(si, set()).add(ri)
+
+# ---- routes no feed has, kept by hand (hints' hand_routes, each a file beside them: tools/prt.json, Pocatello Regional
+# Transit's Preston / Logan Commuter, a midday bus to Logan that Connect's feed doesn't carry). Each a route after the
+# feed's, run by someone else (`op`: whose, and their timetable), on a calendar of its own (its days, less its holidays),
+# its trips at the feed's own stops: by stop id, or by stop code where the feed has renumbered one. A file missing is no
+# route (a sister site has none); a stop not found is left out, said here.
+hand_trips = []   # (route index, trip id, GTFS stop ids in order), for its line on the map
+hand_next = []    # (service, trip index, the trip its bus runs next): its blocks, as the feed's
+for f in H.get('hand_routes', []):
+    # Read and checked whole before any of it goes in: a slip in a file kept by hand leaves that route out, never the
+    # night's timetable.
+    try:
+        hr = json.load(open(os.path.join(os.path.dirname(a.hints), f)))
+        R, op = hr['route'], hr['operator']
+        if not all(re.fullmatch(r'[0-9A-Fa-f]{6}', R[k]) for k in ('color', 'text')) or not (R['id'] and R['short'] and R['long'] and op['name']): raise ValueError('route or operator incomplete')
+        days = [int(x) for x in hr['days']]
+        holidays = [str(d) for d in hr.get('holidays', [])]
+        if len(days) != 7 or not all(re.fullmatch(r'\d{8}', d) for d in holidays): raise ValueError('days or holidays')
+        hand_in = [(t['id'], int(t['dir']), t.get('headsign', ''), [(x['stop'], x.get('code', ''), mins(x['time']), bool(x.get('timepoint', False)), x.get('pdf', '')) for x in t['stops']]) for t in hr['trips']]
+    except FileNotFoundError:
+        print('::warning::hand route', f, 'not found; left out', file=sys.stderr); continue
+    except Exception as e:
+        print('::warning::hand route', f, 'unreadable (' + type(e).__name__ + ': ' + str(e) + '); left out', file=sys.stderr); continue
+    ri = len(routes); route_idx[R['id']] = ri
+    routes.append({'id': R['id'], 'short': R['short'], 'long': R['long'], 'desc': R.get('desc', ''), 'color': R['color'].upper(), 'text': R['text'].upper(),
+                   'dirs': R.get('dirs', ['', '']), 'op': {**op, 'timetable': hr.get('source', ''), 'checked': hr.get('checked', ''), 'service': R['id']}})
+    # From the feed's first day (a start ahead of today would read as a new timetable coming), on with no end.
+    sid = R['id']
+    services.append({'id': sid, 'days': days, 'start': min((s['start'] for s in services), default=datetime.date.today().strftime('%Y%m%d')),
+                     'end': '20991231', 'desc': op['name']})
+    exceptions += [[d, sid, 2] for d in holidays]
+    by_code = {s['code']: i for i, s in enumerate(stops) if s['code']}
+    for tid, di, headsign, calls in hand_in:
+        rows = []
+        for stop_id, code, m, tp, pdf in calls:
+            si = stop_idx.get(stop_id, by_code.get(code))
+            if si is None:
+                print('::warning::hand route', R['short'], tid + ': stop', stop_id, pdf, 'not in the feed; left out', file=sys.stderr); continue
+            rows.append((m, si, tp))
+        if len(rows) < 2: continue
+        ti = trip_index(tid)
+        hi = head({'route_id': R['id'], 'trip_headsign': headsign, 'direction_id': str(di)})
+        ends[ti] = [rows[-1][1], rows[-1][0]]
+        for m, si, _tp in rows[:-1]:
+            times.setdefault(si, {}).setdefault(sid, []).append([m, ri, hi, di, ti])
+            stop_routes.setdefault(si, set()).add(ri)
+        for _m, si, tp in rows:
+            if tp: timepoints.setdefault(ri, set()).add(si)
+        if len(rows) > len(routes[ri].get('stops', {}).get(str(di), [])): routes[ri].setdefault('stops', {})[str(di)] = [si for _m, si, _tp in rows]
+        hand_trips.append((ri, tid, [stops[si]['id'] for _m, si, _tp in rows]))
+    run = [trip_idx[t] for t in hr.get('block', []) if t in trip_idx]
+    hand_next += [(sid, ta, tb) for ta, tb in zip(run, run[1:])]
+
 for si, per in times.items():
     for sid in per: per[sid].sort()
 for si, rs in stop_routes.items():
@@ -162,6 +215,7 @@ for (sv, _b), run in blocks.items():
     run.sort()
     for (_, ta), (_, tb) in zip(run, run[1:]):
         if ta != tb: next_trip.setdefault(sv, {})[str(ta)] = tb
+for sv, ta, tb in hand_next: next_trip.setdefault(sv, {})[str(ta)] = tb
 
 # The order a route calls at its stops, per direction: its longest trip's sequence.
 longest = {}
@@ -273,14 +327,51 @@ for ri, ids in sorted(route_shapes.items()):
         dedup = [p for i, p in enumerate(pts) if i == 0 or p != pts[i - 1]]
         # key: the route as a bus's trip id names it (16's AM and PM as one), for the relay, which reads only this file
         lines.append({'route': ri, 'key': routes[ri]['short'].split()[0], 'shape': sid, 'coords': dedup})
+# A route kept by hand has no shape of its own: its line is the feed's line for a trip that calls at all its stops in
+# the same order, cut from its first stop to its last (the Preston commuter's is Route 16's road). The shortest such
+# cut; none, and it has no line.
+def along(pts, la, lo, start=0, near=50):
+    """Where a point meets a line of [lon, lat] from segment `start` on: (segment, fraction along it, metres off). The
+    first segment it's within `near` of, else the nearest: a line that passes a place twice is cut at the first."""
+    kx, best = 111320 * math.cos(math.radians(la)), None
+    for i in range(start, len(pts) - 1):
+        ax, ay, bx, by = (pts[i][0] - lo) * kx, (pts[i][1] - la) * 110540, (pts[i + 1][0] - lo) * kx, (pts[i + 1][1] - la) * 110540
+        dx, dy = bx - ax, by - ay
+        f = max(0, min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) if dx or dy else 0
+        d = math.hypot(ax + f * dx, ay + f * dy)
+        if d <= near: return (i, f, d)
+        if best is None or d < best[2]: best = (i, f, d)
+    return best
+def cut(pts, a, b):
+    s, e = along(pts, *a), None
+    if s: e = along(pts, *b, start=s[0])
+    if not s or not e or e[2] > 150 or s[2] > 150: return None
+    at = lambda i, f: [round(pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f, 5), round(pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f, 5)]
+    seg = [at(*s[:2])] + pts[s[0] + 1:e[0] + 1] + [at(*e[:2])]
+    return [p for i, p in enumerate(seg) if i == 0 or p != seg[i - 1]]
+pos = {s['id']: (s['lat'], s['lon']) for s in stops}
+def calls(want, have):
+    it = iter(have)
+    return all(x in it for x in want)
+for ri, tid, ids in hand_trips:
+    best = None
+    for ftid, rows in by_trip.items():
+        sh = trips[ftid].get('shape_id')
+        if sh not in shape_pts or not calls(ids, [r['stop_id'] for r in rows]): continue
+        c = cut([[lo, la] for _, la, lo in sorted(shape_pts[sh])], pos[ids[0]], pos[ids[-1]])
+        if c and (best is None or len(c) < len(best)): best = c
+    if best: lines.append({'route': ri, 'key': routes[ri]['short'].split()[0], 'shape': tid, 'coords': best})
+    else: print('::warning::hand route', routes[ri]['short'], tid + ': no feed line calls at its stops; drawn without one', file=sys.stderr)
 p = os.path.join(a.out, a.tag + '-shapes.json')
 # hours: when each route's buses are in service, by weekday (Monday first, as GTFS counts), [first departure, last
 # departure + 45] in minutes, null on a day it doesn't run: the relay's detour watch counts only buses then, so a bus
-# driven out of service (to the yard, between runs) is never taken for a detour.
+# driven out of service (to the yard, between runs) is never taken for a detour. Not a route run by someone else: the
+# relay has none of its buses.
 spans = {}
 for per in out['times'].values():
     for sid, rows in per.items():
         for t in rows:
+            if routes[t[1]].get('op'): continue
             k = (routes[t[1]]['short'].split()[0], sid)
             lo, hi = spans.get(k, (10 ** 9, -1))
             spans[k] = (min(lo, t[0]), max(hi, t[0]))

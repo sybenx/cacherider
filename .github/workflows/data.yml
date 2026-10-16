@@ -48,6 +48,10 @@ jobs:
         run: python3 tools/upstream.py tools/pool.py || sh tools/kept.sh $? data/pool.json 'Remix unreachable; keeping the last POOL points'
       - name: Stops out of the timetable for a detour, kept as closed stops a while
         run: python3 tools/upstream.py tools/gone.py || sh tools/kept.sh $? data/gone-stops.json 'kept stops not refreshed; keeping the last'
+      # The routes kept by hand (tools/prt.json): their operator's timetable and holidays, as typed in? A change is a
+      # warning here and a line in the night's commit, never a stop; the file is put right by hand.
+      - name: Hand-kept routes' sources unchanged
+        run: python3 tools/handcheck.py || echo "BROKE=${BROKE:+$BROKE }tools/handcheck.py" >> "$GITHUB_ENV"
       - name: Commit if changed
         run: |
           # The built date alone is not a change worth a commit.
@@ -80,11 +84,11 @@ jobs:
           print('yes' if new != old or shapes or gone else 'no')
           EOF
           )
-          if [ "$changed" != yes ]; then echo 'no change'; git checkout -- data; exit 0; fi
+          if [ "$changed" != yes ]; then echo 'no change'; if [ -n "$DATA_NOTE" ]; then echo "$DATA_NOTE"; fi; git checkout -- data; exit 0; fi
           git config user.name 'transit data'
           git config user.email 'actions@users.noreply.github.com'
           git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json data/gone-stops.json data/walks.json data/walknet.json
-          git commit -m "Transit data: $(date -u +%Y-%m-%d)"
+          if [ -n "$DATA_NOTE" ]; then git commit -m "Transit data: $(date -u +%Y-%m-%d)" -m "$DATA_NOTE"; else git commit -m "Transit data: $(date -u +%Y-%m-%d)"; fi
           # Onto whatever another run (alerts, the timetable, the map) pushed meanwhile, a few tries.
           for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done; exit 1
       - name: Every tool ran

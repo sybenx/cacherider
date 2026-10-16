@@ -813,6 +813,54 @@ test('a two-way route as one line: out to its far end and back, both ways\' buse
   await expect(page.locator('.yourstop').filter({ visible: true }).first()).toBeVisible();
 });
 
+test('another operator\'s route, kept by hand (the Preston commuter): at its stops, its page, the planner; never live', async ({ page }) => {
+  // The clock half an hour before its next run, and the relay's answer made up as if the feed had its bus out on that
+  // run, 3 minutes late: no feed has it, so every screen still says Scheduled, at the timetable's minute.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+    const ri = d.D.routes.findIndex(r => r.op);
+    if (ri < 0) return null;   // no hand-kept route (tools/prt.json): nothing to check
+    for (let k = 0; k < 14; k++) {
+      const ymd = t.dayFrom(c.ymd, k).ymd;
+      const rows = d.D.stops.flatMap((s, si) => d.timesOn(si, ymd).filter(x => x.r === ri)).sort((a, b) => a.min - b.min);
+      if (!rows.length || rows[0].min - 30 < (k ? 0 : c.min)) continue;
+      const first = rows[0], st = d.tripStops(first.trip), end = d.tripEnd(first.trip), min = first.min - 30;
+      const at = Date.now() + ((t.dayDiff(c.ymd, ymd) * 1440 + min - c.min) * 60 - c.sec) * 1000;
+      return { ri, short: d.D.routes[ri].short, brand: d.D.agency.brand, trip: d.D.trips[first.trip], at, min: first.min,
+        from: d.D.stops[first.si].id, to: d.D.stops[end.si].id, st: st.map(([m, si]) => [m, d.D.stops[si].id, d.D.stops[si].lat, d.D.stops[si].lon]) };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no route of another operator\'s in the timetable');
+  await page.clock.setFixedTime(new Date(pick.at));
+  const T = Math.floor(pick.at / 1000), base = T + 30 * 60 - pick.min * 60;   // the epoch second of its day's minute 0
+  feed = { t: T, now: T, trips: { [pick.trip]: { v: '9003', ts: T, s: pick.st.map(([m, sid], i) => [sid, i + 1, base + (m + 3) * 60, 0]) } },
+    buses: [{ id: '9003', label: '9003', trip: pick.trip, lat: pick.st[0][2], lon: pick.st[0][3], bearing: 0, speed: 0, ts: T }] };
+  const clock = m => { const h = Math.floor(m / 60) % 24; return (h % 12 || 12) + ':' + String(m % 60).padStart(2, '0'); };
+  // Its first stop: its run there, Scheduled, at the timetable's minute
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await go(page, '#/stop/' + pick.from);
+  const row = page.locator('.row').filter({ has: page.locator(`.badge[data-r="${pick.ri}"]`) }).filter({ visible: true }).first();
+  await expect(row).toContainText('Scheduled', { timeout: 15_000 });
+  await expect(row).toContainText(clock(pick.min));
+  await expect(page.locator('.livetag').filter({ visible: true })).toHaveCount(0);
+  // Its page: not the agency's, its timetable, the line from where its runs start; nothing live
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  const sheet = page.locator('.routesheet').filter({ visible: true }).first();
+  await expect(sheet.locator('.rs-op')).toContainText('Not a ' + pick.brand + ' bus');
+  await expect(sheet.locator('.rs-op a[href$=".pdf"], .rs-op a[target]').first()).toBeVisible();
+  await expect(sheet.locator('.rs-list .croute').first()).toHaveAttribute('href', '#/stop/' + pick.from);
+  await expect(sheet.locator('.livetag')).toHaveCount(0);
+  await expect(page.locator('.routehead').filter({ visible: true }).first()).not.toContainText('Route ' + pick.short);
+  // The planner: from its first stop to its last, its bus
+  await go(page, '#/go/' + pick.to + '/' + pick.from);
+  await expect(page.locator(`.jrow .badge[data-r="${pick.ri}"]`).filter({ visible: true }).first()).toBeVisible({ timeout: 20_000 });
+});
+
 test('route: both ways, its sibling, a stop on it', async ({ page }) => {
   await open(page, '#/map/route/2');
   await mapReady(page);

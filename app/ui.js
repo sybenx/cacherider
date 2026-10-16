@@ -96,9 +96,10 @@ export const moved = t => !!(t && t.live && Math.abs(t.live.delay || 0) >= 2);
 export { isLoop };
 /** A route as riders say it: 'Route 12', or a loop by its name, 'the Blue Loop'. Never 'Route B'. */
 export const routeName = (ri, the = true) => isLoop(ri) || named(ri) ? (the ? 'the ' : '') + nameOf(ri) : 'Route ' + D.routes[ri].short;
-/** A route called by a name, not a number, besides the loops: the Pumpkin Walk ('Route Pumpkin Walk', it was). */
-const named = ri => !/\d/.test(D.routes[ri].short) && D.routes[ri].short.length > 2;
-const nameOf = ri => isLoop(ri) ? D.routes[ri].long : D.routes[ri].short;
+/** A route called by a name, not a number, besides the loops: the Pumpkin Walk ('Route Pumpkin Walk', it was); and
+ *  another operator's, by its timetable's name ('the Preston / Logan Commuter', not 'Route PRT'). */
+const named = ri => (!/\d/.test(D.routes[ri].short) && D.routes[ri].short.length > 2) || !!D.routes[ri].op;
+const nameOf = ri => isLoop(ri) || D.routes[ri].op ? D.routes[ri].long : D.routes[ri].short;
 /** Several: 'Routes 2, 3 and 5', 'Route 12 and the Blue Loop', 'the Blue and Green Loops'. */
 export function routeNames(ris) {
   const nums = [...new Set(ris.filter(ri => !isLoop(ri) && !named(ri)))].sort((a, b) => +D.routes[a].short - +D.routes[b].short || D.routes[a].short.localeCompare(D.routes[b].short)).map(ri => D.routes[ri].short);

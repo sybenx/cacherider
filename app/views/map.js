@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pathDistance, pref } from '../data.js';
+import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -469,7 +469,7 @@ function placesGeo() {
 function poolRunning(c = now()) {
   if (!POOL || !POOL.week) return true;
   const span = POOL.week[(dayFrom(c.ymd).dow + 6) % 7];
-  return !!span && c.min >= span[0] && c.min < span[1] && servicesOn(c.ymd).size > 0;
+  return !!span && c.min >= span[0] && c.min < span[1] && agencyRuns(c.ymd);
 }
 /** A pickup at the same place as a bus stop that's closed is closed too: the stop it is (Remix says), else a bus stop
  *  within 25 m, closed by a notice in force. */
@@ -1084,7 +1084,7 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   if (!seq.length) {
     const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</div></div></div>`;
     const body = html`<div class="routesheet"><div class="empty"><p>No trips in ${D.agency.brand}'s timetable for this route right now.</p></div></div>`;
-    return { head, body, anchor: null, title: isLoop(ri) ? r.long : 'Route ' + r.short, ri };
+    return { head, body, anchor: null, title: routeName(ri, false), ri };
   }
   const here = at !== undefined ? D.stopById[at] : undefined;   // from a stop's badge: that stop, marked, in view
   // Its row: on a line where the stop is twice (the Transit Center at both ends), the one on the way given. A stop
@@ -1175,12 +1175,19 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   // The key stops' switch keeps the rest of the address: the stop it was opened from, the whole route, the bus.
   const q = (o => { const p = Object.entries(o).filter(([, v]) => v).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&'); return p ? '?' + p : ''; });
   const switchTo = html`<a class="rs-every" href="${base}${at !== undefined ? '/' + d + '/' + encodeURIComponent(at) : wayPath}${q({ all: full ? 1 : 0, every: every ? 0 : 1, bus })}">${every ? 'Key stops' : 'Every stop'}</a>`;
-  const chipsRow = html`<div class="rs-ways">${!line && dirs.length > 1 ? dirs.map((k, i) => html`<a class="chip${k === d ? ' on' : ''}" href="${base}/${k}${keep}">${apart ? names[i] : r.dirs[+k] || (k === '0' ? 'Outbound' : 'Return')}</a>`) : ''}<span class="rs-count">${count} · ${switchTo}</span></div>`;
-  // The route's other half (16 PM from 16 AM), a tap away, with when it next leaves today: one route to a rider.
-  const also = family(ri).filter(x => x !== ri).map(x => {
+  const chipsRow = html`<div class="rs-ways">${!line && dirs.length > 1 ? dirs.map((k, i) => html`<a class="chip${k === d ? ' on' : ''}" href="${base}/${k}${keep}">${apart ? names[i] : r.dirs[+k] || (k === '0' ? 'Outbound' : 'Return')}</a>`) : ''}<span class="rs-count">${count}${opOf(ri) ? '' : html` · ${switchTo}`}</span></div>`;
+  // The route's other half (16 PM from 16 AM), a tap away, with when it next leaves today: one route to a rider. And
+  // another operator's route on its road, every stop of it this one's (the Preston commuter on 16's), and on that
+  // route's page the route whose road it is: the next bus that way is either.
+  const stopsOf = x => new Set(family(x).flatMap(y => Object.values(D.routes[y].stops || {}).flat()));
+  const onRoad = (x, y) => { const of = stopsOf(y); return Object.values(D.routes[x].stops || {}).flat().every(si => of.has(si)); };
+  // (Of a route split in halves, the half on the road now or next: 16 PM at noon, not 16 AM's 'no more runs today'.)
+  const kin = [...new Set(D.routes.map((_, x) => x).filter(x => !family(ri).includes(x) && !!opOf(x) !== !!opOf(ri) && (opOf(x) ? onRoad(x, ri) : onRoad(ri, x))).map(x => familyNow(x, clockNow)))];
+  const also = [...family(ri).filter(x => x !== ri), ...kin].map(x => {
     const next = Object.keys(D.routes[x].stops || {}).flatMap(k => runsOn(x, clockNow.ymd, k)).filter(t => !isGone(t, clockNow)).sort((p, q) => p.min - q.min)[0];
     const lt = next ? null : lastTripOn(x, clockNow.ymd), out = lt && lt.start[0] <= clockNow.min && lt.end[0] >= clockNow.min;
-    return html`<a class="rs-also" href="#/map/route/${encodeURIComponent(D.routes[x].short)}">${badge(x, 22)}<span class="rs-also-t">Also ${routeName(x, false)}${next ? ` · next run ${clockText(next.min)}` : out ? ' · its last run on the road now' : ' · no more runs today'}</span>${icon('fwd', 16)}</a>`;
+    const from = next && kin.includes(x) ? ' from ' + endName(next.si) : '';   // another's run starts elsewhere: noon is Preston's, not here
+    return html`<a class="rs-also" href="#/map/route/${encodeURIComponent(D.routes[x].short)}">${badge(x, 22)}<span class="rs-also-t">Also ${routeName(x, false)}${next ? ` · next run ${clockText(next.min)}${from}` : out ? ' · its last run on the road now' : ' · no more runs today'}</span>${icon('fwd', 16)}</a>`;
   });
   const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</div></div>${also}${chipsRow}</div>`;
   // Alerts folded to their titles: the line on the map already shows where; the words are a tap away.
@@ -1192,12 +1199,12 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   // Each way's first and last from its end, above the list (the morning's and evening's notes aren't again): one loop's
   // runs, whichever way the feed calls them, as one. An out-and-back's next run back is its far end's row on the line.
   const lastWays = line && line.same ? [{ k: undefined, si: seq[0], way: '' }] : (line ? line.ways : dirs).map(k => ({ k, si: routeOrder(ri, k)[0], way: apart ? ' ' + names[dirs.indexOf(k)] : '' }));
-  const body = html`<div class="routesheet">${alerts}${yours}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || ''}<div class="list rs-list line"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || ''}
+  const body = html`<div class="routesheet">${alerts}${yours}${opNote(ri, clockNow)}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || ''}<div class="list rs-list line"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || ''}
     ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}${wayPath}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}</div>`;
   // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus; for a way
   // of a line (an old address, '/15/1'), on its half. Else at the top: the stops still to come start there.
   const anchor = here !== undefined ? 'here' : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : wayAt >= 0 ? 'rs-way' : null;
-  return { head, body, anchor, title: isLoop(ri) ? r.long : 'Route ' + r.short, ri };
+  return { head, body, anchor, title: routeName(ri, false), ri };
 }
 
 // A route's stops are drawn as a line (the Pumpkin Walk's page, 15 Oct; tried on the Blue Loop and Route 15 first): a
@@ -1218,17 +1225,32 @@ function lineOf(ri) {
   const home = (x, y) => x === y || (stop(x).hub && stop(y).hub) || distance(stop(x).lat, stop(x).lon, stop(y).lat, stop(y).lon) <= AT_STOP;
   const once = s => s.length > 1 && home(s[s.length - 1], s[0]) ? s.slice(0, -1) : s;
   if (once(P).join() === once(Q).join()) { const s = once(P.length >= Q.length ? P : Q); return { same: true, ways: dirs, stops: s.map(si => ({ si, k: null })) }; }
-  // Out first: the way starting where the other ends; where each does (out from the Transit Center and back to it),
-  // the one from the hub.
+  // Out first: the way starting where the other ends; where each does, the way its runs start on, the way whose every
+  // trip carries on from the other's being the way back (data.js carriesOn: Connect's from the Transit Center and back
+  // to it; the Preston commuter's from Preston, round at the Transit Center, and home); failing that, the one from the hub.
   const pq = P[P.length - 1] === Q[0], qp = Q[Q.length - 1] === P[0];
   if (!pq && !qp) return null;
-  const [a, b] = pq && (!qp || stop(P[0]).hub || !stop(Q[0]).hub) ? dirs : [dirs[1], dirs[0]];
+  const back = pq && qp ? dirs.find(k => carriesOn(ri, k) && !carriesOn(ri, dirs.find(j => j !== k))) : undefined;
+  const [a, b] = back !== undefined ? [dirs.find(k => k !== back), back] : pq && (!qp || stop(P[0]).hub || !stop(Q[0]).hub) ? dirs : [dirs[1], dirs[0]];
   const A = routeOrder(ri, a), B = routeOrder(ri, b);
   // Its far end somewhere else: two loops round opposite ways from one bay meet at their ends too, and don't turn there.
-  if (B[0] === A[0] || stop(B[0]).hub) return null;
+  // (A bus that does turn round at the hub, its runs starting at the far end, does: the blocks say so.)
+  if (B[0] === A[0] || (stop(B[0]).hub && back === undefined)) return null;
   const stops = [...A.slice(0, -1).map(si => ({ si, k: a })), { si: B[0], k: b, turn: true }, ...B.slice(1).map(si => ({ si, k: b }))];
   if (B.length > 1) stops[stops.length - 1].end = true;
   return { same: false, ways: [a, b], stops };
+}
+/** Another operator's route (opOf: Pocatello Regional Transit's Preston / Logan Commuter), said plainly: whose bus it
+ *  is, what it costs, that its times are its timetable's (no feed has it), and the timetable itself and their phone. */
+function opNote(ri, clockNow) {
+  const op = opOf(ri);
+  if (!op) return '';
+  // A weekday it runs, but one of its operator's holidays (its own calendar's: not Connect's): said, or its times read
+  // as tomorrow's for no reason.
+  const off = D.exceptions.some(([d, sid, type]) => d === clockNow.ymd && sid === op.service && type === 2);
+  const tt = op.timetable ? html`<a href="${op.timetable}" target="_blank" rel="noopener">Timetable${/\.pdf$/i.test(op.timetable) ? ' (PDF)' : ''}</a>` : '';
+  const tel = op.phone ? html`<a href="tel:${op.phone.replace(/[^\d+]/g, '')}">${op.phone}</a>` : '';
+  return html`<div class="rs-op">${off ? html`<span class="warnmark">No bus today: a ${op.short || op.name} holiday.</span>` : ''}<span><b>Not a ${D.agency.brand} bus.</b>${op.fare ? ' ' + op.fare + '.' : ''}</span><span class="muted">No live times: every time is Scheduled.</span>${tt || tel ? html`<span>${tt}${tt && tel ? ' · ' : ''}${tel}</span>` : ''}</div>`;
 }
 /** The next run back from the far end, large, as the Pumpkin Walk's stops are: two ways that don't make one line
  *  (lineOf), the other way's from its first stop, which this way's list can't show without a tap on its chip.
@@ -1266,6 +1288,8 @@ function routeLast(ri, ways, clockNow) {
     const ts = si === undefined ? [] : timesOn(si, ymd).filter(x => x.r === ri && (k === undefined || String(x.dir) === String(k))).map(x => x.min);
     if (!ts.length) return '';
     const first = Math.min(...ts), last = Math.max(...ts), from = endName(si);
+    // A route that runs once a day (the Preston commuter): no first and last, its one run.
+    if (first === last) return t <= last ? html`<span>Today's only run${way} leaves ${from} at <b>${clockText(first)}</b>${t === last ? ' · now' : ''}</span>` : html`<span class="gone">Today's only run${way} left ${from} at ${clockText(last)}</span>`;
     if (t < first) return html`<span>First${way} leaves ${from} at <b>${clockText(first)}</b> · last ${clockText(last)}</span>`;
     if (t <= last) return html`<span>Last${way} leaves ${from} at <b>${clockText(last)}</b> · ${last === t ? 'now' : 'in ' + hm(last - t)}</span>`;
     return html`<span class="gone">Last${way} left ${from} at ${clockText(last)}</span>`;
@@ -1301,7 +1325,8 @@ function foldRows(xs, ri, seq) {
   // Its far end: the stop farthest from where it starts, so a fold doesn't hide the way round (the Blue Loop's run
   // south to the Riverwoods was one fold between two stops on Main 300 m apart; 3, 6 and 9 go round too, unnamed).
   const s0 = stop(seq[0]), far = seq.reduce((a, si) => distance(s0.lat, s0.lon, stop(si).lat, stop(si).lon) > distance(s0.lat, s0.lon, stop(a).lat, stop(a).lon) ? si : a, seq[0]);
-  const key = (x, i) => i === 0 || i === xs.length - 1 || x.si === seq[0] || x.si === seq[seq.length - 1] || x.si === far || timed(x.si, ri) || stop(x.si).hub
+  // Another operator's route lists only its timetable's stops (a town each, on the Preston commuter): none folded.
+  const key = (x, i) => !!opOf(ri) || i === 0 || i === xs.length - 1 || x.si === seq[0] || x.si === seq[seq.length - 1] || x.si === far || timed(x.si, ri) || stop(x.si).hub
     || change.has(x.si) || x.here || x.closed || x.turn || x.end || maySkip(stop(x.si).id, ri) || x.ring;
   const out = [];
   let held = [];
@@ -1408,7 +1433,7 @@ function follow(ri, along, buses, clockNow) {   // along: a bus's place on the r
  *  off; or that it's done there for the day, and when it's back. `h`: its place on the route's list of `len`; `along`:
  *  a bus's; `way`: which way that bus is going ('to Preston'), at a stop both ways serve. */
 function yourStop(ri, si, k, h, len, along, buses, clockNow, way = '') {
-  const s = stop(si), name = isLoop(ri) ? D.routes[ri].long : 'Route ' + D.routes[ri].short;   // 'No more Blue Loop here'
+  const s = stop(si), name = routeName(ri, false);   // 'No more Blue Loop here'
   const closed = closedRoutes(si, clockNow.ymd).has(ri);
   const t = closed ? null : nextAt(si, 1, clockNow, 8, x => x.r === ri && (k === null || String(x.dir) === k))[0];
   let line, sub = '';
@@ -2437,7 +2462,7 @@ function shuttleEnds(c) {
 /** POOL's end today by its hours (poolRunning's); null on a day it doesn't run. */
 function poolEndOn(c) {
   const span = POOL && POOL.week && POOL.week[(dayFrom(c.ymd).dow + 6) % 7];
-  return span && servicesOn(c.ymd).size > 0 ? span[1] : null;
+  return span && agencyRuns(c.ymd) ? span[1] : null;
 }
 /** A picked route, or a bus's loop, drawn on top at full strength; every other line faded back. With a way on drawn
  *  from a bus or stop (`soft`), everything fades back, the lit route too, so the way stands out from the road. */
@@ -2550,7 +2575,7 @@ export function selectPool(id, app) {
 function notice(clockNow) {
   const n = col.querySelector('#mapnotice');
   if (!n) return;
-  if (servicesOn(clockNow.ymd).size) { n.innerHTML = ''; return; }
+  if (agencyRuns(clockNow.ymd)) { n.innerHTML = ''; return; }
   const resume = nextServiceDay(clockNow);
   // The first buses of that day from the Transit Center, and when most routes are running (routes leaving together):
   // the early routes (12 and 15 at 5:00) start well before the rest, and a rider needing one mustn't read 6:30.
@@ -2758,7 +2783,7 @@ let homeB = null;
 function homeBounds() {
   if (homeB) return homeB;
   let ymd = now().ymd;
-  if (!servicesOn(ymd).size) ymd = nextServiceDay(now()) || ymd;
+  if (!agencyRuns(ymd)) ymd = nextServiceDay(now()) || ymd;
   const pts = [];
   D.stops.forEach((s, i) => { const n = timesOn(i, ymd).length; if (n) pts.push([s.lon, s.lat, n]); });
   if (!pts.length) return null;

@@ -1,7 +1,7 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd } from '../data.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone } from '../time.js';
 import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
@@ -26,6 +26,8 @@ function keys() {
   return out;
 }
 const routesOf = k => D.routes.map((r, i) => i).filter(ri => keyOf(ri) === k && D.hub.bays.some(b => b.routes.includes(ri)));
+/** A key's route as riders say it: 'Route 16' (its AM and PM as one), a loop's name, another operator's by its name. */
+const nameOfKey = (k, ri) => isLoop(ri) || opOf(ri) ? D.routes[ri].long : 'Route ' + k;
 
 /** Where a key's bus is and when it leaves: eta 0 when a bus is in, minutes when one is coming, else null, with
  *  `loose` when the bus out has no trip to time it by (off its scheduled trips: a detour) and `away` when it's on a
@@ -35,7 +37,8 @@ function status(k, clockNow) {
   const deps = ris.flatMap(ri => nextFromHub(ri, 3, clockNow)).sort((a, b) => (a.day - b.day) || (a.min - b.min)).slice(0, 3);
   const dep = deps[0];
   let eta = null, loose = false, away = false, bus = null, doubt = false;
-  if (!rtStale()) {
+  const op = !!opOf(ris[0]);   // another operator's: no feed has its buses, so nothing of where they are
+  if (!rtStale() && !op) {
     const nowSec = Date.now() / 1000;
     // Buses swap between routes all day (2 and 5, 3 and 8): the bus that runs this route's next departure is the
     // one the feed has on that trip, which may well be out on the other route right now. Only when the feed names
@@ -69,7 +72,7 @@ function status(k, clockNow) {
   const off = !today || (!out && dep.min - clockNow.min > 90);
   const leave = dep ? dep.min : null;   // the feed's word, with its bus's arrival, from predict(): every screen agrees
   const late = today && !loop ? Math.max(0, leave - schedOf(dep)) : 0;
-  return { k, ris, loop, deps, dep, eta, at: eta === 0 ? bus : null, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, doubt: eta === null && loose && doubt, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
+  return { k, ris, loop, op, deps, dep, eta, at: eta === 0 ? bus : null, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, doubt: eta === null && loose && doubt, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
 }
 /** Where a route's card on the board goes: the route picked on the board, or put back. (It went to the bus on the map
  *  while one was on its way in, and to the board otherwise: the same button did two things by the minute, and the
@@ -147,7 +150,7 @@ function nextHour(st, pick, clockNow) {
       const sure = grp.every(r => r.t.live || r.t.onTime);
       return html`<div class="tcb-row tcb-group${grp.some(r => r.s.k === pick) ? ' on' : ''}">
         <span class="tcb-t"><span class="t${grp.some(r => r.t.live) ? ' est' : ''}">${clock(t.min).h}</span></span>
-        <span class="tcb-mid"><span class="tcb-badges">${grp.map(r => html`<a href="#/hub${pick === r.s.k ? '' : '/' + encodeURIComponent(r.s.k)}" aria-label="${isLoop(r.s.ris[0]) ? D.routes[r.t.r].long : 'Route ' + r.s.k}">${badge(r.t.r, 26)}</a>`)}</span><span class="sub">${grp.length} routes leave together${sure ? ' · on time' : ''}</span></span></div>`;
+        <span class="tcb-mid"><span class="tcb-badges">${grp.map(r => html`<a href="#/hub${pick === r.s.k ? '' : '/' + encodeURIComponent(r.s.k)}" aria-label="${nameOfKey(r.s.k, r.t.r)}">${badge(r.t.r, 26)}</a>`)}</span><span class="sub">${grp.length} routes leave together${sure ? ' · on time' : ''}</span></span></div>`;
     }
     if (t.cancelled) return cancelledRow(t);
     const tag = !first || !tags || s.off ? '' : s.eta === 0 ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : '';
@@ -218,7 +221,7 @@ function together(st, clockNow) {
   // Each a link that picks its route (where its bus is, in words, and its bay): a route's own answer a tap away.
   const segs = leaving.map(k => {
     const s = st[k], r = D.routes[s.ris[0]], full = livenow && s.eta === 0, lt = leavesAt(k);
-    return `<a class="tc-seg${full ? ' in' : ''}${lt !== null ? ' late' : ''}" href="#/hub/${encodeURIComponent(k)}" style="--rc:#${esc(r.color)}" aria-label="${esc(isLoop(s.ris[0]) ? r.long : 'Route ' + k)}${lt !== null ? ', leaves about ' + clockText(lt) : ''}"><i></i><b>${esc(k)}</b>${lt !== null ? `<em>${clock(lt).h}</em>` : ''}</a>`;   // the feed's names, escaped as everywhere
+    return `<a class="tc-seg${full ? ' in' : ''}${lt !== null ? ' late' : ''}" href="#/hub/${encodeURIComponent(k)}" style="--rc:#${esc(r.color)}" aria-label="${esc(nameOfKey(k, s.ris[0]))}${lt !== null ? ', leaves about ' + clockText(lt) : ''}"><i></i><b>${esc(k)}</b>${lt !== null ? `<em>${clock(lt).h}</em>` : ''}</a>`;   // the feed's names, escaped as everywhere
   }).join('');
   let note = '';
   if (livenow && leaving.length) {
@@ -312,7 +315,7 @@ export function bays(bay, clockNow) {
     const in_ = tags && !s.off && s.eta === 0, bus = in_ ? rt.buses.find(x => x.id === s.at) : null;
     const here = !!bus && distance(bus.lat, bus.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(bus.speed > PARKED);
     const tag = !tags || s.off ? '' : in_ ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : s.dep && s.dep.day === 0 && s.leave !== null ? clock(s.leave).h : '';   // no bus on its way: when the next leaves
-    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, bus: here ? bus.id : null, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: isLoop(s.ris[0]) ? r.long : 'Route ' + k };
+    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, bus: here ? bus.id : null, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: nameOfKey(k, s.ris[0]) };
   }).filter(Boolean);
 }
 
@@ -323,12 +326,13 @@ function picked(s, clockNow) {
   const desc = (r.desc || '').replace(/^.*?\s+-\s+/, '').replace(/,\s*/g, ' · ');
   const dep = s.dep;
   const words = !dep ? 'Nothing scheduled in the next week.'
-    : s.off ? (dep.day === 0 ? `No bus out yet. The next leaves at ${clockText(dep.min)}.` : `No more buses today. The next leaves ${dayName(dep.ymd)} at ${clockText(dep.min)}.`)
+    : s.off ? (dep.day === 0 ? `${s.op ? '' : 'No bus out yet. '}The next leaves at ${clockText(dep.min)}.` : `No more buses today. The next leaves ${dayName(dep.ymd)} at ${clockText(dep.min)}.`)   // another operator's: where its bus is, nobody here knows
     : s.eta === 0 ? (s.loop ? 'The bus is here.' : 'The bus is at its bay.')
     : s.eta > 0 ? `The bus is ${s.eta} min from the Transit Center${s.loop ? '.' : s.late ? `, ${s.late} min late.` : ', on time.'}`
     : s.doubt ? 'The bus is out, but Connect’s estimate for it doesn’t match where it is, so there’s none here.'
     : s.loose ? 'The bus is out but off its scheduled trips, so there’s no estimate for it.'
     : s.away ? 'The bus is out on a run that doesn’t come back through here soon.'
+    : s.op ? `${opOf(s.ris[0]).name}’s bus: no live times for it, so these are its timetable’s.`
     : 'This route isn’t reporting its position.';
   // Late, said first and large, under its name: 'is my bus on time, and if not when' is what a rider picks it for.
   // It was the end of a muted sentence ('…from the Transit Center, 11 min late.'), and 'late' under the first time.
@@ -362,7 +366,7 @@ function dayTimes(s, clockNow) {
   list.sort((a, b) => a.min - b.min);
   const hours = new Map();
   for (const t of list) { const h = Math.floor(t.min / 60); if (!hours.has(h)) hours.set(h, []); hours.get(h).push(t); }
-  const nowH = Math.floor(clockNow.min / 60), name = s.loop ? D.routes[s.ris[0]].long : 'Route ' + s.k;
+  const nowH = Math.floor(clockNow.min / 60), name = nameOfKey(s.k, s.ris[0]);
   // A departure gone is muted; while its run is still on the road it still opens (the bus a rider just missed, or is
   // watching for, is the one out on the map), then it's a time and nothing more.
   const out = t => { const e = tripEnd(t.trip); return !!e && e.min > clockNow.min; };
@@ -376,9 +380,9 @@ function dayTimes(s, clockNow) {
 function footnote(st) {
   if (rtDown()) return html`<p class="tc-foot">Live bus positions aren't coming in right now, so every time here is the scheduled one.</p>`;
   if (rtStale()) return '';   // its first word not in yet
-  const name = s => s.loop ? D.routes[s.ris[0]].long : 'Route ' + s.k;
+  const name = s => nameOfKey(s.k, s.ris[0]);
   const list = (xs, one, many) => xs.length ? ' ' + (xs.length === 1 ? xs[0] + one : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1] + many) : '';
-  const live = Object.values(st).filter(s => !s.off && s.eta === null);
+  const live = Object.values(st).filter(s => !s.off && s.eta === null && !s.op);   // another operator's never reports here
   const doubt = list(live.filter(s => s.doubt).map(name), ' is out, but Connect’s estimate for it doesn’t match where it is, so it has none here.', ' are out, but Connect’s estimates for them don’t match where they are, so they have none here.');
   const loose = list(live.filter(s => s.loose && !s.doubt).map(name), ' is out but off its scheduled trips, so it has no estimate.', ' are out but off their scheduled trips, so they have no estimates.');
   const quiet = list(live.filter(s => !s.out).map(name), ' isn’t reporting.', ' aren’t reporting.');

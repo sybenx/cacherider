@@ -36,6 +36,10 @@ export function load() {
 /** A timepoint of a route's: a stop its timetable is kept to, where an early bus waits for its time (the feed's
  *  own mark, stop_times' timepoint, the same stops on every trip of a route). */
 export const timed = (si, ri) => !!(D.routes[ri] && D.routes[ri].tpSet && D.routes[ri].tpSet.has(si));
+/** Whose a route is when it isn't the agency's: a route no feed has, kept by hand from its operator's timetable
+ *  (tools/prt.json, Pocatello Regional Transit's Preston / Logan Commuter), as { name, short, url, phone, fare,
+ *  timetable, checked }. No live feed has its buses: its times are always its timetable's. Null for the agency's own. */
+export const opOf = ri => (D.routes[ri] && D.routes[ri].op) || null;
 
 /** Route colours a rider can tell apart. Every route meets at the Transit Center, and an agency's colours can sit
  *  side by side all but the same (Connect's Route 8 and Green Loop, 9 and 11): any two nearer than NEED (ΔE, CIELAB)
@@ -504,6 +508,14 @@ export function serviceSpan(ymd) {
   }
   return spans.get(ymd);
 }
+/** Whether the agency's own buses run on a day: its calendars, not another operator's kept by hand (opOf: the Preston
+ *  commuter's), which keeps its own days off. The 'no buses today', 'resumes' and quiet-day words are the agency's. */
+let opServices = null;
+export function agencyRuns(ymd) {
+  opServices ??= new Set(D.routes.filter(r => r.op).map(r => r.op.service));
+  for (const sid of servicesOn(ymd)) if (!opServices.has(sid)) return true;
+  return false;
+}
 export function servicesOn(ymd) {
   const d = dayFrom(ymd);
   const dow = (d.dow + 6) % 7;   // GTFS counts from Monday
@@ -686,6 +698,21 @@ export function runOf(ti, ymd) {
   for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 12 && linked(run[run.length - 1], n); n = nextTrip(n, ymd)) run.push(n);
   return run;
 }
+/** Whether every trip of a route's way carries on from one of its other way's, by the timetable's blocks: the way back
+ *  of an out-and-back, the same bus come round (15's from Richmond; the Preston commuter's from the Transit Center, its
+ *  bus Preston's). False where a run starts on the way. */
+let prevAll = null;   // trip → the trips run just before it, every calendar's blocks
+export function carriesOn(ri, dir) {
+  metaOf(-1);
+  if (!prevAll) { prevAll = new Map(); for (const nx of Object.values(D.next || {})) for (const [a, b] of Object.entries(nx)) (prevAll.get(b) || prevAll.set(b, []).get(b)).push(+a); }
+  let any = false;
+  for (const [ti, x] of tripMeta) {
+    if (x.r !== ri || String(x.d) !== String(dir)) continue;
+    any = true;
+    if (!(prevAll.get(ti) || []).some(p => { const m = tripMeta.get(p); return !!m && m.r === ri && String(m.d) !== String(dir); })) return false;
+  }
+  return any;
+}
 /** Where a trip ends and when, { si, min }: its last stop, which the departures leave out (nobody boards there).
  *  Null for a timetable built before it was kept. */
 export function tripEnd(ti) {
@@ -827,7 +854,7 @@ export function nextAt(si, n = 7, clockNow = now(), days = 8, filter = null) {
 export function today(si, clockNow = now()) {
   const all = timesOn(si, clockNow.ymd);
   const left = all.filter(t => t.min >= clockNow.min);
-  return { all, left, last: all.length ? all[all.length - 1] : null, systemRuns: servicesOn(clockNow.ymd).size > 0 };
+  return { all, left, last: all.length ? all[all.length - 1] : null, systemRuns: agencyRuns(clockNow.ymd) };
 }
 
 /** The first day on or after today when any service starts: the "new timetable" banner. */
@@ -847,7 +874,8 @@ export function timesChange(si, start) {
   // feed starting Thursday the 15th, the new times on Wednesday the 21st), and that Wednesday was the stand-in rows
   // filled from the calendars ahead, never the same, so every stop said 'New timetable'.
   const first = D.services.reduce((m, s) => !m || s.start < m ? s.start : m, null);
-  const key = ymd => timesOn(si, ymd).filter(t => !t.prov).map(t => t.min + ':' + t.r).join(',');
+  // The agency's routes only: another operator's (opOf) keeps its own calendar, its holidays no new timetable.
+  const key = ymd => timesOn(si, ymd).filter(t => !t.prov && !opOf(t.r)).map(t => t.min + ':' + t.r).join(',');
   for (let k = 0; k < 7; k++) {
     const was = dayFrom(start, k - 7).ymd;
     if (first && was < first) continue;
@@ -859,7 +887,7 @@ export function timesChange(si, start) {
 /** 'no buses Sunday': the days with no service between two days, so a next bus on Monday isn't read as tomorrow's. */
 export function quietWords(fromYmd, toYmd) {
   const q = [];
-  for (let k = 1; k < 14; k++) { const d = dayFrom(fromYmd, k).ymd; if (d >= toYmd) break; if (!servicesOn(d).size) q.push(dayName(d)); }
+  for (let k = 1; k < 14; k++) { const d = dayFrom(fromYmd, k).ymd; if (d >= toYmd) break; if (!agencyRuns(d)) q.push(dayName(d)); }
   return q.length ? 'no buses ' + q.join(' or ') : '';
 }
 /** A day's shape at a stop, '12:00–6:30 PM, hourly': for Saturdays, which run shorter and thinner than weekdays.
@@ -883,7 +911,7 @@ export function dayShape(si, ymd) {
 export function nextServiceDay(clockNow = now()) {
   for (let day = 1; day < 14; day++) {
     const ymd = dayFrom(clockNow.ymd, day).ymd;
-    if (servicesOn(ymd).size) return ymd;
+    if (agencyRuns(ymd)) return ymd;
   }
   return null;
 }
@@ -983,7 +1011,7 @@ export function searchRoutes(q) {
   const w = norm(q).replace(/^(route|rt)\s*|^#/, '').replace(/^the\s+/, '').trim();
   if (!w) return [];
   return D.routes.map((r, i) => i).filter(i => {
-    const short = D.routes[i].short.toLowerCase(), long = D.routes[i].long.toLowerCase();
+    const short = D.routes[i].short.toLowerCase(), long = (D.routes[i].long + (opOf(i) ? ' ' + opOf(i).name : '')).toLowerCase();   // another operator's by its name too ('pocatello')
     if (short === w || short.startsWith(w + ' ')) return true;
     if (/^\d+$/.test(w) && parseInt(short) === +w) return true;
     return /[a-z]/.test(w) && w.length >= 3 && w.split(' ').every(x => long.split(' ').some(y => y.startsWith(x)));

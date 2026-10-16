@@ -2,7 +2,7 @@
 // map beside the page where there is one, else on a small map of the sheet's own.
 import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest, timed } from '../data.js';
 import { clock, clockText, clockShort, fmtDay, isGone } from '../time.js';
-import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark } from '../ui.js';
+import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark, routeName } from '../ui.js';
 import { isWide } from '../wide.js';
 
 // The run last laid out, for its map.
@@ -107,7 +107,7 @@ export function restOfDay(si, next, clockNow, pick) {
   for (const t of [...rows].sort((a, b) => a.min - b.min)) { const h = Math.floor(t.min / 60); if (!hours.has(h)) hours.set(h, []); hours.get(h).push(t); }   // by when each leaves, a late bus in its place
   const last = rows.reduce((x, t) => t.min > x.min ? t : x, rows[0]);
   const cols = [...hours].map(([h, list]) => `<div class="hr${today && h === from ? ' now' : ''}"><span class="hr-h">${esc(clockShort(h * 60))}</span>${list.map(t => depBtn(t, d, clockNow, pick.trip === t.trip)).join('')}</div>`).join('');
-  const lastLine = `Last bus ${clockText(last.min)} · ${isLoop(last.r) ? D.routes[last.r].long : 'Route ' + D.routes[last.r].short}`;
+  const lastLine = `Last bus ${clockText(last.min)} · ${routeName(last.r, false)}`;
   return html`<section class="ws-sec ws-day phone-day"><div class="ws-eye"><span>${head}</span><span>${lastLine}</span></div><div class="hours">${raw(cols)}</div><p class="day-hint">Tap a time for its stops from here on.${today ? raw(` <a href="#/stop/${encodeURIComponent(D.stops[si].id)}/all">The whole day</a>, gone ones too.`) : ''}</p></section>`;
 }
 

@@ -121,6 +121,8 @@
       "direction": 0
     }
   ],
+  "hand_routes": ["prt.json"],
+  "_hand_routes": "Routes no feed has, each kept by hand in a file here (tools/reduce.py merges them): Pocatello Regional Transit's Preston / Logan Commuter. A sister site lists none.",
   "loops": [
     "G",
     "B"

@@ -1,0 +1,59 @@
+{
+  "_": "Pocatello Regional Transit's Preston / Logan Commuter: a midday bus on weekdays, Preston to Logan's Transit Center and back, free (by donation), open to anyone, no booking: a midday 16 (Connect's Route 16 sheet: 'Afternoon service provided by PRT'). No feed has it: Connect's GTFS is Connect's buses alone, and PRT publishes none for it. So it's typed in here from PRT's timetable and merged into the timetable by tools/reduce.py (hints.json's hand_routes) as a route of its own, its own calendar, its stops Connect's own (by stop id, the code a check). Same times since 2018 at least. tools/handcheck.py checks the timetable and the holiday page each night, and a change is said in the run's log and the data commit; this file is put right by hand. The app is whole without it.",
+  "operator": {
+    "name": "Pocatello Regional Transit",
+    "short": "PRT",
+    "url": "https://pocatellotransit.com/",
+    "phone": "208-234-2287",
+    "fare": "Free, by donation; anyone can ride"
+  },
+  "source": "https://pocatellotransit.com/pdf/commuter/Preston-Logan-Commuter.pdf",
+  "source_modified": "Mon, 27 Jan 2025 23:50:41 GMT",
+  "holidays_source": "https://pocatellotransit.com/holiday-schedule/",
+  "holidays_api": "https://pocatellotransit.com/wp-json/wp/v2/pages/1929?_fields=modified_gmt",
+  "holidays_modified": "2025-12-22T21:03:29",
+  "checked": "2026-10-16",
+  "route": {
+    "id": "PRT",
+    "short": "PRT",
+    "long": "Preston / Logan Commuter",
+    "desc": "Pocatello Regional Transit, free",
+    "color": "8A872E",
+    "text": "000000",
+    "dirs": ["Northbound", "Southbound"]
+  },
+  "days": [1, 1, 1, 1, 1, 0, 0],
+  "_holidays": "No service: PRT's holidays as its holiday page lists them (Veterans Day 'no rural services'). Christmas Eve and New Year's Eve end by 5 PM, after this bus. 2027's not posted yet: add them when the page has them (tools/handcheck.py says when it changes).",
+  "holidays": ["20260101", "20260119", "20260216", "20260525", "20260619", "20260703", "20260907", "20261111", "20261126", "20261127", "20261225"],
+  "_trips": "Each trip's stops in order, the timetable's time at each (24-hour), its place as the PDF names it. Not marked timepoints (\"timepoint\": true on a stop would): whether its bus waits for its minute, PRT doesn't say. Franklin southbound is 1620 (185 South State, the west side of the road, where Route 16 stops southbound), though the PDF gives 170 S State St both ways.",
+  "trips": [
+    {
+      "id": "PRT_1200",
+      "dir": 1,
+      "stops": [
+        { "stop": "7543162", "code": "1619", "time": "12:00", "pdf": "Preston (31 S 100 E)" },
+        { "stop": "7543009", "code": "1620", "time": "12:10", "pdf": "Franklin (170 S State St)" },
+        { "stop": "7606978", "code": "1616", "time": "12:17", "pdf": "Lewiston (50 W Center)" },
+        { "stop": "7546693", "code": "1536", "time": "12:25", "pdf": "Richmond (125 S 200 W)" },
+        { "stop": "7599820", "code": "1546", "time": "12:34", "pdf": "Smithfield (781 S Main)" },
+        { "stop": "7607775", "code": "1631", "time": "12:38", "pdf": "Logan (2281 N Main)" },
+        { "stop": "7537373", "code": "1100", "time": "12:50", "pdf": "Logan (Connect Transit - 150 E 500 N)" }
+      ]
+    },
+    {
+      "id": "PRT_1315",
+      "dir": 0,
+      "stops": [
+        { "stop": "7537373", "code": "1100", "time": "13:15", "pdf": "Logan (Connect Transit - 150 E 500 N)" },
+        { "stop": "7579430", "code": "506", "time": "13:22", "pdf": "Logan (2250 N Main)" },
+        { "stop": "7569937", "code": "1520", "time": "13:27", "pdf": "Smithfield (850 S Main)" },
+        { "stop": "7606976", "code": "1614", "time": "13:35", "pdf": "Richmond (123 S Hwy 91)" },
+        { "stop": "7606978", "code": "1616", "time": "13:45", "pdf": "Lewiston (50 W Center)" },
+        { "stop": "7606994", "code": "1618", "time": "13:52", "pdf": "Franklin (170 S State St)" },
+        { "stop": "7543162", "code": "1619", "time": "14:05", "pdf": "Preston (31 S 100 E)" }
+      ]
+    }
+  ],
+  "_block": "One bus: in from Preston, it waits at the Transit Center and goes back on the 1:15 (the PDF: it 'operates only on weekdays, from 12:00 pm to 2:05 pm'). The line on its page starts at Preston by this, and the planner keeps a rider aboard through the wait.",
+  "block": ["PRT_1200", "PRT_1315"]
+}

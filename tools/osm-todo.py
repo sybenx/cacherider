@@ -87,7 +87,7 @@ write(os.path.join(a.out, 'places-todo.osm'), todo)
 # ---- bus stops
 stops = []
 for s in D['stops']:
-    t = {'highway': 'bus_stop', 'public_transport': 'platform', 'bus': 'yes', 'name': s['name'], 'ref': s['code'] or s['id'], 'network': D['agency']['brand'], 'operator': D['agency']['name'].split(' ', 1)[1] if ' ' in D['agency']['name'] else D['agency']['name'], 'route_ref': ';'.join(D['routes'][r]['short'] for r in s['routes'])}
+    t = {'highway': 'bus_stop', 'public_transport': 'platform', 'bus': 'yes', 'name': s['name'], 'ref': s['code'] or s['id'], 'network': D['agency']['brand'], 'operator': D['agency']['name'].split(' ', 1)[1] if ' ' in D['agency']['name'] else D['agency']['name'], 'route_ref': ';'.join(D['routes'][r]['short'] for r in s['routes'] if not D['routes'][r].get('op'))}   # the agency's own: not another operator's kept by hand
     if s.get('by'): t['description'] = s['by']
     stops.append(node(nid, s['lat'], s['lon'], t)); nid -= 1
 write(os.path.join(a.out, 'bus-stops.osm'), stops)

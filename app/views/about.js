@@ -35,19 +35,21 @@ export function render({ section }, clockNow) {
     <div class="pad" id="offline"><p class="muted" style="font-size:0.875rem" id="offline-note">Keeps the whole Cache Valley street map on this device, so it draws with no signal. Streets you've already looked at are kept anyway.</p>
       <button class="btn btn-secondary btn-lg blueprint" id="save-map">${corners()}${icon('down', 20)}Save the map for offline</button></div>
 `;
+  const others = D.routes.filter(r => r.op);   // another operator's routes, kept by hand (data.js opOf)
   const right = html`<div class="section" id="alerts">${icon('ban', 16)}Service alerts</div>
     ${alertsBlock(clockNow)}
     ${unannouncedBlock()}
     <div class="section">${icon('info', 16)}About the data</div>
     <div class="pad muted" style="font-size:0.875rem;line-height:1.5">
       <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Once a bus is on the road, ${D.agency.brand}'s own tracker reports where it is and when it expects to reach each stop, and those rows say <b>Live</b> instead of Scheduled. A live time is still a prediction. A bus on a detour shows on the map but can't give stop times, so its route's rows stay Scheduled.</p>
+      ${others.map(r => html`<p>The ${r.long} is ${r.op.name}'s bus, not ${D.agency.brand}'s. No feed has it, so its times are typed in from <a href="${r.op.timetable}" target="_blank" rel="noopener">${r.op.short || r.op.name}'s timetable</a>, with its holidays, and are always Scheduled.</p>`)}
       <p>Nothing about you leaves this device. Your location, when you share it, is used only to sort stops by distance, and the last place found is kept on this phone so the app opens where you were. There are no accounts, no analytics and no cookies. The live feed reaches the app through a small relay on Cloudflare, because the tracker refuses requests from browsers; the relay carries the feed one way and keeps nothing.</p>
       <p>${D.feed.version || ''}</p>
-      <p><a href="${D.agency.url}" target="_blank" rel="noopener">${site(D.agency.url)}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fare free</a>` : ''}${U && U.url ? html`<br><a href="${U.url}" target="_blank" rel="noopener">${site(U.url)}</a>${U.phone ? ' · ' + U.phone : ''} · fare free` : ''}</p>
+      <p><a href="${D.agency.url}" target="_blank" rel="noopener">${site(D.agency.url)}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fare free</a>` : ''}${U && U.url ? html`<br><a href="${U.url}" target="_blank" rel="noopener">${site(U.url)}</a>${U.phone ? ' · ' + U.phone : ''} · fare free` : ''}${others.map(r => html`<br><a href="${r.op.url}" target="_blank" rel="noopener">${site(r.op.url)}</a>${r.op.phone ? ' · ' + r.op.phone : ''}`)}</p>
       <p><a href="https://github.com/sybenx/cacherider" target="_blank" rel="noopener">Source on GitHub</a> · Companion to the <a href="https://github.com/sybenx/headway" target="_blank" rel="noopener">Headway</a> Pebble watchface. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, via Protomaps.</p></div>
     ${shareBlock({ url: siteLink(''), title: 'Share Cache Rider', lines: ['Next buses for Cache Valley, on any phone. Nothing to install.'] })}
     <div class="fine">Build <span id="build">…</span></div>
-    <div class="fine">Cache Rider isn't affiliated with ${D.agency.name} (${D.agency.brand})${U && U.agency ? ' or ' + U.agency : ''}.</div>`;
+    <div class="fine">Cache Rider isn't affiliated with ${D.agency.name} (${D.agency.brand})${[...(U && U.agency ? [U.agency] : []), ...others.map(r => r.op.name)].map((x, i, xs) => (i === xs.length - 1 ? ' or ' : ', ') + x).join('')}.</div>`;
   return {
     title: 'About',
     anchor: section === 'alerts' ? 'alerts' : null,   // #/about/alerts lands on the alerts

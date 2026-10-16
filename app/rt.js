@@ -88,8 +88,12 @@ async function tick(force) {
     if (j.now && j.now - j.t > FROZEN) throw new Error('the feed has stopped');
     index();
     const trips = {};
+    // Another operator's routes (data.js opOf) have no buses in this feed: anything it says on their trips is taken as
+    // nothing, so their times stay the timetable's everywhere.
+    const theirs = ri => ri !== undefined && ri >= 0 && !!(D.routes[ri] && D.routes[ri].op);
     for (const [id, u] of Object.entries(j.trips || {})) {
       const ti = tripIdx.get(id);
+      if (ti !== undefined && tripInfo[ti] && theirs(tripInfo[ti].r)) continue;
       const at = new Map();
       let first = null, last = null;
       // The trip's final stop has no boarding row in the timetable (see tools/reduce.py), and on a loop it's
@@ -121,6 +125,7 @@ async function tick(force) {
         if (m) ri = D.routeByShort[m[1]] ?? D.routes.findIndex(r => r.short.startsWith(m[1] + ' '));
         if (ri === -1) ri = undefined;
       }
+      if (theirs(ri)) continue;
       const quiet = b.ts && j.t - b.ts > QUIET ? b.ts : 0;
       if (quiet && j.t - b.ts > GONE) continue;
       if (quiet && ri !== undefined && ri >= 0) { parked.push({ id: 'c:' + b.id, label: b.label || b.id, trip: b.trip || '', ri, lat: b.lat, lon: b.lon, course: b.bearing ?? 0, speed: b.speed, ts: b.ts, h: info ? info.h : null, dir: info ? info.dir : null, quiet }); continue; }
@@ -279,6 +284,7 @@ function loopAtHub(t, u, sid, hit) {
  *  prediction rather than one for this stop. */
 export function predict(t) {
   if (t.trip === undefined || t.day || rtStale() || !D.trips) return null;
+  if (D.routes[t.r] && D.routes[t.r].op) return null;   // another operator's (data.js opOf): no feed has its buses, its times the timetable's
   if (isLoop(t.r)) return feedPredict(t);   // the loops keep their own rules: never held for the next, never waited for
   const h = holdOf(t.trip);
   if (h && h.held) return { gone: true, held: h.next };   // the whole run: its bus goes out on the next instead

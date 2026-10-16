@@ -158,8 +158,9 @@ function wordedWhen(ri, clockNow) {
 /** Every route as a chip: Connect's badges, then the shuttle's in their own colours. Each lights its route on the map. */
 function chips(clockNow) {
   // A route named in words, not a number (the Pumpkin Walk, a season's), the width of the grid: its badge is wider than
-  // a tile (it spilled out of one), and a route like that is worth seeing.
-  const connect = D.routes.map((r, i) => { const worded = !/\d/.test(r.short) && r.short.length > 2;
+  // a tile (it spilled out of one), and a route like that is worth seeing. Not another operator's: its badge is its
+  // initials ('PRT'), a tile's as any.
+  const connect = D.routes.map((r, i) => { const worded = !/\d/.test(r.short) && r.short.length > 2 && !r.op;
     // The Pumpkin Walk's tile opens its own page (its tab), not its route's.
     const href = i === pumpkinRoute() ? '#/pumpkin' : '#/map/route/' + encodeURIComponent(r.short);
     return html`<a href="${href}"${worded ? html.raw(' class="wide"') : ''} aria-label="${routeName(i, false)}">${badge(i, 36)}${worded ? html`<span class="rt-when">${wordedWhen(i, clockNow)}</span>` : ''}</a>`; });
