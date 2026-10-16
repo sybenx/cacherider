@@ -1317,7 +1317,11 @@ function wireGrip(app) {
     // No way by bus: out of the directions, as a way's are. Hidden only, the next redraw (the minute, the feed) put it back.
     if (card.querySelector(':scope > .gonone')) { card.classList.remove('open', 'peek'); delete card.dataset.min; if (history.state && history.state.prev) history.back(); else closeTo('#/map'); return; }
     if (card.querySelector(':scope > .pagesheet') && /^#\/(stop|usu)\//.test(location.hash)) { card.classList.remove('open', 'peek'); closeTo('#/map'); return; }   // a stop's sheet put away: Back to the map it came from
-    selectedBus = null; selectedU = null; select(null, app); cardAway(); };
+    selectedBus = null; selectedU = null; select(null, app);
+    // A long press's 'Change directions' put away: the directions' own card again, the one it was put over. (It came
+    // back only with the next redraw that wasn't the feed's, if any.)
+    if (swapUp && swapUp === location.hash.split('?')[0]) { swapUp = null; window.dispatchEvent(new HashChangeEvent('hashchange')); return; }
+    cardAway(); };
   // The card's own Open button (the card itself is .open too): a place's page. A spot's card has none: its first
   // button is directions, and a swipe up is no ask for those.
   // Only a page of the app's own: POOL's first button is its booking app, and a swipe up went off to the app store.
@@ -3043,7 +3047,7 @@ function searchMarks(m) {
 }
 
 /** Called by the router whenever the map is on screen. */
-let shownHash = null, lastMeasured = '';
+let shownHash = null, shownWide = null, lastMeasured = '';   // (and the layout it was shown in: phone or beside a panel)
 let popped = false;   // the last address came by Back or Forward
 window.addEventListener('popstate', () => { popped = true; });
 /** The map put away on a phone (another tab drawn over it): the next address is acted on afresh, even the same one.
@@ -3111,10 +3115,16 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // A spot's address that isn't a place (a link cut short, #/map/at/41.7; or #/map/at/abc, #/map/at/95,10) is the map
   // alone: its card threw as the pin was placed, and the map stood there with nothing said.
   if (at && !(Number.isFinite(at.lat) && Number.isFinite(at.lon) && Math.abs(at.lat) <= 90 && Math.abs(at.lon) <= 180)) at = null;
-  if (!tick) swapUp = null;   // any page arrived at: the directions' own card again
+  // Arrived at: an address not the one last shown (or the map put away since, away()), or the same one in the other
+  // layout (a tablet turned: a phone's card, the Center's board or a stop's sheet, isn't the page beside the panel).
+  // Not the same page drawn again for something that came in (the relay's alerts, the walks, a detour traced, a
+  // location fix): those redrew as arrivals, and a card the rider had just opened went with them, a long press's
+  // 'Change directions' a second after it came up, as the alerts came in, 'Start from here' gone from under the finger.
+  const arrived = location.hash !== shownHash || wide() !== shownWide;
+  if (!tick && arrived) swapUp = null;   // any page arrived at: the directions' own card again
   // A spot's disc and pin go with its card: gone to another page (the Center, a stop, Stops) the card was replaced and
   // the dashed disc stayed on the map. Kept for a spot's own address and for picking one; not by the minute's redraw.
-  if (!tick && spotUp && !at && !goPick && !from && !to) clearSpot();
+  if (!tick && arrived && spotUp && !at && !goPick && !from && !to) clearSpot();
   // A map still hidden (the Map tab not on screen yet, the page behind it just gone) has no size to fit anything to:
   // a route fitted to nothing is the whole valley and further. Waited for, a few frames at most; if the address
   // moves on meanwhile, the newer call does the work.
@@ -3137,7 +3147,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   panelPad(app);
   // Beside the panel the stop is in the panel: no card over the map as well. On the page's arrival, not on its
   // every redraw: a spot's card (a right click on the map beside the home page) went with the feed's next tick.
-  if (wide() && app.route.name !== 'map' && !tick) col.querySelector('#mapcard').classList.remove('open');
+  if (wide() && app.route.name !== 'map' && !tick && arrived) col.querySelector('#mapcard').classList.remove('open');
   if (app.route.name !== 'map') col.querySelector('#mapresults').classList.add('hidden');   // the search's list is the Map tab's, not the page's beside it
   notice(clockNow);
   pickFor = from || goPick && goPick.for || null; pickTo = to || goPick && goPick.to || null; pickNow = !!goPick;
@@ -3153,7 +3163,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // A stop's page not yet in the sheet is fresh too: a shuttle stop's address arrives before the shuttle's data, and
   // its page with it.
   const fresh = location.hash !== shownHash || !!page && pageShown !== page.key, cameFrom = shownHash || '';
-  shownHash = location.hash;
+  shownHash = location.hash; shownWide = wide();
   const byBack = popped; popped = false;   // arrived at by Back (or Forward), not a new address
   if (!fresh) return;
   // The map grown or shrunk since (the route page's small map opened out into the Map tab, say): what it was fitted to

@@ -31,6 +31,18 @@ async function mapReady(page) {
   await page.waitForFunction(() => document.querySelectorAll('.maplibregl-marker').length > 0 || document.querySelector('#mapcard.open'), null, { timeout: 20_000, polling: 500 }).catch(() => {});
   await page.waitForTimeout(800);
 }
+/** Where an element on the map is once the map has stopped moving under it (a flight to it ended): its box, read
+ *  again until two reads a quarter second apart agree. */
+async function still(loc) {
+  let a = await loc.boundingBox();
+  for (let i = 0; i < 20; i++) {
+    await loc.page().waitForTimeout(250);
+    const b = await loc.boundingBox();
+    if (a && b && Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1) return b;
+    a = b;
+  }
+  return a;
+}
 /** A Connect bus on the map, once the live feed has placed one (up to 15 s); null when none is out. */
 async function someBus(page) {
   const bus = page.locator('.maplibregl-marker.bus:not(.shuttle)').first();
@@ -642,19 +654,26 @@ test('map: town view, a bus and its route', async ({ page }) => {
 });
 
 test('map: a spot and its card, a road and its routes, a right click', async ({ page }) => {
-  // On Main Street downtown: several routes, and stops either side.
-  await open(page, '#/map/at/41.73790,-111.83457/Main%20St');
+  // On Main Street downtown, just south of Center Street: several routes, the nearest stops a block off either way.
+  await open(page, '#/map/at/41.73450,-111.83457/Main%20St');
   await mapReady(page);
   await expect(page.getByRole('link', { name: 'Directions to here' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'From here' })).toBeVisible();
   // The way to put the map right: OpenStreetMap's editor at the spot, and 'Improve this map' in the credits.
-  await expect(page.getByRole('link', { name: 'Fix it on OpenStreetMap' }).filter({ visible: true }).first()).toHaveAttribute('href', /openstreetmap\.org\/edit#map=19\/41\.73790\/-111\.83457/);
+  await expect(page.getByRole('link', { name: 'Fix it on OpenStreetMap' }).filter({ visible: true }).first()).toHaveAttribute('href', /openstreetmap\.org\/edit#map=19\/41\.73450\/-111\.83457/);
   await expect(page.locator('a[href="https://www.openstreetmap.org/fixthemap"]')).toHaveCount(1);
-  // A tap on the road just beside its marker (Main runs north and south): the road's card, its routes as rows.
-  const box = await page.locator('.spot-marker').boundingBox();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + 12);
-  const row = page.locator('#mapcard .roadroute').filter({ visible: true }).first();
-  if (await row.count()) { await row.click(); await expect(page).toHaveURL(/#\/map\/route\//); }
+  // A tap on the road just beside its marker (Main runs north and south): the road's card, its routes as rows. The
+  // spot was at 355 North Main, its stop 6 px off at the spot's zoom: a tap 12 px from it was in a thumb's reach of
+  // the stop (a phone's 18 px; a mouse's 8, and the stop's dot), and opened it a moment later, the road's card never
+  // up. Here the stops are 60 px off and more. The spot's marker read once the map has stopped (flown to the spot),
+  // the tap beside it not on a bus going by, and the road's card waited for by its address: the spot's own card has
+  // routes as rows too, and the test had clicked one of those.
+  const box = await still(page.locator('.spot-marker'));
+  const tap = await page.evaluate(({ x, y }) => [12, -12, 24, -24].map(d => [x, y + d]).find(([x, y]) => (document.elementFromPoint(x, y) || {}).classList?.contains('maplibregl-canvas')) || [x, y + 12], { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  await page.mouse.click(tap[0], tap[1]);
+  await expect(page).toHaveURL(/#\/map\/at\/.*\?road=/);
+  await page.locator('#mapcard.open .roadroute').filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/#\/map\/route\//);
   await go(page, '#/map');
   await mapReady(page);
   const map = await page.locator('#map').boundingBox();
@@ -805,7 +824,7 @@ test('directions up: a tap on the map changes nothing, a long press or right cli
   await expect(page).toHaveURL(/#\/go\/@41\.74335,-111\.81510:Institute\/at\/[-\d.]+,[-\d.]+\//);
 });
 
-test('directions from where you are: a right click asks which end, the destination kept', async ({ page }) => {
+test('directions from where you are: a right click asks which end, the destination kept', async ({ page }, info) => {
   // Directions to a spot, from where the phone is (no start in the address): a right click went to the bare spot, the
   // destination dropped, so its From here started over.
   await page.addInitScript(() => { localStorage.setItem('cr-near', 'on'); localStorage.setItem('cr-lastgeo', JSON.stringify({ lat: 41.74061, lon: -111.83124, at: Date.now(), acc: 0, picked: true })); });
@@ -817,11 +836,45 @@ test('directions from where you are: a right click asks which end, the destinati
   const open_ = page.locator('#mapcard.open'), card = (await open_.count()) ? await open_.boundingBox() : null;
   const left = side && side.width < map.width * 0.6 && side.x <= map.x + 1 ? side.x + side.width : map.x;
   const top = map.y + 80, bottom = card && card.width > map.width * 0.6 ? card.y - 10 : map.y + map.height - 60;
+  const asked = page.locator('#mapcard.open .eyebrow', { hasText: 'Change directions' });
   await page.mouse.click(left + 30, (top + bottom) / 2, { button: 'right' });
-  await expect(page.locator('#mapcard.open .eyebrow', { hasText: 'Change directions' })).toBeVisible();
+  await expect(asked).toBeVisible();
+  // On a phone, swiped away: the directions' own card again, the one it was put over (the card stayed away till a
+  // redraw that wasn't the feed's), the address as it was. Then asked again.
+  if (phone(info)) {
+    const cdp = await page.context().newCDPSession(page);
+    for (let i = 0; i < 3 && await asked.count(); i++) {
+      const y0 = (await page.locator('#mapcard .grip').boundingBox()).y + 20;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: y0 }] });
+      for (let k = 1; k <= 8; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200, y: y0 + 220 * k / 8 }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(600);
+    }
+    await expect(page.locator('#mapcard.open > .gohead')).toBeVisible();
+    await expect(page).toHaveURL(/#\/go\/@41\.75484,-111\.81505:Aztec$/);
+    await page.mouse.click(left + 30, (top + bottom) / 2, { button: 'right' });
+    await expect(asked).toBeVisible();
+  }
+  // A redraw that isn't the feed's, the same address (the relay's alerts coming in, a detour traced, a location fix):
+  // the card stays. It went with the alerts a second after it came up, on a phone and beside a wide screen's page.
+  await page.evaluate(() => window.dispatchEvent(new Event('seenchange')));
+  await page.waitForTimeout(500);
+  await expect(asked).toBeVisible();
   await expect(page.locator('#mapcard a', { hasText: 'Go here instead' })).toHaveAttribute('href', /^#\/go\/@[-\d.,]+:[^/]*$/);   // from where you are still
   await page.locator('#mapcard a', { hasText: 'Start from here' }).click();
   await expect(page).toHaveURL(/#\/go\/@41\.75484,-111\.81505:Aztec\/at\/[-\d.]+,[-\d.]+\//);
+});
+
+test('a tablet turned: the phone\'s card goes as the page comes in beside the map', async ({ page }, info) => {
+  test.skip(phone(info), 'a window that crosses into the wide layout');
+  // Upright (under 840 px) the directions are the map with the ways as its card; turned, the page beside the map. The
+  // same address, so the card was put away only by the layout's change counting as a page arrived at.
+  await page.setViewportSize({ width: 800, height: 1000 });
+  await open(page, '#/go/@41.75484,-111.81505:Aztec/at/41.74061,-111.83124/Center');
+  await expect(page.locator('#mapcard.open')).toBeVisible({ timeout: 20_000 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.locator('#side')).toBeVisible();
+  await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);
 });
 
 test('directions: a walk over a busy road goes by its crossing, said', async ({ page }) => {
