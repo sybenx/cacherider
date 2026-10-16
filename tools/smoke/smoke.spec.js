@@ -460,6 +460,65 @@ test('the Center: a departure still listed past its minute, its bus on its trip 
   expect(r).toEqual(['gone', 'leaving', 'gone']);
 });
 
+test('the Center: a group gone by, one late route still in its bay, is the next group\'s; most of it still in, it\'s up', async ({ page }) => {
+  // 8:03 AM, 16 Oct: Route 12's bus in late for the 8:00, the other nine gone at 8:00 and out on their runs. The board
+  // stayed at 8:00, 0:00, every other bay's bus 20 min out (coming in for the 8:30), until 12 pulled out at 8:06. Made
+  // up from the timetable: a group with a group 30 min after it, the clock 3½ min past it, the relay's answer faked.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+    const ps = d.nextPulse(80, c);
+    for (const q of ps) {
+      if (q.min < 360 || !ps.some(x => x.ymd === q.ymd && x.min === q.min + 30)) continue;
+      // each route's run at that minute from its bay, a trip out of the Center with a stop more than 4 min on
+      const runs = d.pulseGroup(q).map(ri => {
+        const bay = d.D.hub.bays.find(b => b.routes.includes(ri)), row = bay && d.timesOn(bay.stop, q.ymd).find(x => x.r === ri && x.min === q.min);
+        const st = row ? d.tripStops(row.trip) : [];
+        return st.length > 3 && st[0][1] === bay.stop && st.some(([m]) => m > q.min + 4) ? { ri, ti: row.trip } : null;
+      });
+      if (runs.length < 4 || runs.some(x => !x)) continue;
+      const day = t.dayDiff(c.ymd, q.ymd);
+      return { q, runs, at: Date.now() + ((day * 1440 + q.min + 3 - c.min) * 60 + 30 - c.sec) * 1000 };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no group of four routes or more with one 30 min after it this week');
+  await page.clock.setFixedTime(new Date(pick.at));
+  // `inbay` of the group's routes standing in their bays, late, the Center listed at their minute; the rest out on their
+  // runs at their first stop more than 3 min on, listed from there.
+  const feedOf = inbay => page.evaluate(async ({ q, runs, inbay }) => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), T = Math.floor(Date.now() / 1000), base = T - c.min * 60 - c.sec;
+    const trips = {}, buses = [];
+    runs.forEach(({ ri, ti }, i) => {
+      const id = d.D.trips[ti], st = d.tripStops(ti).slice(), te = d.tripEnd(ti), v = String(9300 + i);
+      if (te) st.push([te.min, te.si]);
+      const k = i < inbay ? 0 : st.findIndex(([m]) => m > c.min);
+      const s = st.map(([m, si], n) => [d.D.stops[si].id, n, base + m * 60 + (i < inbay && n > 0 ? 240 : 0), 0]).slice(k);
+      const at = d.D.stops[st[k][1]], from = k ? d.D.stops[st[k - 1][1]] : at;
+      trips[id] = { v, ts: T - 5, s };
+      buses.push({ id: v, label: v, trip: id, lat: at.lat, lon: at.lon, bearing: k ? Math.round(d.bearing(from.lat, from.lon, at.lat, at.lon)) : 0, speed: i < inbay ? 0 : 8, ts: T - 3 });
+    });
+    return { t: T - 2, now: T, buses, trips };
+  }, { ...pick, inbay });
+  const late = await page.evaluate(async ({ q, runs }) => {
+    const t = await import('/app/time.js'), ui = await import('/app/ui.js');
+    return { name: ui.routeNames([runs[0].ri]), then: t.clock(q.min + 30).h, now: t.clock(q.min).h };
+  }, pick);
+  feed = await feedOf(1);
+  await go(page, '#/hub');
+  const board = page.locator('.tc-together').filter({ visible: true }).first();
+  // the note first: it's the feed's (before its first word the board is the timetable's, the group gone by its clock)
+  await expect(board.locator('.tc-note').first()).toContainText(`Of the ${late.now}s, ${late.name} leaves late`, { timeout: 20_000 });
+  await expect(board.locator('.top .t').first()).toHaveText(new RegExp('^' + late.then));
+  await expect(board.locator('.tc-seg.in')).toHaveCount(0);   // its bus in is the late run's, not this group's
+  // Half the group or more still in, late: the group is still up, its countdown at its buses
+  feed = await feedOf(Math.ceil(pick.runs.length / 2));
+  await expect(board.locator('.top .t').first()).toHaveText(new RegExp('^' + late.now), { timeout: 20_000 });
+  await expect(board.locator('.tc-count')).toHaveText('0:00');
+});
+
 test('the Center\'s compass: north up and south up, one to the other', async ({ page }) => {
   await open(page, '#/hub');
   await mapReady(page);

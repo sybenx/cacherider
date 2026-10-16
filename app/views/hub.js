@@ -3,7 +3,7 @@
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf } from '../data.js';
 import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone } from '../time.js';
-import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively } from '../ui.js';
+import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
@@ -172,6 +172,8 @@ function satShape(p) {
   // Not the same routes each time: a Saturday alternates two groups, on the hour and at half past.
   return ` · a group ${g === 60 ? 'hourly' : 'every ' + g + ' min'} until ${clockText(mins[mins.length - 1])}`;
 }
+/** A list in words: '8:05', '8:05 and 8:07', '8:04, 8:05 and 8:07'. */
+const and = xs => xs.length === 1 ? xs[0] : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
 /** The numbered routes leave together: when, the countdown, and one bar a route, its colour's outline until its bus
  *  is in, then filled with it. */
 /** Will a rider on a late route make the group? Routes don't wait for one, but on the last group of the night they
@@ -183,27 +185,35 @@ function connections(ks, st, p, clockNow) {
   if (!lateIn.length) return '';
   const next = nextPulse(2, clockNow)[1], last = !next || next.day > p.day;
   if (!last) return '';   // a late bus's red time above says it got in late; only the last group, which waits, is news
-  const and = xs => xs.length === 1 ? xs[0] : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
   const names = routeNames(lateIn.map(x => routesOf(x.k)[0])), times = and(lateIn.map(x => clock(x.at).h));
   const group = 'the ' + clock(p.min).h + 's';
   const text = last ? `${group.replace(/^t/, 'T')} wait for ${names}, in at ${times}.` : `${names} ${lateIn.length > 1 ? 'get' : 'gets'} in ${times}, after ${group} leave.`;
   return html`<span class="tc-note tc-conn${last ? ' waits' : ''}">${text}</span>`;
 }
+/** Which routes leave together at a group's minute is the timetable's: those with a departure from a bay at that minute
+ *  that day. It was each route's next departure matched against it, and as a bus pulled out its next was the run after,
+ *  so at the very minute the group thinned to the few still in. */
+const leavingAt = (ks, p) => ks.filter(k => routesOf(k).some(ri => D.hub.bays.some(b => b.routes.includes(ri) && timesOn(b.stop, p.ymd).some(t => t.r === ri && t.min === p.min))));
+/** A route's run in a group today, at its bay's row for that minute, with the feed's word. */
+const runIn = (k, p) => routesOf(k).flatMap(ri => D.hub.bays.filter(b => b.routes.includes(ri)).flatMap(b => timesOn(b.stop, p.ymd).filter(t => t.r === ri && t.min === p.min))).map(t => lively({ ...t, day: 0, ymd: p.ymd }))[0];
 function together(st, clockNow) {
   let p = nextPulse(1, clockNow)[0];
-  const ks0 = [...new Set((D.hub.pulseRoutes || []).map(keyOf))].filter(k => st[k]);
-  // A group whose minute has gone by with any of its buses still to leave (late, by the feed's word) is still the group:
-  // its countdown follows them, and the next group's waits.
+  const ks = [...new Set((D.hub.pulseRoutes || []).map(keyOf))].filter(k => st[k]);
+  // A group whose minute has gone by with half its runs or more still to leave (late, by the feed's word) is still the
+  // group: its countdown follows them, and the next group's waits. Fewer, and the group has gone: one late route kept
+  // the 8:00 up with its 0:00 until it pulled out at 8:06, the other nine gone at 8:00 and their buses 20 min out on
+  // the bays, coming in for the 8:30 (2026-10-16). Those still to leave are said under the next group instead. The
+  // night's last group waits for a late one (connections()), so it's up while any of it is still to leave.
+  const behind = [];
   for (const q of nextPulse(4, { ...clockNow, min: Math.max(0, clockNow.min - 30) })) {
     if (q.day !== 0 || q.min >= clockNow.min) break;
-    if (ks0.some(k => st[k].deps.some(d => d.day === 0 && schedOf(d) === q.min && !isGone(d, clockNow)))) { p = q; break; }
+    const runs = leavingAt(ks, q).map(k => [k, runIn(k, q)]).filter(([, t]) => t && !t.cancelled), still = runs.filter(([, t]) => !isGone(t, clockNow));
+    const after = nextPulse(1, { ...clockNow, min: q.min + 1 })[0], last = !after || after.day > 0;
+    if (still.length && (last || still.length * 2 >= runs.length)) { p = q; break; }
+    behind.push(...still.filter(([, t]) => moved(t)).map(([k, t]) => ({ k, t, q })));   // late as every screen says it, 2 min on: one pulling out a minute behind is going
   }
   if (!p) return html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${D.agency.brand} doesn't run on ${dayName(clockNow.ymd)}s.</div></div></div>`;
-  const ks = [...new Set((D.hub.pulseRoutes || []).map(keyOf))].filter(k => st[k]);
-  // Which routes leave together is the timetable's: those with a departure from a bay at that minute that day. It was
-  // each route's next departure matched against it, and as a bus pulled out its next was the run after, so at the
-  // very minute the group thinned to the few still in.
-  const leaving = ks.filter(k => routesOf(k).some(ri => D.hub.bays.some(b => b.routes.includes(ri) && timesOn(b.stop, p.ymd).some(t => t.r === ri && t.min === p.min))));
+  const leaving = leavingAt(ks, p);
   // Counted to when its next bus actually leaves: the group's minute, or later where every one still to go is late
   // (the feed's word on each run in the group, never before its minute: rt.js).
   const still = leaving.map(k => st[k].deps.find(d => d.day === p.day && schedOf(d) === p.min)).filter(d => d && !isGone(d, clockNow));
@@ -220,24 +230,31 @@ function together(st, clockNow) {
   const leavesAt = k => { if (!livenow) return null; const t = st[k].deps.find(d => d.day === p.day && schedOf(d) === p.min); return t && t.min - p.min >= 2 ? t.min : null; };
   // Each a link that picks its route (where its bus is, in words, and its bay): a route's own answer a tap away.
   const segs = leaving.map(k => {
-    const s = st[k], r = D.routes[s.ris[0]], full = livenow && s.eta === 0, lt = leavesAt(k);
+    const s = st[k], r = D.routes[s.ris[0]], full = livenow && s.eta === 0 && !!s.dep && s.dep.day === p.day && schedOf(s.dep) === p.min, lt = leavesAt(k);   // its bus in for this run: one in for a run before, late, isn't this one's
     return `<a class="tc-seg${full ? ' in' : ''}${lt !== null ? ' late' : ''}" href="#/hub/${encodeURIComponent(k)}" style="--rc:#${esc(r.color)}" aria-label="${esc(nameOfKey(k, s.ris[0]))}${lt !== null ? ', leaves about ' + clockText(lt) : ''}"><i></i><b>${esc(k)}</b>${lt !== null ? `<em>${clock(lt).h}</em>` : ''}</a>`;   // the feed's names, escaped as everywhere
   }).join('');
   let note = '';
   if (livenow && leaving.length) {
     // A route whose run in this group is cancelled: said so, and not counted as coming.
     const gone = leaving.filter(k => routesOf(k).some(ri => D.hub.bays.some(b => b.routes.includes(ri) && cancelledAt(b.stop, clockNow, diff + 1, t => t.r === ri && t.min === p.min).length)));
-    // Under the strip, only what it can't show: which routes are off their trips, out of sight, cancelled, or on a run
-    // that won't be back for this. Who's in and who leaves late (and when) are the strip's own bars and red times; said
-    // again here as a count and a list, it was three lines saying the strip over.
+    // Under the strip, only what it can't show: which routes are off their trips, out of sight, cancelled, on a run that
+    // won't be back for this, or still to leave on a group gone by. Who's in and who leaves late (and when) are the
+    // strip's own bars and red times; said again here as a count and a list, it was three lines saying the strip over.
     const name = ks2 => routeNames(ks2.map(k => routesOf(k)[0]));
     const loose = leaving.filter(k => st[k].loose && !gone.includes(k)), away = leaving.filter(k => st[k].away && !gone.includes(k)), quiet = leaving.filter(k => !st[k].out && !st[k].loose && !st[k].away && !gone.includes(k));
     // A route's bus far enough down to be held for its next run (rt.js holdOf): said, and when it goes; one that may be,
     // said as may. Its run's row at the group's minute, with the feed's word.
-    const runAt = k => routesOf(k).flatMap(ri => D.hub.bays.filter(b => b.routes.includes(ri)).flatMap(b => timesOn(b.stop, p.ymd).filter(t => t.r === ri && t.min === p.min))).map(t => lively({ ...t, day: 0, ymd: p.ymd }))[0];
-    const holds = leaving.filter(k => !gone.includes(k)).map(k => [k, runAt(k)]).filter(([, t]) => t && (t.held || (t.live && t.live.mayHold)));
+    const holds = leaving.filter(k => !gone.includes(k)).map(k => [k, runIn(k, p)]).filter(([, t]) => t && (t.held || (t.live && t.live.mayHold)));
     const heldSay = holds.map(([k, t]) => name([k]) + (t.held ? ' held for the ' + clockText(t.held) : ' may be held for the ' + clockText(t.live.mayHold))).join('; ');
-    const odd = [heldSay, gone.length ? name(gone) + ' cancelled' : '', away.length ? name(away) + (away.length > 1 ? ' still out on runs before this' : ' still out on its run before this') : '', loose.length ? name(loose) + ' out with no estimate' : '', quiet.length ? name(quiet) + (quiet.length > 1 ? ' not reporting' : ' not reporting') : ''].filter(Boolean).join('; ');
+    // The runs of a group gone by still to leave, as connections() says a group: 'Of the 8:00s, Route 12 leaves late,
+    // about 8:05'. One that may yet be held for its next run, on its own, said as may.
+    const lateSay = [...new Set(behind.map(b => b.q.min))].flatMap(m => {
+      const of = behind.filter(b => b.q.min === m).sort((a, b) => (parseInt(a.k) || 999) - (parseInt(b.k) || 999) || (a.k < b.k ? -1 : 1)), group = 'of the ' + clock(m).h + 's, ';
+      const plain = of.filter(b => !(b.t.live && b.t.live.mayHold)), times = [...new Set(plain.map(b => clock(b.t.min).h))];
+      return [plain.length ? group + name(plain.map(b => b.k)) + (plain.length > 1 ? ' leave' : ' leaves') + ' late, about ' + (times.length === 1 ? times[0] : and(plain.map(b => clock(b.t.min).h))) : '',
+        ...of.filter(b => !plain.includes(b)).map(b => group + name([b.k]) + ' leaves late, about ' + clock(b.t.min).h + ', or may be held for the ' + clockText(b.t.live.mayHold))].filter(Boolean);
+    }).join('; ');
+    const odd = [lateSay, heldSay, gone.length ? name(gone) + ' cancelled' : '', away.length ? name(away) + (away.length > 1 ? ' still out on runs before this' : ' still out on its run before this') : '', loose.length ? name(loose) + ' out with no estimate' : '', quiet.length ? name(quiet) + (quiet.length > 1 ? ' not reporting' : ' not reporting') : ''].filter(Boolean).join('; ');
     note = html`${odd ? html`<span class="tc-note">${odd.replace(/^./, c => c.toUpperCase())}.</span>` : ''}${connections(leaving.filter(k => !gone.includes(k)), st, p, clockNow)}`;
   } else if (p.day === 0 && rtDown()) note = html`<span class="tc-note">Live positions aren't coming in right now.</span>`;
   // A small group at the day's ends (11, 12 and 15 at 5:30 AM) by its routes, not as 'Routes 1–15'.
