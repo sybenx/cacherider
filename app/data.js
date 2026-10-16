@@ -722,6 +722,27 @@ function spanOf(ri) {
   return partOf.get(ri);
 }
 export const dayPart = ri => spanOf(ri).part;
+/** Which of its route's buses that day a trip's bus is, by the timetable's blocks (tools/reduce.py `buses`): { n, of },
+ *  the second of the Blue Loop's three { n: 2, of: 3 }, the number Connect's dispatch knows it by (B2) all day,
+ *  whichever vehicle runs it. Null where its route has one bus that day, or the trip is in no block. */
+let busIdx = null;   // service → Map(trip → { n, of, key })
+export function busOf(ti, ymd) {
+  if (!busIdx) {
+    busIdx = new Map();
+    for (const [sv, fams] of Object.entries(D.buses || {})) {
+      const m = new Map();
+      for (const [key, bl] of Object.entries(fams)) bl.forEach((ts, k) => ts.forEach(t => m.set(t, { n: k + 1, of: bl.length, key })));
+      busIdx.set(sv, m);
+    }
+  }
+  for (const sv of servicesOn(ymd)) { const x = busIdx.get(sv) && busIdx.get(sv).get(ti); if (x) return x; }
+  return null;
+}
+/** How many buses a route family (familyKey) runs that day, where it runs two or more; 0 otherwise. */
+export function routeBuses(key, ymd) {
+  for (const sv of servicesOn(ymd)) { const bl = D.buses && D.buses[sv] && D.buses[sv][key]; if (bl) return bl.length; }
+  return 0;
+}
 /** Of a route's family, the half on the road now or next today (its soonest run not yet finished); the route itself
  *  when it's alone or nothing more runs today. At a stop (`si`), of the halves that call there only: a stop of 16 PM's
  *  alone is never 16 AM's. */
@@ -891,7 +912,7 @@ export function lastRun(t) {
 
 let routeDays = null;
 /** Whether a route has any trip anywhere under today's calendars: if it does, its absence at a stop is real. */
-function routeRunsOn(ri, ymd) {
+export function routeRunsOn(ri, ymd) {
   if (!routeDays) {
     routeDays = {};
     for (const per of Object.values(D.times)) for (const [sid, list] of Object.entries(per)) for (const t of list) (routeDays[sid] = routeDays[sid] || new Set()).add(t[1]);

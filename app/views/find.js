@@ -1,12 +1,13 @@
-// Search: one list for a street, a stop, a place, an address, a route, the shuttle or a bus by its number, the same wherever it's asked
+// Search: one list for a street, a stop, a place, an address, a route, the shuttle or a bus by its number (or which of
+// its route's it is, B2), the same wherever it's asked
 // (the Stops tab's page, the Map tab's box, the header's box on a wide screen). Only where a result leads differs:
 // on the map it shows there (forMap), and while one end of a journey is being chosen it's that end (forPick).
-import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets, opOf, roadOf, familyKey, familyOf, family, isHalf, corridorKey, dayPart, nextRunOf } from '../data.js';
+import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets, opOf, roadOf, familyKey, familyOf, family, isHalf, corridorKey, dayPart, nextRunOf, routeBuses, routeRunsOn } from '../data.js';
 import { metres, clockText, now, dayName } from '../time.js';
-import { routeName, html, icon, badge, badges, stopRow, esc, headsign, routeList, routeHref } from '../ui.js';
+import { routeName, html, icon, badge, badges, stopRow, esc, headsign, routeList, routeHref, isLoop, named, nthWords } from '../ui.js';
 import { parseAddress, geocode, townState, spotKey, spotOf, atPath, byWalk, steepWalk } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, live, hasData, nearestUSU, isStale, lastSeen } from '../usu.js';
-import { rt, rtStale, rtHasData, rtSeen, offDuty } from '../rt.js';
+import { rt, rtStale, rtHasData, rtSeen, offDuty, busNth } from '../rt.js';
 import { myPlaces } from '../places.js';
 
 /** One end of a journey being asked for: `to`, a stop or spot being gone to (a result is the start), or `from`, a spot
@@ -69,6 +70,7 @@ function resultsOf(q, clockNow, pick, later) {
   const half = ri => isHalf(ri) && family(ri).filter(x => named0.includes(x)).length === 1 ? family(ri).find(x => named0.includes(x)) : null;
   const ris = [...list, ...others].filter(ri => named0.some(x => x === ri || (!opOf(x) && !opOf(ri) && familyKey(x) === familyKey(ri)) || (!!opOf(ri) && corridorKey(x) === corridorKey(ri)))).map(ri => half(ri) ?? ri);
   let bus = pick ? { html: '' } : busRows(q);
+  if (!pick && !bus.html) bus = nthRows(q, clockNow);
   if (bus.guess && (hits.length || places.length || campusHtml || spots.length || ris.length)) bus = { html: '' };   // a number guessed a bus's, and found as something else: that alone
   const routeSub = ri => opOf(ri) && roadOf(ri) !== null ? runWords(ri, clockNow, ris.some(x => x !== ri && corridorKey(x) === corridorKey(ri)))
     : [half(ri) === ri && dayPart(ri) ? dayPart(ri).replace(/^./, c => c.toUpperCase()) + ' runs' : '', D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')].filter(Boolean).join(' · ');
@@ -135,12 +137,11 @@ function busRows(q) {
       lead = chip(b.ri, 36);
       sub = U.routes[b.ri].name + (isStale() ? ' · not reporting, last heard from at ' + lastSeen() : '');
     } else {
-      const off = offDuty(b), r = routeName(b.ri, false);
+      const off = offDuty(b);
       lead = badge(b.ri, 36);
       sub = off === 'Not reporting' ? off + ' · last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min)
         : off ? off + ' · its last run was ' + routeName(b.ri)
-        : b.h === null ? r   // a trip the timetable doesn't know (a detour's, from the tracker): its route, no more ('Route 07' is the feed's long name)
-        : [r, headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir })].filter((x, i, xs) => xs.indexOf(x) === i).join(' · ');
+        : whither(b);
     }
     return html`<a class="row busfound" href="#/map/bus/${encodeURIComponent(b.id)}?find=1">${lead}<div class="mid"><span class="name">Bus ${b.u ? b.name : b.label}</span><span class="sub">${sub}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`;
   };
@@ -157,6 +158,44 @@ function runWords(ri, clockNow, under) {
   const from = !s ? '' : s.hub ? 'the ' + D.hub.name : town && town !== D.hub.town ? town : s.name;
   const when = !n ? '' : n.now ? 'running now, by its timetable' : clockText(n.min) + (n.day === 0 ? '' : n.day === 1 ? ' tomorrow' : ' ' + dayName(n.ymd)) + ' from ' + from;
   return [lead, when].filter(Boolean).join(' · ');
+}
+
+/** A Connect bus on duty: its route and where it's headed, 'Route 7 · Library · LHS · Willow Park', the loops' once
+ *  ('Blue Loop'). A trip the timetable doesn't know (a detour's, from the tracker): its route, no more ('Route 07' is
+ *  the feed's long name). */
+const whither = b => b.h === null ? routeName(b.ri, false)
+  : [routeName(b.ri, false), headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir })].filter((x, i, xs) => xs.indexOf(x) === i).join(' · ');
+
+/** Which of its route's buses today a bus is, as Connect's dispatch writes or says it: 'B2', 'b 2', 'Blue 2', 'Blue
+ *  two', 'Blue Loop 2', 'G3', 'B-2', 'Green 3'; a numbered route's in brackets, '12(1)', '12 (1)', '16(2)' (16 AM and PM
+ *  one route), a bare '12' being the route; 'bus B2' too, as 'bus 1168' is. { key: its familyKey, ri: a route of it,
+ *  n }, or null. */
+const SAID = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 };
+function nthAsked(q) {
+  const s = q.trim().toLowerCase().replace(/\s+/g, ' ').replace(/^bus /, '');
+  const fams = D.routes.map((r, ri) => ri).filter(ri => !D.routes[ri].op);   // another operator's buses aren't in the feed
+  let m = /^(?:route |rt )?(\d+) ?\( ?(\d) ?\)$/.exec(s);
+  if (m) { const ri = fams.find(ri => familyKey(ri) === m[1]); return ri === undefined ? null : { key: m[1], ri, n: +m[2] }; }
+  m = /^(?:the )?(.+?)(?: loop)?(?: bus| no\.?)? ?[-#]? ?(\d|one|two|three|four|five|six|seven|eight|nine)$/.exec(s);
+  if (!m) return null;
+  // A letter's ('b', the Blue Loop's B), or a loop's or a named route's name without 'Loop' ('blue', 'pumpkin walk').
+  const ri = fams.find(ri => { const k = familyKey(ri); return !/^\d+$/.test(k) && (k.toLowerCase() === m[1] || ((isLoop(ri) || named(ri)) && D.routes[ri][isLoop(ri) ? 'long' : 'short'].toLowerCase().replace(/ loop$/, '') === m[1])); });
+  return ri === undefined ? null : { key: familyKey(ri), ri, n: SAID[m[2]] || +m[2] };
+}
+/** The buses asked for by which of their route's they are (nthAsked), as their cards say it, first in the results as a
+ *  bus asked for by its number is; none on the map, said so, or how many the route runs today. A tap is its card. */
+function nthRows(q, clockNow) {
+  const a = nthAsked(q);
+  if (!a) return { html: '' };
+  const say = t => ({ html: html`<div class="notice">${icon('info', 16)}<span>${t}</span></div>`.s, first: true });
+  const of = routeBuses(a.key, clockNow.ymd), who = /^\d+$/.test(a.key) ? 'Route ' + a.key : routeName(a.ri);
+  const Who = who.replace(/^./, c => c.toUpperCase()), whose = Who + "'s";
+  if (!of) return say(D.routes.some((r, ri) => familyKey(ri) === a.key && routeRunsOn(ri, clockNow.ymd)) ? `${Who} runs one bus today.` : `No ${who.replace(/^the /, '')} buses today.`);
+  if (a.n > of || a.n < 1) return say(`${Who} runs ${of} buses today.`);
+  const hits = rtStale() ? [] : rt.buses.filter(b => familyKey(b.ri) === a.key && (busNth(b, clockNow) || {}).n === a.n);
+  if (!hits.length) return say(!rtHasData() ? 'Finding buses…' : rtStale() ? `No word from the buses since ${rtSeen()}: ${whose} bus ${a.n} of ${of} can't be found now.` : `${whose} bus ${a.n} of ${of} isn't on the map now.`);
+  const row = b => html`<a class="row busfound" href="#/map/bus/${encodeURIComponent(b.id)}?find=1">${badge(b.ri, 36)}<div class="mid"><span class="name">${nthWords(b.ri, busNth(b, clockNow))}</span><span class="sub">Bus ${b.label} · ${whither(b)}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`;
+  return { html: html`<div class="list">${hits.map(row)}</div>`.s, first: true };
 }
 
 /** The Transit Center as one row in a search, for its bays' one address: the Transit Center tab, every route. */

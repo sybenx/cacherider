@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip, busOf } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -643,6 +643,12 @@ export function offDuty(b, clockNow = now()) {
   if (u) return u.stops.some(x => x[3] !== 1 && x[2] >= nowS - 60) ? null : 'Done for the day';   // its final stop too
   const te = tripEnd(ti), st = tripStops(ti), end = te ? te.min : st.length ? st[st.length - 1][0] : null;
   return end !== null && clockNow.min > end + Math.max(0, busDelay(b) || 0) + 2 ? 'Done for the day' : null;
+}
+/** Which of its route's buses today a Connect bus is ({ n, of, key }: data.js busOf), while it's on duty on a trip the
+ *  timetable knows; null off duty, on a trip it doesn't (a detour's, from the tracker), or on a route with one bus. */
+export function busNth(b, clockNow = now()) {
+  const ti = tripOf(b.trip);
+  return ti === undefined || offDuty(b, clockNow) ? null : busOf(ti, clockNow.ymd);
 }
 export function findBus(id) { return rt.buses.find(b => b.id === id) || rt.parked.find(b => b.id === id); }
 /** A trip's index in the timetable, by the feed's id. */

@@ -118,8 +118,15 @@ export { isLoop };
 export const routeName = (ri, the = true) => isLoop(ri) || named(ri) ? (the ? 'the ' : '') + nameOf(ri) : 'Route ' + familyKey(ri);
 /** A route called by a name, not a number, besides the loops: the Pumpkin Walk ('Route Pumpkin Walk', it was); and
  *  another operator's, by its timetable's name ('the Preston / Logan Commuter', not 'Route PRT'). */
-const named = ri => (!/\d/.test(D.routes[ri].short) && D.routes[ri].short.length > 2) || !!D.routes[ri].op;
+export const named = ri => (!/\d/.test(D.routes[ri].short) && D.routes[ri].short.length > 2) || !!D.routes[ri].op;
 const nameOf = ri => isLoop(ri) || D.routes[ri].op ? D.routes[ri].long : D.routes[ri].short;
+/** Which of its route's buses a bus is (rt.js busNth), in a rider's words and then as Connect's dispatch writes it:
+ *  'Bus 2 of 3 · B2', 'Bus 1 of 2 · 12(1)', 'Bus 2 of 2 · 16(2)' (16 AM and PM one route). A route called by a name has
+ *  no shorthand to give: 'Bus 2 of 3' alone. Dispatch says 'Blue two', never a bare 'B'. */
+export function nthWords(ri, x) {
+  const k = familyKey(ri), code = named(ri) ? '' : /^\d+$/.test(k) ? `${k}(${x.n})` : k + x.n;
+  return `Bus ${x.n} of ${x.of}` + (code ? ' · ' + code : '');
+}
 /** Several: 'Routes 2, 3 and 5', 'Route 12 and the Blue Loop', 'the Blue and Green Loops'. A family once: 'Route 16'. */
 export function routeNames(ris) {
   const nums = [...new Set(oneEach(ris.filter(ri => !isLoop(ri) && !named(ri))))].sort((a, b) => parseInt(D.routes[a].short) - parseInt(D.routes[b].short) || D.routes[a].short.localeCompare(D.routes[b].short)).map(familyKey);

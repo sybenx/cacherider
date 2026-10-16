@@ -4,11 +4,11 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
-import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, routeHref } from '../ui.js';
+import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, routeHref, nthWords } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, offDuty, busOn, busStops, busPlace, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN, AT_STOP } from '../rt.js';
+import { rt, findBus, offDuty, busNth, busOn, busStops, busPlace, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN, AT_STOP } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
@@ -3199,9 +3199,12 @@ function connectCard(b, app, bare = false) {
   const at = next.find(n => !n.end);
   const dl = busDelay(b) ?? (at ? at.min - (schedAt(at.si, b) ?? at.min) : null);
   const late = dl !== null && !isLoop(b.ri) ? lateWords(heldAt(nextStopOf(b) ?? (at && at.si), dl)) : '';
+  // Which of its route's buses today it is, under the route it's of: 'Bus 2 of 3 · B2', as Connect's dispatch numbers
+  // them (the vehicle's own number is the line above's). Only here: on a ring 'B2' would read as a route of that name.
+  const nth = off ? null : busNth(b, clockNow);
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
-    <div class="who">${badge(b.ri, 32)}<span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span></div>
+    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<span class="nth">${nthWords(b.ri, nth)}</span>` : ''}</span></div>
     ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may have moved on' : b.free ? 'its last run was ' + routeName(b.ri) + '. Not one to wait for' : 'its last run is over. Not one to wait for'}.</span></div>` : ''}${alsoHere(b.id)}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;

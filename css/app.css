@@ -618,7 +618,9 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .buscard .head { gap: 10px; }
 .buscard .top { display: flex; justify-content: space-between; align-items: center; }
 .buscard .who { display: flex; align-items: center; gap: 10px; }
-.buscard .who .name { font-family: var(--font-heading); font-weight: 600; font-size: 1.75rem; line-height: 1.05; flex: 1; }
+.buscard .who .mid { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.buscard .who .name { font-family: var(--font-heading); font-weight: 600; font-size: 1.75rem; line-height: 1.05; }
+.buscard .who .nth { font-size: 0.8438rem; color: var(--cr-muted); }
 .buscard .load { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; color: var(--cr-muted); }
 .nextstops { border-top: 1px solid var(--cr-line); padding: 6px 0 10px; position: relative; }
 .nextstops .line { position: absolute; left: 24px; top: 28px; bottom: 32px; width: 2px; }

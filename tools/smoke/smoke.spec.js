@@ -355,6 +355,66 @@ test('search: a bus by its number, its card on the map, Back; an address with th
   await expect(page).toHaveURL(phone(info) ? /#\/map$/ : new RegExp('#/search\\?q=' + label + '$'));   // back to the map, or to the search
 });
 
+test('which of its route\'s buses a bus is: on its card (Bus 2 of 3 · B2), and found by it in the search (B2, Blue two, 12(1))', async ({ page }, info) => {
+  // The relay's answer made up: a loop's second bus and a numbered route's first, each on a trip of its block today
+  // with one after it (on duty, whatever the hour), and a bus on a trip the timetable doesn't know (no number).
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page, '#/');
+  const p = await page.evaluate(async () => {
+    const { D, servicesOn, tripStops, nextTrip } = await import('/app/data.js');
+    const { now } = await import('/app/time.js');
+    const ymd = now().ymd, out = {};
+    for (const sv of servicesOn(ymd)) for (const [key, bl] of Object.entries(D.buses[sv] || {})) {
+      const ri = D.routes.findIndex(r => r.short.replace(/\s+(AM|PM)$/i, '') === key), want = /^\d+$/.test(key) ? 0 : 1;
+      if (ri < 0 || D.routes[ri].op || key.length > 2 || out[/^\d+$/.test(key) ? 'num' : 'loop']) continue;
+      const ti = bl[want].find(t => nextTrip(t, ymd) !== undefined), si = tripStops(ti)[1][1];
+      out[/^\d+$/.test(key) ? 'num' : 'loop'] = { key, n: want + 1, of: bl.length, trip: D.trips[ti], lat: D.stops[si].lat, lon: D.stops[si].lon, spoken: D.routes[ri].long.replace(/ Loop$/, '') };
+    }
+    return out;
+  });
+  test.skip(!p.loop, 'no loop runs two buses today');
+  const t = Math.floor(Date.now() / 1000), bus = (label, x, dlat = 0) => ({ id: label, label, trip: x.trip, lat: x.lat + dlat, lon: x.lon, bearing: 90, speed: 5, ts: t - 2 });
+  const short = await page.evaluate(async () => (await import('/app/data.js')).D.routes.map(r => r.short).find(s => /^\d{1,2}$/.test(s)));
+  feed = { t, trips: {}, buses: [bus('9101', p.loop), ...(p.num ? [bus('9102', p.num)] : []), bus('9103', { ...p.loop, trip: short + '_9999' }, 0.004)] };
+  const loopLabel = `Bus 2 of ${p.loop.of} · ${p.loop.key}2`;
+  // Its card: the vehicle's number above, which of its route's buses it is under the route's name.
+  await go(page, '#/map');
+  await mapReady(page);
+  await go(page, '#/map/bus/c%3A9101');
+  const card = page.locator('#mapcard.open').filter({ visible: true });
+  await expect(card.locator('.eyebrow').first()).toContainText('Bus 9101');
+  await expect(card.locator('.who .nth')).toHaveText(loopLabel);
+  if (p.num) { await go(page, '#/map/bus/c%3A9102'); await expect(card.locator('.who .nth')).toHaveText(`Bus 1 of ${p.num.of} · ${p.num.key}(1)`); }
+  await go(page, '#/map/bus/c%3A9103');
+  await expect(card.locator('.eyebrow').first()).toContainText('Bus 9103');
+  await expect(card.locator('.who .nth')).toHaveCount(0);   // a trip the timetable doesn't know: no number
+  // Not on its ring: there 'B2' would read as a route of that name.
+  expect(await page.locator('.maplibregl-marker.bus[title*="bus 9101"]').textContent()).not.toMatch(/2 of|\(\d\)|[A-Z]\d/);
+  // The search: as dispatch writes it and says it, first in the results; a bare number still the route.
+  await go(page, phone(info) ? '#/map' : '#/');
+  const box = page.locator(phone(info) ? '#mapsearch input' : '#topsearch input');
+  const first = page.locator(phone(info) ? '#mapresults a.row, #mapresults a.stoprow, #mapresults .notice' : '#side a.row, #side a.stoprow, #side .notice').first();
+  for (const q of [p.loop.key + '2', p.loop.key.toLowerCase() + ' 2', p.loop.key + '-2', 'bus ' + p.loop.key + '2', p.loop.spoken + ' two', p.loop.spoken + ' Loop 2']) {
+    await box.fill(q);
+    await expect(first, q).toHaveClass(/busfound/);
+    await expect(first, q).toContainText(loopLabel);
+    await expect(first, q).toContainText('Bus 9101');
+  }
+  await box.fill(p.loop.key + (p.loop.of + 1));
+  await expect(first).toContainText(`runs ${p.loop.of} buses today`);
+  if (p.num) {
+    for (const q of [p.num.key + '(1)', p.num.key + ' (1)']) { await box.fill(q); await expect(first, q).toContainText('Bus 9102'); }
+    await box.fill(p.num.key);
+    await expect(first).toHaveAttribute('href', '#/map/route/' + p.num.key);
+  }
+  await box.fill(p.loop.key + '2');
+  await expect(first).toHaveClass(/busfound/);
+  await first.click();
+  await expect(page).toHaveURL(/#\/map\/bus\/c%3A9101\?find=1$/);
+  await expect(card.locator('.who .nth')).toHaveText(loopLabel);
+});
+
 test('one clock rule: due from its minute\'s start, gone from the next', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {

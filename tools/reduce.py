@@ -206,16 +206,34 @@ for si, rs in stop_routes.items():
 # swaps routes all day (2 and 5, 9 and 1), so a rider who stays on board rides the next trip of its block.
 # { service: { trip index: next trip index } }; a block's last trip has none.
 blocks = {}
+family_of = {}   # trip index → its route's family: 16 AM and 16 PM one route to a rider (the app's familyKey)
 for tid, rows in by_trip.items():
     t = trips[tid]
     if not t.get('block_id'): continue
     blocks.setdefault((t['service_id'], t['block_id']), []).append((mins(rows[0]['departure_time']), trip_index(tid)))
+    family_of[trip_index(tid)] = re.sub(r'\s+(AM|PM)$', '', routes[route_idx[t['route_id']]]['short'], flags=re.I)
 next_trip = {}
 for (sv, _b), run in blocks.items():
     run.sort()
     for (_, ta), (_, tb) in zip(run, run[1:]):
         if ta != tb: next_trip.setdefault(sv, {})[str(ta)] = tb
 for sv, ta, tb in hand_next: next_trip.setdefault(sv, {})[str(ta)] = tb
+
+# Which of its route's buses that day each trip's is: per service, per route family, the blocks running it in order of
+# their first trip on it, each its trips on it. Connect's dispatch numbers them so (the Blue Loop's three on a weekday
+# B1, B2 and B3, said 'Blue two'; Route 12's two 12(1) and 12(2)), and a bus keeps its number all day, whichever
+# vehicle runs it. Only a route with two buses or more that day: one alone has nothing to tell it from.
+# { service: { family: [[trip index, ...], ...] } }
+on_route = {}
+for (sv, b), run in blocks.items():
+    per = {}
+    for m, ti in run:
+        xs = per.setdefault(family_of[ti], [])
+        if ti not in (x for _m, x in xs): xs.append((m, ti))
+    for k, xs in per.items(): on_route.setdefault((sv, k), []).append((xs[0][0], b, [ti for _m, ti in xs]))
+buses = {}
+for (sv, k), bl in sorted(on_route.items()):
+    if len(bl) > 1: buses.setdefault(sv, {})[k] = [ts for _m, _b, ts in sorted(bl)]
 
 # The order a route calls at its stops, per direction: its longest trip's sequence.
 longest = {}
@@ -335,7 +353,7 @@ out = {
     'feed': {'version': feed.get('feed_version', ''), 'start': feed.get('feed_start_date', ''), 'end': feed.get('feed_end_date', ''),
              'built': datetime.date.today().isoformat()},
     'routes': routes, 'services': services, 'exceptions': exceptions, 'headsigns': headsigns,
-    'stops': stops, 'hub': hub_out, 'times': times, 'trips': trip_ids, 'next': next_trip,
+    'stops': stops, 'hub': hub_out, 'times': times, 'trips': trip_ids, 'next': next_trip, 'buses': buses,
     'ends': [x for i in range(len(trip_ids)) for x in ends.get(i, [-1, -1])],
     # Where a route calls only when asked, which the feed doesn't say: [stop, route, direction] each.
     'request': [[si, route_idx[r['id']], h['direction']] for h in H.get('on_request', [])
@@ -441,3 +459,4 @@ for sid, ms in pulse.items():
     print('pulse', sid, len(ms), 'times', ms[:6], '...' if len(ms) > 6 else '')
 print('bays', [(b['stop'], [routes[r]['short'] for r in b['routes']]) for b in bays])
 print('twins', sum(1 for s in stops if s['twin']))
+print('buses', {sv: {k: len(bl) for k, bl in per.items()} for sv, per in buses.items()})
