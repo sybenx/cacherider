@@ -76,19 +76,26 @@ export default {
     // is cut from the same one: each list of stops its own, Headway's (nearest first, so a step along the street
     // made a new one) missed every time, the feeds decoded and the tracker site waited on for each, and 15 of 23
     // came after three seconds, Headway's wait (16 Oct).
-    const key = new Request(url.origin + '/');
-    const hit = await caches.default.match(key);
+    const hit = await caches.default.match(new Request(url.origin + '/'));
     if (hit && !only) return new Response(hit.body, { headers: { ...cors, ...JSON_TTL } });
     try {
-      if (!only) return new Response(await (await whole(ctx, key)).body, { headers: { ...cors, ...JSON_TTL } });
+      if (!only) return new Response(await (await whole(ctx, url.origin)).body, { headers: { ...cors, ...JSON_TTL } });
       let out;
       if (hit) out = await hit.json();
       else {
         // None at this edge: made here, the whole answer, cached once the tracker site has filled in, as the
-        // root's; this asker waits on the tracker a second at most.
-        const made = await whole(ctx, key);
-        await Promise.race([made.body, wait(STOPS_WAIT)]);
-        out = made.out;
+        // root's; this asker waits on the tracker a second at most. The agency's feeds take 2 to 8 seconds some
+        // minutes (16 Oct): slower than FEED_SLOW, or failing, the last answer made at this edge does, while the
+        // feed's own clock has it inside Headway's 90 seconds, and this one is made on for the next asker.
+        const making = whole(ctx, url.origin);
+        let made = await Promise.race([making, wait(FEED_SLOW)]).catch(e => null);
+        if (!made) {
+          const last = await caches.default.match(new Request(url.origin + '/?last'));
+          const kept = last && await last.json();
+          if (kept && Date.now() / 1000 - kept.t < LAST) out = kept;
+          else made = await making;
+        }
+        if (made) { await Promise.race([made.body, wait(STOPS_WAIT)]); out = made.out; }
       }
       if (!out.buses.length) out = await night(ctx, url.origin, out);
       if (!out) return new Response(JSON.stringify({ error: 'tracker slow' }), { status: 504, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -102,18 +109,23 @@ export default {
 const JSON_TTL = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + TTL };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 // The whole answer from the feeds, { out, body }: out as soon as they're decoded, body (and the edge's cache) once
-// the tracker site has filled in. The fill-in goes on past a few stops' answer that doesn't wait for it.
-async function whole(ctx, key) {
-  const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
-  const out = decode(vp, tu);
-  // Detoured buses aren't in the feed, so the tracker site fills them in for every answer.
-  const body = fillIn(out, false).catch(e => { /* the feed's own buses still go out */ }).then(() => {
-    const s = JSON.stringify(out);
-    ctx.waitUntil(caches.default.put(key, new Response(s, { headers: JSON_TTL })));
-    return s;
-  });
-  ctx.waitUntil(body);
-  return { out, body };
+// the tracker site has filled in. Kept twice: for the TTL, everyone's answer, and for LAST, the one a few stops'
+// answer falls back on while the feeds are slow. Made on past an asker that doesn't wait for it.
+function whole(ctx, origin) {
+  const made = (async () => {
+    const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
+    const out = decode(vp, tu);
+    // Detoured buses aren't in the feed, so the tracker site fills them in for every answer.
+    const body = fillIn(out, false).catch(e => { /* the feed's own buses still go out */ }).then(() => {
+      const s = JSON.stringify(out);
+      ctx.waitUntil(caches.default.put(new Request(origin + '/'), new Response(s, { headers: JSON_TTL })));
+      ctx.waitUntil(caches.default.put(new Request(origin + '/?last'), new Response(s, { headers: { ...JSON_TTL, 'Cache-Control': 'public, max-age=' + LAST } })));
+      return s;
+    });
+    return { out, body };
+  })();
+  ctx.waitUntil(made.then(m => m.body, e => { /* the asker has the error, or the last answer */ }));
+  return made;
 }
 // A few stops' answer when the feed has no bus at all asks the tracker site anyway: Headway counts buses out from its
 // yard, and one deadheading home is only on the tracker, if anywhere. Made once a TTL at each edge too, under a key
@@ -220,6 +232,10 @@ const FEED_WAIT = 7000, RTPI_WAIT = 4000;   // under the app's own eight-second 
 // A few stops' answer waits on the tracker site no longer than this, inside Headway's three seconds: by day for the
 // buses on a detour alone, at night for all of them (the feeds, small then, asked first).
 const STOPS_WAIT = 1000, NIGHT_WAIT = 2000;
+// A few stops' answer waits on the feeds this long before the last answer made at its edge does instead, if the
+// feed's own time has it no more than LAST seconds old: Headway's own limit (LIVE_FRESH). Only a few stops' answer:
+// Cache Rider keeps its last answer itself while a poll is slow, and counts its age from when the poll came back.
+const FEED_SLOW = 1500, LAST = 90;
 async function feed(name) {
   const r = await fetch(UPSTREAM + name, { headers: UA, cf: { cacheTtl: TTL, cacheEverything: true }, signal: AbortSignal.timeout(FEED_WAIT) });
   if (!r.ok) throw new Error(name + ' ' + r.status);
