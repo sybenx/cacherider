@@ -2,9 +2,11 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes } from '../data.js';
+import { D, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes, tripStops, routeOrder, liftHex } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo } from '../time.js';
-import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, lastTag, fillLater, moved, detourNotice } from '../ui.js';
+import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, minsOut, lastTag, fillLater, moved, detourNotice, lively, schedOf, heardName } from '../ui.js';
+import { busOn, busDelay, AT_STOP } from '../rt.js';
+import { lightInks } from '../ink.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
@@ -61,6 +63,10 @@ function landing(clockNow, app) {
   if (atHub) parts.push(hubHero(clockNow));
   else if (heroU !== undefined) parts.push(shuttleHeroBlock(heroU, heroWhy, clockNow));
   else if (stopHero) parts.push(stopHeroBlock(heroSi, heroWhy, clockNow));
+  // Nothing saved yet: what saving a stop does, in the Save button's word, under the stop they're looking at. Gone once
+  // one is saved (a saved stop is on this page wherever the rider is: the big one away from the rest, else under it).
+  const saveHint = html`<p class="land-hint">${icon('star', 15)}<span>Tap <b>Save</b> on a stop's page to keep it here, wherever you are.</span></p>`;
+  if (!sv.length && stopHero && !atHub) parts.push(saveHint);
 
   const heroId = heroU !== undefined ? 'u:' + U.stops[heroU].id : heroSi !== undefined ? stop(heroSi).id : null;
   if (!atHub && heroU === undefined && heroSi !== undefined) yours.push([heroSi, heroWhy === 'Saved' ? 'saved' : 'near']);
@@ -95,6 +101,7 @@ function landing(clockNow, app) {
   // And what the app does, shown rather than said: the stops with the most buses today (by the timetable's departures,
   // not by riders: there's no count of those, so not 'popular' or 'busiest'), with their next buses.
   // A newcomer may find their own there; either way the page isn't half empty on a first visit.
+  if (first && !sv.length) parts.push(saveHint);   // location off, nothing saved: a saved stop is the big one, the rider's way in
   if (first) { const busy = busiest(clockNow); if (busy.length) parts.push(html`<div class="land-eye"><span>Most buses today</span></div><div class="list">${busy.map(i => stopRow(i, nextAt(i, 1, clockNow)[0], clockNow))}</div>`); }
   if (isWide()) parts.push(chips());   // beside the map, every route a tap away: the page has the room, and the map lights it
   const nt = newTimetable(clockNow);
@@ -196,9 +203,71 @@ function stopHeroBlock(si, why, clockNow) {
   // Escaped like every other place it's shown: the feed's headsign, its route's description or a place's name from
   // OpenStreetMap, none of them markup (a name with a tag in it was put on the page as one).
   const dest = String(headsign(first)), long = D.routes[first.r].long;
-  return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span>${big}
-    <div class="who">${badge(first.r, 44)}<div class="mid"><span class="dest">${dest}</span>${dayWord || dest !== long ? html`<span class="sub">${[dayWord, dest !== long ? long : ''].filter(Boolean).join(' · ')}</span>` : ''}${lastTag(first)}</div>${sideVal}</div>
-    ${then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${when(t, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : ''}</a></div>`;
+  const thenRow = then.length ? html`<div class="then"><span class="eyebrow muted">Then</span>${then.map(t => html`<span class="t t-26">${when(t, 26)}${t.day !== first.day ? html`<small class="day">${t.day === 1 ? 'tomorrow' : dayName(t.ymd, true)}</small>` : ''}</span>`)}</div>` : '';
+  const top = html`<span class="stopname">${s.name}</span>${big}
+    <div class="who">${badge(first.r, 44)}<div class="mid"><span class="dest">${dest}</span>${dayWord || dest !== long ? html`<span class="sub">${[dayWord, dest !== long ? long : ''].filter(Boolean).join(' · ')}</span>` : ''}${lastTag(first)}</div>${sideVal}</div>`;
+  // Its bus on the way, under the route it's on: a link of its own to the route's line, so the stop's link stops above it.
+  const line = comingLine(si, first, clockNow);
+  if (!line) return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}">${top}${thenRow}</a></div>`;
+  return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}">${top}</a>${line}${thenRow ? html`<a class="hero-then" href="#/stop/${s.id}">${thenRow}</a>` : ''}</div>`;
+}
+
+/** A route's colour as the map and a route's line draw it (map.js lineInk): lifted on the dark theme, sunk on the light. */
+let lightOf = null;
+function lineInk(ri) {
+  const r = D.routes[ri];
+  if (document.documentElement.dataset.theme === 'dark') return '#' + (r.dcolor || liftHex(r.color));
+  lightOf ??= lightInks(D.routes.map(x => ({ color: x.color })));
+  return lightOf.get(r.color.toUpperCase()) || '#' + r.color;
+}
+/** The call on a trip at a stop nearest a minute: a loop can call at one twice. -1 when it doesn't call there. */
+function callAt(st, si, min) {
+  let k = -1;
+  st.forEach(([m, x], i) => { if (x === si && (k < 0 || Math.abs(m - min) < Math.abs(st[k][0] - min))) k = i; });
+  return k;
+}
+/** The big stop's next bus on its way, drawn as a route's page draws its line (map.js routeSheet): the rail in the
+ *  route's colour, the bus a dot on it, or the ring of the stop it's at filled, a ring for each stop it has still to
+ *  call at, and this stop at the foot. How far off it is, in stops and on the clock, and that it's coming. Only while
+ *  the feed has a bus on the trip short of here: without one, the big time is the answer, and the line isn't drawn.
+ *  The stops between the bus's next and this one folded past one, so it's four rows at most; a tap opens the route's
+ *  line at this stop. */
+function comingLine(si, first, clockNow) {
+  if (!first || first.day !== 0 || first.trip === undefined) return '';
+  const on = busOn(first.trip);   // null with the feed quiet, or no bus on the trip yet
+  if (!on || on.next === undefined) return '';
+  const b = on.bus, st = tripStops(first.trip), k = callAt(st, si, schedOf(first));
+  if (k < 0) return '';
+  // Where its next stop is on the trip: the call nearest the timetable's minute the bus is at. Past this one (a loop
+  // calling here twice, its next the later), it isn't coming to this call.
+  const j = callAt(st, on.next, clockNow.min - (busDelay(b) ?? 0));
+  if (j < 0 || j > k) return '';
+  const at = distance(b.lat, b.lon, stop(on.next).lat, stop(on.next).lon) <= AT_STOP;   // at its stop: that ring is its dot
+  // The stops it has still to call at, this one counted, the one it's at not (map.js yourStop): at this one, here.
+  const away = k - j + (at ? 0 : 1);
+  const words = away === 0 ? 'here' : `${away} ${away === 1 ? 'stop' : 'stops'} away`;
+  // Each stop's call on this trip with the feed's word on it, as the stop's own row has it.
+  const call = i => lively({ min: st[i][0], r: first.r, h: first.h, dir: first.dir, si: st[i][1], trip: first.trip, day: 0, ymd: first.ymd });
+  const row = (i, mine = false) => {
+    const t = mine ? null : call(i), ring = i === j && at;
+    // The feed's minute alone, in its blue: the timetable's, struck above it, is the big time's to say. This stop's is
+    // the big time itself, said twice above: its ring and name end the line at the rider, no third time.
+    const tm = mine ? '' : t.gone ? '—' : loopArrival(t) ? minsOut(t, 17, clockNow) : time(t.min, 17, !!t.live);
+    return html`<div class="croute${mine ? ' here' : ''}"><i class="c-ring${ring ? ' on' : ''}"></i><span class="c-t">${tm}</span><span class="c-n">${mine ? stop(si).name : heardName(st[i][1]).name}</span></div>`;
+  };
+  // Its words without a Live of their own: the eye above says Live or Estimated, and the line is only drawn live.
+  const rows = [html`<div class="busrow${at ? ' at' : ''}"><i></i><span>Bus ${b.label} · ${words}</span></div>`];
+  if (j < k) {
+    rows.push(row(j));
+    const between = k - j - 1;
+    if (between === 1) rows.push(row(j + 1));
+    else if (between > 1) rows.push(html`<div class="rs-foldsum"><span>${between} stops</span></div>`);
+  }
+  rows.push(row(k, true));
+  // To the route's line, landing on this stop, in the way the bus is going (ui.js routeBadgeLink).
+  const r = D.routes[first.r], dirs = Object.keys(r.stops || {});
+  const d = first.dir !== undefined && routeOrder(first.r, String(first.dir)).includes(si) ? String(first.dir) : dirs.find(x => routeOrder(first.r, x).includes(si)) ?? dirs[0] ?? '0';
+  return html`<a class="list rs-list line homeline" href="#/map/route/${encodeURIComponent(r.short)}/${d}/${stop(si).id}" style="--rc:${lineInk(first.r)}">${rows}</a>`;
 }
 
 /** The stops with the most departures on the day (from the timetable, nothing picked by hand): not the Center's bays,

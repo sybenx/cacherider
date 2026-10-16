@@ -1248,12 +1248,14 @@ function yourStop(ri, si, seq, buses, clockNow) {
   else {
     const lt = lively(t);
     line = html`${badge(ri, 20)}${when(lt, 22)}<span class="rel">${relative(lt, clockNow)}</span>${lt.live ? liveMark(lt.live.est ? 'Estimated' : 'Live') : sched(lt)}`;
-    // Which bus: the one on that trip. How far: stops from where it calls next to here, round the loop for a loop.
+    // Which bus: the one on that trip. How far: stops from where it calls next to here, round the loop for a loop; the
+    // one it's at (within AT_STOP) not counted, so at this one it's here (home.js comingLine says the same).
     const b = buses.find(x => x.trip === D.trips[t.trip]);
     if (b) {
-      const k = seq.indexOf(nextStopOf(b)), h = seq.indexOf(si);
-      const away = k < 0 ? null : (h - k + seq.length) % seq.length + 1;
-      sub = `Bus ${b.label}${away !== null ? ` · ${away} ${away === 1 ? 'stop' : 'stops'} away` : ''}`;
+      const n = nextStopOf(b), k = seq.indexOf(n), h = seq.indexOf(si);
+      const at = k >= 0 && distance(b.lat, b.lon, stop(n).lat, stop(n).lon) <= AT_STOP;
+      const away = k < 0 ? null : (h - k + seq.length) % seq.length + (at ? 0 : 1);
+      sub = `Bus ${b.label}${away === null ? '' : away === 0 ? ' · here' : ` · ${away} ${away === 1 ? 'stop' : 'stops'} away`}`;
     }
   }
   return html`<a class="twin blueprint yourstop" href="#/stop/${s.id}">${corners()}<span style="color:var(--color-accent-700)">${icon('pin', 22)}</span>

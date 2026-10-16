@@ -811,6 +811,31 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .hero .loops .col { display: flex; flex-direction: column; gap: 2px; }
 .hero-none { font-family: var(--font-heading); font-weight: 600; font-size: 2.75rem; line-height: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px; }
 .hero-none .sub { font-family: var(--font-body); font-weight: 400; font-size: 0.875rem; }
+/* The big stop's next bus on its way (home.js comingLine): a route's line in small (its rail, rings and bus dot, the
+   route page's own), hung from the route's badge above it, the bus at the top and this stop at the foot. Rows a size
+   down from the route page's, without their rules; the rail under the badge's middle and the words under its route's. */
+.hero .homeline { display: block; flex: none; padding: 0; border-top: 0; margin-top: -4px; color: inherit; text-decoration: none; }
+.hero .rs-list.line.homeline > * { position: relative; min-height: 32px; padding: 2px 0 2px 56px; border-bottom: 0; background-position: 20.5px 0; }
+.hero .rs-list.line.homeline > :first-child { background-position: 20.5px 100%; }
+.hero .rs-list.line.homeline > :last-child { background-position: 20.5px 0; }
+.hero .homeline .c-ring, .hero .rs-list.line.homeline > .busrow > i { left: 22px; }
+/* a bus at its stop: its words above the line, the rail starting at the stop's filled ring */
+.hero .rs-list.line.homeline > .busrow.at { background-image: none; }
+.hero .rs-list.line.homeline > .busrow.at + * { background-size: 3px 50%; background-position: 20.5px 100%; }
+.hero .rs-list.line.homeline > .busrow.at + :last-child { background-image: none; }
+.hero .rs-list.line.homeline > .busrow { gap: 8px; min-height: 32px; font-size: 0.875rem; }
+.hero .homeline .croute { gap: 8px; }
+.hero .homeline .c-t { width: 62px; }
+.hero .homeline .c-n { font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero .homeline .croute.here { background-color: transparent; box-shadow: none; }
+.hero .homeline .croute.here .c-n { font-weight: 600; }
+.hero .homeline .rs-foldsum { display: flex; align-items: center; min-height: 26px; font-size: 0.8125rem; color: var(--cr-muted); }
+.hero .homeline .rs-foldsum::before { content: ""; position: absolute; left: 22px; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--rc); background: var(--color-bg); }
+.hero-then { color: inherit; text-decoration: none; }
+/* nothing saved yet: what Save does, a line under the big stop (home.js) */
+.land-hint { display: flex; align-items: flex-start; gap: 8px; margin: 14px 28px 6px 16px; font-size: 0.8125rem; line-height: 1.4; color: var(--cr-muted); text-wrap: pretty; }
+.land-hint svg { flex: none; margin-top: 1px; color: var(--color-accent-700); }
+.land-hint b { color: var(--color-text); font-weight: 600; }
 /* beneath: the pulse as one line, then the rows */
 .land-eye { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; min-height: 28px; font-size: 0.7188rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); border-top: 1px solid var(--cr-line); }
 .routes { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; padding: 2px 16px 14px; }

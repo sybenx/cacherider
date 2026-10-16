@@ -101,6 +101,72 @@ test('a stop out of the timetable: its page, saved, at the top of home', async (
   await expect(page.locator('.mine-row').filter({ visible: true }).first()).toContainText(/No buses stop at .+ one of your stops/);
 });
 
+test('home: the big stop\'s bus on its way as a line, here at its stop, gone with the feed; the Save hint till a stop is saved', async ({ page }) => {
+  // The relay's answer made up, as the timetable has a trip run: the clock half a minute into the minute before its
+  // second call, its bus between its first two stops, and the rider at its fifth. Its line: the bus, its next stop, the
+  // two between folded, the rider's at the foot. Then the bus at its next stop (that ring filled, a stop fewer), the
+  // route's page saying the same, and the feed without it: no line.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page);
+  await expect(page.locator('.land-hint').filter({ visible: true })).toContainText('Tap Save on a stop\'s page to keep it here');   // a first visit, nothing saved
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), loops = d.D.hub.loops || [], seen = new Set();
+    for (const [si, s] of d.D.stops.entries()) for (const row of d.timesOn(si, c.ymd)) {
+      if (seen.has(row.trip) || loops.includes(row.r)) continue;
+      seen.add(row.trip);
+      const st = d.tripStops(row.trip);
+      if (st.length < 7 || st[0][0] < 300 || st[st.length - 1][0] > 1400 || st[1][0] - st[0][0] < 2) continue;
+      const a = d.D.stops[st[0][1]], b = d.D.stops[st[1][1]], k = st[4][1], mine = d.D.stops[k];
+      if (mine.hub || d.distance(mine.lat, mine.lon, d.D.hub.lat, d.D.hub.lon) < 300 || d.distance(a.lat, a.lon, b.lat, b.lon) < 200 || new Set(st.slice(0, 5).map(x => x[1])).size < 5) continue;
+      // the route page counts by the route's order: the same four calls in a row there, so the two say the same
+      const order = d.routeOrder(row.r, String(row.dir)), i1 = order.indexOf(st[1][1]);
+      if (i1 < 0 || order.slice(i1, i1 + 4).join() !== st.slice(1, 5).map(x => x[1]).join()) continue;
+      // the rider's stop's next bus then is this one, and no other stop is as near the spot
+      const min = st[1][0] - 1, at = { ymd: c.ymd, dow: c.dow, min, sec: 30 }, n = d.nextAt(k, 1, at)[0];
+      if (!n || n.trip !== row.trip || d.nearest(mine.lat, mine.lon, 2).some(x => x.i !== k && x.d < 25)) continue;
+      return { id: d.D.trips[row.trip], st: st.map(([m, x]) => [m, d.D.stops[x].id, d.D.stops[x].lat, d.D.stops[x].lon]), stop: mine.id, name: mine.name, lat: mine.lat, lon: mine.lon,
+        mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], at: Date.now() + ((min - c.min) * 60 + 30 - c.sec) * 1000, short: d.D.routes[row.r].short };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no trip today to make the feed of');
+  await page.clock.setFixedTime(new Date(pick.at));
+  const T = Math.floor(pick.at / 1000), base = T - 30 - (pick.st[1][0] - 1) * 60;   // the epoch second of the day's minute 0
+  const feedOf = (lat, lon) => ({ t: T, trips: { [pick.id]: { v: '9001', ts: T, s: pick.st.slice(1).map(([m, sid], i) => [sid, i + 2, base + m * 60, 0]) } },
+    buses: lat === undefined ? [] : [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: 0, speed: 0, ts: T }] });
+  feed = feedOf(...pick.mid);
+  await page.context().grantPermissions(['geolocation']);
+  await page.context().setGeolocation({ latitude: pick.lat, longitude: pick.lon, accuracy: 10 });
+  await page.evaluate(p => { localStorage.setItem('cr-near', 'on'); localStorage.setItem('cr-lastgeo', JSON.stringify({ lat: p.lat, lon: p.lon, at: p.at, acc: 10 })); localStorage.removeItem('cr-saved'); }, pick);
+  await page.reload();
+  const line = page.locator('.hero .homeline').filter({ visible: true });
+  await expect(line).toBeVisible({ timeout: 20_000 });
+  await expect(line.locator(':scope > *')).toHaveCount(4);
+  await expect(line.locator('.busrow')).toHaveText('Bus 9001 · 4 stops away');
+  await expect(line.locator('.busrow.at')).toHaveCount(0);
+  await expect(line.locator('.rs-foldsum')).toHaveText('2 stops');
+  await expect(line.locator('.croute.here')).toContainText(pick.name);
+  await expect(line).toHaveAttribute('href', new RegExp('^#/map/route/' + encodeURIComponent(pick.short) + '/\\d+/' + pick.stop + '$'));
+  await expect(page.locator('.land-hint').filter({ visible: true })).toBeVisible();   // nothing saved: under the big stop
+  // At its next stop: that stop's ring is its dot, and that stop's done
+  feed = feedOf(pick.st[1][2], pick.st[1][3]);
+  await expect(line.locator('.busrow.at')).toHaveText('Bus 9001 · 3 stops away', { timeout: 15_000 });
+  await expect(line.locator('.croute').first().locator('.c-ring.on')).toHaveCount(1);
+  await line.click();
+  await expect(page).toHaveURL(new RegExp('#/map/route/.+/' + pick.stop + '$'));
+  await expect(page.locator('.yourstop').filter({ visible: true }).first()).toContainText('Bus 9001 · 3 stops away');
+  // The feed without it: the big stop as it was
+  feed = feedOf();
+  await go(page, '#/');
+  await expect(page.locator('.hero').filter({ visible: true })).toBeVisible();
+  await expect(page.locator('.homeline')).toHaveCount(0, { timeout: 15_000 });
+  // Saved: the hint goes
+  await page.evaluate(id => { localStorage.setItem('cr-saved', JSON.stringify([id])); window.dispatchEvent(new HashChangeEvent('hashchange')); }, pick.stop);
+  await expect(page.locator('.hero .savedmark').filter({ visible: true })).toBeVisible();
+  await expect(page.locator('.land-hint')).toHaveCount(0);
+});
+
 test('home: the Routes line opens every route', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s line; a wide screen has the chips');
   await open(page);
