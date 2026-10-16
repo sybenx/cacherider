@@ -72,28 +72,67 @@ export default {
     const only = url.searchParams.has('stops') ? new Set(url.searchParams.get('stops').split(',').filter(Boolean).slice(0, 32)) : null;
     if (only) { cors['Access-Control-Allow-Origin'] = '*'; delete cors['Vary']; }
     // The answer made once a TTL at each edge, however many riders ask for it (a Worker's own answers aren't cached
-    // in front of it): decoding the feeds is most of a run's CPU, and the free plan's is 10 ms.
-    const json = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + TTL };
-    const key = new Request(url.origin + '/' + (only ? '?stops=' + [...only].join(',') : ''));
+    // in front of it): decoding the feeds is most of a run's CPU, and the free plan's is 10 ms. A few stops' answer
+    // is cut from the same one: each list of stops its own, Headway's (nearest first, so a step along the street
+    // made a new one) missed every time, the feeds decoded and the tracker site waited on for each, and 15 of 23
+    // came after three seconds, Headway's wait (16 Oct).
+    const key = new Request(url.origin + '/');
     const hit = await caches.default.match(key);
-    if (hit) return new Response(hit.body, { headers: { ...cors, ...json } });
+    if (hit && !only) return new Response(hit.body, { headers: { ...cors, ...JSON_TTL } });
     try {
-      const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
-      let out = decode(vp, tu);
-      // Detoured buses aren't in the feed, so the tracker site fills them in for
-      // every answer. A few-stops answer asks it even when the feed has none at
-      // all: Headway counts buses out from its yard, and one deadheading home
-      // is only on the tracker, if anywhere.
-      try { await fillIn(out, !!only); } catch (e) { /* the feed's own buses still go out */ }
-      if (only) out = atStops(out, only);
-      const body = JSON.stringify(out);
-      ctx.waitUntil(caches.default.put(key, new Response(body, { headers: json })));
-      return new Response(body, { headers: { ...cors, ...json } });
+      if (!only) return new Response(await (await whole(ctx, key)).body, { headers: { ...cors, ...JSON_TTL } });
+      let out;
+      if (hit) out = await hit.json();
+      else {
+        // None at this edge: made here, the whole answer, cached once the tracker site has filled in, as the
+        // root's; this asker waits on the tracker a second at most.
+        const made = await whole(ctx, key);
+        await Promise.race([made.body, wait(STOPS_WAIT)]);
+        out = made.out;
+      }
+      if (!out.buses.length) out = await night(ctx, url.origin, out);
+      if (!out) return new Response(JSON.stringify({ error: 'tracker slow' }), { status: 504, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+      return new Response(JSON.stringify(atStops(out, only)), { headers: { ...cors, ...JSON_TTL } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
     }
   },
 };
+
+const JSON_TTL = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + TTL };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+// The whole answer from the feeds, { out, body }: out as soon as they're decoded, body (and the edge's cache) once
+// the tracker site has filled in. The fill-in goes on past a few stops' answer that doesn't wait for it.
+async function whole(ctx, key) {
+  const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
+  const out = decode(vp, tu);
+  // Detoured buses aren't in the feed, so the tracker site fills them in for every answer.
+  const body = fillIn(out, false).catch(e => { /* the feed's own buses still go out */ }).then(() => {
+    const s = JSON.stringify(out);
+    ctx.waitUntil(caches.default.put(key, new Response(s, { headers: JSON_TTL })));
+    return s;
+  });
+  ctx.waitUntil(body);
+  return { out, body };
+}
+// A few stops' answer when the feed has no bus at all asks the tracker site anyway: Headway counts buses out from its
+// yard, and one deadheading home is only on the tracker, if anywhere. Made once a TTL at each edge too, under a key
+// of its own. Null when the tracker hasn't answered inside NIGHT_WAIT: its buses are all of `at` then, and an
+// answer without them would read as every bus in (Headway keeps its last word on an error).
+async function night(ctx, origin, out) {
+  const key = new Request(origin + '/?stops');
+  const hit = await caches.default.match(key);
+  if (hit) return hit.json();
+  const all = { ...out, buses: [] };
+  let done = false;
+  const filled = fillIn(all, true).catch(e => { /* none, as the feed has */ }).then(() => {
+    done = true;
+    ctx.waitUntil(caches.default.put(key, new Response(JSON.stringify(all), { headers: JSON_TTL })));
+  });
+  ctx.waitUntil(filled);
+  await Promise.race([filled, wait(NIGHT_WAIT)]);
+  return done ? all : null;
+}
 
 // ---- bus tracks: three samples a minute, twenty seconds apart (a short detour, a block or two, is gone in a
 // minute), each the feed's buses and the tracker's (a detoured bus is only on the tracker), as one row. Nothing
@@ -178,6 +217,9 @@ function atStops(out, only) {
 // Upstream asked with a limit: a feed that hangs would hold a rider's poll past the app's own eight seconds, and
 // stretch a minute's tracking run into the next one's.
 const FEED_WAIT = 7000, RTPI_WAIT = 4000;   // under the app's own eight-second wait
+// A few stops' answer waits on the tracker site no longer than this, inside Headway's three seconds: by day for the
+// buses on a detour alone, at night for all of them (the feeds, small then, asked first).
+const STOPS_WAIT = 1000, NIGHT_WAIT = 2000;
 async function feed(name) {
   const r = await fetch(UPSTREAM + name, { headers: UA, cf: { cacheTtl: TTL, cacheEverything: true }, signal: AbortSignal.timeout(FEED_WAIT) });
   if (!r.ok) throw new Error(name + ' ' + r.status);
