@@ -460,10 +460,11 @@ test('the Center: a departure still listed past its minute, its bus on its trip 
   expect(r).toEqual(['gone', 'leaving', 'gone']);
 });
 
-test('the Center: a group gone by, one late route still in its bay, is the next group\'s; most of it still in, it\'s up', async ({ page }) => {
+test('the Center: a group NOW in its minute; gone by with one late route still in, the next group\'s; most of it still in, up and counting how late', async ({ page }) => {
   // 8:03 AM, 16 Oct: Route 12's bus in late for the 8:00, the other nine gone at 8:00 and out on their runs. The board
-  // stayed at 8:00, 0:00, every other bay's bus 20 min out (coming in for the 8:30), until 12 pulled out at 8:06. Made
-  // up from the timetable: a group with a group 30 min after it, the clock 3½ min past it, the relay's answer faked.
+  // stayed at 8:00, 0:00, every other bay's bus 20 min out (coming in for the 8:30), until 12 pulled out at 8:06; and a
+  // group's clock sat at 0:00 for minutes. Made up from the timetable: a group with a group 30 min after it, the clock
+  // half a minute past it, then 4 min 40, the relay's answer faked.
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
   await open(page);
@@ -480,7 +481,7 @@ test('the Center: a group gone by, one late route still in its bay, is the next 
       });
       if (runs.length < 4 || runs.some(x => !x)) continue;
       const day = t.dayDiff(c.ymd, q.ymd);
-      return { q, runs, at: Date.now() + ((day * 1440 + q.min + 3 - c.min) * 60 + 30 - c.sec) * 1000 };
+      return { q, runs, at: Date.now() + ((day * 1440 + q.min - c.min) * 60 + 30 - c.sec) * 1000 };
     }
     return null;
   });
@@ -506,17 +507,32 @@ test('the Center: a group gone by, one late route still in its bay, is the next 
     const t = await import('/app/time.js'), ui = await import('/app/ui.js');
     return { name: ui.routeNames([runs[0].ri]), then: t.clock(q.min + 30).h, now: t.clock(q.min).h };
   }, pick);
-  feed = await feedOf(1);
+  // Its own minute, every bus in: NOW, not 0:00
+  feed = await feedOf(pick.runs.length);
   await go(page, '#/hub');
-  const board = page.locator('.tc-together').filter({ visible: true }).first();
+  const board = page.locator('.tc-together').filter({ visible: true }).first(), count = board.locator('.tc-count');
+  await expect(board.locator('.tc-seg.in')).toHaveCount(pick.runs.length, { timeout: 20_000 });   // the feed's word in
+  await expect(count).toHaveText('NOW');
+  await page.clock.setFixedTime(new Date(pick.at + 80_000));   // still NOW in its second minute: not late till 2 min
+  await expect(count).toHaveText('NOW');
+  // 3½ min on, one route still in, late; the rest gone, their bays dropped from the feed (each still 'leaving now' for
+  // the minute after: rt.js LEFT_GRACE, by the clock, so it's moved on past that)
+  await page.clock.setFixedTime(new Date(pick.at + 180_000));
+  feed = await feedOf(1);
+  await page.waitForTimeout(6000);   // a poll with it
+  await page.clock.setFixedTime(new Date(pick.at + 250_000));
+  feed = await feedOf(1);
   // the note first: it's the feed's (before its first word the board is the timetable's, the group gone by its clock)
   await expect(board.locator('.tc-note').first()).toContainText(`Of the ${late.now}s, ${late.name} leaves late`, { timeout: 20_000 });
   await expect(board.locator('.top .t').first()).toHaveText(new RegExp('^' + late.then));
   await expect(board.locator('.tc-seg.in')).toHaveCount(0);   // its bus in is the late run's, not this group's
-  // Half the group or more still in, late: the group is still up, its countdown at its buses
+  // Half the group or more still in, late: the group is still up, how long past its minute counting, in the late red
   feed = await feedOf(Math.ceil(pick.runs.length / 2));
   await expect(board.locator('.top .t').first()).toHaveText(new RegExp('^' + late.now), { timeout: 20_000 });
-  await expect(board.locator('.tc-count')).toHaveText('0:00');
+  await expect(count).toHaveText('+4:40');
+  await expect(count).toHaveClass(/\blate\b/);
+  await page.clock.setFixedTime(new Date(pick.at + 252_000));
+  await expect(count).toHaveText('+4:42');
 });
 
 test('the Center\'s compass: north up and south up, one to the other', async ({ page }) => {

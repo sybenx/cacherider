@@ -896,6 +896,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .tc-together .cap { font-size: 0.7812rem; }
 .tc-together .end { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .tc-count { font-size: 2.625rem; color: var(--color-accent-700); }
+.tc-count.late { color: var(--cr-late); }   /* past the group's minute, its buses still in: how late, counting */
 .tc-together .bars { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--cr-line); display: flex; flex-direction: column; gap: 8px; }
 .tc-together .segs { display: grid; gap: 3px; }
 /* not .seg: that's the settings' two-button switch, whose border and corners boxed each bar */

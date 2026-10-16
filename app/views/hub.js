@@ -2,7 +2,7 @@
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf } from '../data.js';
-import { relative, countdown, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone } from '../time.js';
+import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone } from '../time.js';
 import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
@@ -220,8 +220,9 @@ function together(st, clockNow) {
   const due = still.length ? Math.min(...still.map(d => d.min)) : p.min;
   const diff = minsTo({ min: due, day: p.day }, clockNow);
   // A timer, not news: the page is a polite live region (index.html), and its tick would be read out every second.
+  const cw = countWords(due, p.min, clockNow.min * 60 + clockNow.sec);
   const end = p.day === 0 && diff < 60
-    ? html`<span class="t tc-count" data-countdown="${due}" role="timer" aria-live="off">${countdown(due, clockNow)}</span><span class="cap">min : sec</span>`
+    ? html`<span class="t tc-count${cw.late ? ' late' : ''}" data-countdown="${due}" data-from="${p.min}" role="timer" aria-live="off">${cw.text}</span><span class="cap">${cw.cap}</span>`
     : html`<span class="t tc-count">${p.day === 0 ? diff : ''}</span><span class="cap">${p.day === 0 ? 'min' : relative(p, clockNow)}</span>`;
   const livenow = p.day === 0 && !rtStale();
   // When each route's run in this group leaves, where the feed has moved it 2 min or more: the question a rider at the
@@ -425,10 +426,26 @@ export function mount(el) {
   if (!c) return;
   const tick = () => {
     if (!document.body.contains(c)) return clearInterval(countIv);
-    const s = +c.dataset.countdown * 60 - nowSec();
-    c.textContent = s <= 0 ? '0:00' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    const w = countWords(+c.dataset.countdown, +c.dataset.from, nowSec()), cap = c.nextElementSibling;
+    c.textContent = w.text;
+    c.classList.toggle('late', w.late);
+    if (cap) cap.textContent = w.cap;
   };
   countIv = setInterval(tick, 1000);
   tick();
 }
 const nowSec = () => { const n = now(); return n.min * 60 + n.sec; };
+/** The group's clock by the second (`due` the minute it's counted to, `from` the group's own, `sec` the day's second):
+ *  m:ss to when it leaves while that's ahead; NOW from the group's minute (time.js: due from its start) till it's late
+ *  as every screen says late, 2 min on (ui.js moved): a pulse leaves through its first minute and a half, and a bus
+ *  pulled out reads as leaving for a minute more (rt.js LEFT_GRACE). Then, the group still up (half its buses still
+ *  to leave), how long since its minute, counting, in the late red. NOW isn't the minute counted to: a bus waiting at
+ *  its bay is leaving now by the feed's word every minute, and NOW would never end. It sat at 0:00 for minutes while a
+ *  group's buses were still to leave, and read as stopped (the user, 2026-10-16). */
+const mmss = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+function countWords(due, from, sec) {
+  const s = due * 60 - sec;
+  if (s > 0) return { text: mmss(s), cap: 'min : sec', late: false };
+  if (minsTo({ min: from }, { min: Math.floor(sec / 60) }) > -2) return { text: 'NOW', cap: '\u00a0', late: false };
+  return { text: '+' + mmss(sec - from * 60), cap: 'min : sec late', late: true };
+}

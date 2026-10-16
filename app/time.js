@@ -116,13 +116,6 @@ export function relative(dep, clockNow, opts = {}) {
   return dayName(dayFrom(clockNow.ymd, dep.day).ymd);
 }
 
-/** 'in 8 min' for the pulse, or the m:ss countdown when inside ten minutes. */
-export function countdown(depMin, clockNow) {
-  const s = (depMin - clockNow.min) * 60 - clockNow.sec;
-  if (s <= 0) return '0:00';
-  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-}
-
 /** Headway between departures, when they are regular: 'Every 30 min until 8:36 PM'. */
 export function cadence(mins) {
   if (mins.length < 3) return '';
