@@ -553,6 +553,21 @@ export function standingAt(ri) {
     return !!first && !!D.stops[first[1]]?.hub && first[0] >= nowMin - 15;
   }) || null;
 }
+/** A Connect bus off duty, in words, or null: 'Not reporting' when its tracker has gone quiet (rt.parked, its place
+ *  minutes old), 'Not in service' when it reports with no trip (logged off, on its way in; its route the last it ran,
+ *  rt.parked), 'Done for the day' when its trip is over and its run has no next one
+ *  today. Drawn grey and kept on the map, and said so on its card and in a search for it; a bus between two trips of
+ *  its run is on duty. */
+export function offDuty(b, clockNow = now()) {
+  if (b.quiet) return 'Not reporting';
+  if (b.free) return 'Not in service';
+  const ti = tripOf(b.trip);
+  if (ti === undefined || nextTrip(ti, clockNow.ymd) !== undefined) return null;
+  const u = rt.trips[b.trip], nowS = Date.now() / 1000;
+  if (u) return u.stops.some(x => x[3] !== 1 && x[2] >= nowS - 60) ? null : 'Done for the day';   // its final stop too
+  const te = tripEnd(ti), st = tripStops(ti), end = te ? te.min : st.length ? st[st.length - 1][0] : null;
+  return end !== null && clockNow.min > end + Math.max(0, busDelay(b) || 0) + 2 ? 'Done for the day' : null;
+}
 export function findBus(id) { return rt.buses.find(b => b.id === id) || rt.parked.find(b => b.id === id); }
 /** A trip's index in the timetable, by the feed's id. */
 export function tripOf(id) { index(); return tripIdx ? tripIdx.get(id) : undefined; }

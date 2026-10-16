@@ -1,11 +1,12 @@
-// Search: one list for a street, a stop, a place, an address, a route or the shuttle, the same wherever it's asked
+// Search: one list for a street, a stop, a place, an address, a route, the shuttle or a bus by its number, the same wherever it's asked
 // (the Stops tab's page, the Map tab's box, the header's box on a wide screen). Only where a result leads differs:
 // on the map it shows there (forMap), and while one end of a journey is being chosen it's that end (forPick).
 import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets } from '../data.js';
-import { metres } from '../time.js';
-import { routeName, html, icon, badge, badges, stopRow, esc } from '../ui.js';
+import { metres, clockText, now } from '../time.js';
+import { routeName, html, icon, badge, badges, stopRow, esc, headsign } from '../ui.js';
 import { parseAddress, geocode, townState, spotKey, spotOf, atPath, byWalk, steepWalk } from '../geo.js';
-import { U, searchUSU, stopRowU, chip, live, hasData, nearestUSU } from '../usu.js';
+import { U, searchUSU, stopRowU, chip, live, hasData, nearestUSU, isStale, lastSeen } from '../usu.js';
+import { rt, rtStale, rtHasData, rtSeen, offDuty } from '../rt.js';
 import { myPlaces } from '../places.js';
 
 /** One end of a journey being asked for: `to`, a stop or spot being gone to (a result is the start), or `from`, a spot
@@ -62,8 +63,13 @@ function resultsOf(q, clockNow, pick, later) {
   // A route named ('12', 'blue'): its page first, above any stop with the number in its address. Not while an end of a
   // journey is being picked: a route is neither.
   const ris = pick ? [] : searchRoutes(q);
+  let bus = pick ? { html: '' } : busRows(q);
+  if (bus.guess && (hits.length || places.length || campusHtml || spots.length || ris.length)) bus = { html: '' };   // a number guessed a bus's, and found as something else: that alone
   let routeHtml = ris.length ? html`<div class="list">${ris.map(ri => html`<a class="row" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span><span class="sub">${D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`)}</div>`.s : '';
-  if (!hits.length && !places.length && !campusHtml && !spots.length && !routeHtml) {
+  // A bus asked for by its number: it first, as a route asked for is; buses its first figures start, after the stops.
+  if (bus.first) routeHtml = bus.html + routeHtml;
+  const busAfter = bus.first ? '' : bus.html;
+  if (!hits.length && !places.length && !campusHtml && !spots.length && !routeHtml && !busAfter) {
     return html`<div class="empty"><h2>No stops match “${q}”</h2><p>Stop names are street addresses. Try a street or a town, or any address in the valley, like “1400 N 500 E, Logan”, for the stops nearest it.</p></div>
       <div class="chips">${['Main St', '400 North', 'Hyrum', 'USU', 'Smithfield'].map(s => html`<a class="chip" href="#/search?q=${encodeURIComponent(s)}" data-q="${s}">${s}</a>`)}</div>`;
   }
@@ -76,15 +82,62 @@ function resultsOf(q, clockNow, pick, later) {
   }
   const towns = [...new Set(hits.map(i => stop(i).town))];
   const where = towns.length === 1 ? ' in ' + towns[0] : '';
-  if (!hits.length) return html`${html.raw(routeHtml)}${html.raw(spotHtml)}${html.raw(campusHtml)}${html.raw(addrHtml)}${places.length ? html`<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>` : ''}`;
+  if (!hits.length) return html`${html.raw(routeHtml)}${html.raw(spotHtml)}${html.raw(campusHtml)}${html.raw(addrHtml)}${html.raw(busAfter)}${places.length ? html`<div class="fine">Any grid address in the valley works, with or without the town: the stops nearest it are listed, nearest first. Where the same address exists in more than one town, each is shown.</div>` : ''}`;
   // A street or a number is after stops: they come first, the places on that street after. A name is after a place.
   const street = streetish(st.q) || townish(q);
   const taken = st.said.map(s => `${s.said} is ${s.is}`).join(' · ');
   const stopsHtml = html`<div class="${street && !places.length ? 'notice' : 'section'}"><span>${places.length ? 'Stops named like that' : `${hits.length} ${hits.length === 1 ? 'stop' : 'stops'}${where} · sorted by street number`}${taken ? html`<span class="note"> · ${taken}</span>` : ''}</span></div>
     <div class="list">${hits.map(i => stop(i).hub ? hubRow() : stopRow(i, nx(i), clockNow, { later }))}</div>`.s;
   const blocks = street ? [addrHtml, stopsHtml, campusHtml, spotHtml] : [spotHtml, campusHtml, addrHtml, stopsHtml];
-  return html`${html.raw(routeHtml)}${html.raw(blocks.join(''))}
+  return html`${html.raw(routeHtml)}${html.raw(blocks.join(''))}${html.raw(busAfter)}
     <div class="fine">Matches street, number and town: “500 north”, “main st, hyrum” and “hyrum main” all work. So does any address in the valley, like “1400 N 500 E, Logan”, for the stops nearest it.</div>`;
+}
+
+/** A bus by the number painted on it ('1168', 'bus 1168'), as a rider knows it: a bag left on it, the bus they just
+ *  got off. Each of Connect's and the shuttle's buses in the live feeds with that number (`first`, above the rest;
+ *  after the stops where it's a stop's number too and no bus was said, Stop 1124), or, three figures typed, starting
+ *  with them while three buses or fewer do ('116': 1166, 1167 and 1169; after the stops, Stop 116 being a stop's
+ *  number and 400 a street); its route, and where it's headed or that it's off duty, as its card says. A tap is its
+ *  card, the map gone to where it is. Four figures said as a bus ('bus 1234'), or like the fleet's own (the first two
+ *  of a bus's in the feed now, 11 or 40) and no stop's number (Stop 1116), and no bus with them on the map: said so,
+ *  not left blank; guessed a bus's, only where nothing else is found (`guess`: the house at 1185 North Main is). Not
+ *  'not in service', the card's word for a bus reporting with no trip: one heading in to the yard isn't on the map at
+ *  all. '1168 North' and '1168 N Main' are addresses: more than a number isn't a bus. */
+const BUS_Q = /^(?:(bus|#)\s*(?:no\.?|number|#)?\s*)?(\d{3,4})$/i;
+function busRows(q) {
+  const m = BUS_Q.exec(q.trim());
+  if (!m) return { html: '' };
+  const n = m[2];
+  const cs = rtStale() ? [] : [...rt.buses, ...rt.parked];   // the map's own: a feed gone quiet has none drawn
+  const us = U && live.at && Date.now() - live.at < 600e3 ? live.buses : [];   // the shuttle's, grey for ten minutes once its feed goes quiet
+  const num = b => b.u ? String(b.name ?? '').replace(/\D/g, '') : String(b.label);
+  const all = [...cs, ...us.map(b => ({ ...b, u: true }))];
+  let hits = all.filter(b => num(b) === n);
+  const exact = hits.length > 0, stopNo = D.stops.some(s => String(s.code) === n), first = exact && (!!m[1] || !stopNo);
+  if (!exact && n.length === 3) { const part = all.filter(b => num(b).startsWith(n)); if (part.length <= 3) hits = part; }
+  if (!hits.length) {
+    const fleet = all.some(b => num(b).length === 4 && num(b).slice(0, 2) === n.slice(0, 2)) && !stopNo;
+    if (n.length !== 4 || !(m[1] || fleet)) return { html: '' };
+    const say = !rtHasData() ? `Finding buses…` : rtStale() ? `No word from the buses since ${rtSeen()}: bus ${n} can't be found now.` : `Bus ${n} isn't on the map now.`;
+    return { html: html`<div class="notice">${icon('info', 16)}<span>${say}</span></div>`.s, first: true, guess: !m[1] };
+  }
+  hits.sort((a, b) => !!a.u - !!b.u || num(a).localeCompare(num(b)));
+  const row = b => {
+    let lead, sub;
+    if (b.u) {
+      lead = chip(b.ri, 36);
+      sub = U.routes[b.ri].name + (isStale() ? ' · not reporting, last heard from at ' + lastSeen() : '');
+    } else {
+      const off = offDuty(b), r = routeName(b.ri, false);
+      lead = badge(b.ri, 36);
+      sub = off === 'Not reporting' ? off + ' · last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min)
+        : off ? off + ' · its last run was ' + routeName(b.ri)
+        : b.h === null ? r   // a trip the timetable doesn't know (a detour's, from the tracker): its route, no more ('Route 07' is the feed's long name)
+        : [r, headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir })].filter((x, i, xs) => xs.indexOf(x) === i).join(' · ');
+    }
+    return html`<a class="row busfound" href="#/map/bus/${encodeURIComponent(b.id)}?find=1">${lead}<div class="mid"><span class="name">Bus ${b.u ? b.name : b.label}</span><span class="sub">${sub}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`;
+  };
+  return { html: html`${first ? '' : html`<div class="section">${icon('hub', 16)}${exact ? 'Bus number ' + n : 'Buses numbered ' + n + '…'}</div>`}<div class="list">${hits.map(row)}</div>`.s, first };
 }
 
 /** The Transit Center as one row in a search, for its bays' one address: the Transit Center tab, every route. */

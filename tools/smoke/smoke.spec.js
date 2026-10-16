@@ -320,6 +320,40 @@ test('search: a route, every route, a street, a place, an address', async ({ pag
   await expect(page.getByText(/Show on map/).filter({ visible: true }).first()).toBeVisible();
 });
 
+test('search: a bus by its number, its card on the map, Back; an address with the number in it still the address', async ({ page }, info) => {
+  // '1168 N Main' is an address, whatever bus 1168 is doing: its heading first, no bus.
+  await open(page, '#/search?q=' + encodeURIComponent('1168 N Main'));
+  await expect(page.locator('#side .section').filter({ visible: true }).first()).toContainText(/1168 North Main/i);
+  await expect(page.locator('#side a.busfound')).toHaveCount(0);
+  // A bus out now, by the number painted on it, from the live feed (its first word a few seconds off).
+  let label = null;
+  for (let i = 0; i < 30 && label === null; i++) {
+    label = await page.evaluate(async () => { const { rt } = await import('/app/rt.js'); return rt.at ? (rt.buses.find(b => /^\d{4}$/.test(b.label)) || {}).label || '' : null; });
+    if (label === null) await page.waitForTimeout(500);
+  }
+  test.skip(!label, 'no Connect bus out');
+  // On a phone the map's own box; on a wide screen the header's, its results in the panel. The bus first, above any
+  // stop with the number in it.
+  let first;
+  if (phone(info)) {
+    await go(page, '#/map');
+    await mapReady(page);
+    await page.locator('#mapsearch input').fill(label);
+    first = page.locator('#mapresults a.row, #mapresults a.stoprow').first();
+  } else {
+    await go(page, '#/');
+    await page.locator('#topsearch input').fill(label);
+    first = page.locator('#side a.row, #side a.stoprow').first();
+  }
+  await expect(first).toHaveClass(/busfound/);
+  await expect(first).toContainText('Bus ' + label);
+  await first.click();
+  await expect(page).toHaveURL(/#\/map\/bus\/.+\?find=1$/);
+  await expect(page.locator('#mapcard.open .eyebrow').filter({ visible: true }).first()).toContainText('Bus ' + label);
+  await page.goBack();
+  await expect(page).toHaveURL(phone(info) ? /#\/map$/ : new RegExp('#/search\\?q=' + label + '$'));   // back to the map, or to the search
+});
+
 test('one clock rule: due from its minute\'s start, gone from the next', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {

@@ -8,7 +8,7 @@ import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, 
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, tripOf, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN, AT_STOP } from '../rt.js';
+import { rt, findBus, offDuty, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN, AT_STOP } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
@@ -2677,20 +2677,6 @@ function litBus(m) {
   if (JR && JR.appBus) return m.id === JR.appBus;
   return m.kind === 'c' ? hiLines.includes(m.ri) || runRoutes.includes(m.ri) : hiLoops.includes(U.routes[m.ri].id);
 }
-/** A Connect bus off duty, in words, or null: 'Not reporting' when its tracker has gone quiet (rt.parked, its place
- *  minutes old), 'Not in service' when it reports with no trip (logged off, on its way in; its route the last it ran,
- *  rt.parked), 'Done for the day' when its trip is over and its run has no next one
- *  today. Drawn grey and kept on the map; a bus between two trips of its run is on duty. */
-function offDuty(b, clockNow = now()) {
-  if (b.quiet) return 'Not reporting';
-  if (b.free) return 'Not in service';
-  const ti = tripOf(b.trip);
-  if (ti === undefined || nextTrip(ti, clockNow.ymd) !== undefined) return null;
-  const u = rt.trips[b.trip], nowS = Date.now() / 1000;
-  if (u) return u.stops.some(x => x[3] !== 1 && x[2] >= nowS - 60) ? null : 'Done for the day';   // its final stop too
-  const te = tripEnd(ti), st = tripStops(ti), end = te ? te.min : st.length ? st[st.length - 1][0] : null;
-  return end !== null && clockNow.min > end + Math.max(0, busDelay(b) || 0) + 2 ? 'Done for the day' : null;
-}
 const OFF_GREY = '#8a8d91';
 /** Every bus with a fix, shuttle and Connect alike, moved or placed; the ones gone from the feeds removed. */
 /** On a wide screen the panel covers 420 px of the map, its left or, set so (Settings), its right: the map keeps its
@@ -3486,7 +3472,8 @@ export async function show(o, app, clockNow) {
 // A bus asked for before the feed has placed it: picked out as soon as it appears.
 let wantIn = null;
 /** A bus on its way to the Transit Center, from the board: its card and its way on, framed with the Center, so where
- *  it is and how it comes in read at once. North up: off the Center, its turn is put away. */
+ *  it is and how it comes in read at once. North up: off the Center, its turn is put away. Found by its number in a
+ *  search (?find=1), the bus alone: at the streets, where it is, the rider's turn kept. */
 function busIn(id, app) {
   const m = busMarkers.get(id);
   if (!m) { wantIn = id; return; }
@@ -3494,6 +3481,7 @@ function busIn(id, app) {
   col.querySelector('#mapcard').classList.remove('peek');   // the board's opening size, not the rider's: its next stops shown
   selectBus(id, app);
   const ll = m.marker.getLngLat(), b = new maplibregl.LngLatBounds([ll.lng, ll.lat], [ll.lng, ll.lat]);
+  if (/[?&]find=1(&|$)/.test(location.hash)) return requestAnimationFrame(() => frame([ll.lng, ll.lat], { zoom: Math.max(map.getZoom(), 15), duration: 700 }));
   b.extend([D.hub.lon, D.hub.lat]);
   requestAnimationFrame(() => frame(b, { maxZoom: 16, bearing: 0, duration: 700 }));
 }
