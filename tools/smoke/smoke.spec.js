@@ -260,6 +260,29 @@ test('map: a bus wears its route\'s number, a grey one its arrow, two at one spo
   await expect(marker('9004')).not.toHaveClass(/\bnum\b/);   // grey: the arrow, not a number that reads as in service
 });
 
+test('map: a tap on a +1 zooms in till its buses part, no card', async ({ page }) => {
+  // Two buses of one route 8 m apart: one spot from the town's view, a +1; tapped, the map comes in till each has its
+  // own ring, and no bus's card opens for whichever was on top.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page, '#/');
+  const short = await page.evaluate(async () => (await import('/app/data.js')).D.routes.map(r => r.short).find(s => /^\d{1,2}$/.test(s)));
+  const t = Math.floor(Date.now() / 1000), bus = (label, lat, lon) => ({ id: label, label, trip: short + '_9999', lat, lon, bearing: 90, speed: 5, ts: t - 2 });
+  feed = { t, trips: {}, buses: [bus('9005', 41.7365, -111.8335), bus('9006', 41.73657, -111.8335)] };
+  await go(page, '#/map');
+  await mapReady(page);
+  const marker = label => page.locator(`.maplibregl-marker.bus[title*="bus ${label}"]`);
+  const top = page.locator('.maplibregl-marker.bus:not(.stacked)[title*="bus 900"]').filter({ has: page.locator('.bus-n') });
+  await expect(top).toHaveCount(1);
+  await expect(top.locator('.bus-n')).toHaveText('+1');
+  await top.evaluate(el => el.click());
+  await expect(marker('9005').locator('.bus-n')).toHaveCount(0);
+  await expect(marker('9006')).not.toHaveClass(/\bstacked\b/);
+  await expect(marker('9005')).not.toHaveClass(/\bstacked\b/);
+  expect(await page.evaluate(() => location.hash)).toBe('#/map');
+  await expect(page.locator('#mapcard.open')).toHaveCount(0);
+});
+
 test('search: a route, every route, a street, a place, an address', async ({ page }) => {
   await open(page);
   await go(page, '#/search?q=12');

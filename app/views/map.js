@@ -2954,7 +2954,7 @@ export function liveUpdate(app) {
         const el = document.createElement('div');
         el.className = kind === 'u' ? 'bus shuttle' : 'bus';
         el.innerHTML = '<div class="bus-marker">' + (kind === 'u' ? ARROW_A : ARROW + NUM) + '</div>';   // a shuttle bus is drawn apart: its colours are a chart's, and share Connect's
-        el.onclick = ev => { ev.stopPropagation(); if (!cardTo('#/map/bus/' + encodeURIComponent(b.id) + '?tap=1')) selectBus(b.id, app); };
+        el.onclick = ev => { ev.stopPropagation(); if (!partStack(b.id) && !cardTo('#/map/bus/' + encodeURIComponent(b.id) + '?tap=1')) selectBus(b.id, app); };
         const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'map' }).setLngLat([b.lon, b.lat]);
         m = { marker, el, ri: b.ri, kind, id: b.id, num: el.querySelector('.bus-num') };
         busMarkers.set(b.id, m);
@@ -3031,6 +3031,23 @@ function alsoHere(id) {
   if (!others.length) return '';
   const name = x => { const c = findBus(x); if (c) return 'Bus ' + c.label + ' · ' + routeName(c.ri, false); const u = live.buses.find(y => y.id === x); return u ? 'Bus ' + u.name + ' · ' + U.routes[u.ri].name : 'Bus'; };
   return html`<div class="alsohere">${icon('hub', 15)}<span>Also here: ${others.map((x, k) => html`${k ? ', ' : ''}<a href="#/map/bus/${encodeURIComponent(x)}?tap=1">${name(x)}</a>`)}</span></div>`;
+}
+/** A tap on a bus with others at its spot (+N): in till they come apart, not the card of whichever was on top (the
+ *  user's word). True when it zoomed. Rings side by side want their width and a little air between centres, full size
+ *  that close in (busScale); the zoom that gives the nearest two that much, about their middle. Where they'd part only
+ *  past the map's deepest zoom (laid over side by side, or at one point), the tap opens as before, its card naming the
+ *  others (alsoHere). */
+function partStack(id) {
+  const ms = (stacks.get(id) || []).map(x => busMarkers.get(x)).filter(m => m && m.to);
+  if (ms.length < 2) return false;
+  const pts = ms.map(m => map.project(m.to)), need = (coarse() ? 30 : 22) + 6;
+  let d = Infinity;
+  pts.forEach((p, i) => pts.slice(i + 1).forEach(q => { d = Math.min(d, Math.hypot(p.x - q.x, p.y - q.y)); }));
+  const z = map.getZoom() + Math.log2(need / d) + 0.1;
+  if (!(z <= map.getMaxZoom())) return false;   // (at one point d is 0, and z no number)
+  const lon = ms.reduce((a, m) => a + m.to[0], 0) / ms.length, lat = ms.reduce((a, m) => a + m.to[1], 0) / ms.length;
+  frame([lon, lat], { zoom: z, duration: 600 });
+  return true;
 }
 // A cheap tablet (four cores or fewer, or 4 GB or less) spends its frames on the map: its buses jump to each fix.
 const WEAK = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
