@@ -2130,18 +2130,28 @@ function hubBadges() {
   easeBays();
 }
 /** Badges that would touch pushed apart on the screen, a little air between each pair, each still pointing from
- *  as near its own stop as the others let it. */
+ *  as near its own stop as the others let it. Badges at one bay (11, 16 and PRT's) hang one below another from its
+ *  point, close, each with room for its time under it: side by side, three ran off a phone's edge. */
 function easeBays() {
   const ms = [...hubMarks.values()], AIR_X = 34, AIR_Y = 38;
   const p = ms.map(m => { const q = map.project(m.at); return { x: q.x, y: q.y, x0: q.x, y0: q.y }; });
+  // One bay's badges hang from its point: the first at the stop itself, the others below it in turn, 2 px under the one
+  // above, its time chip and all (28 px badge, the chip 8 px below).
+  const below = new Map(), bay = q => Math.round(q.x0) + ',' + Math.round(q.y0);
+  p.forEach((q, i) => { const k = bay(q), y = below.get(k) || 0; q.y += y; below.set(k, y + (ms[i].el.querySelector('.tag') ? 38 : 30)); });
+  const stacked = q => below.get(bay(q)) > 38;   // more than one badge at its bay
+  // Two bays' badges that would touch go apart sideways only, so that one above another always means one bay (9 over
+  // 1 read as one): the upper to the left where they're all but in line. A stack isn't pulled apart: its neighbour
+  // moves the whole way.
   for (let it = 0; it < 60; it++) {
     let moved = false;
     for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) {
-      const a = p[i], b = p[j], dx = b.x - a.x, dy = b.y - a.y, ox = AIR_X - Math.abs(dx), oy = AIR_Y - Math.abs(dy);
-      if (ox <= 0 || oy <= 0) continue;
+      const a = p[i], b = p[j], dx = b.x - a.x, ox = AIR_X - Math.abs(dx), oy = AIR_Y - Math.abs(b.y - a.y);
+      if (bay(a) === bay(b) || ox <= 0 || oy <= 0) continue;   // one bay's, hung already; or clear
       moved = true;
-      if (ox < oy) { const k = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= k; b.x += k; }
-      else { const k = (dy > 0 || (dy === 0 && i < j) ? 1 : -1) * oy / 2; a.y -= k; b.y += k; }
+      const way = Math.abs(dx) >= 2 ? Math.sign(dx) : b.y0 > a.y0 ? 1 : -1;   // b to the right of a, or below it
+      const sa = stacked(a), sb = stacked(b), ka = sa && !sb ? 0 : sb && !sa ? ox : ox / 2, kb = ox - ka;
+      a.x -= way * ka; b.x += way * kb;
     }
     if (!moved) break;
   }
