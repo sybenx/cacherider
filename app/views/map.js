@@ -8,7 +8,7 @@ import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, 
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, offDuty, busOn, busStops, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN, AT_STOP } from '../rt.js';
+import { rt, findBus, offDuty, busOn, busStops, busPlace, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN, AT_STOP } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
@@ -4284,13 +4284,9 @@ function approach(clockNow) {
 /** A bus's way on, trip to trip, up to a stop of a trip it's yet to run (or is running): null when it's past it or
  *  doesn't come to it. Each stop [minute, stop, route where it's another's]. */
 function approachPath(b, target, si, clockNow) {
-  let ti = D.trips.indexOf(b.trip);
-  if (ti < 0) return null;
-  let seq = tripStops(ti);
-  const nextSi = nextStopOf(b), te0 = tripEnd(ti);
-  let k = nextSi !== undefined ? seq.findIndex(x => x[1] === nextSi) : -1;
-  if (k < 0 && te0 && nextSi === te0.si) k = seq.length;
-  if (k < 0) return null;
+  const p = busPlace(b);
+  if (!p) return null;
+  let ti = p.ti, seq = tripStops(ti), k = p.k;
   const path = k > 0 ? [seq[k - 1]] : [];
   const add = (x, r) => { if (!path.length || path[path.length - 1][1] !== x[1]) path.push(r !== b.ri ? [x[0], x[1], r] : [x[0], x[1]]); };
   for (let hops = 0; hops < 4; hops++) {
@@ -4305,9 +4301,11 @@ function approachPath(b, target, si, clockNow) {
   }
   return null;
 }
-/** A picked bus's way on: from where it is, by the feed's next stop, or failing that the clock. Empty for a trip the
- *  timetable lacks. */
+/** A picked bus's way on: from where it is (busPlace: the feed's next stop, held against the bus's place), or failing
+ *  that the clock. Empty for a trip the timetable lacks. */
 function busPath(b, clockNow) {
+  const p = busPlace(b);
+  if (p) return pathFrom(p.ti, p.k, b.ri, clockNow);
   const ti0 = D.trips.indexOf(b.trip);
   if (ti0 < 0) return [];
   const seq0 = tripStops(ti0), nextSi = nextStopOf(b);
@@ -4423,9 +4421,9 @@ async function drawRuns() {
   let wants = [];
   const ap = JR ? approach(clockNow) : null;
   if (JR) { const was = JR.appBus; JR.appBus = ap ? ap.bus.id : null; if (was !== JR.appBus) for (const m of busMarkers.values()) paintBus(m); }
-  if (ap) wants = [{ ri: ap.bus.ri, stops: ap.stops, from: [ap.bus.lon, ap.bus.lat], open: true }];
+  if (ap) wants = [{ ri: ap.bus.ri, stops: ap.stops, from: [ap.bus.lon, ap.bus.lat], head: ap.bus.speed > 2 ? ap.bus.course : null, open: true }];
   else if (JR) wants = [];
-  else if (c) wants = [{ ri: c.ri, stops: busPath(c, clockNow), from: [c.lon, c.lat] }];
+  else if (c) wants = [{ ri: c.ri, stops: busPath(c, clockNow), from: [c.lon, c.lat], head: c.speed > 2 ? c.course : null }];
   else if (si !== undefined && ris.length) wants = stopPaths(si, ris, clockNow);
   wants = wants.filter(w => w.stops.length > 1);
   // The shuttle's: no timetable, so each loop's line itself, from the bus or the stop round to it again.
@@ -4451,23 +4449,27 @@ async function drawRuns() {
   for (const [idx, w] of wants.entries()) {
     // The shape of each route in turn: the tail onto another route is that route's shape.
     const routeAt = i => w.stops[i][2] !== undefined ? w.stops[i][2] : w.ri;
-    let path = [], firstLeg = 0;
+    let path = [], firstLegs = 0;
     for (let i = 0; i < w.stops.length;) {
       const r = routeAt(i); let j = i;
       while (j + 1 < w.stops.length && routeAt(j + 1) === r) j++;
       const part = fc ? runPath(fc, r, w.stops.slice(i, j + 1)) : w.stops.slice(i, j + 1).map(([, x]) => [D.stops[x].lon, D.stops[x].lat]);
-      if (i === 0) firstLeg = fc ? runPath(fc, r, w.stops.slice(0, 2)).length : 2;
+      if (i === 0) { const n = j >= 2 ? 3 : 2; firstLegs = fc ? runPath(fc, r, w.stops.slice(0, n)).length : n; }
       path.push(...(path.length && part.length ? part.slice(1) : part));
       i = j + 1;
     }
-    // From the bus itself: the way cut at the bus's nearest point along its first leg only (an out-and-back road
-    // comes past again on the way back), unless the bus is off the line altogether, a detour. The string closes at
-    // the bus too: where the way came back round to the stop the bus passed, the stretch from that stop up to the
-    // bus goes on the end, so the line ends where it began.
+    // From the bus itself: the way cut at the bus's nearest point along its first two legs only (an out-and-back road
+    // comes past again on the way back), headed its way when it's moving, unless the bus is off the line altogether, a
+    // detour. Two: the stop it passed and the one it reaches next are by the feed's word, held to its place as the crow
+    // flies (rt.js busPlace), and round a corner, just past a stop, it can still be on the one after (Route 12's at
+    // 500 North and Main, the stop on Main behind it). The string closes at the bus too: where the way came back round
+    // to the stop the bus passed, the stretch from that stop up to the bus goes on the end, so the line ends where it
+    // began.
     if (w.from && path.length > 1) {
       let bi = -1, best = Infinity;
-      for (let i = 0; i + 1 < Math.min(firstLeg, path.length); i++) {
+      for (let i = 0; i + 1 < Math.min(firstLegs, path.length); i++) {
         const [ax, ay] = path[i], [bx, by] = path[i + 1], vx = (bx - ax) * KX, vy = (by - ay) * KY, px = (w.from[0] - ax) * KX, py = (w.from[1] - ay) * KY, L2 = vx * vx + vy * vy;
+        if (w.head !== null && w.head !== undefined && L2 > 100 && Math.abs(((Math.atan2(vx, vy) * 180 / Math.PI - w.head) % 360 + 540) % 360 - 180) > 75) continue;
         const t = L2 ? Math.max(0, Math.min(1, (px * vx + py * vy) / L2)) : 0, e = Math.hypot(px - t * vx, py - t * vy);
         if (e < best) { best = e; bi = i; }
       }

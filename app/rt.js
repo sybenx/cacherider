@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, runOf, timesOn, serviceSpan, nextTrip, prevTrip } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -99,7 +99,18 @@ async function tick(force) {
       // The trip's final stop has no boarding row in the timetable (see tools/reduce.py), and on a loop it's
       // the same stop the trip left from: matched to that departure it would read as a bus half an hour late.
       const end = u.s.reduce((m, x) => Math.max(m, x[1] ?? -1), -1);
-      for (const [sid, seq, time, rel] of u.s) {
+      // A loop's first stop is its last too (the Blue Loop's 55 North Main), and the feed has the one time for it, the
+      // later call's: the trip's end, stamped on its first call as well. There it's the last of the stops listed, not
+      // the first, and no call ahead: bus 4014 on the 6:05, coming down North Main at 6:13, had 55 North Main at 6:19
+      // before 1341 North Main at 6:13, and that was its next stop: the card's first row, and its way on drawn from
+      // 355 North Main, 2 km ahead of it (2026-10-16). It's the end's time, and the fresher: the end's own was 6:06.
+      // A departure from there is before the stops after it (a Transit Center trip's, back to the Center), and stays.
+      const e = u.s.find(x => x[1] === end);
+      const early = e ? u.s.filter(x => { if (x === e || x[0] !== e[0] || x[3] === 1) return false;
+        const rest = u.s.filter(y => y !== x && y !== e && y[3] !== 1);
+        return rest.length ? rest.every(y => x[2] >= y[2] - 60) : x[2] >= e[2] - 60; }) : [];
+      const s = early.length ? u.s.filter(x => !early.includes(x)).map(x => x === e ? [x[0], x[1], Math.max(x[2], ...early.map(y => y[2])), x[3]] : x) : u.s;
+      for (const [sid, seq, time, rel] of s) {
         if (seq === end) continue;
         at.set(sid, { seq, time, skipped: rel === 1 });
         if (rel === 1) continue;
@@ -111,7 +122,7 @@ async function tick(force) {
         const sm = schedMin(D.stopById[last.sid], ti);
         if (sm !== null) lastDelay = toMin(last.time) - sm;
       }
-      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: u.s, end, hub: hubAhead(ti, at, j.t), cancelled: u.c === 1 };
+      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: s, end, hub: hubAhead(ti, at, j.t), cancelled: u.c === 1 };
     }
     const buses = [], parked = [];
     for (const b of j.buses || []) {
@@ -175,8 +186,7 @@ function hubAhead(ti, at, nowS) {
  *  how far along it, the timetable's minute there, and the clock's lead on that carried to every stop ahead. Null
  *  when the bus is nowhere near its trip (a detour can take it blocks off, not miles). */
 function fromPlace(b, ti, nowS) {
-  const pts = tripStops(ti).slice(), te = tripEnd(ti);
-  if (te) pts.push([te.min, te.si]);
+  const pts = withEnd(ti);
   if (pts.length < 2) return null;
   let best = null;
   for (let k = 0; k + 1 < pts.length; k++) {
@@ -209,22 +219,33 @@ function fromPlace(b, ti, nowS) {
  *  or the bus's place minutes old. */
 function agrees(b, u, ti, nowS) {
   if (!u.first || nowS - b.ts > 120) return true;
-  const pts = tripStops(ti).slice(), te = tripEnd(ti);
-  if (te) pts.push([te.min, te.si]);
+  const pts = withEnd(ti);
   const k0 = pts.findIndex(([, si]) => D.stops[si].id === u.first.sid);
   if (k0 < 0 || pts.length < 2) return true;
   const late = toMin(Math.max(u.first.time, nowS)) - pts[k0][0];
   const T = Math.min(Math.max(toMin(nowS) - late, pts[0][0]), pts[pts.length - 1][0]);
   let elsewhere = false;
   for (let k = 0; k + 1 < pts.length; k++) {
-    const [ma, sa] = pts[k], [mb, sb] = pts[k + 1];
-    const A = D.stops[sa], C = D.stops[sb], p = along(b.lat, b.lon, A, C), len = distance(A.lat, A.lon, C.lat, C.lon);
-    if (p.d > Math.max(80, len * 0.35)) continue;
-    if (b.speed > 2 && len > 30 && Math.abs(((bearing(A.lat, A.lon, C.lat, C.lon) - b.course) % 360 + 540) % 360 - 180) > 75) continue;
-    if (mb >= T - 4 && ma <= T + 4) return true;
+    if (onLeg(b, pts, k + 1) === Infinity) continue;
+    if (pts[k + 1][0] >= T - 4 && pts[k][0] <= T + 4) return true;
     elsewhere = true;
   }
   return !elsewhere;
+}
+/** A trip's stops with its end, each [minute, stop]: the end is the last (the departures leave it out). */
+function withEnd(ti) {
+  const pts = tripStops(ti).slice(), te = tripEnd(ti);
+  if (te) pts.push([te.min, te.si]);
+  return pts;
+}
+/** A bus against the leg of a trip's stops from `k - 1` to `k`: its distance from it in metres, as the crow flies, a
+ *  corner cut allowed for; Infinity when it's further than that, or moving the other way along it (a street run out
+ *  and back has its stops in pairs). */
+function onLeg(b, pts, k) {
+  const A = D.stops[pts[k - 1][1]], C = D.stops[pts[k][1]], p = along(b.lat, b.lon, A, C), len = distance(A.lat, A.lon, C.lat, C.lon);
+  if (p.d > Math.max(80, len * 0.35)) return Infinity;
+  if (b.speed > 2 && len > 30 && Math.abs(((bearing(A.lat, A.lon, C.lat, C.lon) - b.course) % 360 + 540) % 360 - 180) > 75) return Infinity;
+  return p.d;
 }
 /** A point against the leg between two stops: the distance to the leg in metres, and the fraction along it. */
 function along(lat, lon, a, c) {
@@ -505,10 +526,14 @@ export function lateWords(delay) {
   if (delay <= -2) return -delay + ' min early';
   return 'On time';
 }
-/** A Connect bus's next stops with predicted minutes, for its card; `end` marks the trip's final stop. */
+/** A Connect bus's next stops with predicted minutes, for its card, from the one it reaches next (busPlace), in the
+ *  order it calls; `end` marks the trip's final stop. */
 export function busStops(b, n = 5) {
-  const u = rt.trips[b.trip];
+  const p = busPlace(b), u = p ? p.u : rt.trips[b.trip];
   if (!u) return [];
+  // The feed's list from that stop's place in it on (a detour's stops, not the timetable's, are in it too).
+  const pts = p && withEnd(p.ti), ix = sid => pts.findIndex(x => D.stops[x[1]].id === sid);
+  const from = !p ? -Infinity : p.k === pts.length - 1 ? u.end : u.stops.reduce((m, [sid, seq]) => seq !== u.end && ix(sid) >= p.k && seq < m ? seq : m, u.end);
   const h = u.hub && !(isLoop(b.ri) && loopSpacing(b.ri)) ? u.hub : null, sched = h && tripInfo[u.ti] ? h.seq : null;
   // At the Transit Center it hasn't left yet, and past it, no sooner than it leaves there and keeps to the timetable
   // (predict()): its bay too, so its card says what the bay's row says, never 'now' for a bus in early.
@@ -520,7 +545,58 @@ export function busStops(b, n = 5) {
   };
   return u.stops.filter(([, , , rel]) => rel !== 1)
     .map(([sid, seq, time]) => ({ si: D.stopById[sid], seq, min: held(D.stopById[sid], toMin(time)), time, end: seq === u.end }))
-    .filter(x => x.si !== undefined && x.time >= rt.t - 30).sort((a, b) => a.seq - b.seq).slice(0, n);
+    .filter(x => x.si !== undefined && x.seq >= from && x.time >= rt.t - 30).sort((a, b) => a.seq - b.seq).slice(0, n);
+}
+/** Where a Connect bus is along its run, for its card and its way on drawn from it: the trip it's on, the place in that
+ *  trip's stops of the one it reaches next (the end counted last, as withEnd has it), and the feed's word on that trip,
+ *  { ti, k, u }; null for a trip the timetable lacks, or a bus that can't be put on it.
+ *  The feed's next stop first (its end, with nothing else ahead), and on from there by the bus's place: the leg it's
+ *  on of the next few, where that's nearer than the one in. The feed keeps a stop for a minute after the bus has been,
+ *  and its word lags: two stops at times (Route 12's bus past 354 South Main, its next still 670 South Main, 6:15 on
+ *  2026-10-16). Past its trip's end, that's its next trip, the feed yet to move it on. With no word on its trip that it
+ *  calls at (an update minutes stale; a pull-out's list a whole lap of other stops), its place alone: a leg of its trip
+ *  about now, headed its way, once the trip has begun. Not before, nor a leg a while off: a bus out to start its trip
+ *  comes down the road of its later legs (the Blue Loop's, down North Main to the Transit Center), and isn't on them
+ *  yet. Within AT_STOP of the stop a leg starts at, it's at that stop. */
+export function busPlace(b) {
+  const ti = tripOf(b.trip);
+  if (ti === undefined) return null;
+  const pts = withEnd(ti), u = rt.trips[b.trip], si = nextStopOf(b), nowS = Date.now() / 1000, nowM = toMin(Math.floor(nowS));
+  if (pts.length < 2) return null;
+  // The run on into its next trip, the same route's and not long after (as runOf), the stop they share once.
+  const n = nextTrip(ti, now().ymd), nr = n !== undefined ? tripRoute(n) : null, tr = tripRoute(ti);
+  let more = nr && tr && nr.r === tr.r ? withEnd(n) : [];
+  if (more.length && more[0][0] - pts[pts.length - 1][0] > 45) more = [];
+  const same = more.length && more[0][1] === pts[pts.length - 1][1] ? 1 : 0, run = pts.concat(more.slice(same));
+  let k = si === undefined ? -1 : pts.findIndex(x => x[1] === si);
+  if (si === undefined && u && u.stops.some(s => s[1] === u.end && s[3] !== 1 && s[2] >= nowS - 60 && D.stopById[s[0]] === pts[pts.length - 1][1])) k = pts.length - 1;
+  if (k >= 0) {
+    // On past stops it has left behind: the feed's own time at each gone by (one it has dropped, been; a bus short of
+    // its stop on a long country leg is in the next leg's corner allowance, Route 16's in Preston, its time to come),
+    // and the bus on a leg after them, near it and nearer than the leg in, further than AT_STOP from its stop. Near:
+    // 80 m off the line from stop to stop, headed along it; standing, with no heading to tell a road's one way from its
+    // other, the next leg only and 25 m (Route 8's bus short of 1301 North 600 West, round a corner, was 80 m off it).
+    const moving = b.speed > 2, near = moving ? 80 : 25;
+    const been = i => { const x = i < pts.length && u.stops.find(s => D.stopById[s[0]] === run[i][1] && (s[1] === u.end) === (i === pts.length - 1)); return !x || x[2] <= nowS; };
+    let best = k > 0 ? onLeg(b, run, k) : Infinity, j = k;
+    for (let i = k + 1; i < run.length && i <= k + (moving ? 3 : 1) && been(i - 1); i++) { const d = onLeg(b, run, i); if (d <= near && d < best) { best = d; j = i; } }
+    if (j > k) { const s = D.stops[run[j - 1][1]]; k = distance(b.lat, b.lon, s.lat, s.lon) <= AT_STOP ? j - 1 : j; }
+  } else {
+    // A stop named off its route is a detour's way round, and its word, not the timetable's line, says where it is.
+    if ((si !== undefined && !Object.values(D.routes[b.ri].stops || {}).some(l => l.includes(si))) || !(b.speed > 2) || pts[0][0] > nowM) return null;
+    let best = Infinity;
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i][0] < nowM - 15 || pts[i - 1][0] > nowM + 5) continue;
+      const d = onLeg(b, pts, i);
+      if (d < best) { best = d; k = i; }
+    }
+    if (k < 0) return null;
+    const s = D.stops[pts[k - 1][1]];
+    if (distance(b.lat, b.lon, s.lat, s.lon) <= AT_STOP) k--;   // at the stop the leg starts at: that one
+  }
+  if (k < pts.length) return { ti, k, u };
+  const un = rt.trips[D.trips[n]];
+  return { ti: n, k: k - pts.length + same, u: un && 'c:' + un.v === b.id ? un : null };
 }
 /** The stop a bus calls at next, from its trip's predictions; undefined when the feed doesn't say. */
 export function nextStopOf(b) {

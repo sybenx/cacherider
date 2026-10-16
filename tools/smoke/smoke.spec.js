@@ -956,6 +956,62 @@ test('map: town view, a bus and its route', async ({ page }) => {
   await expect(page).toHaveURL(/#\/map\/route\/.+\?bus=/);
 });
 
+test('map: a picked bus is where it is, its card from the stop it reaches next and its way on from it', async ({ page }) => {
+  // Bus 4014 on the Blue Loop's 6:05 (2026-10-16): the feed had 55 North Main, the stop the loop's trips end at, first
+  // in its list, with the end's time, and the two stops just behind the bus still there, its word lagging. Its card led
+  // with 55 North Main, its way on drawn from far ahead. Made up from the timetable: a loop's trip, the bus halfway
+  // between two stops and moving, the clock a minute before the second; then its word minutes stale; then the bus on
+  // its last leg, the end's stop alone in its list, first and last.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), seen = new Set();
+    for (const ri of d.D.hub.loops || []) for (const si of new Set(Object.values(d.D.routes[ri].stops || {}).flat())) for (const row of d.timesOn(si, c.ymd)) {
+      if (row.r !== ri || seen.has(row.trip)) continue;
+      seen.add(row.trip);
+      const st = d.tripStops(row.trip), te = d.tripEnd(row.trip);
+      if (!te || st.length < 9 || st[0][0] < 300 || te.min > 1380) continue;
+      const pts = [...st, [te.min, te.si]], S = i => d.D.stops[pts[i][1]];
+      // stops 3 to 8 apart, a block or more between each (the bus halfway is no stop's), a minute or more apart there
+      const K = [3, 4, 5].find(K => [K - 1, K, K + 1, K + 2].every(i => d.distance(S(i).lat, S(i).lon, S(i + 1).lat, S(i + 1).lon) > 180) && pts[K + 1][0] - pts[K][0] >= 1 && pts[K + 1][0] - pts[K - 1][0] <= 4 && new Set(pts.slice(0, K + 6).map(x => x[1])).size === K + 6);
+      if (K === undefined) continue;
+      const a = S(K), b = S(K + 1), min = pts[K + 1][0] - 1, y = S(pts.length - 2), z = S(pts.length - 1);
+      return { id: d.D.trips[row.trip], ti: row.trip, K, pts: pts.map(([m, x]) => [m, d.D.stops[x].id]), lat: (a.lat + b.lat) / 2, lon: (a.lon + b.lon) / 2,
+        course: d.bearing(a.lat, a.lon, b.lat, b.lon), at: Date.now() + ((min - c.min) * 60 + 30 - c.sec) * 1000, min,
+        last: [(y.lat + z.lat) / 2, (y.lon + z.lon) / 2], lastCourse: d.bearing(y.lat, y.lon, z.lat, z.lon) };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no loop trip today to make the feed of');
+  await page.clock.setFixedTime(new Date(pick.at));
+  const T = Math.floor(pick.at / 1000), base = T - 30 - pick.min * 60, L = pick.pts.length - 1, end = pick.pts[L];
+  const bus = { id: '9001', label: '9001', trip: pick.id, lat: pick.lat, lon: pick.lon, bearing: pick.course, speed: 8, ts: T };
+  // first, the end's stop with the end's time; the two stops behind the bus, just gone by; the rest to come; the end
+  const word = [[end[1], 0, base + end[0] * 60, 0], [pick.pts[pick.K - 1][1], pick.K - 1, T - 40, 0], [pick.pts[pick.K][1], pick.K, T - 20, 0],
+    ...pick.pts.slice(pick.K + 1).map(([m, sid], i) => [sid, pick.K + 1 + i, base + m * 60, 0])];
+  feed = { t: T, now: T, trips: { [pick.id]: { v: '9001', ts: T, s: word } }, buses: [bus] };
+  await go(page, '#/map');
+  await mapReady(page);
+  await expect.poll(() => page.evaluate(async () => !!(await import('/app/rt.js')).findBus('c:9001')), { timeout: 20_000 }).toBe(true);
+  await go(page, '#/map/bus/c:9001?tap=1');
+  const rows = page.locator('#mapcard .nextstops a.ns');
+  await expect(rows.first()).toBeVisible({ timeout: 20_000 });
+  const ahead = pick.pts.slice(pick.K + 1, pick.K + 6).map(([, sid]) => '#/stop/' + sid);
+  await expect.poll(() => rows.evaluateAll(as => as.map(a => a.getAttribute('href')))).toEqual(ahead);
+  const place = () => page.evaluate(async () => { const r = await import('/app/rt.js'), p = r.busPlace(r.findBus('c:9001')); return p && [p.ti, p.k]; });
+  expect(await place()).toEqual([pick.ti, pick.K + 1]);   // where its way on is drawn from (map.js busPath)
+  // The feed's word on its trip minutes stale, its end long gone by: still where it is, by its place.
+  feed = { t: T, now: T, trips: { [pick.id]: { v: '9001', ts: T - 360, s: [[end[1], L, T - 360, 0]] } }, buses: [bus] };
+  await expect.poll(() => rows.count(), { timeout: 15_000 }).toBe(0);   // the stale word in: nothing listed ahead
+  expect(await place()).toEqual([pick.ti, pick.K + 1]);
+  // On its last leg, the end's stop listed first and last with the one time: its next is the end, the card's one row.
+  const [ya, xa] = pick.last;
+  feed = { t: T, now: T, trips: { [pick.id]: { v: '9001', ts: T, s: [[end[1], 0, T + 60, 0], [end[1], L, T + 60, 0]] } }, buses: [{ ...bus, lat: ya, lon: xa, bearing: pick.lastCourse }] };
+  await expect.poll(place, { timeout: 15_000 }).toEqual([pick.ti, L]);
+  await expect.poll(() => rows.evaluateAll(as => as.map(a => a.getAttribute('href')))).toEqual(['#/stop/' + end[1]]);
+});
+
 test('map: a spot and its card, a road and its routes, a right click', async ({ page }) => {
   // On Main Street downtown, just south of Center Street: several routes, the nearest stops a block off either way.
   await open(page, '#/map/at/41.73450,-111.83457/Main%20St');
