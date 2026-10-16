@@ -20,27 +20,45 @@ const AWAY = 400;     // metres from it first, so a loop's trip, ending where it
 
 let L = null, lAt = 0;
 /** The route lines, in metres about the Transit Center, each route's segments in one flat list; fetched once an hour
- *  at most. (A 100 m cell index of them took 40 ms to build, four free-plan runs' worth, for lookups that take well
- *  under one through a route's own segments.) */
+ *  at most, each route's made when it's first asked about. (A 100 m cell index of them took 40 ms to build, four
+ *  free-plan runs' worth, for lookups that take well under one through a route's own segments.) */
 async function lines() {
   if (L && Date.now() - lAt < 3600e3) return L;
   const j = await (await fetch(SHAPES, { cf: { cacheTtl: 3600, cacheEverything: true } })).json();
   if (!j.hub || !j.lines?.[0]?.key) throw new Error('shapes without keys');
   const lat0 = j.hub.lat, lon0 = j.hub.lon, kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
   const xy = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * ky];
-  const byKey = new Map();   // each route's lines with the distance along each, for between(), and its segments ax, ay, bx, by
-  for (const l of j.lines) {
-    const pts = l.coords.map(([lo, la]) => xy(la, lo));
-    let d = 0;
-    const walk = pts.map((p, i) => { if (i) d += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); return d; });
-    if (!byKey.has(l.key)) byKey.set(l.key, { lines: [], segs: [] });
-    const r = byKey.get(l.key);
-    r.lines.push({ pts, walk });
-    for (let i = 0; i + 1 < pts.length; i++) r.segs.push(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
-  }
+  // Each route's lines made the first time the route is asked about, not all of them at the start: a run in a new
+  // isolate made every route's at once, the routes not out included, with the distances along them, about half of
+  // its work once the feeds were read cheaply. Its segments (ax, ay, bx, by) for dist(); its points with the distance
+  // along each for between(), which only a suspect's check asks for.
+  const raw = new Map();
+  for (const l of j.lines) { if (!raw.has(l.key)) raw.set(l.key, []); raw.get(l.key).push(l.coords); }
+  const segsOf = new Map(), linesOf = new Map();
+  const segs = key => {
+    let s = segsOf.get(key);
+    if (!s) {
+      s = [];
+      for (const c of raw.get(key) || []) for (let i = 0; i + 1 < c.length; i++) s.push((c[i][0] - lon0) * kx, (c[i][1] - lat0) * ky, (c[i + 1][0] - lon0) * kx, (c[i + 1][1] - lat0) * ky);
+      segsOf.set(key, s);
+    }
+    return s;
+  };
+  const linesFor = key => {
+    let ls = linesOf.get(key);
+    if (!ls) {
+      ls = (raw.get(key) || []).map(c => {
+        const pts = c.map(([lo, la]) => xy(la, lo));
+        let d = 0;
+        return { pts, walk: pts.map((p, i) => { if (i) d += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); return d; }) };
+      });
+      linesOf.set(key, ls);
+    }
+    return ls;
+  };
   // Metres from a point to its route's lines (no lines for the route: Infinity).
   const dist = (key, p) => {
-    const s = byKey.get(key)?.segs || [], [x, y] = p;
+    const s = segs(key), [x, y] = p;
     let d2 = Infinity;
     for (let i = 0; i < s.length; i += 4) {
       const ax = s[i], ay = s[i + 1], dx = s[i + 2] - ax, dy = s[i + 3] - ay, n = dx * dx + dy * dy;
@@ -55,7 +73,7 @@ async function lines() {
   // vertex), or null: how far a bus going along has to go from where a way round leaves to where it rejoins.
   const between = (key, p, q) => {
     let best = null;
-    for (const { pts, walk } of byKey.get(key)?.lines || []) {
+    for (const { pts, walk } of linesFor(key)) {
       let ap = null, aq = null, ep = NEAR, eq = NEAR;
       for (let i = 0; i < pts.length; i++) {
         const dp = Math.hypot(pts[i][0] - p[0], pts[i][1] - p[1]), dq = Math.hypot(pts[i][0] - q[0], pts[i][1] - q[1]);

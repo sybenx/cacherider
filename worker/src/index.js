@@ -164,7 +164,7 @@ async function track(env) {
     if (Date.now() - began > RUN_FOR) break;
     try {
       const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
-      const out = decode(vp, tu);
+      const out = decode(vp, tu, true);
       try { await fillIn(out, false); } catch (e) { /* the feed's own buses */ }
       if (!out.buses.length) continue;
       const t = Math.floor(Date.now() / 1000);
@@ -254,11 +254,22 @@ const shortOf = trip => { const m = /^([A-Z]+|\d+)/.exec(trip || ''); return m ?
 // A route as the trip ids and the route lines name it: the tracker site's '16 AM' and '16 PM' are 16 and 16, and
 // 'Pumpkin Walk' Pumpkin (tools/reduce.py's keys for cvtd-shapes.json, which the detour watch reads).
 const keyOf = short => (short || '').split(' ')[0];
+// The tracker site's route list, kept an hour in the isolate (as the detour watch keeps the route lines): asked for and
+// read again for each of a tracking run's three samples, it changes once a season.
+let routeList = null, routeListAt = 0;
+async function trackerRoutes() {
+  if (!routeList || Date.now() - routeListAt > 3600e3) {
+    const l = await rtpi('routes', 86400);
+    if (!Array.isArray(l)) throw new Error('rtpi routes: no list');
+    routeList = l; routeListAt = Date.now();
+  }
+  return routeList;
+}
 async function fillIn(out, evenEmpty) {
   if (!out.buses.length && !evenEmpty) return;
   const covered = new Set(out.buses.map(b => shortOf(b.trip)));
   const labels = new Set(out.buses.map(b => b.label || b.id));
-  const routes = (await rtpi('routes', 86400)).filter(r => r.shortName && !covered.has(keyOf(r.shortName)));
+  const routes = (await trackerRoutes()).filter(r => r.shortName && !covered.has(keyOf(r.shortName)));
   const lists = await Promise.allSettled(routes.map(r => rtpi('routes/' + r.id + '/vehicles', 30)));
   const now = Date.now();
   lists.forEach((l, i) => {
@@ -277,54 +288,85 @@ async function fillIn(out, evenEmpty) {
   });
 }
 
-// ---- protobuf, just enough: fields as [number, value] pairs, nested messages as byte slices
-function varint(b, i) {   // in plain numbers: every value here is well under 2^53, and BigInt was most of the decode's time
+// ---- protobuf, just enough: each message read once, front to back, the first of each of its fields kept (as numbers,
+// or for bytes where they start and end in the feed) and its one repeated field's listed. Numbers stay plain numbers:
+// every value here is well under 2^53, and BigInt was most of the decode's time. So, after it, were a list of fields
+// made for every message and a TextDecoder for every string: 6 ms a decode in workerd, three to a minute's tracking
+// run, against the free plan's 10 ms a run.
+let at = 0;   // where the last varint read ended
+function varint(b, i) {
   let r = 0, m = 1, c;
   do { c = b[i++]; r += (c & 0x7f) * m; m *= 128; } while (c & 0x80);
-  return [r, i];
+  at = i;
+  return r;
 }
-function fields(b) {
-  const out = [];
-  let i = 0;
-  while (i < b.length) {
-    let key; [key, i] = varint(b, i);
+const F = 16;   // field numbers read: none wanted here is above 9
+const msg = () => ({ w: new Uint8Array(F), a: new Float64Array(F), z: new Float64Array(F) });   // wire type + 1 (0: absent), value or start, end
+// The message in b from s to e into m; each field rep (a repeated message) as its start and end onto list. A wire type
+// not read here ends the message, as before.
+function read(b, dv, s, e, m, rep, list) {
+  m.w.fill(0);
+  let i = s;
+  while (i < e) {
+    const key = varint(b, i); i = at;
     const f = Math.floor(key / 8), wt = key % 8;
-    if (wt === 0) { let v; [v, i] = varint(b, i); out.push([f, Number(v)]); }
-    else if (wt === 1) { out.push([f, new DataView(b.buffer, b.byteOffset + i, 8).getFloat64(0, true)]); i += 8; }
-    else if (wt === 5) { out.push([f, new DataView(b.buffer, b.byteOffset + i, 4).getFloat32(0, true)]); i += 4; }
-    else if (wt === 2) { let n; [n, i] = varint(b, i); n = Number(n); out.push([f, b.subarray(i, i + n)]); i += n; }
+    let a, z = 0;
+    if (wt === 0) { a = varint(b, i); i = at; }
+    else if (wt === 1) { a = dv.getFloat64(i, true); i += 8; }
+    else if (wt === 5) { a = dv.getFloat32(i, true); i += 4; }
+    else if (wt === 2) { const n = varint(b, i); i = at; a = i; z = Math.min(i + n, e); i += n; }
     else break;
+    if (f === rep) { if (wt === 2) list.push(a, z); }
+    else if (f < F && !m.w[f]) { m.w[f] = wt + 1; m.a[f] = a; m.z[f] = z; }
   }
-  return out;
 }
-const str = b => new TextDecoder().decode(b);
-const get = (fs, n) => { const f = fs.find(x => x[0] === n); return f ? f[1] : undefined; };
-const all = (fs, n) => fs.filter(x => x[0] === n).map(x => x[1]);
+// Field f of m, itself a message, into into (absent, or not bytes: an empty one).
+const sub = (b, dv, m, f, into) => m.w[f] === 3 ? read(b, dv, m.a[f], m.z[f], into) : into.w.fill(0);
+const num = (m, f) => m.w[f] ? m.a[f] : undefined;
+const TD = new TextDecoder();
+// A string field: ASCII (every id in these feeds) read as it is, anything else by the one TextDecoder.
+function str(b, m, f) {
+  const s = m.a[f], e = m.z[f];
+  let r = '';
+  for (let i = s; i < e; i++) { if (b[i] > 127) return TD.decode(b.subarray(s, e)); r += String.fromCharCode(b[i]); }
+  return r;
+}
+const TOP = msg(), HEAD = msg(), ENT = msg(), VP = msg(), POS = msg(), VEH = msg(), TRIP = msg(), MOD = msg(), TU = msg(), STU = msg(), ARR = msg(), DEP = msg();
+// A feed's entities, each as its start and end, and its header's time.
+function feedOf(b) {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength), ents = [];
+  read(b, dv, 0, b.length, TOP, 2, ents);
+  sub(b, dv, TOP, 1, HEAD);
+  return { dv, ents, t: num(HEAD, 3) };
+}
 
-function decode(vp, tu) {
+// busesOnly: the trips of the buses in the feed alone (the tracking run's, which asks only whether each bus is on its
+// trip), the rest of the trip feed passed over unread.
+function decode(vp, tu, busesOnly) {
   const out = { t: 0, buses: [], trips: {} };
-  const vmsg = fields(vp), tmsg = fields(tu);
+  const V = feedOf(vp), T = feedOf(tu);
   // The answer's time is the feeds' own: the older of their two headers, so a
   // feed that has stopped moving shows its age to a client that checks. With
   // neither, the freshest bus report; only with no clock at all, now.
-  const vpT = get(fields(get(vmsg, 1) || new Uint8Array()), 3), tuT = get(fields(get(tmsg, 1) || new Uint8Array()), 3);
+  const vpT = V.t, tuT = T.t;
   out.t = vpT && tuT ? Math.min(vpT, tuT) : vpT || tuT || 0;
-  for (const ent of all(vmsg, 2)) {
-    const v = get(fields(ent), 4); if (!v) continue;
-    const vf = fields(v);
-    const trip = fields(get(vf, 1) || new Uint8Array()), pos = fields(get(vf, 2) || new Uint8Array()), veh = fields(get(vf, 8) || new Uint8Array());
-    const lat = get(pos, 1), lon = get(pos, 2);
+  for (let k = 0; k < V.ents.length; k += 2) {
+    read(vp, V.dv, V.ents[k], V.ents[k + 1], ENT);
+    if (ENT.w[4] !== 3) continue;
+    read(vp, V.dv, ENT.a[4], ENT.z[4], VP);
+    sub(vp, V.dv, VP, 1, TRIP); sub(vp, V.dv, VP, 2, POS); sub(vp, V.dv, VP, 8, VEH);
+    const lat = num(POS, 1), lon = num(POS, 2);
     if (lat === undefined || lon === undefined) continue;
     out.buses.push({
-      id: get(veh, 1) !== undefined ? str(get(veh, 1)) : str(get(fields(ent), 1) || new Uint8Array()),
-      label: get(veh, 2) !== undefined ? str(get(veh, 2)) : '',
-      trip: get(trip, 1) !== undefined ? str(get(trip, 1)) : '',
+      id: VEH.w[1] ? str(vp, VEH, 1) : ENT.w[1] ? str(vp, ENT, 1) : '',
+      label: VEH.w[2] ? str(vp, VEH, 2) : '',
+      trip: TRIP.w[1] ? str(vp, TRIP, 1) : '',
       lat: +lat.toFixed(5), lon: +lon.toFixed(5),
-      bearing: get(pos, 3) !== undefined ? Math.round(get(pos, 3)) : null,
-      speed: get(pos, 5) !== undefined ? +get(pos, 5).toFixed(1) : null,
-      ts: get(vf, 5) || 0,
-      seq: get(vf, 3), stop: get(vf, 7) !== undefined ? str(get(vf, 7)) : undefined,
-      occ: get(vf, 9),
+      bearing: POS.w[3] ? Math.round(POS.a[3]) : null,
+      speed: POS.w[5] ? +POS.a[5].toFixed(1) : null,
+      ts: num(VP, 5) || 0,
+      seq: num(VP, 3), stop: VP.w[7] ? str(vp, VP, 7) : undefined,
+      occ: num(VP, 9),
     });
   }
   // A detoured trip comes twice. As itself, by its trip_id, it holds only the stops after the way round rejoins its
@@ -332,29 +374,32 @@ function decode(vp, tu) {
   // but modified_trip (TripDescriptor 7) naming it in affected_trip_id (7.2), it holds every stop still to come, the
   // way round's own included, numbered through. The replacement is the one kept: with only the first, the stops
   // before the rejoin read as passed, a Blue Loop bus three minutes off its next stop 'gone' (2026-10-15).
-  const replaced = new Set();
-  for (const ent of all(tmsg, 2)) {
-    const u = get(fields(ent), 3); if (!u) continue;
-    const uf = fields(u);
-    const trip = fields(get(uf, 1) || new Uint8Array()), veh = fields(get(uf, 3) || new Uint8Array());
-    const own = get(trip, 1) !== undefined ? str(get(trip, 1)) : null;
-    const mod = own ? null : fields(get(trip, 7) || new Uint8Array());
-    const id = own || (mod && get(mod, 2) !== undefined ? str(get(mod, 2)) : null);
-    if (!id || (own && replaced.has(id))) continue;
+  const replaced = new Set(), stus = [], want = busesOnly ? new Set(out.buses.map(b => b.trip)) : null;
+  for (let k = 0; k < T.ents.length; k += 2) {
+    read(tu, T.dv, T.ents[k], T.ents[k + 1], ENT);
+    if (ENT.w[3] !== 3) continue;
+    stus.length = 0;
+    read(tu, T.dv, ENT.a[3], ENT.z[3], TU, 2, stus);
+    sub(tu, T.dv, TU, 1, TRIP); sub(tu, T.dv, TU, 3, VEH);
+    const own = TRIP.w[1] ? str(tu, TRIP, 1) : null;
+    let id = own, mod = false;
+    if (!own) { mod = true; sub(tu, T.dv, TRIP, 7, MOD); id = MOD.w[2] ? str(tu, MOD, 2) : null; }
+    if (!id || (want && !want.has(id)) || (own && replaced.has(id))) continue;
     if (mod) replaced.add(id);
-    const cancelled = get(trip, 4) === 3;   // the trip's schedule_relationship: CANCELED
+    const cancelled = num(TRIP, 4) === 3;   // the trip's schedule_relationship: CANCELED
+    const v = VEH.w[1] ? str(tu, VEH, 1) : '', ts = num(TU, 4) || 0;
     const stops = [];
-    for (const s of all(uf, 2)) {
-      const sf = fields(s);
-      const arr = fields(get(sf, 2) || new Uint8Array()), dep = fields(get(sf, 3) || new Uint8Array());
-      const time = get(dep, 2) || get(arr, 2);
-      const sid = get(sf, 4) !== undefined ? str(get(sf, 4)) : null;
-      const rel = get(sf, 5) || 0;
+    for (let j = 0; j < stus.length; j += 2) {
+      read(tu, T.dv, stus[j], stus[j + 1], STU);
+      sub(tu, T.dv, STU, 2, ARR); sub(tu, T.dv, STU, 3, DEP);
+      const time = num(DEP, 2) || num(ARR, 2);
+      const sid = STU.w[4] ? str(tu, STU, 4) : null;
+      const rel = num(STU, 5) || 0;
       // A stop the bus will skip is news even without a time (0 then).
       if (!sid || (!time && rel !== 1)) continue;
-      stops.push([sid, get(sf, 1) ?? null, time || 0, rel]);   // stop id, sequence, predicted time, schedule relationship (1 = skipped)
+      stops.push([sid, num(STU, 1) ?? null, time || 0, rel]);   // stop id, sequence, predicted time, schedule relationship (1 = skipped)
     }
-    out.trips[id] = { v: get(veh, 1) !== undefined ? str(get(veh, 1)) : '', ts: get(uf, 4) || 0, s: stops };
+    out.trips[id] = { v, ts, s: stops };
     if (cancelled) out.trips[id].c = 1;   // a run that isn't coming: no stops to cut it to
   }
   out.now = Math.floor(Date.now() / 1000);
