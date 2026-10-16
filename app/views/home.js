@@ -136,7 +136,9 @@ function yoursNotice(yours, clockNow) {
 
 /** Every route as a chip: Connect's badges, then the shuttle's in their own colours. Each lights its route on the map. */
 function chips() {
-  const connect = D.routes.map((r, i) => html`<a href="#/map/route/${encodeURIComponent(r.short)}" aria-label="${routeName(i, false)}">${badge(i, 36)}</a>`);
+  // A route named in words, not a number (the Pumpkin Walk, a season's), the width of the grid: its badge is wider than
+  // a tile (it spilled out of one), and a route like that is worth seeing.
+  const connect = D.routes.map((r, i) => html`<a href="#/map/route/${encodeURIComponent(r.short)}"${!/\d/.test(r.short) && r.short.length > 2 ? html.raw(' class="wide"') : ''} aria-label="${routeName(i, false)}">${badge(i, 36)}</a>`);
   const campus = U ? U.routes.map((r, ri) => r.stops.length ? html`<a href="#/usu/route/${r.id}" aria-label="${r.name}">${chip(ri, 36)}</a>` : '') : [];
   return html`<div class="land-eye"><span>Routes</span></div><div class="routes">${connect}</div>${campus.some(Boolean) ? html`<div class="land-eye"><span>Aggie Shuttle</span></div><div class="routes campus">${campus}</div>` : ''}`;
 }

@@ -98,6 +98,9 @@ function apart(routes) {
     // The agency's text kept unless the new shade reads worse under it than the old did (and than is easy to read).
     if (!/^[0-9a-f]{6}$/i.test(r.text || '') || (contrast(hex, r.text) < 4.5 && contrast(hex, r.text) < contrast(r.gtfsColor, r.text))) r.text = contrast(hex, '000000') >= contrast(hex, 'FFFFFF') ? '000000' : 'FFFFFF';
   });
+  // And any badge whose text can't be read on it at all, whatever the shade (under 3:1: the Pumpkin Walk's purple on its
+  // orange, 1.8), black or white, whichever reads.
+  for (const r of routes) if (/^[0-9a-f]{6}$/i.test(r.color || '') && /^[0-9a-f]{6}$/i.test(r.text || '') && contrast(r.color, r.text) < 3) r.text = contrast(r.color, '000000') >= contrast(r.color, 'FFFFFF') ? '000000' : 'FFFFFF';
 }
 
 // ---- service alerts: detours, closed stops, late starts, from data/alerts.json (hourly)

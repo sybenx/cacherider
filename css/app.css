@@ -841,6 +841,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .routes { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; padding: 2px 16px 14px; }
 .routes a { height: 54px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--cr-line); cursor: pointer; text-decoration: none; }
 .routes a:hover { border-color: var(--color-accent); }
+.routes a.wide { grid-column: 1 / -1; }   /* a route named in words (home.js chips) */
 .routes.campus { display: flex; flex-wrap: wrap; gap: 8px; }
 .routes.campus a { display: inline-flex; width: auto; height: auto; aspect-ratio: auto; border: 0; padding: 0; }
 .land-eye .edit { font-size: 0.8125rem; letter-spacing: 0; text-transform: none; min-height: 28px; padding: 0 4px; }
