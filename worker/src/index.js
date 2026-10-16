@@ -53,7 +53,7 @@ export default {
   // Every minute: where the buses are, for spotting detours from the tracks (tools/detours.py reads them); and on
   // their minutes, the data workflows asked for (dispatch).
   async scheduled(ev, env, ctx) { ctx.waitUntil(Promise.all([track(env), dispatch(env, ev.scheduledTime)])); },
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const origin = req.headers.get('Origin') || '';
     const cors = {
       'Access-Control-Allow-Origin': ORIGINS.includes(origin) || PREVIEW.test(origin) ? origin : ORIGINS[0],
@@ -71,6 +71,12 @@ export default {
     if (path !== '/' && path !== '/live') return new Response('Not found', { status: 404, headers: cors });
     const only = url.searchParams.has('stops') ? new Set(url.searchParams.get('stops').split(',').filter(Boolean).slice(0, 32)) : null;
     if (only) { cors['Access-Control-Allow-Origin'] = '*'; delete cors['Vary']; }
+    // The answer made once a TTL at each edge, however many riders ask for it (a Worker's own answers aren't cached
+    // in front of it): decoding the feeds is most of a run's CPU, and the free plan's is 10 ms.
+    const json = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + TTL };
+    const key = new Request(url.origin + '/' + (only ? '?stops=' + [...only].join(',') : ''));
+    const hit = await caches.default.match(key);
+    if (hit) return new Response(hit.body, { headers: { ...cors, ...json } });
     try {
       const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
       let out = decode(vp, tu);
@@ -81,7 +87,8 @@ export default {
       try { await fillIn(out, !!only); } catch (e) { /* the feed's own buses still go out */ }
       if (only) out = atStops(out, only);
       const body = JSON.stringify(out);
-      return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + TTL } });
+      ctx.waitUntil(caches.default.put(key, new Response(body, { headers: json })));
+      return new Response(body, { headers: { ...cors, ...json } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
     }

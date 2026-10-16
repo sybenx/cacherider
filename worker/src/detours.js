@@ -15,52 +15,47 @@ const FAR = 90;        // metres off its line: one report this far off is a way 
                        // last corner (2026-10-06 15:03), under the 150 it was; GPS noise on a road is tens of metres, not ninety
 const SAME = 200;      // metres apart two ways round can leave and rejoin and still be one
 const THROUGH = 1800;  // seconds from passing where a way round leaves to passing where it rejoins: one trip
-const CELL = 100;
 const END = 120;      // metres from a trip's last stop: got there (its reports twenty seconds apart, checked between them)
 const AWAY = 400;     // metres from it first, so a loop's trip, ending where it starts, isn't over as it sets out
 
 let L = null, lAt = 0;
-/** The route lines, in metres about the Transit Center, indexed by 100 m cells; fetched once an hour at most. */
+/** The route lines, in metres about the Transit Center, each route's segments in one flat list; fetched once an hour
+ *  at most. (A 100 m cell index of them took 40 ms to build, four free-plan runs' worth, for lookups that take well
+ *  under one through a route's own segments.) */
 async function lines() {
   if (L && Date.now() - lAt < 3600e3) return L;
   const j = await (await fetch(SHAPES, { cf: { cacheTtl: 3600, cacheEverything: true } })).json();
   if (!j.hub || !j.lines?.[0]?.key) throw new Error('shapes without keys');
   const lat0 = j.hub.lat, lon0 = j.hub.lon, kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
   const xy = (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * ky];
-  const cells = new Map(), byKey = new Map();   // each route's lines with the distance along each, for between()
+  const byKey = new Map();   // each route's lines with the distance along each, for between(), and its segments ax, ay, bx, by
   for (const l of j.lines) {
     const pts = l.coords.map(([lo, la]) => xy(la, lo));
     let d = 0;
     const walk = pts.map((p, i) => { if (i) d += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); return d; });
-    if (!byKey.has(l.key)) byKey.set(l.key, []);
-    byKey.get(l.key).push({ pts, walk });
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const [ax, ay] = pts[i], [bx, by] = pts[i + 1], seg = [l.key, ax, ay, bx, by];
-      for (let cx = Math.floor(Math.min(ax, bx) / CELL) - 1; cx <= Math.floor(Math.max(ax, bx) / CELL) + 1; cx++)
-        for (let cy = Math.floor(Math.min(ay, by) / CELL) - 1; cy <= Math.floor(Math.max(ay, by) / CELL) + 1; cy++) {
-          const k = cx + ',' + cy;
-          let c = cells.get(k); if (!c) cells.set(k, c = []);
-          c.push(seg);
-        }
-    }
+    if (!byKey.has(l.key)) byKey.set(l.key, { lines: [], segs: [] });
+    const r = byKey.get(l.key);
+    r.lines.push({ pts, walk });
+    for (let i = 0; i + 1 < pts.length; i++) r.segs.push(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
   }
-  // Metres from a point to its route's lines, as far as the cells round it hold them (beyond that, Infinity).
+  // Metres from a point to its route's lines (no lines for the route: Infinity).
   const dist = (key, p) => {
-    let d = Infinity;
-    for (const [k, ax, ay, bx, by] of cells.get(Math.floor(p[0] / CELL) + ',' + Math.floor(p[1] / CELL)) || []) {
-      if (k !== key) continue;
-      const dx = bx - ax, dy = by - ay, n = dx * dx + dy * dy;
-      const f = n ? Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / n)) : 0;
-      d = Math.min(d, Math.hypot(p[0] - ax - f * dx, p[1] - ay - f * dy));
+    const s = byKey.get(key)?.segs || [], [x, y] = p;
+    let d2 = Infinity;
+    for (let i = 0; i < s.length; i += 4) {
+      const ax = s[i], ay = s[i + 1], dx = s[i + 2] - ax, dy = s[i + 3] - ay, n = dx * dx + dy * dy;
+      const f = n ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / n)) : 0;
+      const ex = x - ax - f * dx, ey = y - ay - f * dy;
+      if (ex * ex + ey * ey < d2) d2 = ex * ex + ey * ey;
     }
-    return d;
+    return Math.sqrt(d2);
   };
   const off = (key, p) => Math.hypot(p[0], p[1]) > HUB_R && dist(key, p) > OFF;
   // Metres along the route's line from p on to q, the shortest of its lines that pass both (within NEAR of a
   // vertex), or null: how far a bus going along has to go from where a way round leaves to where it rejoins.
   const between = (key, p, q) => {
     let best = null;
-    for (const { pts, walk } of byKey.get(key) || []) {
+    for (const { pts, walk } of byKey.get(key)?.lines || []) {
       let ap = null, aq = null, ep = NEAR, eq = NEAR;
       for (let i = 0; i < pts.length; i++) {
         const dp = Math.hypot(pts[i][0] - p[0], pts[i][1] - p[1]), dq = Math.hypot(pts[i][0] - q[0], pts[i][1] - q[1]);
@@ -72,12 +67,12 @@ async function lines() {
     return best;
   };
   // In service: a route's hours that weekday, in the agency's own time (the timetable's, by tools/reduce.py).
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: j.tz || 'America/Denver', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
-  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const clock = clockOf(j.tz || 'America/Denver');
   const inHours = (key, ms) => {
-    const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(x => [x.type, x.value])), h = (j.hours || {})[key];
-    const span = h && h[DAYS.indexOf(p.weekday)], m = +p.hour * 60 + +p.minute;
-    return !h || (!!span && m >= span[0] - 10 && m <= span[1]);   // no hours known: counted, as before
+    const h = (j.hours || {})[key];
+    if (!h) return true;   // no hours known: counted, as before
+    const [day, m] = clock(ms), span = h[day];
+    return !!span && m >= span[0] - 10 && m <= span[1];
   };
   // Where each trip ends, by its id: a bus that has got there is done with that trip, and the rest of its time on it
   // (driven to its next run's start, to the yard) is out of service, whatever the feed says.
@@ -89,6 +84,27 @@ async function lines() {
   return L;
 }
 const far = (L, p, lat, lon) => { const q = L.xy(lat, lon); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
+
+/** The agency's clock: [weekday, Monday 0, minutes since midnight] at a moment. Mountain time worked out by its own rule
+ *  (daylight time from 2 am on March's second Sunday to 2 am on November's first), since Intl's first use in a run loads
+ *  the zone data, near 60 ms: six free-plan runs' worth. Any other zone, Intl after all. */
+function clockOf(tz) {
+  if (tz === 'America/Denver' || tz === 'America/Boise') {
+    return ms => {
+      const y = new Date(ms).getUTCFullYear();
+      const sunday = (m, n) => Date.UTC(y, m, 1 + (7 - new Date(Date.UTC(y, m, 1)).getUTCDay()) % 7 + 7 * (n - 1));
+      const dst = ms >= sunday(2, 2) + 9 * 3600e3 && ms < sunday(10, 1) + 8 * 3600e3;   // 2 am MST, 2 am MDT, in UTC
+      const d = new Date(ms - (dst ? 6 : 7) * 3600e3);
+      return [(d.getUTCDay() + 6) % 7, d.getUTCHours() * 60 + d.getUTCMinutes()];
+    };
+  }
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return ms => {
+    const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(x => [x.type, x.value]));
+    return [DAYS.indexOf(p.weekday), +p.hour * 60 + +p.minute];
+  };
+}
 
 /** The watch's state, read at the start of a minute's run and written at its end: each bus's track so far, and the
  *  suspects. */
