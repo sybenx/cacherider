@@ -4,7 +4,7 @@
 // and their hours, so next October's, or a night added or dropped, needs nothing here. The art is drawn in
 // pumpkin-art.js, no image to fetch. Its look is Claude Design's, the walk at night (the project's
 // templates/pumpkin-walk-explore).
-import { D, nextAt, timesOn, distance, tripEnd } from '../data.js';
+import { D, nextAt, timesOn, distance, tripEnd, cutAfter } from '../data.js';
 import { now, dayFrom, dayName, fmtDay, clock, clockText, clockShort, minsTo } from '../time.js';
 import { html, icon, liveMark, liveWord, sched, lively } from '../ui.js';
 import { rt, rtStale } from '../rt.js';
@@ -44,6 +44,7 @@ function nights(ri, clockNow) {
  *  tab is there while it is, and goes by itself after the last night. */
 export function pumpkinOn(clockNow = now()) {
   const ri = pumpkinRoute();
+  closesAt(ri, clockNow);
   if (ri < 0 || !stopsOf(ri).length) return false;
   const ns = nights(ri, clockNow);
   return ns.some((n, k) => n.n && (k > 0 || clockNow.min <= n.last + 15));
@@ -121,6 +122,13 @@ const CITY = {
   2026: { open: '10 AM to 10 PM', park: 'Greenville Elementary or Cache Valley Hospital, both on 400 East', closed: '2500 North closes from 800 to 1200 East at 5 PM, one way east after' },
 };
 const CITY_SITE = 'https://www.pumpkinwalk.org/';
+/** The shuttle's runs end when the walk closes ('10 AM to 10 PM': 10 PM): one the timetable has after it (a 10:07 back
+ *  from the park) isn't guaranteed, and isn't offered, here or on any stop or route page (data.js cutAfter). Set as the
+ *  tab is asked about, at every page drawn. */
+function closesAt(ri, clockNow) {
+  const m = ri >= 0 && CITY[clockNow.ymd.slice(0, 4)] ? /(\d{1,2})(?::(\d\d))?\s*([AP])M\s*$/i.exec(CITY[clockNow.ymd.slice(0, 4)].open) : null;
+  if (m) cutAfter.set(ri, (+m[1] % 12 + (/p/i.test(m[3]) ? 12 : 0)) * 60 + (+m[2] || 0));
+}
 
 /** The page. */
 export function render(_, clockNow) {

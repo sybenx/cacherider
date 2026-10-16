@@ -535,12 +535,15 @@ export function onRequest(si, r, dir) {
   if (!requests) requests = new Set((D.request || []).map(([s, ri, d]) => s + ':' + ri + ':' + d));
   return requests.has(si + ':' + r + ':' + dir);
 }
+/** A route's departures after a minute of the day not offered: the Pumpkin Walk's after the walk closes at 10 PM (the
+ *  timetable's 10:07 back from the park isn't guaranteed, its dispatcher says). Set by the route's own page (pumpkin.js). */
+export const cutAfter = new Map();
 export function timesOn(si, ymd) {
   const per = D.times[si] || {};
   const out = [];
   const seen = new Set();
   for (const sid of servicesOn(ymd)) for (const t of per[sid] || []) {
-    if (notRun(t[4], si, sid)) continue;
+    if (notRun(t[4], si, sid) || t[0] > (cutAfter.get(t[1]) ?? Infinity)) continue;
     out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], req: onRequest(si, t[1], t[3]) });
     seen.add(t[1]);
   }
@@ -551,7 +554,7 @@ export function timesOn(si, ymd) {
     // 21st's, each departure listed twice.
     const from = new Map();   // route → the calendar it's filled from
     const ahead = upcomingServices(ymd).sort((a, b) => D.services.find(s => s.id === a).start.localeCompare(D.services.find(s => s.id === b).start));
-    for (const sid of ahead) for (const t of per[sid] || []) if (missing.includes(t[1]) && (from.get(t[1]) ?? sid) === sid && !notRun(t[4], si, sid)) {
+    for (const sid of ahead) for (const t of per[sid] || []) if (missing.includes(t[1]) && (from.get(t[1]) ?? sid) === sid && !notRun(t[4], si, sid) && t[0] <= (cutAfter.get(t[1]) ?? Infinity)) {
       from.set(t[1], sid);
       out.push({ min: t[0], r: t[1], h: t[2], dir: t[3], si, trip: t[4], prov: sid, req: onRequest(si, t[1], t[3]) });
     }
