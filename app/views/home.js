@@ -7,6 +7,7 @@ import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo, isDue
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, minsOut, lastTag, fillLater, moved, detourNotice, lively, schedOf, heardName } from '../ui.js';
 import { busOn, busDelay, AT_STOP } from '../rt.js';
 import { lightInks } from '../ink.js';
+import { pumpkinRoute } from './pumpkin.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
@@ -159,7 +160,9 @@ function chips(clockNow) {
   // A route named in words, not a number (the Pumpkin Walk, a season's), the width of the grid: its badge is wider than
   // a tile (it spilled out of one), and a route like that is worth seeing.
   const connect = D.routes.map((r, i) => { const worded = !/\d/.test(r.short) && r.short.length > 2;
-    return html`<a href="#/map/route/${encodeURIComponent(r.short)}"${worded ? html.raw(' class="wide"') : ''} aria-label="${routeName(i, false)}">${badge(i, 36)}${worded ? html`<span class="rt-when">${wordedWhen(i, clockNow)}</span>` : ''}</a>`; });
+    // The Pumpkin Walk's tile opens its own page (its tab), not its route's.
+    const href = i === pumpkinRoute() ? '#/pumpkin' : '#/map/route/' + encodeURIComponent(r.short);
+    return html`<a href="${href}"${worded ? html.raw(' class="wide"') : ''} aria-label="${routeName(i, false)}">${badge(i, 36)}${worded ? html`<span class="rt-when">${wordedWhen(i, clockNow)}</span>` : ''}</a>`; });
   const campus = U ? U.routes.map((r, ri) => r.stops.length ? html`<a href="#/usu/route/${r.id}" aria-label="${r.name}">${chip(ri, 36)}</a>` : '') : [];
   return html`<div class="land-eye"><span>Routes</span></div><div class="routes">${connect}</div>${campus.some(Boolean) ? html`<div class="land-eye"><span>Aggie Shuttle</span></div><div class="routes campus">${campus}</div>` : ''}`;
 }

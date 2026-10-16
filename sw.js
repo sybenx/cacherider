@@ -3,7 +3,7 @@
 // The phone answers from what it keeps, never waiting on the network: the app
 // as this version installed it (a deploy is a new version, and the page offers
 // a reload), the data files as last fetched, each checked behind the page.
-const VERSION = 'cr-v468';
+const VERSION = 'cr-v469';
 // The app's page is './' alone: Cloudflare Pages answers './index.html' with a redirect to './', and an answer kept
 // from a redirect can't be given to a navigation (the browser fails it outright, and every page the app's stood in
 // for, /privacy, /index.html, failed so, online or not, once the app was installed).
