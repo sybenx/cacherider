@@ -70,6 +70,16 @@ function renderTabs() {
       app.mapMod.hubAgain(app);
     };
     for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', hubAgain);
+    // The Pumpkin Walk's tab tapped on its page: the page as it opens, its map framed again (a phone's card raised to
+    // the walk, the page beside the map at its top).
+    const pumpkinAgain = e => {
+      if (!e.target.closest('a[href="#/pumpkin"]') || !(location.hash || '').startsWith('#/pumpkin') || !app.mapMod) return;
+      e.preventDefault();
+      app.mapMod.pumpkinAgain();
+      const side = document.getElementById('side'); if (side) side.scrollTop = 0;
+      if (location.hash !== '#/pumpkin') location.hash = '#/pumpkin'; else render();
+    };
+    for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', pumpkinAgain);
     // The same for the home page beside the map: the wordmark (or the Stops link) tapped while already home.
     // The home view back, the same each time: not the Map tab's second tap, which turns between the town and the near
     // view (tapped over and over, the map flipped between the two).
@@ -225,7 +235,7 @@ export async function render(tick = false) {
   stopOfMap = pageNow && !!app.route && (app.route.name === 'map' || (stopOfMap && (app.route.name === 'stop' || app.route.name === 'usu')));
   renderTabs();
   // A route on a wide screen is a page beside the map, as a stop is; on a phone, the Map tab with its stops as the card.
-  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: dec(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus } : null;
+  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: dec(seg[2] || ''), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus, every: q.every === '1' } : null;
   // The Transit Center on a phone is the map too, at the Center, the board its card; on a wide screen a page beside it.
   const hubMap = seg[0] === 'hub' && !isDesktop();
   const clockNow = now();

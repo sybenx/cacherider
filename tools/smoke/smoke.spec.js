@@ -616,6 +616,26 @@ test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts
   }
 });
 
+test('a route drawn as a line (on trial): its key stops, a fold kept open through a redraw, every stop', async ({ page }) => {
+  // The Blue Loop: its stops on a rail, the stops between its key stops folded. A fold opened stays open as the feed
+  // redraws the sheet; 'Every stop' unfolds the lot, 'Key stops' folds them again.
+  await open(page, '#/map/route/B');
+  await expect(page.locator('.rs-list.line').filter({ visible: true }).first()).toBeAttached();
+  const fold = page.locator('.rs-fold').filter({ visible: true }).first();
+  if (await fold.count()) {
+    await fold.locator('summary').click();
+    await expect(fold).toHaveAttribute('open', '');
+    await page.evaluate(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
+    await page.waitForTimeout(1500);
+    await expect(page.locator('.rs-fold[open]').filter({ visible: true })).not.toHaveCount(0);   // (a bus come into it may split it in two, both open)
+  }
+  await page.locator('.rs-every').filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/[?&]every=1/);
+  await expect(page.locator('.rs-fold').filter({ visible: true })).toHaveCount(0);
+  await page.locator('.rs-every').filter({ visible: true }).first().click();
+  await expect(page).not.toHaveURL(/every=1/);
+});
+
 test('route: both ways, its sibling, a stop on it', async ({ page }) => {
   await open(page, '#/map/route/2');
   await mapReady(page);

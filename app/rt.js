@@ -25,7 +25,7 @@ const LEFT_GRACE = 60000;   // a departure says now for this long after the bus 
 /** trip → when a loop bus on it was first seen at its Transit Center stop: it's in, waiting. The feed's time for a
  *  stop a bus sits at is its arrival, then minutes old, so the bus's place is what says it hasn't gone. */
 const here = new Map();
-const AT_STOP = 60;   // metres from its stop: a loop bus this close is at it
+export const AT_STOP = 60;   // metres from its stop: a loop bus this close is at it (a route drawn as a line too, map.js)
 const loopVotes = {};   // ri → { mode, n }: a loop's mode changes after two polls in a row agree
 const listeners = new Set();
 export function onRt(fn) { listeners.add(fn); return () => listeners.delete(fn); }
