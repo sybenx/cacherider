@@ -1304,13 +1304,16 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .pk-live { margin: 14px 16px 0; color: inherit; text-decoration: none; }
 .pk-from .pk-from-name { display: inline-flex; align-items: center; gap: 8px; }
 .pk-from .note { color: inherit; }
-.pk-nights { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); margin: 0 16px; border-top: 1px solid var(--cr-line); border-left: 1px solid var(--cr-line); }
-.pk-night { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-right: 1px solid var(--cr-line); border-bottom: 1px solid var(--cr-line); }
-.pk-night .d { font-family: var(--font-heading); font-weight: 600; font-size: 1.0625rem; letter-spacing: .04em; text-transform: uppercase; }
-.pk-night .dt { font-size: 0.75rem; color: var(--cr-muted); }
-.pk-night .h { font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
-.pk-night.tonight { box-shadow: inset 0 3px 0 #e8611c; }
-.pk-night.off .h, .pk-night.off .d { color: var(--cr-muted); }
+/* its nights to the last, a little calendar a week to a row, Monday first: tonight lit, a night with no shuttle struck */
+.pk-cal { margin: 0 16px; }
+.pk-wk, .pk-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.pk-wk span { text-align: center; font: 600 0.6875rem/1 var(--font-heading); letter-spacing: .1em; color: var(--cr-muted); padding-bottom: 6px; }
+.pk-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; border-radius: 6px; background: var(--cr-hover); }
+.pk-day b { font: 600 1.25rem/1 var(--font-heading); font-variant-numeric: tabular-nums; }
+.pk-day span { font-size: 0.6875rem; font-variant-numeric: tabular-nums; color: var(--cr-muted); white-space: nowrap; }
+.pk-day.tonight { box-shadow: inset 0 3px 0 #e8611c; background: rgba(232,97,28,.14); }
+.pk-day.off { background: none; }
+.pk-day.off b { color: var(--cr-muted); text-decoration: line-through; text-decoration-thickness: 2px; }
 .pk-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px; }
 
 /* The Pumpkin Walk's vine under the map's search (views/pumpkin-art.js): over the map, under its buttons, search and
@@ -1411,8 +1414,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .pk-ends .now { color: var(--color-text); }
 .pk-last { margin: 2px 0 0; font-size: 0.9375rem; }
 .pk-last b { font: 600 1.125rem/1 var(--font-heading); }
-.pk-page .pk-nights { margin-top: 20px; }
-.pk-through { margin: 8px 20px 0; font-size: 0.8125rem; color: var(--cr-muted); }
+.pk-page .pk-cal { margin-top: 20px; }
 /* the city's word on the walk and getting there (this year's) */
 .pk-city { margin: 18px 20px 0; padding-top: 14px; border-top: 1px solid var(--cr-line); font-size: 0.875rem; color: var(--cr-muted); }
 .pk-city p { margin: 0 0 8px; }

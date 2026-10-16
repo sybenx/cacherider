@@ -610,7 +610,7 @@ test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts
       await fold.click();
       await expect(page.locator('#mapcard .pk-title')).toBeInViewport();
     }
-    await expect(page.locator('.pk-night').first()).toBeAttached();
+    await expect(page.locator('.pk-day').first()).toBeAttached();
     await page.locator('.pk-lplace').filter({ visible: true }).first().click();
     await expect(page).toHaveURL(/#\/stop\//);
   }

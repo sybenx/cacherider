@@ -188,9 +188,13 @@ export function render(_, clockNow) {
       ${lastBack !== null ? html`<p class="pk-last">Last shuttle back leaves ${said(placeOf(other))} at <b>${clockText(lastBack)}</b></p>` : ''}</div>`;
   }
 
-  // Its nights, each with its hours: tonight lit, a night without a shuttle said so.
-  const strip = html`<div class="pk-nights">${ns.slice(0, 3).map((n, k) => html`<div class="pk-night${k === 0 ? ' tonight' : ''}${n.n ? '' : ' off'}"><span class="d">${k === 0 ? 'Tonight' : dayName(n.ymd, true)}</span><span class="dt">${fmtDay(n.ymd).replace(/^\w+,?\s*/, '')}</span><span class="h">${n.n ? hours(n) : 'No shuttle'}</span></div>`)}</div>`;
-  const lastNight = ns.length ? ns[ns.length - 1] : null;
+  // Its nights to the last, every one, as a little calendar a week to a row, Monday first: tonight lit, a night without
+  // a shuttle (its Sundays) crossed out. The season's short enough to show whole; it was the next three.
+  const span = n => { const a = clock(n.first), z = clock(n.last); return a.ap && a.ap === z.ap ? a.h.replace(':00', '') + '–' + z.h.replace(':00', '') : hours(n); };
+  const lead = ns.length ? (dayFrom(ns[0].ymd).dow + 6) % 7 : 0;
+  const strip = ns.length ? html`<div class="pk-cal" role="list" aria-label="Its nights">
+    <div class="pk-wk" aria-hidden="true">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(x => html`<span>${x}</span>`)}</div>
+    <div class="pk-days">${Array.from({ length: lead }, () => html`<i></i>`)}${ns.map((n, k) => html`<div role="listitem" class="pk-day${k === 0 ? ' tonight' : ''}${n.n ? '' : ' off'}" aria-label="${(k === 0 ? 'Tonight, ' : '') + fmtDay(n.ymd, true) + ', ' + (n.n ? hours(n) : 'no shuttle')}"><b>${dayFrom(n.ymd).date.getUTCDate()}</b><span>${n.n ? span(n) : 'none'}</span></div>`)}</div></div>` : '';
   // The city's word on the walk and getting there, for this year's season only.
   const city = night ? CITY[night.ymd.slice(0, 4)] : null;
   const cityNote = city ? html`<div class="pk-city"><p>The walk is open <b>${city.open}</b>, free, at the park. For the shuttle, park at ${city.park}. ${city.closed}.</p><p><a href="${CITY_SITE}" target="_blank" rel="noopener">North Logan's Pumpkin Walk site</a> has the rest: parking, closures, access.</p></div>` : '';
@@ -202,7 +206,7 @@ export function render(_, clockNow) {
       ${line}
       <a class="pk-maplink" href="#/pumpkin" data-pk-map>${icon('map', 18)}See the route on the map</a>
       ${tonight}
-      ${strip}${lastNight && ns.length > 3 ? html`<p class="pk-through">Its last night this season: ${fmtDay(lastNight.ymd)}.</p>` : ''}
+      ${strip}
       ${cityNote}
       <div class="pk-actions"><a class="btn btn-secondary" href="#/go/${D.stops[home].id}">${icon('walk', 18)}How to get to ${placeOf(home)}</a></div>
       <div class="fine">The shuttle's times are ${D.agency.brand}'s published timetable for the Pumpkin Walk, refreshed nightly, and live where the feed has the bus. The Pumpkin Walk itself is North Logan's; its own hours and news are <a href="${CITY_SITE}" target="_blank" rel="noopener">the city's</a> to give.</div></div>`,
