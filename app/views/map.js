@@ -492,7 +492,7 @@ function poolGeo() {
 function usuStopsGeo() {
   if (!U) return { type: 'FeatureCollection', features: [] };
   const done = doneToday().loops;
-  return { type: 'FeatureCollection', features: U.stops.filter((s, i) => s.routes.length && !U.shared[i]).map(s => ({ type: 'Feature', properties: { id: s.id, name: s.name, icon: 'usq-' + uink(s.routes[0]).slice(1), far: s.routes.every(ri => done.has(ri)) ? 'usqf-' + faded(uink(s.routes[0])).slice(1) : 'usq-' + uink(s.routes[0]).slice(1) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
+  return { type: 'FeatureCollection', features: U.stops.filter((s, i) => s.routes.length && !U.shared[i]).map(s => ({ type: 'Feature', properties: { id: s.id, name: s.name, loops: s.routes.map(ri => U.routes[ri].id), icon: 'usq-' + uink(s.routes[0]).slice(1), far: s.routes.every(ri => done.has(ri)) ? 'usqf-' + faded(uink(s.routes[0])).slice(1) : 'usq-' + uink(s.routes[0]).slice(1) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })) };
 }
 /** The loops with a bus out on them now, by the shuttle's feed (none when it's gone quiet). */
 const loopsOut = () => new Set(U && !isStale() ? live.buses.map(b => b.ri) : []);
@@ -1987,10 +1987,16 @@ function applySelection() {
   for (const id of ['route-closed', 'route-closed-halo']) map.setFilter(id, ownClosed.length ? ['in', ['get', 'route'], ['literal', ownClosed]] : null);
   // A route or bus lit: the stops it passes without calling at faded back, so a stop on its line that isn't its (8 up
   // Main past the Green Loop's) doesn't read as one it stops at.
-  const fade = lit.size > 0 && !JR, theirs = fade ? ['any', ...[...lit].map(r => ['in', r, ['get', 'routes']])] : true;
+  // A shuttle loop lit (its page, its bus) the same: the other loops' stops and Connect's faded, but for the Connect
+  // stops it shares; the loop's line came up and every other route's went down, and every stop stayed as bright.
+  const loops = JR ? [] : hiLoops, shared = loops.length && U ? U.stops.flatMap((u, i) => U.shared[i] && u.routes.some(ri => loops.includes(U.routes[ri].id)) ? [D.stops[U.shared[i].j].id] : []) : [];
+  const fade = (lit.size > 0 || loops.length > 0) && !JR, theirs = fade ? ['any', false, ...[...lit].map(r => ['in', r, ['get', 'routes']]), ...(shared.length ? [['in', ['get', 'id'], ['literal', shared]]] : [])] : true;
   map.setPaintProperty('stops', 'circle-opacity', fade ? ['case', theirs, 1, 0.28] : ['interpolate', ['linear'], ['zoom'], 10, 0.5, 13, 1]);
   map.setPaintProperty('stops', 'circle-stroke-opacity', fade ? ['case', theirs, 1, 0.28] : 1);
   map.setPaintProperty('stop-labels', 'text-opacity', fade ? ['case', theirs, 1, 0.4] : 1);
+  const ours = ['any', false, ...loops.map(l => ['in', l, ['get', 'loops']])];
+  if (map.getLayer('usu-stops')) map.setPaintProperty('usu-stops', 'icon-opacity', fade ? ['case', ours, 1, 0.28] : 1);
+  if (map.getLayer('usu-labels')) map.setPaintProperty('usu-labels', 'text-opacity', fade ? ['case', ours, 1, 0.4] : 1);
   // A route lit: its stops by the names its bus announces (the landmark, the address under it, smaller and muted),
   // as the rider on it hears them; the map at large by address, what's looked up on it.
   const heardOn = hiLines.length > 0 || focusRoute !== undefined;
