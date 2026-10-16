@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
-import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, routeHref, nthWords } from '../ui.js';
+import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, nthWords } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -1038,7 +1038,7 @@ async function made(app) {
       // dots put the route away, as another route's line does (below).
       const onRoute = focusRoute !== undefined && /^#\/map\/route\//.test(location.hash);
       const ids = dotsNear(e.point, r).filter(id => !onRoute || routesOfId(id).some(ri => familyKey(ri) === familyKey(focusRoute)));
-      if (ids.length) { const h = '#/map/alert/' + ids.join(',') + '?tap=1'; if (onRoute) location.hash = h; else if (!cardTo(h)) openDetour(ids, true); return; }
+      if (ids.length) { const h = '#/map/alert/' + ids.join(',') + '?tap=1'; if (onRoute) openTo(h); else if (!cardTo(h)) openDetour(ids, true); return; }
     }
     // A place's name tapped, and no stop there: its spot, with the stops nearest it, as a search result opens it.
     if (!hits.length && all.length) {
@@ -1103,9 +1103,8 @@ async function made(app) {
     // north button). Beside it on a wide screen, the board stays.
     else if (/^#\/hub\/./.test(location.hash)) replaceTo('#/hub');
     else if (/^#\/hub(\?|$)/.test(location.hash) && !wide()) leaveHubKept();
-    // A stop's sheet put away by a tap off it, or a card of the map's own: Back to the map, not the address left behind
-    // (the next Back did nothing).
-    else if (sheetUp) closeTo('#/map');
+    // A stop's sheet put away by a tap off it, or a card of the map's own: the map in its place (ui.js replaceTo).
+    else if (sheetUp) replaceTo('#/map');
     else cardAway();
   };
   for (const id of ['stops', 'stops-lit', 'stops-near']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
@@ -1131,7 +1130,7 @@ function pickRoute(ri, app) {
     if (!wide() && card.querySelector(':scope > .routesheet')) { card.classList.remove('peek'); card.classList.add('open'); }
     return;
   }
-  location.hash = h;
+  openTo(h);
 }
 // ---- a route: the map with the route lit and its times, and its stops in order as the map's card (a phone's) or
 // beside it (a wide screen's panel), each with the route's next call there. Once the route page; now the map's.
@@ -1726,6 +1725,7 @@ function wireGrip(app) {
       // stuck. The address in place, so Back doesn't pick it again.
       if (hubBay !== null) { hubBay = null; hubKey = null; history.replaceState(history.state, '', '#/hub'); shownHash = '#/hub'; hubBadges(); }
       return; }
+    // Swiped away is a dismiss, as Back is (ui.js closeTo); a tap off them puts them away in place.
     if (card.querySelector(':scope > .routesheet') && /^#\/map\/route\//.test(location.hash)) { card.classList.remove('open', 'peek'); closeTo('#/map'); return; }
     if (card.querySelector(':scope > .journeysheet') && JR) { card.classList.remove('open', 'peek'); delete card.dataset.min; backToWays(); return; }
     // No way by bus: out of the directions, as a way's are. Hidden only, the next redraw (the minute, the feed) put it back.
@@ -1735,7 +1735,7 @@ function wireGrip(app) {
     // A long press's 'Change directions' put away: the directions' own card again, the one it was put over. (It came
     // back only with the next redraw that wasn't the feed's, if any.)
     if (swapUp && swapUp === location.hash.split('?')[0]) { swapUp = null; window.dispatchEvent(new HashChangeEvent('hashchange')); return; }
-    cardAway(); };
+    cardAway(closeTo); };
   // The card's own Open button (the card itself is .open too): a place's page. A spot's card has none: its first
   // button is directions, and a swipe up is no ask for those.
   // Only a page of the app's own: POOL's first button is its booking app, and a swipe up went off to the app store.
@@ -2631,7 +2631,7 @@ function select(id, app, fly = false, zoomIn = false, go = true) {
   // From one stop to the next on the map, the address replaced: Back is the map, not each stop tapped on the way. In
   // place with its entry's state (asPage): a second stop's sheet swiped away then steps Back to the map.
   const to = '#/stop/' + id;
-  if (STOP_PAGE.test(location.hash)) replaceTo(to); else location.hash = to;
+  if (STOP_PAGE.test(location.hash)) replaceTo(to); else openTo(to);
 }
 /** A stop's page, or a shuttle stop's (or an old link to either on the map): the address a stop tapped replaces. */
 const STOP_PAGE = /^#\/(stop\/|usu\/(?!route\/)|map\/(\d|usu\/))/;
@@ -2993,7 +2993,7 @@ function leaveHubKept() {
   // middle of the whole map, under the board, was kept instead of what the rider could see.
   if (!wide() && sheetRest) r.bottom = Math.max(r.bottom, box.clientHeight - sheetRest);
   const x = left + (box.clientWidth - left - right + r.left - r.right) / 2, y = (r.top + box.clientHeight - r.bottom) / 2;
-  stayAt = map.unproject([x, y]); stayOff = true; closeTo('#/map');   // Back to the map it came from: Back brought the board back
+  stayAt = map.unproject([x, y]); stayOff = true; replaceTo('#/map');   // in place, not a new entry: Back brought the board back
 }   // stayOff: the Center left by a tap off its board, the map kept
 export function leaveHub() { if (!wide() || hubTurned) backDue = true; }   // a wide screen's map moved only by the tab again: else nothing to put back
 /** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
@@ -3171,12 +3171,12 @@ function busRouteHref(id) {
 let busFrom = null;
 const routeAway = () => {
   const b = busFrom; busFrom = null;
-  closeTo(b && wide() && location.hash.startsWith(b.route) ? b.hash : '#/map');   // Back, where that's where it goes: Back reopened the route
+  replaceTo(b && wide() && location.hash.startsWith(b.route) ? b.hash : '#/map');   // in place, not a new entry: Back reopened the route
 };
 function selectBus(id, app) {
   clearSpot();
   // Beside the panel (a wide screen, off the Map tab) a bus opens its route there, as a stop opens its page.
-  if (wide() && app.route.name !== 'map') { const h = busRouteHref(id); if (h) { busFrom = { hash: location.hash, route: h.split('?')[0].split('/').slice(0, 4).join('/') }; location.hash = h; return; } }
+  if (wide() && app.route.name !== 'map') { const h = busRouteHref(id); if (h) { busFrom = { hash: location.hash, route: h.split('?')[0].split('/').slice(0, 4).join('/') }; openTo(h); return; } }
   const c = findBus(id), b = c || live.buses.find(x => x.id === id);
   selectedBus = id; selectedU = null; selected = null; uHilite = '';
   // A Connect bus draws its way on, not its whole route: the route's line, if lit, drops back so the bus's reads.
@@ -3254,7 +3254,7 @@ function selectU(id, app, closer = false) {
     return;
   }
   const to = '#/usu/' + id;
-  if (STOP_PAGE.test(location.hash)) replaceTo(to); else location.hash = to;
+  if (STOP_PAGE.test(location.hash)) replaceTo(to); else openTo(to);
 }
 
 /** An address: a pin, and the card lists the stops nearest it. */
@@ -3319,15 +3319,15 @@ function cardTo(h) {
   if (cur !== '#/map' && !CARD_AT.test(cur)) return false;
   if (h === cur) shownHash = null;   // the same spot again, its card put away since: opened again
   if (CARD_AT.test(cur) || h === cur) { history.replaceState(history.state, '', h); window.dispatchEvent(new HashChangeEvent('hashchange')); }
-  else location.hash = h;
+  else openTo(h);
   return true;
 }
-/** A card of the map's own put away (a tap on nothing, a swipe): its address goes with it, Back to the map; a detour's
- *  opened over a route's page, Back to the route. */
-const cardAway = () => {
+/** A card of the map's own put away: its address goes with it, to the map; a detour's opened over a route's page, to
+ *  the route. By a tap on nothing in place (ui.js replaceTo); swiped away, as Back (closeTo). */
+const cardAway = (away = replaceTo) => {
   if (!CARD_AT.test(location.hash)) return;
   const p = history.state && history.state.prev;
-  closeTo(/^#\/map\/alert\//.test(location.hash) && /^#\/map\/route\//.test(p || '') ? p : '#/map');
+  away(/^#\/map\/alert\//.test(location.hash) && /^#\/map\/route\//.test(p || '') ? p : '#/map');
 };
 let spotUp = false, spotShown = null;   // a spot tapped or found is on the map (its disc and its card); which
 function setSpot(at) {
@@ -3531,7 +3531,7 @@ function searchMarks(m) {
 /** Called by the router whenever the map is on screen. */
 let shownHash = null, shownWide = null, lastMeasured = '';   // (and the layout it was shown in: phone or beside a panel)
 let popped = false;   // the last address came by Back or Forward
-window.addEventListener('popstate', () => { popped = true; });
+window.addEventListener('popstate', () => { popped = location.hash !== shownHash; });   // (to the same address: no show follows)
 /** The map put away on a phone (another tab drawn over it): the next address is acted on afresh, even the same one.
  *  The home page's shuttle line, tapped a second time after a trip back home, did nothing: its address was the one
  *  the map had last shown. */

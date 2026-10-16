@@ -179,7 +179,7 @@ test('home: the Routes line opens every route', async ({ page }, info) => {
 /** A click on the map where nothing is: zoomed out to the valley (the routes drawn small, in town), then the fields at
  *  the edge of the map that shows: clear of a wide screen's panel, the search bar, and a phone's card over the map's
  *  foot (a click there was on the card). */
-async function clickNothing(page) {
+async function clickNothing(page, how = 'click') {
   const map = await page.locator('#map').boundingBox(), side = await page.locator('#side').boundingBox();
   const open = page.locator('#mapcard.open'), card = (await open.count()) ? await open.boundingBox() : null;
   const left = side && side.width < map.width * 0.6 && side.x <= map.x + 1 ? side.x + side.width : map.x;   // beside the panel
@@ -187,8 +187,17 @@ async function clickNothing(page) {
   const mid = (top + bottom) / 2;
   for (let i = 0; i < 6; i++) { await page.mouse.move((left + map.x + map.width) / 2, mid); await page.mouse.wheel(0, 600); await page.waitForTimeout(150); }
   await page.waitForTimeout(900);
-  await page.mouse.click(left + 30, mid);
+  if (how === 'dblclick') await page.mouse.dblclick(left + 30, mid);   // a mouse's double click, the map's zoom in
+  else if (how === 'right') await page.mouse.click((left + map.x + map.width) / 2, mid, { button: 'right' });   // a long press's spot, mid-map
+  else await page.mouse.click(left + 30, mid);
   await page.waitForTimeout(900);
+}
+/** Where the tab is in its history, and whether a step was taken through it since this was first asked. */
+async function stepAt(page) {
+  return page.evaluate(() => {
+    if (window.__pops === undefined) { window.__pops = 0; addEventListener('popstate', () => window.__pops++); }
+    return { at: navigation.currentEntry.index, pops: window.__pops, forward: navigation.canGoForward };
+  });
 }
 
 test('bus click-off: back where the rider was', async ({ page }, info) => {
@@ -214,8 +223,47 @@ test('bus click-off: back where the rider was', async ({ page }, info) => {
   test.skip(!bus, 'no Connect bus out');
   await bus.evaluate(el => el.click());
   await expect(page).toHaveURL(/#\/map\/route\/.+\?bus=/);
+  const was = await stepAt(page);
   await clickNothing(page);
   await expect(page).toHaveURL(new RegExp('#/stop/' + id + '$'));
+  expect(await stepAt(page)).toEqual(was);   // in place, not a step Back
+});
+
+test('a tap off a card, a sheet, a route puts it away in place: never a step Back, not even a double click', async ({ page }, info) => {
+  // A tap on nothing stepped Back where the address before was the one put away to, and the card put away was a
+  // Forward away. With a mouse, a double click (the map's zoom in) went Back twice: off the map to Stops, and the next
+  // Back out of the app. (A finger's double tap picks nothing: the map's tap waits it out, map.js.)
+  await open(page, '#/map');
+  await mapReady(page);
+  const { id, short } = await page.evaluate(async () => { const { D } = await import('/app/data.js'); return { id: D.stops.find(s => !s.hub && s.routes.length && !s.out).id, short: D.routes.find(r => /^\d+$/.test(r.short)).short }; });
+  // Each opened from the map, a step of its own (Back puts it away): a route, a phone's stop sheet, and a spot's card
+  // (in the fields west of the routes, where a tap off falls on no road)
+  const opened = ['#/map/route/' + short, ...(phone(info) ? ['#/stop/' + id] : []), '#/map/at/41.74000,-112.02000/Here'];
+  for (const h of opened) {
+    await go(page, '#/map');
+    await page.waitForTimeout(600);
+    await go(page, h);
+    await expect(page.locator('#mapcard.open, #side .routepage').filter({ visible: true }).first()).toBeVisible();
+    await page.waitForTimeout(900);
+    const was = await stepAt(page);
+    // (a phone's route: the first tap puts its card away, the route still lit; the next, the route)
+    for (let k = phone(info) && /route/.test(h) ? 2 : 1; k > 0; k--) await clickNothing(page, phone(info) ? 'click' : 'dblclick');
+    await expect(page, h).toHaveURL(/#\/map$/);
+    expect(await stepAt(page), h).toEqual({ ...was, forward: false });
+    await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);
+  }
+  // The map where the last was put away is the address before it again (the first Back shows no change), but the
+  // next opened from the map takes that step (ui.js openTo): spots picked and tapped off, over and over, don't pile up
+  // the map in the history, Back doing nothing once for each.
+  const steps = () => page.evaluate(() => navigation.entries().length);
+  const n = await steps();
+  for (let k = 0; k < 2; k++) {
+    await clickNothing(page, 'right');
+    await expect(page).toHaveURL(/#\/map\/at\//);
+    await clickNothing(page);
+    await expect(page).toHaveURL(/#\/map$/);
+  }
+  expect(await steps()).toBe(n);
 });
 
 test('a bus gone quiet: grey after three minutes without a report, off the map after ten', async ({ page }) => {

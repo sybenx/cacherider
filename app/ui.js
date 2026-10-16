@@ -10,18 +10,31 @@ class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
 const part = v => v instanceof Raw ? v.s : Array.isArray(v) ? v.map(part).join('') : v == null || v === false ? '' : esc(v);
 export const html = (strings, ...vals) => new Raw(strings.reduce((out, s, i) => out + s + (i < vals.length ? part(vals[i]) : ''), ''));
 export const raw = s => new Raw(s);
-/** A sheet or card put away, to the map (or wherever `h` is): Back to it when it's the address before this one, so
- *  the history doesn't gain the map again (Back then reopened what was put away); else this address turned into it,
- *  in place. Each entry's `prev` is stamped by main.js the first time it's drawn. */
+/** A sheet or card swiped away (a dismiss, as Back is), to the map (or wherever `h` is): Back to it when it's the
+ *  address before this one, so the history doesn't gain the map again (Back then reopened what was put away); else
+ *  this address turned into it, in place. Each entry's `prev` is stamped by main.js the first time it's drawn.
+ *  Not for a tap on the map: that's replaceTo, never a step Back. */
 export function closeTo(h) {
   const s = history.state;
   if (s && s.prev === h) { history.back(); return; }
   replaceTo(h);
 }
 /** An address in place of this one, the same step in the history: its state kept (the address before it, which
- *  closeTo goes by). location.replace leaves none, and the entry was stamped with the address it replaced. */
+ *  closeTo goes by). location.replace leaves none, and the entry was stamped with the address it replaced.
+ *  A card, sheet or route put away by a tap on the map is this, to what it sat over: never a step Back. A tap off it
+ *  that stepped Back went Back twice on a mouse's double click (the map's zoom; Back is taken after the click, the
+ *  address still the card's for the second), off the map and then out of the app, and left the card a Forward away.
+ *  The cost: put away over the address it was opened from, the entry before is that address again, and the first
+ *  Back after shows no change (once: openTo opens the next in its place). */
 export function replaceTo(h) {
   history.replaceState(history.state, '', h); window.dispatchEvent(new HashChangeEvent('hashchange'));
+}
+/** An address opened from the map (a stop, a card, a route): a step of its own, so Back puts it away; but in place of
+ *  an entry a tap left behind (its address the one before it, replaceTo), which Back would only show again: each stop
+ *  tapped and put away on the map added another, and Back did nothing that many times. */
+export function openTo(h) {
+  const s = history.state;
+  if (s && s.prev === location.hash) replaceTo(h); else location.hash = h;
 }
 html.raw = raw;
 
