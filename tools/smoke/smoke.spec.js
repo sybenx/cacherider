@@ -949,6 +949,29 @@ test('directions, no stop a walk off: the nearest starts in view, one picked, an
   }
 });
 
+test('directions with no way by bus, on a phone: a long press\'s card stays through the feed\'s ticks', async ({ page }, info) => {
+  // From far out of the valley's routes, a long press (a right click) on the map: 'Change directions' over the 'no bus
+  // goes there' card. The feed's next tick drew the directions' card back over it: the guard compared the address the
+  // press was made at with the no-way card's own key ('none:' and where to), never the same.
+  test.skip(!phone(info), 'a phone\'s one card');
+  await open(page, '#/go/@41.74321,-111.81488:Logan/at/41.90000,-112.00000/Far%20away');
+  await mapReady(page);
+  const card = page.locator('#mapcard');
+  await expect(card.locator('.gonone .empty h2')).toBeVisible();
+  const map = await page.locator('#map').boundingBox(), c = await card.boundingBox();
+  await page.mouse.click(map.x + 40, (map.y + 80 + c.y - 10) / 2, { button: 'right' });
+  const asked = page.locator('#mapcard.open .eyebrow', { hasText: 'Change directions' });
+  await expect(asked).toBeVisible();
+  // A tick, as the feed's word makes one, then the feed's own: the card stays, the address as it was
+  await page.evaluate(async () => (await import('/app/main.js')).render(true));
+  await page.waitForTimeout(7000);
+  await expect(asked).toBeVisible();
+  await expect(card.locator('.gonone')).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/go\/@41\.74321,-111\.81488:Logan\/at\/41\.90000,-112\.00000\/Far%20away$/);
+  await page.locator('#mapcard a', { hasText: 'Start from here' }).click();
+  await expect(page).toHaveURL(/#\/go\/@41\.74321,-111\.81488:Logan\/at\/[-\d.]+,[-\d.]+\//);
+});
+
 test('directions, no stop a walk off the place: the nearest a bus gets you, one picked', async ({ page }) => {
   // From a stop downtown to the fields west of Logan, out of a walk of any stop.
   await open(page);

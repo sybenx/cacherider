@@ -3826,7 +3826,9 @@ async function mainJourney(J, app) {
 /** A phone's card for the directions: the page's own sheet (where to and from, the ways as rows, the drawn way told
  *  leg by leg), under the map with the way drawn. A row tapped draws that way; a swipe across, the next. */
 function journeyCard(J, app) {
-  if (swapUp === J.base) return;   // a long press's 'Change directions' card is up over these directions: the feed's tick leaves it
+  // A long press's 'Change directions' card is up over these directions: the feed's tick leaves it. By their address
+  // (a 'no bus goes there' card's base is 'none:' and where to, never the address, and the tick drew it back over).
+  if (swapUp === (J.none ? J.addr : J.base)) return;
   const card = col.querySelector('#mapcard');
   const markup = `<div class="grip"></div>` + J.sheet();
   // The same directions drawn again (the feed's tick, every few seconds): the card as the rider left it. A 'no bus goes

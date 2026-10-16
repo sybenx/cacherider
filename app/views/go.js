@@ -458,8 +458,9 @@ function farEnds0(e, to, from, at) {
 /** The map's side of it: just the two ends, framed, and the page as its card. */
 function noWayJourney(e, to, parts, hubBay, also) {
   const o = e.origin.si !== undefined ? stop(e.origin.si) : e.origin, far = farOf(e, to);
-  // marks: the stops the card names (where to drive to, or where a bus gets you), for the map to show with the ends
-  return { none: true, base: 'none:' + to, from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon }, marks: far ? far.ids : null, side: far ? far.side : null,
+  // marks: the stops the card names (where to drive to, or where a bus gets you), for the map to show with the ends.
+  // base keys its framing and its card by where to; addr is the directions' address, as a way's base is.
+  return { none: true, base: 'none:' + to, addr: location.hash.split('?')[0], from: { lat: o.lat, lon: o.lon }, to: { lat: e.d.lat, lon: e.d.lon }, marks: far ? far.ids : null, side: far ? far.side : null,
     sheet: () => html`<div class="gohead gonone">${parts}${noWay(e, to, hubBay, also)}</div>`, mount: el => mount(el, null, true) };
 }
 /** POOL, Connect's on-demand ride, where a place is in its zone: book it, or call. */
