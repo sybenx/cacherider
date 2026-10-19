@@ -7,7 +7,7 @@ Writes data/cvtd.json (routes, services, stops, the hub and every departure,
 as minutes past midnight) and data/cvtd-shapes.json (route lines for the
 map). The app loads the first once and keeps it; the second only on the map.
 """
-import argparse, csv, datetime, io, json, math, os, re, sys, zipfile
+import argparse, calendar, csv, datetime, io, json, math, os, re, sys, zipfile
 
 ap = argparse.ArgumentParser()
 ap.add_argument('gtfs')
@@ -59,6 +59,30 @@ attrs = {c['service_id']: c['service_description'] for c in table('calendar_attr
 services = [{'id': c['service_id'], 'days': [int(c[d]) for d in DAYS], 'start': c['start_date'], 'end': c['end_date'],
              'desc': attrs.get(c['service_id'], '')} for c in table('calendar.txt')]
 exceptions = [[c['date'], c['service_id'], int(c['exception_type'])] for c in table('calendar_dates.txt', required=False)]
+
+# ---- the agency's holidays (hints' holidays): no buses, though its calendars run that day of the week, for this year
+# and the next two (the nightly build rolls on). Every one of the feed's calendars comes off each, but where the feed
+# itself has a word on that date for that calendar (a holiday it serves after all, or one it already takes off), the
+# feed's stands. A rule a slip has spoilt is left out, said here, never the night's timetable. Before the hand routes:
+# another operator's (PRT's) keeps its own days off.
+WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+def holiday_date(rule, y):
+    m = re.fullmatch(r'(\d\d)-(\d\d)', rule)
+    if m: return datetime.date(y, int(m.group(1)), int(m.group(2)))
+    m = re.fullmatch(r'(\d\d) ([1-4]|last) (' + '|'.join(WEEKDAYS) + ')', rule)
+    if not m: raise ValueError(rule)
+    month, wd = int(m.group(1)), WEEKDAYS.index(m.group(3))
+    days = [d for d in (datetime.date(y, month, k) for k in range(1, calendar.monthrange(y, month)[1] + 1)) if d.weekday() == wd]
+    return days[-1] if m.group(2) == 'last' else days[int(m.group(2)) - 1]
+agency_holidays = {}
+for name, rule in H.get('holidays', []):
+    try:
+        for y in range(datetime.date.today().year, datetime.date.today().year + 3): agency_holidays[holiday_date(rule, y).strftime('%Y%m%d')] = name
+    except Exception as e:
+        print('::warning::holiday', name, 'rule', repr(rule), 'unreadable (' + type(e).__name__ + '); left out', file=sys.stderr)
+agency_holidays = dict(sorted(agency_holidays.items()))
+feed_says = {(d, sid) for d, sid, _t in exceptions}
+exceptions += [[d, s["id"], 2] for d in agency_holidays for s in services if s['start'] <= d <= s['end'] and (d, s['id']) not in feed_says]
 
 # ---- stops
 towns = H.get('towns', {})
@@ -352,7 +376,7 @@ out = {
                'fares': H.get('agency_fares', agency.get('agency_fare_url', ''))},
     'feed': {'version': feed.get('feed_version', ''), 'start': feed.get('feed_start_date', ''), 'end': feed.get('feed_end_date', ''),
              'built': datetime.date.today().isoformat()},
-    'routes': routes, 'services': services, 'exceptions': exceptions, 'headsigns': headsigns,
+    'routes': routes, 'services': services, 'exceptions': exceptions, 'holidays': agency_holidays, 'headsigns': headsigns,
     'stops': stops, 'hub': hub_out, 'times': times, 'trips': trip_ids, 'next': next_trip, 'buses': buses,
     'ends': [x for i in range(len(trip_ids)) for x in ends.get(i, [-1, -1])],
     # Where a route calls only when asked, which the feed doesn't say: [stop, route, direction] each.

@@ -551,6 +551,12 @@ export function agencyRuns(ymd) {
   for (const sid of servicesOn(ymd)) if (!opServices.has(sid)) return true;
   return false;
 }
+/** The agency's holiday on a day, by name ('Thanksgiving Day'), or '': its feed doesn't carry them, so the timetable
+ *  takes them off by hand (tools/reduce.py, hints' holidays). */
+export const holidayOn = ymd => (D.holidays && D.holidays[ymd]) || '';
+/** Why the agency's buses aren't running on a day with none: 'Connect doesn't run on Sundays', or on its holiday
+ *  ('… on Thanksgiving Day'), which falls on a weekday it otherwise runs. */
+export const offDayWords = ymd => `${D.agency.brand} doesn't run on ${holidayOn(ymd) || dayName(ymd) + 's'}.`;
 export function servicesOn(ymd) {
   const d = dayFrom(ymd);
   const dow = (d.dow + 6) % 7;   // GTFS counts from Monday
@@ -621,7 +627,9 @@ export function timesOn(si, ymd) {
     seen.add(t[1]);
   }
   const missing = (D.stops[si].routes || []).filter(r => !seen.has(r) && !routeRunsOn(r, ymd));
-  if (missing.length) {
+  // Not on a holiday: every route is missing then, and a timetable starting within weeks (a January one, at Christmas)
+  // would fill the day in.
+  if (missing.length && !holidayOn(ymd)) {
     // Each route from the first calendar after that has it, and only that one: on a day before the feed's first
     // (14 Oct, the feed starting the 15th), every route was filled from both calendars ahead, the 15th's and the
     // 21st's, each departure listed twice.

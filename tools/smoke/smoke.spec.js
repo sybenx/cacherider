@@ -2273,6 +2273,30 @@ test('a closed stop the buses go by on their way round: the roads they drive sol
   await expect.poll(async () => { const d = await drawn(); return d && d.map((e, i) => i < driven.length ? e > 25 : i < driven.length + left.length ? e < 10 : e); }, { timeout: 20_000 }).toEqual([true, true, true, true, true, true]);
 });
 
+test('a holiday: no buses on Thanksgiving, said by its name; the evening before, the next bus is Friday\'s; Friday runs', async ({ page }) => {
+  // Connect's feed has no holidays (tools/hints.json does). The next Thanksgiving, the fourth Thursday of November.
+  const today = new Date();
+  let tg = null;
+  for (let y = today.getFullYear(); !tg; y++) { const d = new Date(y, 10, 1); d.setDate(1 + (4 - d.getDay() + 7) % 7 + 21); if (d > today) tg = d; }
+  const at = (k, hm) => { const d = new Date(tg); d.setDate(d.getDate() + k); return new Date(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}:00-07:00`); };
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
+  await page.clock.setFixedTime(at(0, '12:00'));
+  await open(page, '#/stop/7543017');   // Island Market: Route 3, every weekday
+  await expect(page.getByText('Connect doesn\'t run on Thanksgiving Day.').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText(/Service resumes Friday/).filter({ visible: true }).first()).toBeVisible();
+  await go(page, '#/hub');
+  await expect(page.getByText(/^Tomorrow · Friday/i).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText('The rest of today')).toHaveCount(0);
+  await page.clock.setFixedTime(at(-1, '21:30'));
+  await go(page, '#/stop/7543017');
+  await expect(page.getByText(/The next one is Friday at/).filter({ visible: true }).first()).toBeVisible();
+  await page.clock.setFixedTime(at(1, '12:00'));
+  await open(page, '#/stop/7543017');
+  await expect(page.getByText('No buses today')).toHaveCount(0);
+  await go(page, '#/hub');
+  await expect(page.getByText(/The rest of today/i).filter({ visible: true }).first()).toBeVisible();
+});
+
 test('settings and about: the clock and units turned and back', async ({ page }) => {
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();

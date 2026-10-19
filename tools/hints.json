@@ -123,6 +123,15 @@
   ],
   "hand_routes": ["prt.json"],
   "_hand_routes": "Routes no feed has, each kept by hand in a file here (tools/reduce.py merges them): Pocatello Regional Transit's Preston / Logan Commuter. A sister site lists none.",
+  "holidays": [
+    ["New Year’s Day", "01-01"],
+    ["Memorial Day", "05 last mon"],
+    ["Independence Day", "07-04"],
+    ["Labor Day", "09 1 mon"],
+    ["Thanksgiving Day", "11 4 thu"],
+    ["Christmas Day", "12-25"]
+  ],
+  "_holidays": "The agency's days with no buses, which its feed doesn't carry (Connect's has no calendar_dates): 'Major Holidays (no bus service)' on rideconnectutah.gov/hours/, checked 2026-10-19. Each a month and day, or a month, which of its weekdays (1 to 4, or last) and the day. tools/reduce.py takes every one of the feed's calendars off on each, this year and the next two; a date the feed itself lists keeps the feed's word. On the day itself: Connect's page gives no observed days (a Saturday Christmas, a Sunday July 4). A sister site whose feed carries its holidays lists none.",
   "loops": [
     "G",
     "B"

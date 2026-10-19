@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
+import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, holidayOn, offDayWords, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, nthWords } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -2765,12 +2765,13 @@ function notice(clockNow) {
     const which = early.length && early.length < 5 ? ` (${early.every(ri => !isLoop(ri)) ? (names.length > 1 ? 'routes ' : 'route ') : ''}${names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]})` : '';
     if (isFinite(t0)) first = ` The first leave the ${D.hub.name} at ${clockText(t0)}${which}${pulse && pulse.min > t0 ? `; most routes start at ${clockText(pulse.min)}` : ''}.`;
   }
-  // One line over the map, the rest a tap away; closed, it stays closed the rest of the day on this phone.
+  // One line over the map, the rest a tap away; closed, it stays closed the rest of the day on this phone. A holiday's
+  // name is in the rest: on the line, 'No service today · Thanksgiving Day · resumes F…' lost when on a phone.
   let shut = null;
   try { shut = localStorage.getItem('cr-notice-shut'); } catch { /* storage refused: it shows */ }
   if (shut === clockNow.ymd) { n.innerHTML = ''; return; }
   const open = n.dataset.open === clockNow.ymd;
-  n.innerHTML = html`<div class="callout notice-min${open ? ' open' : ''}">${icon('moon', 18)}<button type="button" class="nm-text" aria-expanded="${open ? 'true' : 'false'}"><b>No service today</b>${resume ? html`<span> · resumes ${dayName(resume, true)}${isFinite(t0) ? ' ' + clockText(t0) : ''}</span>` : ''}${open ? html`<span class="sub">${resume ? `Buses resume ${fmtDay(resume)}.` : ''}${first}</span>` : ''}</button><button type="button" class="nm-x" aria-label="Hide for today">${icon('close', 18)}</button></div>`;
+  n.innerHTML = html`<div class="callout notice-min${open ? ' open' : ''}">${icon('moon', 18)}<button type="button" class="nm-text" aria-expanded="${open ? 'true' : 'false'}"><b>No service today</b>${resume ? html`<span> · resumes ${dayName(resume, true)}${isFinite(t0) ? ' ' + clockText(t0) : ''}</span>` : ''}${open ? html`<span class="sub">${holidayOn(clockNow.ymd) ? offDayWords(clockNow.ymd) + ' ' : ''}${resume ? `Buses resume ${fmtDay(resume)}.` : ''}${first}</span>` : ''}</button><button type="button" class="nm-x" aria-label="Hide for today">${icon('close', 18)}</button></div>`;
   n.querySelector('.nm-text').onclick = () => { n.dataset.open = open ? '' : clockNow.ymd; notice(clockNow); };
   n.querySelector('.nm-x').onclick = () => { try { localStorage.setItem('cr-notice-shut', clockNow.ymd); } catch { /* storage refused: hidden till the page reloads */ } n.innerHTML = ''; };
 }

@@ -1,7 +1,7 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun } from '../data.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun, offDayWords } from '../data.js';
 import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone, fmtDay, howOften, clockAnd } from '../time.js';
 import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
@@ -282,7 +282,7 @@ function together(st, clockNow) {
     if (still.length && (last || still.length * 2 >= runs.length)) { p = q; break; }
     behind.push(...still.filter(([, t]) => moved(t)).map(([k, t]) => ({ k, t, q })));   // late as every screen says it, 2 min on: one pulling out a minute behind is going
   }
-  if (!p) return html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${D.agency.brand} doesn't run on ${dayName(clockNow.ymd)}s.</div></div></div>`;
+  if (!p) return html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${offDayWords(clockNow.ymd)}</div></div></div>`;
   const leaving = leavingAt(ks, p);
   // Counted to when its next bus actually leaves: the group's minute, or later where every one still to go is late
   // (the feed's word on each run in the group, never before its minute: rt.js).
