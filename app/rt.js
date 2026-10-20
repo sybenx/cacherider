@@ -167,10 +167,16 @@ async function tick(force) {
     for (const b of buses) if (trips[b.trip] && !trips[b.trip].est && trips[b.trip].v && b.id === 'c:' + trips[b.trip].v && tripIdx.has(b.trip) && !agrees(b, trips[b.trip], tripIdx.get(b.trip), j.t)) { delete trips[b.trip]; doubt.add(b.trip); }
     for (const b of buses) if (!trips[b.trip] && !doubt.has(b.trip) && tripIdx.has(b.trip) && j.t - b.ts < 180) { const u = fromPlace(b, tripIdx.get(b.trip), j.t); if (u) { u.waits = waitsOf(u.ti, u.stops, u.end, j.t); trips[b.trip] = u; } }
     rt.doubt = doubt;
-    const t0 = Date.now();
-    for (const [id, old] of Object.entries(rt.trips)) for (const [sid, x] of old.at) {
+    // A bay gone from a trip's predictions since the answer before: its bus pulled out, at some moment between that
+    // answer and this one, and it's stamped with the earlier, the last time it was seen there. Polled every few seconds
+    // that's all but now; after a gap it isn't. Stamped with now, a phone back in the app (hidden, it asks nothing) had
+    // every bus that went while it was away 'leaving now' for a minute more: back at 3:36 on 20 Oct, the 3:30s of Routes
+    // 5, 7, 9, 11 and 12 'Live · 6 min late', Route 7's bus 4004 600 m off at 240 North 100 East. Only a trip still in
+    // the feed: one gone from it altogether (a trip feed come back empty, 3:32 the same day) says nothing of its bus.
+    const t0 = Date.now(), seen = rt.at || t0;
+    for (const [id, old] of Object.entries(rt.trips)) if (trips[id]) for (const [sid, x] of old.at) {
       const k = id + ':' + sid;
-      if (!x.skipped && !left.has(k) && D.stops[D.stopById[sid]]?.hub && !(trips[id] && trips[id].at.has(sid))) left.set(k, t0);
+      if (!x.skipped && !left.has(k) && D.stops[D.stopById[sid]]?.hub && !trips[id].at.has(sid)) left.set(k, seen);
     }
     for (const [k, ms] of left) if (t0 - ms > 600000) left.delete(k);
     for (const ri of D.hub.loops || []) watchLoop(ri, trips, buses, t0);
@@ -425,10 +431,11 @@ function feedPredict(t) {
   if (u.cancelled) return { gone: true, cancelled: true };   // a run the feed says is cancelled isn't coming (the relay passes it on: c 1)
   const p = feedSays(t, u);
   // From a Transit Center bay, a departure can't leave before the bus that runs it is in: that bus (the trip's own
-  // vehicle) may still be finishing the trip before. Every screen reads this one rule.
+  // vehicle) may still be finishing the trip before. Every screen reads this one rule. When that bus is in is the
+  // run before's, worked out here: an estimate, as below.
   if (p && !p.gone && D.stops[t.si].hub && !(isLoop(t.r) && loopSpacing(t.r))) {
     const inAt = inbound(u, D.trips[t.trip]);
-    if (inAt !== null && inAt > p.min) return { ...p, min: inAt, delay: inAt - t.min };
+    if (inAt !== null && inAt > p.min) return { ...p, min: inAt, delay: inAt - t.min, est: true };
   }
   // Past the Transit Center, before the bus has left it: no sooner than leaving it (hubLeaves) and keeping to the
   // timetable from there. The feed's time for a stop on the far side then, not the timetable's, is the one that's off:
@@ -450,8 +457,13 @@ function feedPredict(t) {
   // all the same when the bus on the run before is due in by this one's start: that's the bus's word, not the feed's
   // copy of the timetable. Not out, or due in late: the timetable's alone.
   if (p && !p.gone && !p.est && D.stops[t.si]) {
-    const hit = u.at.get(D.stops[t.si].id), bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v);
-    if (hit && !hit.skipped && !(bus && bus.trip === D.trips[t.trip]) && Math.abs(toMin(hit.time) + (hit.time % 60) / 60 - t.min) < 1) return bus && dueBy(bus, u) ? KEEPS : null;
+    const hit = u.at.get(D.stops[t.si].id), bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v), on = !!bus && bus.trip === D.trips[t.trip];
+    if (hit && !hit.skipped && !on && Math.abs(toMin(hit.time) + (hit.time % 60) / 60 - t.min) < 1) return bus && dueBy(bus, u) ? KEEPS : null;
+    // Moved off it, its bus still out on the run before: the feed's minute is that run's carried on (its time for the
+    // bay is when that run gets in), not word from a bus on this one. Estimated, as a run with no word of its own yet
+    // is (runArrives, above): Route 7's 4:00 at 3:36 on 20 Oct, bus 4004 still out on its 3:30, was 'Live · 2 min late'.
+    // Not a bus at its bay still on the run before, boarding (feedSays): that's its place, and its time is now.
+    if (hit && !hit.skipped && bus && !on && hit.time >= Date.now() / 1000 - 30) return { ...p, est: true };
   }
   return p && p.waited && p.delay === 0 ? KEEPS : p;   // held to its minute at a timed stop: on time, the timetable's, as at the bay
 }

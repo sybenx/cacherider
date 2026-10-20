@@ -406,7 +406,10 @@ function mount(el, app) {
     form.onsubmit = e => { e.preventDefault(); go(input.value); };
     let t;
     input.oninput = () => { clearTimeout(t); const was = location.hash; t = setTimeout(() => { if (location.hash === was) go(input.value, true); }, 250); };   // not after a result's tapped
-    if (input.value || focusNext) { focusNext = false; input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
+    // Focused at its end on arriving; not again on the minute's and the feed's redraws while it's being typed in, which
+    // put the caret back at the end every few seconds.
+    if ((input.value || focusNext) && document.activeElement !== input) { input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
+    focusNext = false;
   }
   for (const near of el.querySelectorAll('#near, #near-ask')) near.onclick = () => app.geo ? nearOff() : nearMe();
   const testShut = el.querySelector('[data-act=test-shut]');

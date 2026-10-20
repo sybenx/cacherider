@@ -210,6 +210,9 @@ function sync(a, b) {
     if (!x) { a.appendChild(y); continue; }
     if (x.nodeType !== y.nodeType || (x.nodeType === 1 && x.tagName !== y.tagName)) { x.replaceWith(y); continue; }
     if (x.nodeType !== 1) { if (x.data !== y.data) x.data = y.data; continue; }
+    // The box with the focus not even its attributes: a value the markup sets is the box's until it's typed in (a time
+    // being picked on the directions page).
+    if ((x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') && x === document.activeElement) continue;
     for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
     for (const at of y.attributes) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
     if (x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') continue;   // a box being typed in is left be
@@ -689,12 +692,16 @@ async function boot() {
     tc.innerHTML = html`<span>${d.date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })} <span class="md">${MON_SHORT[d.date.getUTCMonth()]} ${d.date.getUTCDate()}</span></span><span class="hm">${k.h}${k.ap ? html`<small>${k.ap}</small>` : ''}</span>`;
   };
   tick(); setInterval(tick, 5000);
-  // Relative times drift by the minute: redraw when the minute turns, never mid-tap or mid-typing.
+  // Relative times drift by the minute: redraw when the minute turns. A box being typed in is left as it is (morph()
+  // doesn't touch one, nor do the pages' mounts), so the minute and the feed redraw with the focus in it too. They
+  // didn't, from when a redraw was the whole page anew: a box left with the focus (the map's search on a phone, its
+  // keyboard put away with Back; the app left and come back to so) froze the page while the map's buses moved on. 20
+  // Oct's feed replayed so, the board kept Route 7's 3:30 'Live · 2 min late', at its bay, from 3:32 on, its bus 4004
+  // on the map off to 240 North 100 East.
   let lastMin = now().min;
   setInterval(() => {
     const m = now().min;
     if (m === lastMin || document.visibilityState !== 'visible' || !app.route) return;   // the Map tab too: its cards count down
-    if (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
     lastMin = m;
     render(true);
   }, 5000);
@@ -704,9 +711,10 @@ async function boot() {
   // was left, its countdown running on, stood there till they came.
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; autoLocate(); render(); if (Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); });
   setInterval(() => { if (document.visibilityState === 'visible' && Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); }, 60e3);   // a notice posted while the app is open shows within minutes
-  // Fresh bus positions redraw a live screen in place.
-  onLive(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
-  onRt(() => { if (app.route && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
+  // Fresh bus positions redraw a live screen in place, a box with the focus in it too (as the minute's, above): the
+  // page's words and the map's buses are the one feed's.
+  onLive(() => { if (app.route) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
+  onRt(() => { if (app.route) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').then(reg => {
     // A new version waits (sw.js) and never takes over a page that's running: this one runs one version whole, start
     // to finish. It took over at once, and a page open then ran its map code from the new version and the rest from

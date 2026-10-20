@@ -3662,10 +3662,12 @@ export async function show(o, app, clockNow) {
   if (map && ready) searchMarks(wantMarks);
   // The minute or the feed: a phone's route sheet redrawn in place, its scroll kept.
   if (o.tick && o.routeArgs && app.route.name === 'map' && !wide() && col.querySelector('#mapcard.open > .routesheet')) sheetCard(o.routeArgs, clockNow);
-  // The board is a phone's card whenever the Transit Center is up: redrawn for the minute, and put back when the
-  // layout turned phone under it (a tablet turned upright) with the address unchanged. Not over another card the
-  // rider opened there (a long press's nearest stops): a location fix or coming back to the app swapped it out.
-  if (o.hub && app.route.name === 'map' && !wide() && (o.tick ? !!col.querySelector('#mapcard.open > .hubsheet') : !col.querySelector('#mapcard.open'))) hubCard(clockNow);
+  // The board is a phone's card whenever the Transit Center is up: redrawn in place for the minute, the feed and
+  // anything else (coming back to the app: main.js draws it again at once, by the clock, before the feed's first word;
+  // the notices), and put back when the layout turned phone under it (a tablet turned upright) with the address
+  // unchanged. Not over another card the rider opened there (a long press's nearest stops): a location fix or coming
+  // back to the app swapped it out.
+  if (o.hub && app.route.name === 'map' && !wide() && (col.querySelector('#mapcard.open > .hubsheet') || (!o.tick && !col.querySelector('#mapcard.open')))) hubCard(clockNow);
   if (o.tick) hubBadges();
   if (!o.hub && hubBay !== null) { hubBay = null; hubBadges(); }   // off the Transit Center: no route picked on its badges
   // Off the Center to another tab: a page that frames something of its own (a stop, a route, a way) gets north up and
@@ -3750,7 +3752,9 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // Beside the panel the stop is in the panel: no card over the map as well. On the page's arrival, not on its
   // every redraw: a spot's card (a right click on the map beside the home page) went with the feed's next tick.
   if (wide() && app.route.name !== 'map' && !tick && arrived) col.querySelector('#mapcard').classList.remove('open');
-  if (app.route.name !== 'map') col.querySelector('#mapresults').classList.add('hidden');   // the search's list is the Map tab's, not the page's beside it
+  // The search's list is the Map tab's, not the page's beside it; but not put away under the rider typing in the box
+  // over a phone's stop (the minute and the feed redraw with the focus in it: main.js).
+  if (app.route.name !== 'map' && !(tick && document.activeElement === col.querySelector('#mapsearch input'))) col.querySelector('#mapresults').classList.add('hidden');
   notice(clockNow);
   pickFor = from || goPick && goPick.for || null; pickTo = to || goPick && goPick.to || null; pickNow = !!goPick;
   pickMe = !!me; if (me && !tick) askMe();
