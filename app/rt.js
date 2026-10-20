@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes, timed } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -127,12 +127,13 @@ async function tick(force) {
         if (!first || seq < first.seq) first = { sid, seq, time };
         if (!last || seq > last.seq) last = { sid, seq, time };
       }
+      const waits = waitsOf(ti, s, end, j.t);
       let lastDelay = null;
       if (last && ti !== undefined && D.stopById[last.sid] !== undefined) {
         const sm = schedMin(D.stopById[last.sid], ti);
-        if (sm !== null) lastDelay = toMin(last.time) - sm;
+        if (sm !== null) lastDelay = toMin(waits.get(last.seq) ?? last.time) - sm;
       }
-      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: s, end, hub: hubAhead(ti, at, j.t), cancelled: u.c === 1 };
+      trips[id] = { v: u.v, ts: u.ts, at, first, last, lastDelay, ti, stops: s, end, waits, hub: hubAhead(ti, at, j.t), cancelled: u.c === 1 };
     }
     const buses = [], parked = [];
     for (const b of j.buses || []) {
@@ -164,7 +165,7 @@ async function tick(force) {
     // or not said. A feed waiting at a stop its bus went round had a Route 2 back and on time 'late, 3:14'.
     const doubt = new Set();
     for (const b of buses) if (trips[b.trip] && !trips[b.trip].est && trips[b.trip].v && b.id === 'c:' + trips[b.trip].v && tripIdx.has(b.trip) && !agrees(b, trips[b.trip], tripIdx.get(b.trip), j.t)) { delete trips[b.trip]; doubt.add(b.trip); }
-    for (const b of buses) if (!trips[b.trip] && !doubt.has(b.trip) && tripIdx.has(b.trip) && j.t - b.ts < 180) { const u = fromPlace(b, tripIdx.get(b.trip), j.t); if (u) trips[b.trip] = u; }
+    for (const b of buses) if (!trips[b.trip] && !doubt.has(b.trip) && tripIdx.has(b.trip) && j.t - b.ts < 180) { const u = fromPlace(b, tripIdx.get(b.trip), j.t); if (u) { u.waits = waitsOf(u.ti, u.stops, u.end, j.t); trips[b.trip] = u; } }
     rt.doubt = doubt;
     const t0 = Date.now();
     for (const [id, old] of Object.entries(rt.trips)) for (const [sid, x] of old.at) {
@@ -181,6 +182,35 @@ async function tick(force) {
   for (const fn of listeners) fn();
 }
 
+/** A bus doesn't leave a timed stop early (data.js timed: its route's timepoints, where an early bus waits for its time),
+ *  and the wait carries on to every stop after it. The feed runs a bus on at its own pace, faster than the timetable's,
+ *  its lead growing stop by stop: Route 15's bus 1179, out of Richmond 30 s early at 2:41 PM on 19 Oct, was 'Live · 3 min
+ *  early' at Richard's Hall for its 3:14, five timed stops between; it waits at 50 East 100 North and 781 S Main in
+ *  Smithfield and is there at 3:14. A trip's stops still to come, in the feed's order, each matched to the timetable by
+ *  its stop and that order (a detour's replacement is numbered its own way; a loop calls at City Center twice), and the
+ *  time with the waits before it, where that's later than the feed's, kept by the stop's place in the feed's list (its
+ *  sequence): the trip's `waits`. The feed's own times stay the word on where the bus is. Not at the Transit Center,
+ *  whose bay has its own rules (the bay's, hubLeaves): the waits carry past it. Not for a loop spacing its buses: it
+ *  waits for nothing. Bus 1179, in at 39 S State at 2:38 for the 2:40 there, sat till 2:40 and went. */
+function waitsOf(ti, s, end, nowS) {
+  const waits = new Map(), info = ti !== undefined && tripInfo[ti];
+  if (!info || (isLoop(info.r) && loopSpacing(info.r))) return waits;
+  const seq = tripStops(ti);
+  let k = 0, wait = 0;
+  for (const [sid, n, time, rel] of s) {
+    if (rel === 1) continue;
+    const si = D.stopById[sid], i = n === end ? -1 : seq.findIndex(([, x], j) => j >= k && x === si);   // the end: its arrival, waits and all
+    if (i >= 0) {
+      k = i + 1;
+      // Early at a timed stop it's yet to leave, by a whole minute at least (a few seconds is on time, as at the bay): it
+      // leaves at the start of its minute (time.js: a minute's now is from its start).
+      const w = time + wait, early = w - w % 60 + (seq[i][0] - toMin(w)) * 60 - w;
+      if (early >= 60 && time >= nowS - 60 && timed(si, info.r) && !D.stops[si].hub) wait += early;
+    }
+    if (wait > 0) waits.set(n, time + wait);
+  }
+  return waits;
+}
 /** A trip's Transit Center call while its bus is yet to leave it: where in the trip it is, the timetable's minute
  *  there and the feed's. The feed runs a bus on from the Center as soon as it gets in, and has the loops (whose
  *  timetable has no wait there) in early and away early, every stop after as early as they are: seven to twelve
@@ -412,7 +442,7 @@ function feedPredict(t) {
   const h = p && !p.gone ? hubLeaves(u, D.trips[t.trip], t.r) : null;
   if (h && h.seq.findIndex(([m, si]) => si === t.si && m === t.min) > h.k) {
     const floor = h.leaves + t.min - h.sched;
-    const hit = u.at.get(D.stops[t.si].id), feedAt = hit && !hit.skipped ? toMin(hit.time) + (hit.time % 60) / 60 : p.min;
+    const hit = u.at.get(D.stops[t.si].id), w = hit && !hit.skipped ? (u.waits && u.waits.get(hit.seq)) || hit.time : null, feedAt = w !== null ? toMin(w) + (w % 60) / 60 : p.min;
     if (floor - feedAt >= 1 || (isLoop(t.r) && feedAt - floor >= 1)) return floor === t.min ? KEEPS : { ...p, min: floor, delay: floor - t.min, est: true };
   }
   // A run its bus hasn't started yet (still on the one before, or not out), the feed's time for it the timetable's to
@@ -423,7 +453,7 @@ function feedPredict(t) {
     const hit = u.at.get(D.stops[t.si].id), bus = u.v && rt.buses.find(b => b.id === 'c:' + u.v);
     if (hit && !hit.skipped && !(bus && bus.trip === D.trips[t.trip]) && Math.abs(toMin(hit.time) + (hit.time % 60) / 60 - t.min) < 1) return bus && dueBy(bus, u) ? KEEPS : null;
   }
-  return p;
+  return p && p.waited && p.delay === 0 ? KEEPS : p;   // held to its minute at a timed stop: on time, the timetable's, as at the bay
 }
 /** The timetable's minute, and on time: the bus that runs the trip is at its bay till then (held back to it), or due in
  *  from the run before by the trip's start. Said 'Scheduled · on time'; not a live time, nothing moved. */
@@ -472,7 +502,7 @@ function lost(b, u) {
  *  the bus is (there, within 150 m; else the way at a town bus's pace, 6 m/s, a road 1.4 times the straight line). */
 export function endAt(b, u) {
   const end = u.stops.find(s => s[1] === u.end);
-  if (!lost(b, u)) return end ? end[2] : null;
+  if (!lost(b, u)) return end ? (u.waits && u.waits.get(end[1])) || end[2] : null;   // its waits at timed stops in
   const last = end ? D.stops[D.stopById[end[0]]] : null;
   if (!last) return null;
   const d = distance(b.lat, b.lon, last.lat, last.lon);
@@ -503,7 +533,11 @@ function feedSays(t, u) {
       : bus.trip === D.trips[t.trip] ? atBay : atBay || inbound(u, D.trips[t.trip]) !== null;
     return there ? held(t, toMin(Math.floor(nowS)) - t.min) : { gone: true };
   }
-  if (hit) return hit.skipped ? { gone: true } : u.est ? { ...held(t, toMin(hit.time) - t.min), est: true } : held(t, toMin(hit.time) - t.min);
+  // Held at a timed stop before it (waitsOf), it's the app's minute, not the feed's: an estimate, on time once at its own.
+  // Not the bay's: it keeps its own rules above, and hubLeaves past it.
+  const w = hit && !D.stops[t.si].hub && u.waits && u.waits.get(hit.seq);
+  if (hit) return hit.skipped ? { gone: true } : w ? { ...held(t, toMin(w) - t.min), est: true, waited: true }
+    : u.est ? { ...held(t, toMin(hit.time) - t.min), est: true } : held(t, toMin(hit.time) - t.min);
   const order = (D.routes[t.r].stops || {})[String(t.dir)] || [];
   const i = order.indexOf(t.si);
   if (i < 0) return null;
@@ -584,7 +618,7 @@ export function busStops(b, n = 5) {
   };
   const ymd = now().ymd;
   return u.stops.filter(([, , , rel]) => rel !== 1)
-    .map(([sid, seq, time]) => ({ si: D.stopById[sid], seq, min: held(D.stopById[sid], toMin(time)), time, end: seq === u.end }))
+    .map(([sid, seq, time]) => { const w = u.waits && u.waits.get(seq) || time; return { si: D.stopById[sid], seq, min: held(D.stopById[sid], toMin(w)), time, end: seq === u.end }; })   // with its waits at timed stops
     .filter(x => x.si !== undefined && x.seq >= from && x.time >= rt.t - 30 && !closedRoutes(x.si, ymd).has(b.ri)).sort((a, b) => a.seq - b.seq).slice(0, n);
 }
 /** Where a Connect bus is along its run, for its card and its way on drawn from it: the trip it's on, the place in that

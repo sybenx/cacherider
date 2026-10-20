@@ -1022,6 +1022,38 @@ test('a loop\'s next run with no word on it from the feed: as late at the Center
   expect(await rowSays(page, pick.next, stop, m)).toEqual(['Estimated', m + 4]);
 });
 
+test('a timed stop on the way: a bus ahead waits there, and it and the stops after it are on time, not the feed\'s minutes early', async ({ page }) => {
+  // 2:41 PM, 19 Oct (the user: 'look into the route 15 3 min early thing'): Route 15's bus out of Richmond 30 s early,
+  // the feed running it on faster than the timetable, had Richard's Hall 'Live · 3 min early' for its 3:14, with five
+  // timed stops between where it would wait. A route's trip (Route 15's where there's one), its bus 3 min early at the
+  // stop before its first timed stop on the way, the feed 3 min early at every stop on.
+  const relay = { T: 0, feed: null, alerts: () => [], detours: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const pick = await page.evaluate(async src => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [], seen = new Set();
+    const stopsOf = new Function('return ' + src)();
+    const routes = D.routes.map((r, ri) => ri).filter(ri => !loops.includes(ri) && !D.routes[ri].op).sort((a, b) => (D.routes[b].short === '15') - (D.routes[a].short === '15'));
+    for (const ri of routes) for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const row of d.timesOn(si, c.ymd)) {
+      if (row.r !== ri || seen.has(row.trip)) continue;
+      seen.add(row.trip);
+      const st = d.tripStops(row.trip), k = st.findIndex(([, x], i) => i >= 2 && d.timed(x, ri) && !D.stops[x].hub);
+      if (k < 0 || k + 2 >= st.length || D.stops[st[k + 1][1]].hub || st[k][0] - st[k - 1][0] < 1 || st[k - 1][0] < 420) continue;
+      return { id: D.trips[row.trip], pts: stopsOf(d, row.trip), k, at: Date.now() + ((st[k - 1][0] - 3 - c.min) * 60 + 30 - c.sec) * 1000 };
+    }
+    return null;
+  }, stopsOf.toString());
+  test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
+  const [mj, , lat, lon] = pick.pts[pick.k - 1], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mj - 3) * 60;   // the day's minute 0
+  relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: 0, speed: 0, ts: T }], trips: {
+    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m - 3) * 60, 0]).slice(pick.k) } } };
+  await page.clock.setFixedTime(new Date(pick.at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await polled(page, T);
+  for (const [m, stop] of pick.pts.slice(pick.k, pick.k + 2)) expect(await rowSays(page, pick.id, stop, m)).toEqual(['Scheduled · on time', m]);
+});
+
 test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s card over the map');
   await open(page);
