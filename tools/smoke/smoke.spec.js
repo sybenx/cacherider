@@ -168,6 +168,72 @@ test('home: the big stop\'s bus on its way as a line, here at its stop, gone wit
   await expect(page.locator('.land-hint')).toHaveCount(0);
 });
 
+test('home: a trip saved on the directions page, its way under the big stop from the end you\'re at; the last bus gone, tomorrow\'s', async ({ page }) => {
+  // The timetable's alone (the feed off), the clock at 4:10 PM on the next weekday followed by another (a holiday
+  // neither), the rider at 1011 East 700 North (Richard's Hall), the trip to 430 East Center St (Island Market: Route 3).
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
+  await open(page);
+  const day = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js');
+    for (let k = 1; k < 21; k++) { const x = t.dayFrom(t.now().ymd, k), y = t.dayFrom(t.now().ymd, k + 1); if (x.dow >= 1 && x.dow <= 4 && d.agencyRuns(x.ymd) && d.agencyRuns(y.ymd)) return x.ymd; }
+    return null;
+  });
+  test.skip(!day, 'no two weekdays running in a row in three weeks');
+  const at = hm => page.evaluate(([ymd, hm]) => new Date(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6), +hm.slice(0, 2), +hm.slice(3)).getTime(), [day, hm]);   // the agency's clock (the browser's zone)
+  const RH = { latitude: 41.74445, longitude: -111.8083 }, IM = { latitude: 41.7312, longitude: -111.82395 };
+  await page.context().grantPermissions(['geolocation']);
+  /** The rider somewhere (null: location off) at a time: a fix taken then, kept, so the browser's own doesn't replace it. */
+  const be = async (g, when) => {
+    await page.clock.setFixedTime(new Date(when));
+    if (g) await page.context().setGeolocation({ ...g, accuracy: 10 });
+    await page.evaluate(([g, t]) => { if (g) { localStorage.setItem('cr-near', 'on'); localStorage.setItem('cr-lastgeo', JSON.stringify({ lat: g.latitude, lon: g.longitude, at: t, acc: 10 })); } else localStorage.removeItem('cr-near'); }, [g, when]);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  };
+  const four = await at('16:10');
+  await be(RH, four);
+  // Saved under the From/To pair, from the stop, to Island Market's
+  await go(page, '#/go/7543017/7569115');
+  const save = page.locator('#trip-save').filter({ visible: true });
+  await expect(save).toHaveText('Save trip');
+  await save.click();
+  await expect(save).toContainText('Saved trip');
+  // Home: the trip under the big stop, from Richard's Hall (the end you're at), as the directions open with it
+  await go(page, '#/');
+  const card = page.locator('.trip').filter({ visible: true });
+  const way = card.locator('.tripway');
+  await expect(way.locator('.tw-to')).toHaveText('To 430 East Center St');
+  await expect(way.locator('.tw-from')).toHaveText('from 1011 East 700 North');
+  await expect(way.locator('.eyebrow')).toHaveText(/^(Leave in \d+ min|Leave in a minute|Leaving now)$/);
+  await expect(way.locator('.tw-last')).toHaveText(/^(Last way today: leave by \d+:\d\d PM|This is the last way today)$/);
+  await expect(card.locator('.tripback')).toContainText(/The way back\s*Last way today: leave by \d+:\d\d PM/);
+  await expect(way).toHaveAttribute('href', '#/go/7543017/7569115');
+  await expect(card.locator('.tripback')).toHaveAttribute('href', '#/go/7569115/7543017');
+  await way.click();
+  await expect(page).toHaveURL(/#\/go\/7543017\/7569115$/);
+  // At Island Market: the way round flips
+  await be(IM, four);
+  await go(page, '#/');
+  await expect(way.locator('.tw-to')).toHaveText('To 1011 East 700 North');
+  await expect(way.locator('.tw-from')).toHaveText('from 430 East Center St');
+  // Location off: as it was saved
+  await be(null, four);
+  await expect(way.locator('.tw-to')).toHaveText('To 430 East Center St');
+  // After the last bus: tomorrow's first way, and nothing more today either way round
+  await be(RH, await at('23:30'));
+  await expect(way.locator('.eyebrow')).toHaveText('Tomorrow');
+  await expect(way.locator('.tw-last')).toHaveText('Nothing more today');
+  await expect(card.locator('.tripback')).toContainText('Nothing more today');
+  // Unsaved on the directions page (the way back's, the same trip): gone from home
+  await go(page, '#/go/7569115/7543017');
+  await expect(save).toContainText('Saved trip');
+  await save.click();
+  await expect(save).toHaveText('Save trip');
+  await go(page, '#/');
+  await expect(page.locator('.hero').filter({ visible: true })).toBeVisible();
+  await expect(page.locator('.trip')).toHaveCount(0);
+});
+
 test('home: the Routes line opens every route', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s line; a wide screen has the chips');
   await open(page);

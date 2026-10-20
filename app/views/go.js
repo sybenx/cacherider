@@ -1,16 +1,16 @@
 // Directions to a stop or a spot: from where the rider is, or from a stop they name. Each way there is one card: the walk
 // to the first stop, the bus, where to change, where to get off, in order, with when.
-import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn, corridor, tripEnd, closedRoutes } from '../data.js';
+import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn, corridor, tripEnd, closedRoutes, agencyRuns, offDayWords, nearest, quietWords } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
-import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, dayFrom, isGone } from '../time.js';
+import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, dayFrom, isGone, minsTo } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName, replaceTo } from '../ui.js';
 import { journeys } from '../plan.js';
 import { walkHref } from '../pointer.js';
-import { walkNetReady, spotOf, spotKey, atPath, climb, RISE, slope, walkSlope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE, crossingsOff } from '../geo.js';
+import { walkNetReady, spotOf, spotKey, atPath, climb, RISE, slope, walkSlope, walkMins, isSteep, STEEP, avoidSteep, setAvoidSteep, steepWalk, walkWay, crossWords, useCrossings, setUseCrossings, PACE, crossingsOff, whereabouts as roughly } from '../geo.js';
 import { shareButton, siteLink } from '../share.js';
 import { myPlaces, placeStar, sharedAs } from '../places.js';
 import { U, planNet, planNetBy, chip, shuttleAlso, hours, offHours, lapSecs } from '../usu.js';
-import { nearMe, app } from '../main.js';
+import { nearMe, app, afterSave } from '../main.js';
 
 /** Where to and where from, from the address: the stop or spot, its name, and the origin (null till one's chosen). */
 function ends({ to, from, at }) {
@@ -39,6 +39,17 @@ function fromOnly(at) {
   return { html: parts.join(''), mount, title: 'Directions' };
 }
 
+/** Save trip, under the From/To pair it keeps (not by the title, where a star reads as saving the stop, beside a spot's
+ *  own): these two ends for the home page (tripCard). From where you are, the end kept is where that is (hereEnd).
+ *  Either way round is the same trip, saved. One trip: another saved already, it says which this one replaces, as
+ *  saving a second Home says where it moves from. */
+function tripSave(to, from) {
+  if (!from) return '';
+  const t = savedTrip(), on = isTrip(t, to, from), was = !on && t ? endsOf(asTo(t.to), asFrom(t.from)) : null;
+  return html`<button type="button" class="tripsave" id="trip-save" data-to="${to}" data-from="${from}" aria-pressed="${on ? 'true' : 'false'}">${icon('star', 18, 1.5, on ? 'currentColor' : 'none')}<span>${on ? 'Saved trip · on your home page' : 'Save trip'}</span>${was ? html`<small>instead of the one to ${was.name}</small>` : ''}</button>`;
+}
+/** Where from, by name: a spot's label, a stop's (the Center as itself), or where the phone is. */
+const fromNameOf = ({ at, fromSi }) => at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'Where you are';
 /** The page's head: Back, where to; and the trip's two ends as a labelled pair, From and To, with a swap between
  *  them. From, tapped, opens the start picker under the pair (once there's a start; without one the picker is the page). */
 function headOf(to, e, at, t, clockNow = now()) {
@@ -47,7 +58,7 @@ function headOf(to, e, at, t, clockNow = now()) {
   const geo = app.geo;
   const back = spot ? `#/map/at/${d.lat.toFixed(5)},${d.lon.toFixed(5)}/${encodeURIComponent(d.label)}` : `#/stop/${d.id}`;
   const chosen = !!at || fromSi !== undefined;
-  const fromName = at ? (at.label || 'the spot you picked') : fromSi !== undefined ? (stop(fromSi).hub ? D.hub.name : stopTitle(fromSi)) : 'Where you are';
+  const fromName = fromNameOf(e);
   const parts = [html`<div class="backbar"><a class="btn btn-ghost" href="${back}" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a>${spot ? placeStar({ lat: d.lat, lon: d.lon, label: d.label || name }, true) : ''}${shareButton(shareOf(name, chosen ? fromName : null, t))}</div>`];
   const hubBay = D.hub.bays[0] ? stop(D.hub.bays[0].stop).id : null;
   parts.push(html`<div class="head tight"><span class="eyebrow">Directions by bus</span><h1>To ${name}</h1>${!spot && d.town && d.town !== 'Logan' && !d.hub ? html`<div class="muted">${d.town}</div>` : ''}</div>`);
@@ -61,6 +72,7 @@ function headOf(to, e, at, t, clockNow = now()) {
     // The picker only once it's opened (mount redraws the page for it): built on every redraw, hidden, it planned the
     // way from the Center each minute and each feed, for nothing.
     picker: fromOpen ? html`<div class="fromacts">${startPicker(to, e, key, hubBay, clockNow)}</div>` : html`<div class="fromacts" hidden></div>`,
+    save: tripSave(to, fromSi !== undefined ? stop(fromSi).id : at ? atPath(at) : geo ? hereEnd(geo) : null),
   } : null;
   return { parts, key, hubBay, from };
 }
@@ -171,7 +183,7 @@ function whenControl(c, clockNow) {
     <input class="input" type="time" id="go-time" value="${hh}:${mm}" step="300" aria-label="Time"><button type="button" class="btn btn-primary" id="go-set">Set</button>${c ? html`<button type="button" class="btn btn-ghost" id="go-now">Now</button>` : ''}</div>` };
 }
 /** The trip's settings: From and To, the start picker under them when open, then leave or arrive and when. */
-const tripRow = (from, when) => html`<div class="gowhen">${from ? from.pair : ''}${from ? from.picker : ''}${when.btn}${when.pick}</div>`;
+const tripRow = (from, when) => html`<div class="gowhen">${from ? from.pair : ''}${from ? from.picker : ''}${from ? from.save : ''}${when.btn}${when.pick}</div>`;
 
 export function render({ to, from, at, plan, t }, clockNow) {
   if (to === '-' && at) return fromOnly(at);
@@ -235,20 +247,25 @@ function sheet(J, head, clockNow, fixed = false, also = '') {
 const sigOf = p => p.legs.filter(l => l.kind === 'ride').map(l => (l.u ? 'u' : '') + l.r + '@' + l.from).join('_');
 /** The way picked, summed up: when it leaves and gets there, how long, and the change if there is one. */
 function summary(p, J, clockNow, fixed) {
+  return html`<div class="jrow picked jsum" data-go="${J.hrefs[J.i]}" aria-current="true" role="listitem link" tabindex="0">${sumOf(p, clockNow, fixed)}</div>`;
+}
+/** The summary's words, without its row: the home page's saved trip (tripCard) says a way as this page opens with it. */
+function sumOf(p, clockNow, fixed, size = 36) {
   const live = p.legs.some(l => l.kind === 'ride' && (l.t.live || (l.u && !l.t.every)));
   const walk = p.legs.filter(l => l.kind === 'walk').reduce((m, l) => m + (l.mins || 0), 0);
   const changes = p.legs.filter((l, k) => l.kind === 'ride' && p.legs.slice(0, k).some(x => x.kind === 'ride'));
   const at = [...new Set(changes.map(l => where(l.from).hub ? 'the ' + D.hub.name : stopWords(l.from)))];
-  const left = p.leave - clockNow.min;
-  // A time picked: its day said (a plan's day 0 is the picked day's, not today).
-  const eye = fixed ? dayWord(p.ymd).replace(/^./, c => c.toUpperCase()) : p.day === 0 ? (left <= 0 ? 'Leaving now' : left === 1 ? 'Leave in a minute' : `Leave in ${left} min`) : p.day === 1 ? 'Tomorrow' : dayName(p.ymd);
+  const left = minsTo({ min: p.leave, day: 0 }, clockNow);   // the one clock rule (time.js): due from its minute's start
+  // A time picked: its day said (a plan's day 0 is the picked day's, not today). An hour off or more, as relative()
+  // says it ('Leave in 1 h 14 min', 'Later today'): at 1 AM the first bus was 'Leave in 306 min'.
+  const eye = fixed ? cap(dayWord(p.ymd)) : p.day === 0 ? (left <= 0 ? 'Leaving now' : left === 1 ? 'Leave in a minute' : left < 60 ? `Leave in ${left} min` : left <= 180 ? 'Leave ' + relative({ min: p.leave, day: 0 }, clockNow) : cap(relative({ min: p.leave, day: 0 }, clockNow))) : p.day === 1 ? 'Tomorrow' : dayName(p.ymd);
   // Its buses as badges first: on a phone the card opens at this block, the timeline a swipe below, and the times
   // alone didn't say which bus (a rider at the Center read the hospital's way as having no Route 2 in it).
   const rides = p.legs.filter(l => l.kind === 'ride').map(l => l.u ? chip(l.r, 22) : badge(l.r, 22));
-  return html`<div class="jrow picked jsum" data-go="${J.hrefs[J.i]}" aria-current="true" role="listitem link" tabindex="0"><span class="eyebrow">${eye}</span>
-    ${worstOf(p) ? html`<div class="js-t"><span class="to">Leave by</span>${time(p.leave, 36, false)}</div><span class="sub">There by ${clockText(p.arrive)} at the latest, the shuttle's longest wait counted</span>`
-    : html`<div class="js-t">${time(p.leave, 36, live)}<span class="to">→</span>${time(p.arrive, 36, live)}<span class="dur">${p.arrive - p.leave} min</span></div>`}
-    <span class="sub js-legs">${rides.map((b, i) => html`${i ? html`<span class="sep">›</span>` : ''}${b}`)}<span>${changes.length ? `${changes.length === 1 ? 'One change' : changes.length + ' changes'}, at ${at.join(' and ')}` : 'No change'}${walk ? ` · ${walk} min walking` : ''}</span></span></div>`;
+  return html`<span class="eyebrow">${eye}</span>
+    ${worstOf(p) ? html`<div class="js-t"><span class="to">Leave by</span>${time(p.leave, size, false)}</div><span class="sub">There by ${clockText(p.arrive)} at the latest, the shuttle's longest wait counted</span>`
+    : html`<div class="js-t">${time(p.leave, size, live)}<span class="to">→</span>${time(p.arrive, size, live)}<span class="dur">${p.arrive - p.leave} min</span></div>`}
+    <span class="sub js-legs">${rides.map((b, i) => html`${i ? html`<span class="sep">›</span>` : ''}${b}`)}<span>${changes.length ? `${changes.length === 1 ? 'One change' : changes.length + ' changes'}, at ${at.join(' and ')}` : 'No change'}${walk ? ` · ${walk} min walking` : ''}</span></span>`;
 }
 /** Another way as a row, one a route: its legs as badges (the walker for a walk) with minutes, how long and how much
  *  on foot, and when it leaves, large, with when it arrives; its later times, where there are any. */
@@ -689,7 +706,133 @@ function whereabouts(l) {
   return `${who} · ${n} ${n === 1 ? 'stop' : 'stops'} away, next ${ns.hub ? D.hub.name : ns.name}`;
 }
 
+// ---- The saved trip: one, saved on this page and kept on this phone only (as saved places are), its two ends as this
+// page's address has them (to: a stop's id or '@lat,lon:label'; from: an id or 'at/lat,lon/label'). The home page shows
+// its way now under the big stop (tripCard), from the end the rider is at: the commuter's question, how do I get back
+// and what's my last chance, answered without a tap. Either way round it's the same trip.
+const TRIP = 'cr-trip';
+function savedTrip() {
+  try { const t = JSON.parse(localStorage.getItem(TRIP) || 'null'); return t && typeof t.to === 'string' && typeof t.from === 'string' ? t : null; } catch { return null; }
+}
+function setTrip(t) { try { if (t) localStorage.setItem(TRIP, JSON.stringify(t)); else localStorage.removeItem(TRIP); } catch { /* private mode: not kept */ } }
+/** One end, written either way: { si } for a stop, { lat, lon, label } for a spot; null for a stop gone from the timetable. */
+function endOf(k) {
+  const m = /^at\/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\/(.*)$/.exec(k || '');
+  if (m) { let label = m[3]; try { label = decodeURIComponent(label); } catch { /* as it came */ } return { lat: +m[1], lon: +m[2], label }; }
+  const sp = spotOf(k);
+  if (sp) return sp;
+  const si = stopIndex(k);
+  return si === undefined ? null : { si };
+}
+/** An end as the address's where-to, or its where-from: a stop's id either way, a spot '@…' or 'at/…'. */
+const asTo = k => { const e = endOf(k); return e && e.si === undefined ? spotKey(e.lat, e.lon, e.label) : k; };
+const asFrom = k => { const e = endOf(k); return e && e.si === undefined ? atPath(e) : k; };
+/** Where an end is: a stop's pole, the Transit Center as one place (any bay is the Center), a spot's point. */
+const pointOf = e => e.si === undefined ? e : stop(e.si).hub ? D.hub : stop(e.si);
+/** The same end, near enough: the same stop (the Center's bays one), or two points within a short walk (a fix moves). */
+const sameEnd = (a, b) => { const x = endOf(a), y = endOf(b); if (!x || !y) return false; const p = pointOf(x), q = pointOf(y); return a === b || distance(p.lat, p.lon, q.lat, q.lon) <= 150; };
+const isTrip = (t, to, from) => !!t && ((sameEnd(t.to, to) && sameEnd(t.from, from)) || (sameEnd(t.to, from) && sameEnd(t.from, to)));
+/** Where you are, as a trip's end to keep: a saved place there by its name ('Home'), else the stop you're at, else the
+ *  spot, by its whereabouts ('about 700 North 1000 East, Logan'): 'Where you are' would be wrong the moment you left. */
+function hereEnd(g) {
+  const p = myPlaces().map(p => ({ p, d: distance(g.lat, g.lon, p.lat, p.lon) })).filter(x => x.d <= 150).sort((a, b) => a.d - b.d)[0];
+  if (p) return atPath({ lat: p.p.lat, lon: p.p.lon, label: p.p.name });
+  const s = nearest(g.lat, g.lon, 1)[0];
+  if (s && s.d <= 150) return stop(s.i).id;
+  return atPath({ lat: g.lat, lon: g.lon, label: roughly(g.lat, g.lon) || 'The spot you saved' });
+}
+
+/** This page's two ends (ends()) from a trip's: null when either is gone from the timetable. */
+function endsOf(to, from) {
+  const f = endOf(from);
+  if (!f || !endOf(to)) return null;
+  const e = ends({ to, from: f.si !== undefined ? from : undefined, at: f.si === undefined ? f : null });
+  return e.dest === undefined || !e.origin ? null : e;
+}
+/** The first way for two ends now, as this page would open with it: its own search (the shuttle while it runs, the
+ *  feed's word on today's buses) and its own order, so the home page's card and the page it opens say the same.
+ *  { e, found, P }: P null with no way by bus (found.walk: walk it). */
+function firstWay(e, clockNow) {
+  const { found } = waysFor(e.origin, e.dest, null, clockNow);
+  const P = found.plans.length ? sortPlans(found.plans, e.origin.si !== undefined ? stop(e.origin.si) : e.origin, e.d)[0] : null;
+  return { e, found, P };
+}
+/** The last way of the day, by the timetable: arriving by the end of the service day, the latest leaving (plan.js, as
+ *  'Arrive by' asks). Worked out once a day for each way round: the timetable's, so it doesn't move with the feed. */
+const lastKept = new Map();
+function lastWay(e, ymd) {
+  const k = [ymd, JSON.stringify(e.origin), JSON.stringify(e.dest), avoidSteep(), useCrossings(), walkNetReady()].join('|');   // walks along the ways once they're in
+  if (!lastKept.has(k)) {
+    if (lastKept.size > 8) lastKept.clear();
+    const f = journeys(e.origin, e.dest, { ymd, dow: dayFrom(ymd).dow, min: 0, sec: 0 }, 8, null, false, 48 * 60 - 1);
+    lastKept.set(k, (f.plans || [])[0] || null);
+  }
+  return lastKept.get(k);
+}
+
+/** The saved trip on the home page (placed by home.js under the big stop): its way now, said as this page's summary
+ *  says it, so the card and the page it opens agree; each way round's last chance today; a tap, these directions; the
+ *  line under it, the way back. { html, to } (to: where the way shown goes, for home's 'Take me home'), or null with
+ *  none saved, or an end gone from the timetable (the tap would land on 'No such stop'). */
+const NEAR_END = 800;   // an end is where the rider is within a walk of it: the big stop's own 'close enough to walk to' (home.js)
+export function tripCard(clockNow, geo) {
+  const t = savedTrip();
+  if (!t) return null;
+  let to = asTo(t.to), from = asFrom(t.from);
+  const a = endOf(from), b = endOf(to);
+  if (!a || !b) return null;
+  // Which way round: from the end the rider is at, within a walk of it, the nearer when both are; at neither, or with
+  // no location, as it was saved. Not simply the nearer end: across town that was a countdown from an end miles off,
+  // and halfway it swapped with every step the fix took.
+  if (geo) {
+    const p = pointOf(a), q = pointOf(b), dq = distance(geo.lat, geo.lon, q.lat, q.lon);
+    if (dq <= NEAR_END && dq < distance(geo.lat, geo.lon, p.lat, p.lon)) [to, from] = [asTo(from), asFrom(to)];
+  }
+  const e = endsOf(to, from), eb = endsOf(asTo(from), asFrom(to));
+  if (!e || !eb) return null;
+  let body, back = '';
+  try {   // the planner's trouble is the card's alone: the rest of the home page still comes up (as startPicker's preview)
+    const { found, P } = firstWay(e, clockNow);
+    const runs = agencyRuns(clockNow.ymd), L = runs ? lastWay(e, clockNow.ymd) : null, Lb = runs ? lastWay(eb, clockNow.ymd) : null;
+    // A last way as the summary's own verb has it: when to set off ('leave by'), the walk to the stop counted.
+    const lastBy = x => `Last way today: leave by ${clockText(x.leave)}`;
+    if (found.walk !== undefined) body = html`<span class="tw-none">${found.walk ? `It's a ${metres(found.walk)} walk` : "You're there"}</span><span class="sub">No bus to catch</span>`;
+    else if (!P) body = html`<span class="tw-none">No way there by bus</span><span class="sub">Nothing in the timetable joins these two in the next week</span>`;
+    else {
+      // This way's last chance. Nothing more today is the live search's word (its next way is a later day's), not the
+      // timetable's last minute: a late last bus is still the way, as the page lists it. A day without buses as the
+      // stop's page says it ('Connect doesn't run on Sundays.'); a gap of days, which ('no buses Sunday').
+      const isLast = P.day === 0 && L && (planKey(P) === planKey(L) || P.leave >= L.leave);
+      const quiet = P.day > 1 ? quietWords(clockNow.ymd, P.ymd) : '';
+      const note = P.day > 0 ? (runs ? 'Nothing more today' + (quiet ? ' · ' + quiet : '') : offDayWords(clockNow.ymd)) : isLast ? html`<b>This is the last way today</b>` : L ? lastBy(L) : '';
+      body = html`${sumOf(P, clockNow, false, 26)}${note ? html`<span class="sub tw-last">${note}</span>` : ''}`;
+    }
+    // The way back's last chance: the timetable's last while it's to come; past it, the live search's (a late bus).
+    if (runs) {
+      const nb = Lb && !isGone({ min: Lb.leave, day: 0 }, clockNow) ? Lb : firstWay(eb, clockNow).P;
+      back = nb && nb.day === 0 ? lastBy(nb) : 'Nothing more today';
+    }
+  } catch (err) { console.error(err); body = html`<span class="sub">Tap for the ways there</span>`; back = ''; }
+  const d = pointOf(endOf(to));
+  return { to: { lat: d.lat, lon: d.lon }, html: html`<div class="trip">
+    <div class="land-eye"><span class="savedmark">${icon('star', 13, 1.5, 'currentColor')}Saved trip</span></div>
+    <a class="jrow picked jsum tripway" href="#/go/${to}/${from}"><span class="tw-to">To ${e.name}</span><span class="sub tw-from">from ${fromNameOf(e)}</span>${body}</a>
+    <a class="land-hub tripback" href="#/go/${asTo(from)}/${asFrom(to)}">${icon('swap', 18)}<span class="col"><span>The way back</span>${back ? html`<span class="sub">${back}</span>` : ''}</span>${icon('fwd', 18)}</a></div>`.s };
+}
+
 function mount(el, _app, inCard = false) {
+  // Save trip, or no longer: one trip, so saving this one replaces any other (as a second Home moves Home). The button
+  // says so where it is; the home page draws it next time it's up.
+  const saveTrip = b => {
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    setTrip(on ? { to: b.dataset.to, from: b.dataset.from } : null);
+    b.outerHTML = tripSave(b.dataset.to, b.dataset.from).s;   // its new words where it is, nothing else redrawn
+    const nb = el.querySelector('#trip-save');
+    if (nb) nb.onclick = () => saveTrip(nb);
+    if (on) afterSave();   // as a stop saved: on an iPhone's browser, how to put the app on the home screen
+  };
+  const ts = el.querySelector('#trip-save');
+  if (ts) ts.onclick = () => saveTrip(ts);
   // Least walking, on or off: the same ways re-sorted, the first drawn; in the address, so it keeps.
   for (const c of el.querySelectorAll('.chip[data-sort]')) c.onclick = () => {
     kept = null;
