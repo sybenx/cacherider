@@ -32,7 +32,7 @@ export function render() {
       <p>Google Play lets a new app in only after twelve people have tested it for two weeks. If you have an Android phone, you can be one: it takes a couple of minutes, and the app is the same Cache Rider as this site.</p>
       <ol class="tsteps">
         ${step(1, 'Join the testers’ group', g ? `With the Google account on your phone. The group is ${g}@googlegroups.com.` : 'The group opens soon.', groupUrl, 'Join the group')}
-        ${step(2, 'Become a tester', 'On Google Play, with the same account.', TEST.optIn, 'Become a tester')}
+        ${step(2, 'Become a tester', 'On Google Play, with the same account. If it says the test isn’t open yet, it will be within a few days: Google is setting it up.', TEST.optIn, 'Become a tester')}
         ${step(3, 'Install Cache Rider', 'From Google Play. It can take a few minutes after step 2 to show.', TEST.listing, 'Open on Google Play')}
       </ol>
       <p>Then use it as you would for the next two weeks: a stop you wait at, a bus you’re catching. If something’s wrong or missing, say so. It’s what Google asks testers for, and it goes to the person who makes this, not to ${D.agency.brand}.</p>
