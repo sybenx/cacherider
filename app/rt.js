@@ -186,11 +186,28 @@ async function tick(force) {
  *  timetable has no wait there) in early and away early, every stop after as early as they are: seven to twelve
  *  minutes, the day through. A bus waits. Null when the trip has no call there, or the bus has been. */
 function hubAhead(ti, at, nowS) {
+  const c = hubCall(ti), x = c && at.get(D.stops[c.seq[c.k][1]].id);
+  return x && !x.skipped && x.time >= nowS - 60 ? { ...c, at: toMin(x.time) } : null;
+}
+/** A trip's Transit Center call by the timetable: where in the trip it is, and its minute there. Null when the trip has
+ *  none, or only as its end. */
+function hubCall(ti) {
   if (ti === undefined) return null;
   const seq = tripStops(ti), k = seq.findIndex(([, si]) => D.stops[si].hub);
-  if (k < 0 || k === seq.length - 1) return null;
-  const x = at.get(D.stops[seq[k][1]].id);
-  return x && !x.skipped && x.time >= nowS - 60 ? { k, sched: seq[k][0], at: toMin(x.time), seq } : null;
+  return k < 0 || k === seq.length - 1 ? null : { k, sched: seq[k][0], seq };
+}
+/** When a trip's bus leaves the Transit Center, while it's yet to: hubAhead's call with `leaves`, its minute or, if the
+ *  bus is in later, then; a loop the same, holding no more than ten minutes for its minute (spacing, it waits for
+ *  nothing: null). Its bus still on its way in on the run before has it yet to leave too, and is the word on when,
+ *  whatever the feed's call there says: for a bus's next run that's the timetable's (Route 1's 3:00 at 3:00:00 on 19
+ *  Oct, its bus not yet in). By it, a run 8 min late out of the Center was 'Live · On time' a minute out and the
+ *  timetable's at the stops after; past its minute, gone a minute out, its bus still to come in. */
+function hubLeaves(u, id, ri) {
+  if (isLoop(ri) && loopSpacing(ri)) return null;
+  const inAt = inbound(u, id), h = u.hub || (inAt !== null ? hubCall(u.ti) : null);
+  if (!h) return null;
+  const at = inAt !== null ? Math.max(h.at ?? inAt, inAt) : h.at;
+  return { ...h, leaves: isLoop(ri) ? Math.max(at, Math.min(h.sched, at + 10)) : Math.max(at, h.sched) };
 }
 /** Predictions for a trip from where its bus is: the nearest leg of the trip (stop to stop, as the crow flies),
  *  how far along it, the timetable's minute there, and the clock's lead on that carried to every stop ahead. Null
@@ -383,17 +400,20 @@ function feedPredict(t) {
     const inAt = inbound(u, D.trips[t.trip]);
     if (inAt !== null && inAt > p.min) return { ...p, min: inAt, delay: inAt - t.min };
   }
-  // Past the Transit Center, before the bus has left it: no sooner than leaving it and keeping to the timetable from
-  // there. A route leaves no earlier than its minute; a loop ahead waits, up to ten minutes (spacing, it waits for
-  // nothing). The feed's time for a stop on the far side then, not the timetable's, is the one that's off: said
-  // as an estimate.
+  // Past the Transit Center, before the bus has left it: no sooner than leaving it (hubLeaves) and keeping to the
+  // timetable from there. The feed's time for a stop on the far side then, not the timetable's, is the one that's off:
+  // said as an estimate.
   // Early by a whole minute at least, to the second: a trip not yet out is the feed's timetable to the second (6:31:40
   // for 6:32), and that's on time, not early. Held back to its own minute, it's on time: the timetable's, in black.
-  const h = u.hub;
-  if (p && !p.gone && h && !(isLoop(t.r) && loopSpacing(t.r)) && h.seq.findIndex(([m, si]) => si === t.si && m === t.min) > h.k) {
-    const leaves = isLoop(t.r) ? Math.max(h.at, Math.min(h.sched, h.at + 10)) : Math.max(h.at, h.sched), floor = leaves + t.min - h.sched;
+  // A loop's no later either: the feed sits a loop bus at its Center stop far longer than it waits, every stop on late
+  // by as much. On 19 Oct, every trip of the day: the Blue Loop 13 minutes from its bay to 750 North Main, 2 by the
+  // timetable; the Green 8 to the stop after its own, 1. Bus 1174, in at 2:38 for its 2:41, was due at 750 North Main
+  // at 2:54; it left at 2:41 and was there at 2:45.
+  const h = p && !p.gone ? hubLeaves(u, D.trips[t.trip], t.r) : null;
+  if (h && h.seq.findIndex(([m, si]) => si === t.si && m === t.min) > h.k) {
+    const floor = h.leaves + t.min - h.sched;
     const hit = u.at.get(D.stops[t.si].id), feedAt = hit && !hit.skipped ? toMin(hit.time) + (hit.time % 60) / 60 : p.min;
-    if (floor - feedAt >= 1) return floor === t.min ? KEEPS : { ...p, min: floor, delay: floor - t.min, est: true };
+    if (floor - feedAt >= 1 || (isLoop(t.r) && feedAt - floor >= 1)) return floor === t.min ? KEEPS : { ...p, min: floor, delay: floor - t.min, est: true };
   }
   // A run its bus hasn't started yet (still on the one before, or not out), the feed's time for it the timetable's to
   // within the minute: nothing live to say, so the timetable's, in black, not 'Live · On time' a minute early. On time
@@ -552,14 +572,15 @@ export function busStops(b, n = 5) {
   // The feed's list from that stop's place in it on (a detour's stops, not the timetable's, are in it too).
   const pts = p && withEnd(p.ti), ix = sid => pts.findIndex(x => D.stops[x[1]].id === sid);
   const from = !p ? -Infinity : p.k === pts.length - 1 ? u.end : u.stops.reduce((m, [sid, seq]) => seq !== u.end && ix(sid) >= p.k && seq < m ? seq : m, u.end);
-  const h = u.hub && !(isLoop(b.ri) && loopSpacing(b.ri)) ? u.hub : null, sched = h && tripInfo[u.ti] ? h.seq : null;
+  const h = tripInfo && tripInfo[u.ti] ? hubLeaves(u, D.trips[u.ti], b.ri) : null;
   // At the Transit Center it hasn't left yet, and past it, no sooner than it leaves there and keeps to the timetable
-  // (predict()): its bay too, so its card says what the bay's row says, never 'now' for a bus in early.
+  // (predict()): its bay too, so its card says what the bay's row says, never 'now' for a bus in early. A loop's past
+  // it no later either (predict()).
   const held = (si, min) => {
-    const k = sched ? sched.findIndex(([, x], i) => x === si && i >= h.k) : -1;
+    const k = h ? h.seq.findIndex(([, x], i) => x === si && i >= h.k) : -1;
     if (k < 0) return min;
-    const leaves = isLoop(b.ri) ? Math.max(h.at, Math.min(h.sched, h.at + 10)) : Math.max(h.at, h.sched);
-    return Math.max(min, leaves + sched[k][0] - h.sched);
+    const floor = h.leaves + h.seq[k][0] - h.sched;
+    return isLoop(b.ri) && k > h.k ? floor : Math.max(min, floor);
   };
   const ymd = now().ymd;
   return u.stops.filter(([, , , rel]) => rel !== 1)

@@ -789,6 +789,81 @@ test('an empty trip feed beside the buses: the last word stands for a minute and
   expect((await rowSays(page, pick.id, stop, m5))[0]).toMatch(/^Estimated · /);
 });
 
+test('the Center: a late bus\'s next run leaves when its bus is in, at the stops past it too, whatever the feed has for the run', async ({ page }) => {
+  // 19 Oct: the feed's word on a bus's next run is the timetable's (Route 1's 3:00 at 3:00:00, its bus not yet in). The
+  // bay waited for the bus; the stops past it didn't: a run 8 min late out of the Center was 'Live · On time' a minute
+  // out and the timetable's further on, and past its minute gone a minute out. A route's run from the Center, its bus
+  // on the run before due in 8 min after its minute (not held for the next: rt.js holdOf), the clock 2½ min past it.
+  const relay = { T: 0, feed: null, alerts: () => [], detours: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const pick = await page.evaluate(async src => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [];
+    const stopsOf = new Function('return ' + src)();
+    for (const [si, s] of D.stops.entries()) {
+      if (!s.hub) continue;
+      for (const row of d.timesOn(si, c.ymd)) {
+        if (loops.includes(row.r) || D.routes[row.r].op) continue;
+        const st = d.tripStops(row.trip), pv = d.prevTrip(row.trip, c.ymd), nx = d.nextTrip(row.trip, c.ymd);
+        if (st[0][1] !== si || st[0][0] !== row.min || row.min < 420 || st.length < 5 || pv === undefined) continue;
+        const pe = d.tripEnd(pv), pr = d.tripRoute(pv), ns = nx !== undefined ? d.tripStops(nx)[0] : null;
+        if (!pe || !D.stops[pe.si].hub || !pr || pr.r !== row.r || d.tripStops(pv).length < 5 || row.min - pe.min < 0 || row.min - pe.min > 10 || (ns && ns[0] - row.min < 20)) continue;
+        const k = st.findIndex(([m, x], i) => i > 0 && m >= row.min + 3 && !D.stops[x].hub);
+        if (k < 0) continue;
+        return { id: D.trips[row.trip], prev: D.trips[pv], start: row.min, pts: stopsOf(d, row.trip), was: stopsOf(d, pv), k, at: Date.now() + ((row.min + 2 - c.min) * 60 + 30 - c.sec) * 1000 };
+      }
+    }
+    return null;
+  }, stopsOf.toString());
+  test.skip(!pick, 'no run from the Center today with its bus\'s run before it');
+  const T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (pick.start + 2) * 60, late = pick.start + 8 - pick.was[pick.was.length - 1][0];
+  // its bus on the run before, as late as that has it in 8 min after the run's minute, at the last stop it's been by
+  const by = pick.was.filter(([m]) => base + (m + late) * 60 <= T), [, , lat, lon] = by[by.length - 1] || pick.was[0];
+  relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.prev, lat, lon, bearing: 0, speed: 0, ts: T }], trips: {
+    [pick.prev]: { v: '9001', ts: T, s: pick.was.map(([m, sid], i) => [sid, i, base + (m + late) * 60, 0]).filter(x => x[2] > T) },
+    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + m * 60, 0]) },   // the timetable's, as the feed has a next run
+  } };
+  await page.clock.setFixedTime(new Date(pick.at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await polled(page, T);
+  const [m, stop] = pick.pts[pick.k];
+  expect(await rowSays(page, pick.id, pick.pts[0][1], pick.start)).toEqual(['Live · 8 min late', pick.start + 8]);   // its bay
+  expect(await rowSays(page, pick.id, stop, m)).toEqual(['Estimated · 8 min late', m + 8]);
+});
+
+test('a loop bus in early at the Center: the stops past it on the timetable from its minute, not the feed\'s long wait there', async ({ page }) => {
+  // 19 Oct, every loop trip of the day: the feed had the Blue Loop 13 minutes from its Center stop to 750 North Main, 2
+  // by the timetable, and the Green 8 to the stop after its own, 1, every stop on as late. Bus 1174, in at 2:38 for its
+  // 2:41, was 'Live 2:54' at 750 North Main; it left at 2:41 and was there at 2:45. A loop's trip, its bus in at its
+  // Center stop 3 min early, the feed's stops past it 11 min on from there, as the Blue Loop's were.
+  const relay = { T: 0, feed: null, alerts: () => [], detours: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const pick = await page.evaluate(async src => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, seen = new Set();
+    const stopsOf = new Function('return ' + src)();
+    for (const ri of D.hub.loops || []) for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const row of d.timesOn(si, c.ymd)) {
+      if (row.r !== ri || seen.has(row.trip)) continue;
+      seen.add(row.trip);
+      const st = d.tripStops(row.trip), k = st.findIndex(([, x]) => D.stops[x].hub);
+      if (k < 2 || k + 2 >= st.length || D.stops[st[k + 1][1]].hub || st[k][0] < 420 || st[k + 1][0] - st[k][0] > 3) continue;
+      return { id: D.trips[row.trip], pts: stopsOf(d, row.trip), k, at: Date.now() + ((st[k][0] - 3 - c.min) * 60 + 30 - c.sec) * 1000 };
+    }
+    return null;
+  }, stopsOf.toString());
+  test.skip(!pick, 'no loop trip today');
+  const T = relay.T = Math.floor(pick.at / 1000), [mk, , lat, lon] = pick.pts[pick.k];
+  relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: 0, speed: 0, ts: T }], trips: {
+    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, i === pick.k ? T - 10 : T - 10 + 680 + (m - mk) * 60, 0]).slice(pick.k) } } };
+  await page.clock.setFixedTime(new Date(pick.at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await polled(page, T);
+  const [m, stop] = pick.pts[pick.k + 1];
+  expect(await rowSays(page, pick.id, stop, m)).toEqual(['Scheduled', m]);
+});
+
 test('a loop\'s next run with no word on it from the feed: as late at the Center as its bus is into the run\'s start', async ({ page }) => {
   // 2:42 PM, 19 Oct: the feed lost a Green Loop bus's trip and the one after it for a minute, the bus a minute late; the
   // Center's 3:35 was said to leave at 3:14, when the bus was due at the run's start, 750 North Main, 22 minutes before
