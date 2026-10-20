@@ -730,6 +730,65 @@ test('the Center: a bus two-thirds of a run down is held for its next run, which
   expect(r).toEqual(['held', 'on time']);
 });
 
+// The feed as it was seen misbehaving on 19 Oct, each made up from the timetable and staged on the relay (stageRelay).
+/** What a stop's row of a trip at its timetable minute says, in the rows' own words (ui.js lively, liveWord): its word
+ *  and its minute, ['Live · 5 min late', 920], ['Scheduled', 915]; ['gone'] or ['held'] for one that isn't coming. */
+const rowSays = (page, trip, stop, min) => page.evaluate(async ([trip, stop, min]) => {
+  const d = await import('/app/data.js'), t = await import('/app/time.js'), ui = await import('/app/ui.js');
+  const ti = d.D.trips.indexOf(trip), row = d.timesOn(d.D.stopById[stop], t.now().ymd).find(x => x.trip === ti && x.min === min);
+  const r = row && ui.lively({ ...row, day: 0 });
+  return !r ? ['no row'] : r.gone ? [r.held !== undefined ? 'held' : 'gone'] : [r.live ? ui.liveWord(r) : 'Scheduled' + (r.onTime ? ' · on time' : ''), r.min];
+}, [trip, stop, min]);
+/** The relay's answer at its clock T in hand: once the app has polled it. */
+const polled = (page, T) => expect.poll(() => page.evaluate(async () => (await import('/app/rt.js')).rt.t), { timeout: 20_000 }).toBe(T);
+/** A trip's stops with its end, each [minute, id, lat, lon]. */
+const stopsOf = (d, ti) => { const te = d.tripEnd(ti); return [...d.tripStops(ti), ...(te ? [[te.min, te.si]] : [])].map(([m, x]) => [m, d.D.stops[x].id, d.D.stops[x].lat, d.D.stops[x].lon]); };
+
+test('an empty trip feed beside the buses: the last word stands for a minute and a half, then the buses\' places', async ({ page }) => {
+  // 2:42:00 PM, 19 Oct: the agency's trip feed came back its header alone, 15 bytes, beside all 20 buses, and the relay
+  // passed it on as no trips: for that poll some 600 rows went from Live to the timetable or to a guess from the bus's
+  // place. A route's trip under way, its bus 5 min late at its third stop, the rider at its sixth; then the same bus
+  // and no trips; then a minute and a half on, still none.
+  const relay = { T: 0, feed: null, alerts: () => [], detours: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const pick = await page.evaluate(async src => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [], seen = new Set();
+    const stopsOf = new Function('return ' + src)();
+    for (const [si] of D.stops.entries()) for (const row of d.timesOn(si, c.ymd)) {
+      if (seen.has(row.trip) || loops.includes(row.r) || D.routes[row.r].op) continue;
+      seen.add(row.trip);
+      const st = d.tripStops(row.trip);
+      if (!d.tripEnd(row.trip) || st.length < 7 || st[0][0] < 360 || st[st.length - 1][0] > 1380 || st[3][0] - st[2][0] < 1 || st[5][0] - st[2][0] < 3
+        || D.stops[st[5][1]].hub || new Set(st.slice(0, 6).map(x => x[1])).size < 6) continue;
+      return { id: D.trips[row.trip], pts: stopsOf(d, row.trip), at: Date.now() + ((st[2][0] + 5 - c.min) * 60 + 30 - c.sec) * 1000 };
+    }
+    return null;
+  }, stopsOf.toString());
+  test.skip(!pick, 'no trip today to make the feed of');
+  const [m2, , lat, lon] = pick.pts[2], [m5, stop] = pick.pts[5], base = Math.floor(pick.at / 1000) - 30 - (m2 + 5) * 60;   // the day's minute 0
+  const at = async (s, said) => {
+    const T = relay.T = Math.floor(pick.at / 1000) + s;
+    relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: 0, speed: 0, ts: T }],
+      trips: said ? { [pick.id]: { v: '9001', ts: T, s: pick.pts.slice(3).map(([m, sid], i) => [sid, i + 3, base + (m + 5) * 60, 0]) } } : {} };
+    await page.clock.setFixedTime(new Date(pick.at + s * 1000));
+  };
+  await at(0, true);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await go(page, '#/stop/' + stop);
+  await polled(page, relay.T);
+  expect(await rowSays(page, pick.id, stop, m5)).toEqual(['Live · 5 min late', m5 + 5]);
+  // The trip feed empty, the bus on its trip: the last word stands
+  await at(6, false);
+  await polled(page, relay.T);
+  expect(await rowSays(page, pick.id, stop, m5)).toEqual(['Live · 5 min late', m5 + 5]);
+  // Still empty a minute and a half after the last word: the feed is taken at it, the bus's place the word
+  await at(96, false);
+  await polled(page, relay.T);
+  expect((await rowSays(page, pick.id, stop, m5))[0]).toMatch(/^Estimated · /);
+});
+
 test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s card over the map');
   await open(page);

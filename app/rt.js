@@ -18,6 +18,8 @@ export const rt = { at: 0, t: 0, buses: [], parked: [], trips: {}, doubt: new Se
  *  with no trip to say whose it is. Kept by it, it stays on the map, grey (rt.parked: the map's alone, nothing else
  *  counts it). */
 const lastRoute = new Map();
+/** The trips of the last answer that had any, and its time: what an answer whose trip feed came back empty stands on. */
+let lastTrips = null;
 let timer = null;
 /** 'trip:stop' → when the feed first stopped predicting that Transit Center bay for that trip: the bus pulled out. */
 const left = new Map();
@@ -91,7 +93,15 @@ async function tick(force) {
     // Another operator's routes (data.js opOf) have no buses in this feed: anything it says on their trips is taken as
     // nothing, so their times stay the timetable's everywhere.
     const theirs = ri => ri !== undefined && ri >= 0 && !!(D.routes[ri] && D.routes[ri].op);
-    for (const [id, u] of Object.entries(j.trips || {})) {
+    // A trip feed come back empty while the feed's buses are on their trips is the feed missing a beat, not every
+    // prediction gone: at 2:42:00 PM on 19 Oct it was its header alone, 15 bytes, beside all 20 buses, and for that poll
+    // some 600 rows went from Live to the timetable or to a guess from the bus's place (a Blue Loop bus 11 min down all
+    // but on time). The last trips the feed said stand for it while they're no older than STALE, as they would through a
+    // poll that failed; the buses' places are this answer's. Older, the feed is taken at its word.
+    let said = j.trips || {};
+    if (Object.keys(said).length) lastTrips = { t: j.t, trips: said };
+    else if (lastTrips && (j.buses || []).some(b => b.trip) && j.t - lastTrips.t <= STALE / 1000) said = lastTrips.trips;
+    for (const [id, u] of Object.entries(said)) {
       const ti = tripIdx.get(id);
       if (ti !== undefined && tripInfo[ti] && theirs(tripInfo[ti].r)) continue;
       const at = new Map();
