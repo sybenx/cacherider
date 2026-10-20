@@ -173,7 +173,7 @@ export function render({ id, full, run, on }, clockNow) {
   // it's soon; the detour that pushed it off.
   if (first.day !== 0) parts.push(dayHead(si, first.ymd, clockNow.ymd));
   const firstRel = first.day === 0 ? undefined : closed.has(first.r) ? String(dayWord) : minsTo(first, clockNow) < 180 ? undefined : '';
-  parts.push(depRow(first, clockNow, { size: 42, cls: 'next', relHtml: firstRel, attrs: first.trip !== undefined ? ` data-trip="${first.trip}" data-on="${first.ymd}"` : '' }));
+  parts.push(depRow(first, clockNow, { size: 42, cls: 'next', away: true, relHtml: firstRel, attrs: first.trip !== undefined ? ` data-trip="${first.trip}" data-on="${first.ymd}"` : '' }));
 
   // Today's buses here all gone: the whole day to show is the next day with buses, not a list of ones already run.
   const todayAll = td.all.map(t => lively({ ...t, day: 0, ymd: clockNow.ymd }));
@@ -205,7 +205,7 @@ export function render({ id, full, run, on }, clockNow) {
       rows.push(dayHead(si, t.ymd, lastYmd)); lastDay = t.day; lastYmd = t.ymd;
     }
     // days off because of the detour: warned; a later day's row under its day's heading, its day not said again
-    const row = depRow(t, clockNow, { dayShort: true, warn: t.day > 0 && closed.has(t.r), noRel: t.day > 0 && minsTo(t, clockNow) >= 180 && !closed.has(t.r) }).s;
+    const row = depRow(t, clockNow, { dayShort: true, away: true, warn: t.day > 0 && closed.has(t.r), noRel: t.day > 0 && minsTo(t, clockNow) >= 180 && !closed.has(t.r) }).s;
     rows.push(t.trip !== undefined ? `<div class="runopen" data-trip="${t.trip}" data-on="${t.ymd}">${row}</div>` : row);
   }
   parts.push(html`<div class="list">${html.raw(rows.join(''))}</div>`);

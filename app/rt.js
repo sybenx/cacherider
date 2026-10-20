@@ -689,6 +689,32 @@ export function busOn(ti) {
   if (u) for (const [sid, x] of u.at) if (!x.skipped && x.time >= nowS - 60 && (!next || x.seq < next.seq)) next = { sid, ...x };
   return { bus: b, next: next ? D.stopById[next.sid] : undefined };
 }
+/** The call on a trip at a stop nearest a minute: a loop can call at one twice. -1 when it doesn't call there. */
+export function callAt(st, si, min) {
+  let k = -1;
+  st.forEach(([m, x], i) => { if (x === si && (k < 0 || Math.abs(m - min) < Math.abs(st[k][0] - min))) k = i; });
+  return k;
+}
+/** How far a departure's bus is from its stop, in the stops it has still to call at: this one counted, the one it's at
+ *  not, nor one Connect's notice closes to its route (the feed, knowing no detours, still predicts it), as its card
+ *  lists them. `away` 0 when it's at this one; null without a bus on the trip short of here (on the trip before, or the
+ *  feed quiet). The home page's big stop and a stop's rows say it alike ('Bus 1181 · 4 stops away', 'Live · 4 stops
+ *  away'); `j`, `k` and `at` are where on the trip, for the home page's line. */
+export function stopsAway(t, clockNow) {
+  if (t.day !== 0 || t.trip === undefined || t.si === undefined) return null;
+  const on = busOn(t.trip);
+  if (!on || on.next === undefined) return null;
+  const b = on.bus, st = tripStops(t.trip), k = callAt(st, t.si, t.live ? t.min - t.live.delay : t.min);
+  if (k < 0) return null;
+  // Where its next stop is on the trip: the call nearest the timetable's minute the bus is at. Past this one (a loop
+  // calling here twice, its next the later), it isn't coming to this call.
+  const j = callAt(st, on.next, clockNow.min - (busDelay(b) ?? 0));
+  if (j < 0 || j > k) return null;
+  const at = distance(b.lat, b.lon, D.stops[on.next].lat, D.stops[on.next].lon) <= AT_STOP;   // at its stop: that one isn't to come
+  let ahead = 0;
+  for (let i = j; i < k; i++) if ((i === j && at) || !closedRoutes(st[i][1], clockNow.ymd).has(t.r)) ahead++;
+  return { bus: b, away: j === k && at ? 0 : ahead - (at ? 1 : 0) + 1, j, k, at };
+}
 /** A bus of a route stopped in the Transit Center, set to go out on it: the one that leaves next, whatever bus the
  *  feed names (a swap bus is put in, parked at the bay, while the late one finishes its run). Only on a trip out from
  *  the Center that's due about now, not one it has just come in on: a bus in on its 2 goes out as a 5 (they swap all

@@ -157,6 +157,9 @@ test('home: the big stop\'s bus on its way as a line, here at its stop, gone wit
   await line.click();
   await expect(page).toHaveURL(new RegExp('#/map/route/.+/' + pick.stop + '$'));
   await expect(page.locator('.yourstop').filter({ visible: true }).first()).toContainText('Bus 9001 · 3 stops away');
+  // The stop's own page says it on the bus's row, on its Live line, as the big stop does
+  await go(page, '#/stop/' + pick.stop);
+  await expect(page.locator('.row.next .livetag').filter({ visible: true }).first()).toContainText('3 stops away');
   // The feed without it: the big stop as it was
   feed = feedOf();
   await go(page, '#/');

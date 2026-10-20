@@ -5,7 +5,7 @@
 import { D, stopNo, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes, maySkip, tripStops, routeOrder, liftHex } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo, isDue } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, minsOut, lastTag, fillLater, moved, detourNotice, lively, schedOf, heardName, routeList, routeHref } from '../ui.js';
-import { busOn, busDelay, AT_STOP } from '../rt.js';
+import { stopsAway } from '../rt.js';
 import { lightInks } from '../ink.js';
 import { pumpkinRoute } from './pumpkin.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
@@ -253,12 +253,6 @@ function lineInk(ri) {
   lightOf ??= lightInks(D.routes.map(x => ({ color: x.color })));
   return lightOf.get(r.color.toUpperCase()) || '#' + r.color;
 }
-/** The call on a trip at a stop nearest a minute: a loop can call at one twice. -1 when it doesn't call there. */
-function callAt(st, si, min) {
-  let k = -1;
-  st.forEach(([m, x], i) => { if (x === si && (k < 0 || Math.abs(m - min) < Math.abs(st[k][0] - min))) k = i; });
-  return k;
-}
 /** The big stop's next bus on its way, drawn as a route's page draws its line (map.js routeSheet): the rail in the
  *  route's colour, the bus a dot on it, or the ring of the stop it's at filled, a ring for each stop it has still to
  *  call at, and this stop at the foot. How far off it is, in stops and on the clock, and that it's coming. Only while
@@ -267,21 +261,13 @@ function callAt(st, si, min) {
  *  line at this stop. */
 function comingLine(si, first, clockNow) {
   if (!first || first.day !== 0 || first.trip === undefined) return '';
-  const on = busOn(first.trip);   // null with the feed quiet, or no bus on the trip yet
-  if (!on || on.next === undefined) return '';
-  const b = on.bus, st = tripStops(first.trip), k = callAt(st, si, schedOf(first));
-  if (k < 0) return '';
-  // Where its next stop is on the trip: the call nearest the timetable's minute the bus is at. Past this one (a loop
-  // calling here twice, its next the later), it isn't coming to this call.
-  const j = callAt(st, on.next, clockNow.min - (busDelay(b) ?? 0));
-  if (j < 0 || j > k) return '';
-  const at = distance(b.lat, b.lon, stop(on.next).lat, stop(on.next).lon) <= AT_STOP;   // at its stop: that ring is its dot
+  const sa = stopsAway({ ...first, si }, clockNow);   // null with the feed quiet, or no bus on the trip short of here
+  if (!sa) return '';
+  const { bus: b, j, k, at, away } = sa, st = tripStops(first.trip);   // at its stop: that ring is its dot
   // The stops on its way here it calls at, as its card lists them: not one Connect's notice closes to its route (the
   // feed, knowing no detours, still predicts it), unless the bus is at it.
   const ahead = [];
   for (let i = j; i < k; i++) if ((i === j && at) || !closedRoutes(st[i][1], clockNow.ymd).has(first.r)) ahead.push(i);
-  // The stops it has still to call at, this one counted, the one it's at not (map.js yourStop): at this one, here.
-  const away = j === k && at ? 0 : ahead.length - (at ? 1 : 0) + 1;
   const words = away === 0 ? 'here' : `${away} ${away === 1 ? 'stop' : 'stops'} away`;
   // Each stop's call on this trip with the feed's word on it, as the stop's own row has it.
   const call = i => lively({ min: st[i][0], r: first.r, h: first.h, dir: first.dir, si: st[i][1], trip: first.trip, day: 0, ymd: first.ymd });

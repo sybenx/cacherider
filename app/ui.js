@@ -1,6 +1,6 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
 import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf } from './data.js';
-import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
+import { predict, lateWords, isLoop, loopSpacing, stopsAway } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
 import { clock, clockText, relative, now, metres, minsTo, isDue, dayFrom, dayName, fmtDay } from './time.js';
@@ -192,7 +192,11 @@ export function lastTag(t) {
 export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
-  const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t)).s : sched(t).s;
+  // `away`: on a stop's own rows, how far its bus is, where the feed has one on the trip short of here: what a rider
+  // checks ('how far away is it?'), said on the Live line ('Live · 7 min late · 11 stops away').
+  const sa = opts.away && t.live ? stopsAway(t, clockNow) : null;
+  const far = sa ? ' · ' + (sa.away === 0 ? 'at this stop' : `${sa.away} ${sa.away === 1 ? 'stop' : 'stops'} away`) : '';
+  const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t) + far).s : sched(t).s;
   const b = t.si !== undefined ? routeBadgeLink(t.r, t.si, 36, t.dir) : badge(t.r, 36).s;
   // An unannounced detour may be taking this route round the stop: the time kept, a question beside it.
   const u = t.si !== undefined && maySkip(stop(t.si).id, t.r) && skipsAt(stop(t.si).id).find(u => u.ri.includes(t.r));
