@@ -115,6 +115,7 @@ function whole(ctx, origin) {
   const made = (async () => {
     const [vp, tu] = await Promise.all([feed('vehiclepositions'), feed('tripupdates')]);
     const out = decode(vp, tu);
+    if (!Object.keys(out.trips).length && out.buses.some(b => b.trip)) await keepTrips(out, origin);
     // Detoured buses aren't in the feed, so the tracker site fills them in for every answer.
     const body = fillIn(out, false).catch(e => { /* the feed's own buses still go out */ }).then(() => {
       const s = JSON.stringify(out);
@@ -126,6 +127,18 @@ function whole(ctx, origin) {
   })();
   ctx.waitUntil(made.then(m => m.body, e => { /* the asker has the error, or the last answer */ }));
   return made;
+}
+// The agency's trip feed comes back empty now and then while its buses are out on their trips (19 Oct, 2:42 PM: a
+// bare header, every bus live): passed on, every time read as the timetable's for the poll, and Headway, which keeps
+// no answer of its own, had each bus between trips. The last answer's trips stand in while their own times are
+// inside LAST, as the app keeps its own (rt.js); by their times, not the answer's, so a run of empty ones can't keep
+// them on.
+async function keepTrips(out, origin) {
+  const last = await caches.default.match(new Request(origin + '/?last')).catch(() => null);
+  const kept = last && await last.json().catch(() => null);
+  if (!kept || !kept.trips) return;
+  const newest = Math.max(0, ...Object.values(kept.trips).map(t => t.ts || 0));
+  if (Date.now() / 1000 - newest < LAST) out.trips = kept.trips;
 }
 // A few stops' answer when the feed has no bus at all asks the tracker site anyway: Headway counts buses out from its
 // yard, and one deadheading home is only on the tracker, if anywhere. Made once a TTL at each edge too, under a key
