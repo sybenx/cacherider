@@ -789,6 +789,40 @@ test('an empty trip feed beside the buses: the last word stands for a minute and
   expect((await rowSays(page, pick.id, stop, m5))[0]).toMatch(/^Estimated · /);
 });
 
+test('a loop\'s next run with no word on it from the feed: as late at the Center as its bus is into the run\'s start', async ({ page }) => {
+  // 2:42 PM, 19 Oct: the feed lost a Green Loop bus's trip and the one after it for a minute, the bus a minute late; the
+  // Center's 3:35 was said to leave at 3:14, when the bus was due at the run's start, 750 North Main, 22 minutes before
+  // the Center. A loop's run into its next, its bus 4 min late near the end of the first, the feed with nothing on the next.
+  const relay = { T: 0, feed: null, alerts: () => [], detours: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const pick = await page.evaluate(async src => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, seen = new Set();
+    const stopsOf = new Function('return ' + src)();
+    for (const ri of D.hub.loops || []) for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const row of d.timesOn(si, c.ymd)) {
+      if (row.r !== ri || seen.has(row.trip)) continue;
+      seen.add(row.trip);
+      const st = d.tripStops(row.trip), te = d.tripEnd(row.trip), nx = d.nextTrip(row.trip, c.ymd), nr = nx !== undefined ? d.tripRoute(nx) : null;
+      if (!te || !nr || nr.r !== ri || st.length < 5 || st[0][0] < 420) continue;
+      const ns = d.tripStops(nx), k = ns.findIndex(([, x]) => D.stops[x].hub);
+      if (!ns.length || ns[0][1] !== te.si || ns[0][0] - te.min > 2 || k < 2 || ns[k][0] - ns[0][0] < 10) continue;
+      const j = st.length - 2;
+      return { id: D.trips[row.trip], next: D.trips[nx], pts: stopsOf(d, row.trip), j, hub: [ns[k][0], D.stops[ns[k][1]].id], at: Date.now() + ((st[j][0] + 4 - c.min) * 60 + 30 - c.sec) * 1000 };
+    }
+    return null;
+  }, stopsOf.toString());
+  test.skip(!pick, 'no loop trip today with one after it');
+  const T = relay.T = Math.floor(pick.at / 1000), [mj, , lat, lon] = pick.pts[pick.j], base = T - 30 - (mj + 4) * 60;
+  relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: 0, speed: 0, ts: T }], trips: {
+    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m + 4) * 60, 0]).slice(pick.j + 1) } } };
+  await page.clock.setFixedTime(new Date(pick.at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await polled(page, T);
+  const [m, stop] = pick.hub;
+  expect(await rowSays(page, pick.next, stop, m)).toEqual(['Estimated', m + 4]);
+});
+
 test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s card over the map');
   await open(page);

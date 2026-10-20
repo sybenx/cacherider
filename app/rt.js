@@ -366,8 +366,14 @@ function feedPredict(t) {
     if (t.min - now().min >= 120) return null;
     const a = runArrives(t);
     if (a === null) return null;
-    if (a <= tripStops(t.trip)[0][0] + 1) return KEEPS;   // in within its minute: it leaves on it
-    return D.stops[t.si] && D.stops[t.si].hub && !(isLoop(t.r) && loopSpacing(t.r)) ? { min: Math.ceil(a), delay: Math.ceil(a) - t.min, est: true } : null;
+    const start = tripStops(t.trip)[0][0];
+    if (a <= start + 1) return KEEPS;   // in within its minute: it leaves on it
+    // A loop's Transit Center call is part way along its trip, which starts at 750 North Main (Green) or City Center
+    // (Blue): the bus as late there as it's in at the start, not leaving at the minute it gets to the start. The Green
+    // Loop's 3:35, its bus due into 750 North Main at 3:13 for its 3:12, was leaving the Center at 3:14 (19 Oct, the
+    // feed without the trip for a minute). A route's run starts at its bay: the same minute.
+    const m = Math.ceil(a + t.min - start);
+    return D.stops[t.si] && D.stops[t.si].hub && !(isLoop(t.r) && loopSpacing(t.r)) ? { min: m, delay: m - t.min, est: true } : null;
   }
   if (u.cancelled) return { gone: true, cancelled: true };   // a run the feed says is cancelled isn't coming (the relay passes it on: c 1)
   const p = feedSays(t, u);
