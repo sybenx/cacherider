@@ -1099,6 +1099,7 @@ test('a stop\'s card on a phone, as the Center\'s board: rests at its next bus, 
   expect(await room()).toBeGreaterThanOrEqual(rest);   // (a stop with no bus to come rests at its head already)
   await page.mouse.click(200, (await grip()) + 40);   // a tap on it: open again
   await expect(card).not.toHaveClass(/hubfold/);
+  await still(card.locator('.grip'));   // slid back up to its next bus (a third of a second): the swipe starts where it rests
   await swipe(await grip(), (await grip()) + 150);
   await expect(card).toHaveClass(/hubfold/);
   await swipe(await grip(), (await grip()) + 150);   // folded, down again: put away
