@@ -150,7 +150,7 @@ export function routeNames(ris) {
   return [num, lp].filter(Boolean).join(' and ');
 }
 /** 'Live · 3 min late'; 'Estimated · …' where the minute is worked out from the bus's place, not the feed's word. */
-export const liveWord = t => isLoop(t.r) ? (t.live.est ? 'Estimated' : 'Live') : (t.live.est ? 'Estimated · ' : 'Live · ') + lateWords(t.live.delay);
+export const liveWord = t => isLoop(t.r) ? (t.live.est ? 'Estimated' : 'Live') : (t.live.est ? 'Estimated · ' : 'Live · ') + lateWords(t.live.delay).replace(/^On/, 'on');   // 'Live · on time': a tag in plain case now
 /** A loop spacing its buses, away from the Transit Center: its timetable means nothing then, so its rows give
  *  only how long till the bus is there. */
 export const loopArrival = t => !!t.live && isLoop(t.r) && !D.stops[t.si]?.hub && loopSpacing(t.r);
@@ -197,7 +197,11 @@ export function depRow(t0, clockNow, opts = {}) {
   // An unannounced detour may be taking this route round the stop: the time kept, a question beside it.
   const u = t.si !== undefined && maySkip(stop(t.si).id, t.r) && skipsAt(stop(t.si).id).find(u => u.ri.includes(t.r));
   const q = u ? `<span class="sub qnote">The last ${u.n} skipped this stop<span class="qmark">?</span></span>` : '';
-  return raw(`<div class="row${opts.href ? ' tap' : ''}">${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${q}${lastTag(t).s}</div><div class="end">${when(t, 26).s}${loopArrival(t) ? '' : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`}</div></div>`);
+  // `noRel`: no 'how long' under the time, where the day's heading above already names its day ('tomorrow, Tue' on
+  // every row under 'Tuesday 20 Oct' said it again and again)
+  // `size`: the time's (the stop page's next bus, larger); `relHtml`: 'how long' as markup of its own (its day, warned)
+  const relEl = opts.relHtml !== undefined ? (opts.relHtml ? `<span class="rel">${opts.relHtml}</span>` : '') : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`;
+  return raw(`<div class="row${opts.href ? ' tap' : ''}${opts.cls ? ' ' + opts.cls : ''}"${opts.attrs || ''}>${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${q}${lastTag(t).s}</div><div class="end">${when(t, opts.size || 26).s}${loopArrival(t) || opts.noRel ? '' : relEl}</div></div>`);
 }
 
 /** A run the feed says is cancelled, in a list of departures: its time struck, 'Cancelled', nothing to count down to. */
@@ -274,33 +278,38 @@ export function side(si) {
 }
 
 
-/** The stop page's own: a row, not a pill. Which way it serves and how far, its name, and its next bus at the
- *  right the size of the departures beneath, live when the feed knows; where the destination tells the sides
- *  apart, that too. It answers the question a rider at the wrong stop has: is it this side, or that one? */
-export function acrossRow(si, clockNow) {
-  const [ti, td] = stop(si).twin, t = stop(ti), n = nextAt(ti, 1, clockNow)[0], sd = side(ti);
-  const dest = n && tellsApart(n) ? headsign(n) : '';
-  const end = n
-    ? `<span class="when">${badge(n.r, 20).s}${time(n.min, 20, !!n.live).s}</span><span class="rel">${esc(relative(n, clockNow))}</span>${n.live ? liveTag(n).s : sched(n).s}`
-    : '<span class="rel">No service today</span>';
-  return raw(`<a class="acrossrow" href="#/stop/${esc(t.id)}">${icon('swap', 18).s}
-    <span class="mid"><span class="eyebrow">Across the road${sd ? ' · ' + esc(sd) : ''} · ${esc(metres(td))}</span><span class="name">${esc(t.name)}</span>${dest ? `<span class="sub">${esc(dest)}</span>` : ''}</span>
-    <span class="end">${end}</span></a>`);
-}
-
-/** Whether a bus's destination tells the two ways of its route apart: not when the timetable gives both ways one
- *  label (1, 2 and 5 go out and come back under the same words) or only the route's own name ('Route 03'). Better
- *  no destination than one that reads the same on both sides of the road. */
-let wayLabels = null;
-function tellsApart(t) {
-  if (!wayLabels) {
-    wayLabels = new Map();   // route → direction → its labels
-    for (const per of Object.values(D.times)) for (const list of Object.values(per)) for (const x of list) {
-      const byDir = wayLabels.get(x[1]) || wayLabels.set(x[1], new Map()).get(x[1]);
-      (byDir.get(x[3]) || byDir.set(x[3], new Set()).get(x[3])).add(x[2]);
-    }
+/** Which way a stop's buses run past it, in degrees from north: for each of its routes, the way from its stop before
+ *  to its stop after in the timetable's order, summed. Null where nothing tells. */
+export function travel(si) {
+  const s = stop(si), k = Math.cos(s.lat * Math.PI / 180);
+  let x = 0, y = 0;
+  for (const ri of s.routes) for (const seq of Object.values(D.routes[ri].stops || {})) {
+    const i = seq.indexOf(si);
+    if (i < 0) continue;
+    const a = stop(seq[Math.max(0, i - 1)]), b = stop(seq[Math.min(seq.length - 1, i + 1)]);
+    const dx = (b.lon - a.lon) * k, dy = b.lat - a.lat, n = Math.hypot(dx, dy);
+    if (n) { x += dx / n; y += dy / n; }
   }
-  if (headsign(t) === route(t.r).long && !isLoop(t.r)) return false;   // a loop's name is its way: it runs only one
-  const other = (wayLabels.get(t.r) || new Map()).get(1 - t.dir);
-  return !other || !other.has(t.h);
+  return x || y ? (Math.atan2(x, y) * 180 / Math.PI + 360) % 360 : null;
+}
+const WAYS = ['Northbound', 'Eastbound', 'Southbound', 'Westbound'];
+/** That way as the four a grid town's streets run: 0 north, 1 east, 2 south, 3 west; null where nothing tells. */
+export const quarter = deg => deg === null ? null : Math.round(deg / 90) % 4;
+/** A stop and the stop across the road, each by the way its buses run ('Westbound'), only where the two come out
+ *  different; '' where they don't. Nothing composed from destinations: the rows under the buttons say where each bus
+ *  goes (a second opinion, 2026-10-20: headsigns filtered and joined read wrong at USU and City Center, and changed
+ *  with the clock). */
+export function sideWords(si, ti) {
+  const qa = quarter(travel(si)), qb = quarter(travel(ti)), apart = qa !== null && qb !== null && qa !== qb;
+  return { here: apart ? WAYS[qa] : '', there: apart ? WAYS[qb] : '', qa, qb, apart };
+}
+/** The stop page's two sides of the road, side by side under its name: this one, picked, and the one across, a tap
+ *  to its page, each with the way its buses run. Only for a stop with a twin across the road. */
+export function sidesRow(si) {
+  // Where the ways don't tell them apart: this side nothing more, the other by the name it's known by (its landmark,
+  // else its address), as the across card had it.
+  const [ti] = stop(si).twin, w = sideWords(si, ti), t = stop(ti), there = w.there || t.by || t.name;
+  return raw(`<div class="sides" role="group" aria-label="Which side of the road">
+    <span class="side on" aria-current="true"><b>This side</b>${w.here ? `<span class="to">${esc(w.here)}</span>` : ''}</span>
+    <a class="side" href="#/stop/${esc(t.id)}"><b>Across the road</b><span class="to">${esc(there)}</span></a></div>`);
 }

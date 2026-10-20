@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, holidayOn, offDayWords, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
-import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, nthWords } from '../ui.js';
+import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, nthWords, travel } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -2171,7 +2171,58 @@ function applySelection() {
   stackBuses();   // a bus lit far out is full size, its number shown: the spot it needs is its ring's, now, not at the feed's next word
   dressJourney();
   if (MT.R && map.getLayer('run-hot')) dressForRun(map, MT.R);   // a run up keeps its own dress over all the above
+  sideLabels();
 }
+/** A stop's page up with a stop across the road (its two buttons, stop.js): the two sides labelled on the map to
+ *  match, 'This side' at the stop and 'Across the road' at its twin, each with an arrow the way its buses go there.
+ *  Each label sits on its buses' right, the curb's side (placeRunLabels' rule), so a pair staggered along the road
+ *  still reads across it; where a stop's way can't be told, away from the other stop. Halo text, as the map's own
+ *  labels; from the streets in only (the stops' labels' zoom). Their address labels, and the shuttle's stop names at
+ *  either curb, are put away meanwhile. Not under a run (its address has ?run=) or a way drawn; gone with the page. */
+let sideMarks = [], sideKey = '', sideWired = false;
+function sideLabels() {
+  if (!map || !ready) return;
+  const m = /^#\/stop\/([^/?]+)$/.exec(location.hash), si = m && m[1] === selected ? D.stopById[selected] : undefined;
+  const s = si !== undefined ? D.stops[si] : null, key = s && s.twin && !JR ? s.id : '';
+  if (!sideWired) {
+    sideWired = true;
+    const far = () => map.getContainer().classList.toggle('sides-far', map.getZoom() < 15);
+    map.on('zoom', far); far();
+    map.on('rotate', () => placeSides());
+  }
+  if (key !== sideKey) {
+    sideKey = key;
+    for (const mk of sideMarks) mk.remove();
+    sideMarks = [];
+    if (key) {
+      const t = D.stops[s.twin[0]];
+      for (const [x, i, cls, word, other] of [[s, si, 'here', 'This side', t], [t, s.twin[0], 'there', 'Across the road', s]]) {
+        // a point at the stop, its label hung off it on the side placeSides picks
+        const el = document.createElement('div'), way = travel(i);
+        el.className = 'sidemark';
+        el.innerHTML = html`<span class="sidelabel ${cls}"><b>${word}</b>${way !== null ? html`<span class="arr" style="--way:${Math.round(way)}deg">\u2191</span>` : ''}</span>`.s;
+        const mk = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([x.lon, x.lat]).addTo(map);
+        mk.side = { way, away: Math.atan2((x.lon - other.lon) * Math.cos(x.lat * Math.PI / 180), x.lat - other.lat) * 180 / Math.PI };
+        sideMarks.push(mk);
+      }
+      placeSides();
+    }
+  }
+  if (map.getLayer('stop-labels')) map.setFilter('stop-labels', key ? ['!', ['in', ['get', 'id'], ['literal', [s.id, D.stops[s.twin[0]].id]]]] : null);
+  // and the shuttle's stop names at either curb (Richards Hall, Industrial Science), which sat on the two labels
+  const t = key ? D.stops[s.twin[0]] : null;
+  const poles = key && U ? U.stops.filter(u => [s, t].some(x => distance(x.lat, x.lon, u.lat, u.lon) < 30)).map(u => u.id) : [];
+  if (map.getLayer('usu-labels')) map.setFilter('usu-labels', poles.length ? ['!', ['in', ['get', 'id'], ['literal', poles]]] : null);
+}
+/** Each side's label on its buses' right as the map is turned now, clear of its dot. */
+function placeSides() {
+  const turn = map.getBearing();
+  for (const mk of sideMarks) {
+    const { way, away } = mk.side, r = (((way !== null ? way + 90 : away) - turn) % 360 + 360) % 360;
+    mk.getElement().dataset.at = r < 45 || r >= 315 ? 'up' : r < 135 ? 'right' : r < 225 ? 'down' : 'left';
+  }
+}
+
 
 /** The shuttle and POOL drawn only where they run, or when asked for: near campus (the shuttle's stops) or POOL's zone,
  *  from the streets in, and a shuttle loop, stop or bus picked. Out over the valley they'd be noise over Connect's. */
@@ -3605,6 +3656,7 @@ export function away() { shownHash = null; }
 export async function show(o, app, clockNow) {
   if (!/^#\/(map|hub)/.test(location.hash)) { townTap = false; markNear(); }   // the map left (the Center is the map too): the Map tab starts again at the near view
   await showPage(o, app, clockNow);
+  sideLabels();   // a stop's two sides, labelled while its page is up, gone with it
   // Marked once the map's ready: a reload straight onto a search gets there before its style does.
   wantMarks = wide() && o.searchMarks || null;
   if (map && ready) searchMarks(wantMarks);

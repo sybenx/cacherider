@@ -1442,7 +1442,7 @@ test('Route 16 is one route: one badge at 2281 N Main with PRT\'s, the last full
   const head = page.locator('.head').filter({ has: page.locator('h1') }).filter({ visible: true }).first();
   await expect(head.locator('h1')).toHaveText('2281 N Main');
   expect(await head.locator('.badges .badge').allInnerTexts()).toEqual([k.key, ...(k.op ? [k.op] : [])]);
-  const tp = head.locator('.tpline');
+  const tp = page.locator('.stop-page .tpline').filter({ visible: true }).first();   // under the times, no longer in the head
   if (await tp.count()) { await expect(tp).toContainText('A timed stop for Route ' + k.key + ':'); await expect(tp).not.toContainText(/\b(AM|PM)\b/); }
   // The whole day here (today's, or the next day with buses): the last full run is the day's last bus alone.
   await go(page, '#/stop/7607775/all');
@@ -1512,6 +1512,40 @@ test('stop: its page, a route badge, a run, the whole day, saved and unsaved', a
   if (await day.count()) { await day.click(); await expect(page.getByText(/departures/).filter({ visible: true }).first()).toBeVisible(); await go(page, '#/stop/' + id); }
   await page.locator('a.badgelink').filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/#\/map\/route\//);
+});
+
+test('stop: this side and across the road, two buttons under the name and the map labelled to match', async ({ page }) => {
+  // Richard's Hall (1011 East 700 North) and Industrial Science across 700 North, or any stop with one across the road.
+  await open(page);
+  const pair = await page.evaluate(async () => {
+    const d = await import('/app/data.js');
+    const s = d.D.stops[d.D.stopById['7569115']]?.twin ? d.D.stops[d.D.stopById['7569115']] : d.D.stops.find(s => s.twin && !s.out);
+    return s ? { id: s.id, twin: d.D.stops[s.twin[0]].id } : null;
+  });
+  test.skip(!pair, 'no stop with one across the road');
+  await go(page, '#/stop/' + pair.id);
+  const sides = page.locator('.stop-page .sides').filter({ visible: true }).first();
+  await expect(sides.locator('.side.on')).toHaveAttribute('aria-current', 'true');
+  await expect(sides.locator('.side.on b')).toHaveText('This side');
+  const across = sides.locator('a.side');
+  await expect(across.locator('b')).toHaveText('Across the road');
+  await expect(across).toHaveAttribute('href', '#/stop/' + pair.twin);
+  await expect(page.locator('.acrossrow')).toHaveCount(0);   // the card it replaces
+  // the map, beside the page or above its sheet: the two sides labelled, the stop's on this side
+  await mapReady(page);
+  await expect(page.locator('.sidemark .sidelabel.here')).toHaveText(/^This side/);
+  await expect(page.locator('.sidemark .sidelabel.there')).toHaveText(/^Across the road/);
+  // across: the other stop's page, where it's this side, and the way back across
+  await across.click();
+  await expect(page).toHaveURL(new RegExp('#/stop/' + pair.twin + '$'));
+  const back = page.locator('.stop-page .sides').filter({ visible: true }).first();
+  await expect(back.locator('.side.on b')).toHaveText('This side');
+  await expect(back.locator('a.side')).toHaveAttribute('href', '#/stop/' + pair.id);
+  await expect(page.locator('.sidemark')).toHaveCount(2);
+  // off the stop's page, the labels go with it
+  await go(page, '#/map');
+  await mapReady(page);
+  await expect(page.locator('.sidemark')).toHaveCount(0);
 });
 
 test('map: town view, a bus and its route', async ({ page }) => {

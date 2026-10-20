@@ -2,7 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopNo, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, routeAlerts, timesOn, familyNow, dayAlert, quietWords, offDayWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom, isGone, minsTo } from '../time.js';
-import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, routeLinkItems, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow, replaceTo, oneEach } from '../ui.js';
+import { routeNames, routeName, html, icon, badge, corners, depRow, cancelledRow, routeLinks, routeLinkItems, headsign, liveWord, lively, sidesRow, travel, quarter, replaceTo, oneEach } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -24,16 +24,22 @@ export function render({ id, full, run, on }, clockNow) {
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a>
     ${shareButton({ url: siteLink('stop/' + s.id), title: s.name, lines: [`Stop ${stopNo(s) || s.id}${s.town && s.town !== 'Logan' ? ' · ' + s.town : ''}`, 'Its next buses, live when they report'] })}
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
-  const sd = side(si);
-  const eyebrow = `${s.town} · Stop ${stopNo(s) || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces
+  // Under the name, in plain words: the landmark the bus announces first, the town where it isn't Logan, and the
+  // stop's number (what a rider quotes on the phone). Which side of the road is the two buttons' to say where there's
+  // a stop across it; where there isn't, the way its buses run here, in the buttons' word ('Eastbound', not the
+  // feed's 'Inbound side').
+  const q = s.twin ? null : quarter(travel(si)), sd = q === null ? '' : ['Northbound', 'Eastbound', 'Southbound', 'Westbound'][q];
+  const where = html`${s.by ? html`<b>${s.by}</b> · ` : ''}${s.town && s.town !== 'Logan' ? s.town + ' · ' : ''}Stop ${stopNo(s) || s.id}${sd ? ` · ${sd}` : ''}`;
   const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
   // Routes that don't call here going past on a detour: theirs too while it lasts, each badge marked as on a detour and
   // a way to where its buses go.
   const visiting = detoursPast(si, clockNow);
   const routeRow = visiting.length ? html`<div class="badges wide">${html.raw(routeLinkItems(si))}${visiting.map(({ ri, u, name }) => html`<a class="badgelink detoured" href="#/map/alert/${u.id}" style="--rc:#${D.routes[ri].color}" aria-label="${cap(name)}: on a detour past this stop, the way its buses go">${badge(ri, 30)}<span class="dtag">Detour</span></a>`)}</div>` : routeLinks(si);
-  // Across the road, the stop for the other way and the commonest wrong one to stand at: a pill of its own under the
-  // routes, room enough to say where that side's next bus is going.
-  parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${routeRow}<div class="golinks"><a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>${tpLine(si)}${s.twin ? acrossRow(si, clockNow) : ''}</div>`);
+  // Across the road, the stop for the other way and the commonest wrong one to stand at: this side and that side as
+  // two buttons under the name, each with the way its buses run, the map above labelled to match (map.js sideLabels).
+  parts.push(html`<div class="head"><h1>${s.name}</h1><span class="where">${where}</span>${routeRow}${s.twin ? sidesRow(si) : ''}</div>`);
+  // The way here and on from here, and what a timed stop means: after the times, not ahead of them.
+  const tail = html`<div class="stoptail"><div class="golinks"><a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>${tpLine(si)}</div>`;
   if (g) parts.push(html.raw(pointerDial(s.lat, s.lon, g, s.name)));   // the compass: which way and how far, turning with the phone
 
   const aside = [];   // the shuttle stop on the same pole
@@ -145,7 +151,8 @@ export function render({ id, full, run, on }, clockNow) {
   }
   if (!next.length) {
     parts.push(allClosed ? html`<div class="empty"><h2>Nothing scheduled</h2><p>Departures return when the detour ends.</p></div>` : html`<div class="empty"><h2>Nothing scheduled</h2><p>No departures from this stop in the next week.</p></div>`);
-    return { html: parts.join(''), title: s.name, mount, keepScroll: true };
+    parts.push(tail);
+    return { html: html`<div class="stop-page">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true };
   }
 
   const first = next[0];
@@ -160,11 +167,13 @@ export function render({ id, full, run, on }, clockNow) {
   const quiet = first.day > 1 ? quietWords(clockNow.ymd, first.ymd) : '';
   const dayWord = dayWord0 && closed.has(first.r) ? html`<span class="warnmark">${dayWord0} · after the detour</span>`
     : quiet ? html`${dayWord0} · <b class="quiet">${quiet}</b>` : dayWord0;
-  parts.push(html`<div class="next"${first.trip !== undefined ? html.raw(` data-trip="${first.trip}" data-on="${first.ymd}"`) : ''}><div class="top"><span class="eyebrow">Next bus</span>${first.live ? liveMark(liveWord(first)) : sched(first)}</div>
-    ${wasLine(first)}<div class="big">${loopArrival(first) ? minsOut(first, 60, clockNow) : html`${time(first.min, 60, !!first.live)}<span class="rel">${first.day === 0 ? relative(first, clockNow) : dayWord}</span>`}</div>
-    <div class="who">${badge(first.r, 32)}<span>${headsign(first)}</span></div>${lastTag(first)}</div>`);
-
-
+  // The next bus: the list's first row (depRow, as every row: the estimate in blue, the timetable's minute struck once
+  // the feed has moved it, a spacing loop's minutes out, an unannounced detour's question), its time larger. On a
+  // later day its day's heading comes first, and under its time only what the heading doesn't say: how long, when
+  // it's soon; the detour that pushed it off.
+  if (first.day !== 0) parts.push(dayHead(si, first.ymd, clockNow.ymd));
+  const firstRel = first.day === 0 ? undefined : closed.has(first.r) ? String(dayWord) : minsTo(first, clockNow) < 180 ? undefined : '';
+  parts.push(depRow(first, clockNow, { size: 42, cls: 'next', relHtml: firstRel, attrs: first.trip !== undefined ? ` data-trip="${first.trip}" data-on="${first.ymd}"` : '' }));
 
   // Today's buses here all gone: the whole day to show is the next day with buses, not a list of ones already run.
   const todayAll = td.all.map(t => lively({ ...t, day: 0, ymd: clockNow.ymd }));
@@ -179,7 +188,8 @@ export function render({ id, full, run, on }, clockNow) {
     parts.push(html`<div class="dayhead">${label} · ${all.length} departures${alertLink(all[0].ymd)}</div>`);
     parts.push(html`<div class="list">${all.map(t => html.raw(t.cancelled && t.min >= clockNow.min ? cancelledRow(t).s : `<div style="${past(t) ? 'opacity:.45' : ''}">${depRow(t, clockNow, { rel: past(t) ? 'gone' : relative(t, clockNow) }).s}</div>`))}</div>`);
     parts.push(html`<div style="padding:12px 16px"><a class="btn btn-secondary btn-block" style="min-height:48px" href="#/stop/${s.id}">What's next</a></div>`);
-    return { html: parts.join(''), title: s.name, mount, keepScroll: true };
+    parts.push(tail);
+    return { html: html`<div class="stop-page">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true };
   }
 
   const rest = next.slice(1);
@@ -194,18 +204,19 @@ export function render({ id, full, run, on }, clockNow) {
       if (lastDay === 0) rows.push(html`<div class="endservice"><span>End of service today</span></div>`.s);
       rows.push(dayHead(si, t.ymd, lastYmd)); lastDay = t.day; lastYmd = t.ymd;
     }
-    const row = depRow(t, clockNow, { dayShort: true, warn: t.day > 0 && closed.has(t.r) }).s;   // days off because of the detour
+    // days off because of the detour: warned; a later day's row under its day's heading, its day not said again
+    const row = depRow(t, clockNow, { dayShort: true, warn: t.day > 0 && closed.has(t.r), noRel: t.day > 0 && minsTo(t, clockNow) >= 180 && !closed.has(t.r) }).s;
     rows.push(t.trip !== undefined ? `<div class="runopen" data-trip="${t.trip}" data-on="${t.ymd}">${row}</div>` : row);
   }
-  if (first.day !== 0 && rows.length && !String(rows[0]).startsWith('<div class="dayhead"')) rows.unshift(dayHead(si, first.ymd, clockNow.ymd));
   parts.push(html`<div class="list">${html.raw(rows.join(''))}</div>`);
+  parts.push(tail);
   // The day an hour to a column, its times each a way into their run: in a sheet over the page, with an address of
   // its own (?run=trip&on=day), so Back closes it.
   const pick = run !== undefined && run !== '' ? { trip: +run } : { trip: null };
   parts.push(restOfDay(si, next, clockNow, pick));
   // The run is drawn on the map itself: beside the panel on a wide screen, above the sheet on a phone or a tablet.
   const sheet = pick.trip !== null ? runSheet(si, next, clockNow, pick.trip, on || clockNow.ymd) : null;
-  return { html: html`<div class="phone-stop" data-stop="${s.id}">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true, sheet, run: sheet ? sheetRun() : null };
+  return { html: html`<div class="phone-stop stop-page" data-stop="${s.id}">${html.raw(parts.join(''))}</div>`, title: s.name, mount, keepScroll: true, sheet, run: sheet ? sheetRun() : null };
 }
 
 /** A timed stop for some of its routes (a timepoint): which, and what it means for a rider waiting. */

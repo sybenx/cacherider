@@ -3,9 +3,6 @@
    edges on. The agency's route colours are the only colour, apart from the
    steel accent. */
 
-@font-face { font-family: 'Barlow'; font-weight: 400; font-display: swap; src: url("../fonts/barlow-400.woff2") format('woff2'); }
-@font-face { font-family: 'Barlow'; font-weight: 500; font-display: swap; src: url("../fonts/barlow-500.woff2") format('woff2'); }
-@font-face { font-family: 'Barlow'; font-weight: 700; font-display: swap; src: url("../fonts/barlow-700.woff2") format('woff2'); }
 @font-face { font-family: 'Barlow Condensed'; font-weight: 400; font-display: swap; src: url("../fonts/barlow-condensed-400.woff2") format('woff2'); }
 @font-face { font-family: 'Barlow Condensed'; font-weight: 600; font-display: swap; src: url("../fonts/barlow-condensed-600.woff2") format('woff2'); }
 
@@ -23,14 +20,24 @@
   --cr-line: color-mix(in srgb, #1d1f20 13%, transparent);
   --cr-hover: color-mix(in srgb, #1d1f20 5%, transparent);
   --cr-scrim: color-mix(in srgb, #2b2b2d 55%, transparent);
+  /* Type in two: Barlow Condensed where Cache Rider's character lives (the wordmark, titles, times and countdowns, route
+     badges, section heads), the phone's own face for what's read (destinations, status lines, buttons, notes, search,
+     settings), as the stop mockup has it. The body was "Barlow" (fonts/barlow-*.woff2, no longer loaded). */
+  --font-system: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-heading: "Barlow Condensed", system-ui, sans-serif;
-  --font-body: "Barlow", system-ui, sans-serif;
+  --font-body: var(--font-system);
+  /* The small capitals: tags and eyebrows ('Live · on time', 'Scheduled', 'Last full run') in plain sentence case at a
+     size that reads without capitals; section heads keep theirs, tracked tighter. Was uppercase, 1, 0.6562–0.75rem
+     (each rule's own), .1em. */
+  --tag-case: none; --tag-k: 0; --tag-size: 0.8125rem;
+  --sec-track: .1em; --sec-size: 0.875rem;   /* section heads, in the display face, capitals kept */
   --shadow-md: 0 3px 10px color-mix(in srgb, #2b2b2d 16%, transparent);
   --shadow-lg: 0 12px 32px color-mix(in srgb, #2b2b2d 22%, transparent);
   --radius-md: 4px;
   --tab-h: 58px;
   --warn-bg: #fdf0c2; --warn-ink: #4d3a00; --warn-edge: #e0a800;   /* a warning that must be seen: a stop skipped */
   --cr-late: #d4302b;   /* a bus running late */
+  --cr-card: #fff;   /* a raised surface on the paper: the stop page's side buttons */
   color-scheme: light;
 }
 /* Dark: data-theme is always written before first paint (index.html), the device's look when the rider hasn't
@@ -42,7 +49,7 @@
   --color-divider: rgba(238,240,242,.2); --cr-muted: #b3b6bb; --cr-line: rgba(238,240,242,.13);
   --cr-hover: rgba(238,240,242,.06); --cr-scrim: rgba(0,0,0,.6);
   --shadow-md: 0 3px 10px rgba(0,0,0,.5); --shadow-lg: 0 12px 32px rgba(0,0,0,.6);
-  --warn-bg: #3b3005; --warn-ink: #ffe28a; --warn-edge: #e0a800; --cr-late: #e5483f;
+  --warn-bg: #3b3005; --warn-ink: #ffe28a; --warn-edge: #e0a800; --cr-late: #e5483f; --cr-card: #1a1d20;
   color-scheme: dark;
 }
 
@@ -53,7 +60,7 @@ html { height: 100%; }
 @media (min-width: 600px) and (pointer: coarse) { html { font-size: 18px; } }
 body {
   margin: 0; height: 100%; background: var(--color-bg); color: var(--color-text);
-  font: 400 0.9375rem/1.55 var(--font-body); -webkit-font-smoothing: antialiased;
+  font: 400 0.9375rem/1.45 var(--font-body); -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
 }
 h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: 600; line-height: 1.12; letter-spacing: -0.015em; margin: 0; }
@@ -155,14 +162,14 @@ svg { display: block; flex: none; }
 .t-21 { font-size: 1.3125rem; } .t-21 small { font-size: 0.6875rem; }
 .t-20 { font-size: 1.25rem; } .t-20 small { font-size: 0.625rem; }
 .t-17 { font-size: 1.0625rem; } .t-17 small { font-size: 0.5625rem; }
-.eyebrow { font-size: 0.7188rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-700); }
-.section { display: flex; align-items: center; gap: 8px; padding: 16px 16px 8px; font-family: var(--font-heading); font-weight: 600; font-size: 0.875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); }
+.eyebrow { font-size: var(--tag-size); font-weight: 500; letter-spacing: calc(.12em * var(--tag-k)); text-transform: var(--tag-case); color: var(--color-accent-700); }
+.section { display: flex; align-items: center; gap: 8px; padding: 16px 16px 8px; font-family: var(--font-heading); font-weight: 600; font-size: var(--sec-size); letter-spacing: var(--sec-track); text-transform: uppercase; color: var(--cr-muted); }
 .section.between { justify-content: space-between; align-items: baseline; padding: 14px 16px 10px; }
 .section .note { font-family: var(--font-body); font-weight: 400; font-size: 0.8125rem; letter-spacing: 0; text-transform: none; }
 /* a place's heading as the start of a journey: the whole line taps, the note says what the tap does */
 a.section.pick { color: var(--color-text); text-decoration: none; min-height: 48px; align-items: center; }
 a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--color-accent); font-weight: 500; white-space: nowrap; }
-.sched { display: inline-flex; align-items: center; gap: 4px; font-size: 0.6562rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); white-space: nowrap; }
+.sched { display: inline-flex; align-items: center; gap: 4px; font-size: var(--tag-size); font-weight: 500; letter-spacing: calc(.12em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); white-space: nowrap; }
 .rel { font-size: 0.8438rem; color: var(--cr-muted); }
 .fine { padding: 14px 16px 18px; font-size: 0.7812rem; line-height: 1.45; color: var(--cr-muted); }
 .fine a { color: inherit; }
@@ -223,7 +230,7 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
   background: transparent; border: 1px solid transparent; padding: 0 14px; min-height: 44px; border-radius: var(--radius-md); white-space: nowrap;
 }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn-primary { background: var(--color-accent); color: var(--color-bg); font-family: var(--font-heading); font-weight: 600; font-size: 1.0625rem; }
+.btn-primary { background: var(--color-accent); color: var(--color-bg); font-family: var(--font-body); font-weight: 600; font-size: 1.0625rem; }
 .btn-primary:hover { background: var(--color-accent-600); }
 .btn-secondary { border-color: var(--color-divider); }
 .btn-secondary:hover { background: var(--cr-hover); }
@@ -282,7 +289,7 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 /* a route going past a stop on a detour, not one of its own: its badge ringed in dashes, as the map dots its way round */
 .detoured .badge { outline: 2px dashed var(--rc); outline-offset: 2px; }
 .badgelink.detoured { align-items: center; gap: 7px; margin-left: 4px; }
-.dtag { font-size: 0.6875rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cr-muted); }
+.dtag { font-size: var(--tag-size); font-weight: 600; letter-spacing: calc(.08em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); }
 .callout.past > .detoured { display: inline-flex; align-self: start; margin: 4px 4px 0; }
 .qbadge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--rc); color: var(--rt, #fff); font-family: var(--font-heading); font-weight: 700; font-size: 0.8125rem; line-height: 1; flex: none; }
 .detourcard { padding: 4px 16px 16px; font-size: 0.9375rem; display: flex; flex-direction: column; gap: 16px; }
@@ -372,17 +379,6 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .stoprow .go { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; font-weight: 500; line-height: 1.3; }
 .eyerow { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 22px; }
 .eyerow .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-/* the stop page's across-the-road row: the other side's stop and its next bus */
-.acrossrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--cr-line); color: inherit; text-decoration: none; }
-.acrossrow > svg { color: var(--color-accent-700); }
-.acrossrow .mid { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.acrossrow .mid .eyebrow { line-height: 1.35; }
-.acrossrow .mid .name { font-size: 1rem; font-weight: 500; line-height: 1.25; }
-.acrossrow .mid .sub { font-size: 0.8125rem; color: var(--cr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.acrossrow .end { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
-.acrossrow .end .when { display: flex; align-items: center; gap: 6px; }
-.acrossrow .end .rel { font-size: 0.7812rem; color: var(--cr-muted); white-space: nowrap; }
-@media (hover: hover) { .acrossrow:hover { background: var(--cr-hover); } }
 
 /* the pulse card on the home screen */
 .pulse { display: block; margin: 4px 16px; padding: 14px; color: inherit; text-decoration: none; cursor: pointer; }
@@ -417,7 +413,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .empty { padding: 24px 16px; display: flex; flex-direction: column; gap: 6px; }
 .empty h2 { font-size: 1.5rem; }
 .empty p { font-size: 0.9375rem; color: var(--cr-muted); margin: 0; }
-.dayhead { padding: 14px 16px 6px; font-family: var(--font-heading); font-weight: 600; font-size: 0.875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); border-top: 1px solid var(--cr-line); }
+.dayhead { padding: 14px 16px 6px; font-family: var(--font-heading); font-weight: 600; font-size: var(--sec-size); letter-spacing: var(--sec-track); text-transform: uppercase; color: var(--cr-muted); border-top: 1px solid var(--cr-line); }
 .dayhead .quiet, .dayhead .shape { font-family: var(--font-body); font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--color-text); }
 .next .quiet { font-weight: 600; color: var(--color-text); }
 .dayhead .dayalert { font-family: var(--font-body); font-weight: 500; letter-spacing: 0; text-transform: none; }   /* a system alert is about this day */
@@ -523,8 +519,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .was { text-decoration: line-through; color: var(--cr-muted); font-family: var(--font-heading); font-weight: 500; white-space: nowrap; margin-right: 6px; }
 .whent .was { margin-right: 0; }
 /* the night's end on a departure: 'Last full run', 'Last run (partial, to …)' */
-.lastrun { font-size: 0.6562rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; line-height: 1.35; color: var(--color-text); }
-.livetag { display: inline-flex; align-items: center; gap: 6px; font-size: 0.6562rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-700); white-space: nowrap; }
+.lastrun { font-size: var(--tag-size); font-weight: 600; letter-spacing: calc(.1em * var(--tag-k)); text-transform: var(--tag-case); line-height: 1.35; color: var(--color-text); }
+.livetag { display: inline-flex; align-items: center; gap: 6px; font-size: var(--tag-size); font-weight: 500; letter-spacing: calc(.12em * var(--tag-k)); text-transform: var(--tag-case); color: var(--color-accent-700); white-space: nowrap; }
 /* a plain dot: a halo pressed against it read as one blur, and a ring clear of it as a radio button picked */
 .livetag i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); flex: none; }
 /* Still: it pulsed, a box-shadow animation that repainted every frame for every tag on screen, twenty and more on a
@@ -872,7 +868,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .land-hint svg { flex: none; margin-top: 1px; color: var(--color-accent-700); }
 .land-hint b { color: var(--color-text); font-weight: 600; }
 /* beneath: the pulse as one line, then the rows */
-.land-eye { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; min-height: 28px; font-size: 0.7188rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--cr-muted); border-top: 1px solid var(--cr-line); }
+.land-eye { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; min-height: 28px; font-family: var(--font-heading); font-size: var(--sec-size); font-weight: 600; letter-spacing: var(--sec-track); text-transform: uppercase; color: var(--cr-muted); border-top: 1px solid var(--cr-line); }   /* a section head: the display face, its capitals kept */
 .routes { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; padding: 2px 16px 14px; }
 .routes a { height: 54px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--cr-line); cursor: pointer; text-decoration: none; }
 .routes a:hover { border-color: var(--color-accent); }
@@ -890,7 +886,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .land-row .end { display: flex; align-items: center; gap: 8px; }
 /* one ask for location */
 .ask { padding: 0 16px 18px; display: flex; flex-direction: column; gap: 12px; }
-.ask .btn-lg { min-height: 52px; font-family: var(--font-heading); font-weight: 600; font-size: 1.1875rem; letter-spacing: .01em; gap: 8px; }
+.ask .btn-lg { min-height: 52px; font-family: var(--font-body); font-weight: 600; font-size: 1.0625rem; gap: 8px; }
 .ask-note { font-size: 0.7812rem; line-height: 1.45; color: var(--cr-muted); text-align: center; text-wrap: pretty; }
 /* where the stops are sorted from: location, or a spot picked on the map (home.js whereFrom) */
 .land-near { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; font-size: 0.875rem; color: var(--cr-muted); }
@@ -934,7 +930,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .tc-conn.waits { color: var(--color-text); }
 .row.cancelled .name { color: var(--cr-muted); }
 .row.cancelled .end s { color: var(--cr-muted); }
-.cancelnote { color: var(--warn-ink); font-weight: 600; font-size: 0.75rem; letter-spacing: .06em; text-transform: uppercase; }
+.cancelnote { color: var(--warn-ink); font-weight: 600; font-size: var(--tag-size); letter-spacing: calc(.06em * var(--tag-k)); text-transform: var(--tag-case); }
 .cancelnotice b { color: var(--color-text); }
 .tc-loops { margin: 22px 16px 0; }
 .tc-loops .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 14px 8px; border-bottom: 1px solid var(--cr-line); }
@@ -989,7 +985,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .setrows { border-top: 1px solid var(--cr-line); }
 .setrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 10px 16px; border-bottom: 1px solid var(--cr-line); }
 .setrow .col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.setrow .t { font-size: 1rem; font-weight: 500; }
+.setrow .t { font-family: var(--font-body); font-size: 1rem; font-weight: 500; line-height: 1.3; letter-spacing: normal; white-space: normal; }   /* a setting's name, read: not the times' face its class shares */
 .setrow .s { font-size: 0.8125rem; color: var(--cr-muted); }
 .setrow > .btn, .setrow > .seg { flex: none; }
 .seg { display: inline-flex; border: 1px solid var(--color-divider); border-radius: var(--radius-md); overflow: hidden; }
@@ -1038,7 +1034,7 @@ html:has(#body.map-open), html:has(#body.map-open) body { overscroll-behavior: n
 .hours { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); border-left: 1px solid var(--cr-line); }
 .hr { display: flex; flex-direction: column; gap: 6px; padding: 8px 8px 12px; border-right: 1px solid var(--cr-line); border-bottom: 1px solid var(--cr-line); }
 .hr.now { background: var(--color-accent-100); }
-.hr-h { font-size: 0.7188rem; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); padding-bottom: 2px; }
+.hr-h { font-size: var(--tag-size); font-weight: 500; letter-spacing: calc(.1em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); padding-bottom: 2px; }
 .hr.now .hr-h { color: var(--color-accent-700); }
 .hr-dep { display: flex; align-items: center; gap: 6px; font-family: var(--font-heading); font-weight: 600; font-size: 1.0625rem; font-variant-numeric: tabular-nums; }
 .hr-dep .est { color: var(--color-accent-700); }
@@ -1083,7 +1079,7 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 .run-t small { font-size: 0.625rem; margin-left: 2px; }
 .run-t.est { color: var(--color-accent-700); }
 .run-n { font-size: 0.875rem; line-height: 1.3; }
-.run-n em { display: block; font-style: normal; font-size: 0.6562rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); }
+.run-n em { display: block; font-style: normal; font-size: var(--tag-size); font-weight: 600; letter-spacing: calc(.1em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); }
 .run-then { margin: 0; font-size: 0.875rem; color: var(--cr-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 /* the Transit Center's next hour: one row a departure, the estimate over the timetable's time */
@@ -1100,7 +1096,7 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 .tcb-t .was { font-size: 0.75rem; }
 .tcb-mid { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tcb-mid .dest { font-size: 0.9062rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tcb-mid .sub { font-size: 0.6562rem; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); }
+.tcb-mid .sub { font-size: var(--tag-size); font-weight: 500; letter-spacing: calc(.1em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); }
 .tcb-mid .sub.live { color: var(--color-accent-700); }
 .tcb-tag { display: flex; justify-content: flex-end; }
 .tcb-tag .tag { font-family: var(--font-heading); font-weight: 600; font-size: 0.6875rem; padding: 2px 5px; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--cr-line); }
@@ -1133,7 +1129,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .rs-name .sub { font-size: 0.8125rem; color: var(--cr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rs-ways { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .rs-ways .chip.on { border-color: var(--color-accent); color: var(--color-accent-700); }
-.rs-count { margin-left: auto; font: 600 0.8125rem var(--font-heading); letter-spacing: .08em; text-transform: uppercase; color: var(--cr-muted); }
+.rs-count { margin-left: auto; font: 600 var(--tag-size) var(--font-body); letter-spacing: calc(.08em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); }
 .routepage .routehead { padding: 4px 16px 12px; }
 /* on a phone the route's stops are the map's card (a board, map.js sheetPlace), its head held at the top while the list scrolls under it */
 /* a route's other half (16 PM from 16 AM) */
@@ -1188,7 +1184,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .re-ends { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 12px 16px 4px; }
 .re-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-right: 14px; color: inherit; text-decoration: none; }
 .re-col + .re-col { padding: 0 0 0 14px; border-left: 1px solid var(--cr-line); }
-.re-k { font: 600 0.75rem/1.2 var(--font-heading); letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); }
+.re-k { font: 600 var(--tag-size)/1.2 var(--font-body); letter-spacing: calc(.1em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); }
 .re-n { font: 600 2.5rem/.95 var(--font-heading); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .re-n small { font-size: .4em; margin-left: .12em; letter-spacing: 0; color: var(--cr-muted); }
 .re-n.est { color: var(--color-accent-700); }
@@ -1211,7 +1207,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .rs-all { padding: 12px 16px; }
 .rs-all .btn { min-height: 48px; }
 /* on a stop's list, between tonight's last bus and the next day's first */
-.endservice { display: flex; align-items: center; gap: 12px; padding: 18px 16px 4px; font: 600 0.9375rem var(--font-heading); letter-spacing: .14em; text-transform: uppercase; color: var(--color-text); }
+.endservice { display: flex; align-items: center; gap: 12px; padding: 18px 16px 4px; font: 600 0.9375rem var(--font-body); letter-spacing: calc(.14em * var(--tag-k)); text-transform: var(--tag-case); color: var(--color-text); }
 .endservice::before, .endservice::after { content: ''; flex: 1; border-top: 2px solid var(--color-text); }
 .endservice + .dayhead { border-top: 0; }
 /* the morning's first run, starting partway along: where it starts, and where the stops before it are served from */
@@ -1224,7 +1220,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .phone-day { padding: 0 16px 20px; }
 /* its head: the day on the left, the last bus on the right (they ran together, unstyled) */
 .phone-day .ws-eye { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 14px 0 8px; font-size: 0.8125rem; color: var(--cr-muted); }
-.phone-day .ws-eye > span:first-child { font-family: var(--font-heading); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.phone-day .ws-eye > span:first-child { font-family: var(--font-heading); font-weight: 600; letter-spacing: var(--sec-track); text-transform: uppercase; }
 .phone-day .hours { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
 .day-hint { margin: 10px 0 0; font-size: 0.7812rem; color: var(--cr-muted); }
 .phone-stop .runopen, .phone-stop .next[data-trip] { cursor: pointer; }
@@ -1279,7 +1275,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .pair { position: relative; display: flex; flex-direction: column; border: 1px solid var(--cr-line); padding: 6px 48px 6px 12px; }
 .pair .pr { display: flex; align-items: center; gap: 10px; min-height: 40px; }
 .pair .pr + .pr { border-top: 1px solid var(--cr-line); }
-.pair .pr-k { flex: none; width: 40px; font-family: var(--font-heading); font-weight: 600; font-size: 0.75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--cr-muted); }
+.pair .pr-k { flex: none; width: 40px; font-family: var(--font-body); font-weight: 600; font-size: var(--tag-size); letter-spacing: calc(.08em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); }
 .pair .pr-v { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 8px; font: inherit; font-weight: 500; font-size: 0.9688rem; color: inherit; background: none; border: 0; padding: 4px 0; text-align: left; }
 .pair .pr-v > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .pair .pr-v > svg { flex: none; color: var(--cr-muted); }
@@ -1308,7 +1304,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .sp-row b { font-weight: 600; font-size: 0.9688rem; }
 .sp-row .sub { font-size: 0.8125rem; color: var(--cr-muted); }
 .sp-row .sub .badge, .sp-row .sub .uchip { vertical-align: -3px; }
-.sp-sec { padding: 10px 0 2px; font-family: var(--font-heading); font-weight: 600; font-size: 0.75rem; letter-spacing: .1em; text-transform: uppercase; color: var(--cr-muted); }
+.sp-sec { padding: 10px 0 2px; font-family: var(--font-heading); font-weight: 600; font-size: 0.75rem; letter-spacing: var(--sec-track); text-transform: uppercase; color: var(--cr-muted); }
 .jsum { gap: 2px; }
 .jsum .eyebrow { color: var(--color-accent-700); }
 .jsum .js-t { display: flex; align-items: baseline; gap: 8px; }
@@ -1347,9 +1343,9 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .tl.now .tl-n i { box-shadow: 0 0 0 3px var(--color-accent-100); }
 .tl.change.now .tl-change { box-shadow: inset 0 0 0 2px var(--color-accent); }
 .later { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 6px 0 12px; border-top: 1px solid var(--cr-line); margin-top: 2px; }
-.later .k { font-family: var(--font-heading); font-weight: 600; font-size: 0.75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--cr-muted); }
+.later .k { font-family: var(--font-body); font-weight: 600; font-size: var(--tag-size); letter-spacing: calc(.08em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); }
 .later .ts { display: flex; gap: 6px; flex-wrap: wrap; }
-.later .chip { min-height: 32px; padding: 0 10px; font-family: var(--font-heading); font-weight: 600; font-size: 0.9375rem; }
+.later .chip { min-height: 32px; padding: 0 10px; font-family: var(--font-body); font-weight: 600; font-size: 0.875rem; }
 .otherways { padding: 10px 0 8px; }
 .journeysheet .jrows { margin: 0 -16px; }
 .jrow .jr-top { display: flex; align-items: center; gap: 10px; }
@@ -1500,3 +1496,58 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .pk-city p { margin: 0 0 8px; }
 .pk-city b { color: var(--color-text); font-weight: 600; }
 .pk-city a { color: var(--color-accent-700); }
+
+/* ── the stop page in the stop mockup's language (stop-look trial) ─────────────────────────────────────────────
+   Its name, then a plain line (the landmark, the stop's number), its routes, and the two sides of the road side by
+   side; then one list of departures, the next bus its first row with a larger time. */
+/* its hairlines lighter and its boxes rounded, as the mockup's: the page's own, so nothing else on screen changes */
+.stop-page { --cr-line: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.stop-page .callout, .stop-page .notice.cancelnotice { border-radius: 10px; }
+.stop-page .head { gap: 4px; padding-bottom: 12px; }
+.stop-page .head h1 { font-size: 2rem; line-height: 1.05; }
+.stop-page .head .where { font-size: 0.9375rem; color: var(--cr-muted); }
+.stop-page .head .where b { font-weight: 600; color: var(--color-text); }
+.stop-page .head .badges { margin-top: 2px; }
+.stop-page .head .badges .badge { min-width: 30px; height: 26px; padding: 0 5px; border-radius: 5px; font-size: 1.0625rem; }
+/* the two sides: this one picked (a filled dot, the accent's edge), the one across a tap to its page */
+.sides { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.side { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px 7px; border: 1.5px solid var(--cr-line); border-radius: 12px; background: var(--cr-card); color: var(--color-text); text-decoration: none; font-size: 0.8125rem; line-height: 1.3; min-width: 0; }
+.side b { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; font-weight: 700; white-space: nowrap; }
+.side .to { padding-left: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side b::before { content: ''; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--cr-muted); box-sizing: border-box; }
+.side .to { color: var(--cr-muted); }   /* under its word, past the dot */
+.side.on { border-color: var(--color-accent); background: var(--color-accent-100); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.side.on b::before { background: var(--color-accent-700); border-color: var(--color-accent-700); box-shadow: inset 0 0 0 2px var(--cr-card); }
+a.side:active { background: var(--cr-hover); }
+@media (hover: hover) { a.side:hover { border-color: var(--color-accent); } }
+/* the departures: badge at the top of its row, where it goes in a firmer weight, how sure under it, the time right */
+.stop-page .list { border-top: 0; }
+.stop-page .row { align-items: start; gap: 4px 12px; min-height: 0; padding: 11px 16px; }
+.stop-page .row .badge { min-width: 34px; height: 28px; padding: 0 6px; border-radius: 5px; font-size: 1.125rem; margin-top: 1px; }
+.stop-page .row .mid { gap: 3px; }
+.stop-page .row .mid .name { font-size: 0.9375rem; font-weight: 600; line-height: 1.3; }
+.stop-page .row .end { gap: 4px; }
+.stop-page .row .rel { font-size: 0.8125rem; }
+.stop-page .livetag, .stop-page .sched { gap: 5px; }
+.stop-page .livetag i { width: 7px; height: 7px; }
+.stop-page .lastrun { font-weight: 600; color: var(--color-text); }
+/* the next bus: the first row, its time larger, a hairline under it */
+.stop-page .next.row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 4px 12px; padding: 14px 16px 14px; border-top: 1px solid var(--cr-line); border-bottom: 1px solid var(--cr-line); }
+.stop-page .next.row .badge { min-width: 40px; height: 32px; font-size: 1.3125rem; }
+.stop-page .next.row .mid .name { font-size: 1.0625rem; }
+.stop-page .next.row .rel { font-size: 0.9375rem; text-align: right; }
+/* the way here and on, and what a timed stop means: after the day's times */
+.stoptail { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 20px; }
+/* the map's labels for the two sides (map.js sideLabels): beside each stop on its buses' right, halo text as the map's
+   own labels, an arrow the way its buses go; from the streets in only */
+.sidemark { width: 0; height: 0; pointer-events: none; }
+.sidelabel { position: absolute; display: flex; align-items: center; gap: 4px; white-space: nowrap; font: 700 0.8125rem/1.2 var(--font-body); color: var(--color-text);
+  text-shadow: 0 0 2px var(--color-bg), 0 0 2px var(--color-bg), 0 0 3px var(--color-bg), 0 0 4px var(--color-bg), 0 0 6px var(--color-bg); }
+.sidelabel.here { color: var(--color-accent-700); }
+.sidemark[data-at="up"] .sidelabel { left: 0; bottom: 11px; transform: translateX(-50%); }
+.sidemark[data-at="down"] .sidelabel { left: 0; top: 11px; transform: translateX(-50%); }
+.sidemark[data-at="right"] .sidelabel { left: 13px; top: 0; transform: translateY(-50%); }
+.sidemark[data-at="left"] .sidelabel { right: 13px; top: 0; transform: translateY(-50%); }
+/* the way on the ground, however the map is turned */
+.sidelabel .arr { display: inline-block; font-size: 1rem; line-height: 1; transform: rotate(calc(var(--way, 0deg) - var(--map-bearing, 0deg))); }
+#map.sides-far .sidemark { display: none; }
