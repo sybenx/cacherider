@@ -7,6 +7,7 @@ import { U } from '../usu.js';
 import { avoidSteep, setAvoidSteep } from '../geo.js';
 import { installState, installSheet, app, themeButton, cycleTheme, nearMe, nearOff, toggleClock, toggleUnits, render as redraw } from '../main.js';
 import { isWide } from '../wide.js';
+import { TEST } from './test.js';
 
 export function render({ section }, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
@@ -29,7 +30,7 @@ export function render({ section }, clockNow) {
     ${installState() === 'installed' ? '' : html`<div class="section">${icon('down', 16)}On your home screen</div>
     <div class="pad" id="install-about">${installBlock()}</div>`}
     ${installState() === 'installed' || !/Android/i.test(navigator.userAgent) ? '' : html`<div class="section">${icon('globe', 16)}Android app</div>
-    <div class="pad muted" style="font-size:0.875rem"><p>On an Android phone without Chrome, GrapheneOS say, there's an app: it opens Cache Rider full screen in your own browser, nothing more. <a href="https://github.com/sybenx/cacherider/releases/latest" target="_blank" rel="noopener">Download the APK</a> from the releases, or add <b>sybenx/cacherider</b> to Obtainium to keep it updated.</p>
+    <div class="pad muted" style="font-size:0.875rem">${TEST.group ? html`<p><a href="#/test">Test the Android app on Google Play</a>: Play lets a new app in after twelve people have tested it for two weeks.</p>` : ''}<p>On an Android phone without Chrome, GrapheneOS say, there's an app: it opens Cache Rider full screen in your own browser, nothing more. <a href="https://github.com/sybenx/cacherider/releases/latest" target="_blank" rel="noopener">Download the APK</a> from the releases, or add <b>sybenx/cacherider</b> to Obtainium to keep it updated.</p>
       <p>For the compass on GrapheneOS: the app runs inside Vanadium, which keeps motion sensors from every site until you allow them. In Vanadium, open Settings → Site settings → Motion sensors and allow cacherider.com, or tap the lock in the address bar on the site and allow them there.</p></div>`}
     <div class="section">${icon('map', 16)}Offline map</div>
     <div class="pad" id="offline"><p class="muted" style="font-size:0.875rem" id="offline-note">Keeps the whole Cache Valley street map on this device, so it draws with no signal. Streets you've already looked at are kept anyway.</p>

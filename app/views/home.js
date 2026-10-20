@@ -9,6 +9,7 @@ import { stopsAway } from '../rt.js';
 import { lightInks } from '../ink.js';
 import { pumpkinRoute } from './pumpkin.js';
 import { nearMe, nearOff, installCard, wireInstall } from '../main.js';
+import { testLine, shutTestInvite } from './test.js';
 import { pointerMark, wirePointers } from '../pointer.js';
 import { U, stopRowU, chip, live, shuttleWords, offHours, isStale, board, hasData, lastSeen, liveTag, hoursWords } from '../usu.js';
 import { results, pickOf, forPick, placeRows } from './find.js';
@@ -52,6 +53,7 @@ function landing(clockNow, app) {
   const parts = [html`<div class="land-top m-only"><span class="wordmark">Cache Rider</span><span class="land-right"><span class="land-date">${dow} <span class="muted">${mon} ${date}</span></span>
     <button class="btn btn-ghost btn-icon" id="near" type="button" aria-label="${geo ? 'Location on · turn off' : 'Sort stops by distance'}" aria-pressed="${geo ? 'true' : 'false'}" title="${geo ? 'Location on' : 'Near me'}">${icon('near', 22)}</button>
 </span></div>`];   // the page's own box is the way in to search, always there: one search, not two
+  parts.push(testLine());   // on an Android phone's browser, the ask to test the Play app (views/test.js): until Play lets it in
   for (const a of systemAlerts(clockNow.ymd)) parts.push(html`<div class="callout alert land-alert">${icon('info', 20)}<div><b>${a.title}</b><div class="sub">${a.text}</div></div></div>`);
   const yoursAt = parts.length;   // a detour at one of the rider's own stops goes here, at the top, once they're known (below)
   const yours = [];   // [stop index, why it's theirs]
@@ -407,6 +409,8 @@ function mount(el, app) {
     if (input.value || focusNext) { focusNext = false; input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
   }
   for (const near of el.querySelectorAll('#near, #near-ask')) near.onclick = () => app.geo ? nearOff() : nearMe();
+  const testShut = el.querySelector('[data-act=test-shut]');
+  if (testShut) testShut.onclick = () => { shutTestInvite(); testShut.closest('.testline').remove(); };
   const live = el.querySelector('#near-live');   // a spot picked: the phone's own fix asked for, in its place
   if (live) live.onclick = () => nearMe(null, !!(app.geo && app.geo.picked));
   wireInstall(el);

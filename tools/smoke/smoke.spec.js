@@ -7,6 +7,9 @@ const { test: base, expect } = require('@playwright/test');
 // Errors a page raised, and console errors that aren't a network miss (the relay or a tile now and then).
 const test = base.extend({
   page: async ({ page }, use) => {
+    // The ask to test the Android app atop home (an Android phone's browser, as the phone project's is) put away, so the
+    // other tests' pages are as they were; its own test brings it back.
+    await page.addInitScript(() => { try { localStorage.setItem('cr-test-shut', '1'); } catch { /* storage refused */ } });
     const errs = [];
     page.on('pageerror', e => errs.push('pageerror: ' + e.message));
     page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|net::ERR_|status of [45]\d\d/.test(m.text())) errs.push('console: ' + m.text()); });
@@ -2657,6 +2660,27 @@ test('a holiday: no buses on Thanksgiving, said by its name; the evening before,
   await expect(page.getByText('No buses today')).toHaveCount(0);
   await go(page, '#/hub');
   await expect(page.getByText(/The rest of today/i).filter({ visible: true }).first()).toBeVisible();
+});
+
+test('the ask to test the Android app: in an Android phone\'s browser, a line atop home to its three steps, put away for good; elsewhere never', async ({ page }, info) => {
+  // Not put away yet on this phone (the other tests' pages have it put away).
+  await page.addInitScript(() => { try { if (!sessionStorage.getItem('cr-shut-once')) { sessionStorage.setItem('cr-shut-once', '1'); localStorage.removeItem('cr-test-shut'); } } catch { /* storage refused */ } });
+  await open(page);
+  const line = page.locator('.testline');
+  if (!phone(info)) { await expect(line).toHaveCount(0); return; }   // the desktop project's browser isn't Android
+  await expect(line).toBeVisible();
+  await line.locator('a').click();
+  await expect(page).toHaveURL(/#\/test$/);
+  await expect(page.getByRole('link', { name: 'Join the group' })).toHaveAttribute('href', 'https://groups.google.com/g/cacherider-testers');
+  await expect(page.getByRole('link', { name: 'Become a tester' })).toHaveAttribute('href', 'https://play.google.com/apps/testing/com.cacherider.android');
+  await expect(page.getByRole('link', { name: 'Open on Google Play' })).toHaveAttribute('href', /id=com\.cacherider\.android/);
+  await go(page, '#/');
+  await page.locator('.testline [data-act=test-shut]').click();
+  await expect(line).toHaveCount(0);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await expect(page.locator('.land')).toBeVisible();
+  await expect(line).toHaveCount(0);
 });
 
 test('settings and about: the clock and units turned and back', async ({ page }) => {

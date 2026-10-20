@@ -276,6 +276,18 @@ a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; fl
 .pad { padding: 0 16px; }
 .notice { display: flex; align-items: center; gap: 8px; padding: 8px 16px 10px; font-size: 0.8438rem; color: var(--cr-muted); }
 .notice b { color: var(--color-text); font-weight: 600; }
+/* The ask to test the Android app (views/test.js): a line atop the home page, put away by its own button. */
+.testline { padding-right: 4px; }
+.testline a { flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.testline .btn-icon { flex: none; }
+.testpage { display: grid; gap: 14px; font-size: 1rem; line-height: 1.5; }
+.testpage p { margin: 0; }
+.tsteps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.tstep { display: flex; gap: 12px; align-items: flex-start; }
+.tstep .tn { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--color-text); color: var(--color-bg, #fff); font-weight: 700; font-size: 0.875rem; }
+.tstep .col { display: grid; gap: 4px; min-width: 0; justify-items: start; }
+.tstep .t { font-weight: 600; }
+.tstep .s { color: var(--cr-muted); font-size: 0.875rem; }
 .callout { margin: 0 16px 12px; padding: 12px 14px; display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; background: var(--color-accent-100); color: var(--color-accent-900); }
 .callout b { font-weight: 600; }
 .callout .sub { font-size: 0.8438rem; opacity: .85; margin-top: 2px; }
