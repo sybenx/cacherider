@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf } from './data.js';
+import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
@@ -230,7 +230,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const shut = opts.bare ? null : closedThrough(si, clockNow.ymd);
   const end = opts.bare ? '' : shut !== null ? closedEnd(shut, clockNow) : opts.later ? `<div class="end" data-later="${si}"></div>` : stopEnd(next, clockNow, opts);
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
-  const num = s.hub ? '' : 'Stop ' + (s.code || s.id);
+  const num = s.hub ? '' : 'Stop ' + (stopNo(s) || s.id);
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : skipsAt(s.id).length ? `<span class="qnote">${esc(skipsAt(s.id).map(u => u.who).join(', '))} skipped last ${Math.max(...skipsAt(s.id).map(u => u.n))}<span class="qmark">?</span></span>` : '';
   const way = opts.point ? pointerMark(s.lat, s.lon, opts.point) + (num ? ' · ' : '') : '';
   // `steep`: the walk to it (or, for a place's stops, either way) has a steep climb: said in a word, bold

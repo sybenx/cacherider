@@ -4,7 +4,7 @@
 // and their hours, so next October's, or a night added or dropped, needs nothing here. The art is drawn in
 // pumpkin-art.js, no image to fetch. Its look is Claude Design's, the walk at night (the project's
 // templates/pumpkin-walk-explore).
-import { D, nextAt, timesOn, distance, tripEnd, cutAfter } from '../data.js';
+import { D, stopNo, nextAt, timesOn, distance, tripEnd, cutAfter } from '../data.js';
 import { now, dayFrom, dayName, fmtDay, clock, clockText, clockShort, minsTo } from '../time.js';
 import { html, icon, liveMark, liveWord, sched, lively } from '../ui.js';
 import { rt, rtStale } from '../rt.js';
@@ -169,7 +169,7 @@ export function render(_, clockNow) {
   const ring = here => here.length
     ? html`<i class="pk-ring on ${here[0].kind}">${here.length > 1 ? html`<b>${here.length}</b>` : ''}</i>` : html`<i class="pk-ring"></i>`;
   const stopAt = (si, top, here = []) => { const n = nx[si], s = D.stops[si]; return html`<div class="pk-lstop ${top ? 'top' : 'foot'}">${ring(here)}
-      <div class="pk-lrow"><div class="pk-lname"><span class="pk-lk${si === home && g ? ' near' : ''}">${si === home && g ? 'Nearest you · ' : top ? '' : "The walk's far end · "}Stop ${s.code || s.id}</span>
+      <div class="pk-lrow"><div class="pk-lname"><span class="pk-lk${si === home && g ? ' near' : ''}">${si === home && g ? 'Nearest you · ' : top ? '' : "The walk's far end · "}Stop ${stopNo(s) || s.id}</span>
         <a class="pk-lplace" href="#/stop/${s.id}">${placeOf(si)}</a><span class="pk-lsub">${n ? n.sub : 'No more this season'}</span></div>
         <span class="pk-ln${n && n.live ? ' est' : ''}">${n ? n.big : ''}</span></div>
       <div class="pk-lthen">${n && n.then.length ? html`<span class="w">then</span>${n.then.map(x => html`<span>${x}</span>`)}` : ''}${mark(n)}</div></div>`; };

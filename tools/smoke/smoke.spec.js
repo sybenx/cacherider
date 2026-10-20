@@ -482,6 +482,17 @@ test('search: a route, every route, a street, a place, an address', async ({ pag
   await expect(page.getByText(/Show on map/).filter({ visible: true }).first()).toBeVisible();
 });
 
+test('a stop by its number, as Connect writes it (0115) or as its feed has it (115): found either way, said with its zero', async ({ page }) => {
+  await open(page);
+  for (const q of ['0115', '115', 'stop 0115']) {
+    await go(page, '#/search?q=' + encodeURIComponent(q));
+    await expect(page.locator('a[href="#/stop/7569115"]').filter({ visible: true }).first(), q).toBeVisible();
+  }
+  await go(page, '#/stop/7569115');   // 1011 East 700 North, Richard's Hall
+  await expect(page.getByText(/Stop 0115/).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText(/Stop 115\b/)).toHaveCount(0);
+});
+
 test('search: a bus by its number, its card on the map, Back; an address with the number in it still the address', async ({ page }, info) => {
   // '1168 N Main' is an address, whatever bus 1168 is doing: its heading first, no bus.
   await open(page, '#/search?q=' + encodeURIComponent('1168 N Main'));

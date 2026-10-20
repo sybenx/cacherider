@@ -1099,13 +1099,18 @@ export function nearest(lat, lon, n = 8) {
   return D.stops.map((s, i) => ({ i, d: distance(lat, lon, s.lat, s.lon) })).sort((a, b) => a.d - b.d).slice(0, n);
 }
 
+/** A stop's number as the agency writes it: Connect's four figures, 0516 where its feed has 516 (the agency's width,
+ *  hints' stop_code_digits). '' for a stop without one. */
+export const stopNo = s => !s.code ? '' : /^\d+$/.test(s.code) ? s.code.padStart(D.agency.codeDigits || 0, '0') : s.code;
+
 // ---- search: street, number and town, in any order
 const norm = s => s.toLowerCase().replace(/[.,]/g, ' ').replace(/\b(street|st)\b/g, 'st').replace(/\b(drive|dr)\b/g, 'dr').replace(/\b(north)\b/g, 'north').replace(/\bn\b/g, 'north').replace(/\bs\b/g, 'south').replace(/\be\b/g, 'east').replace(/\bw\b/g, 'west').replace(/\bhwy\b/g, 'highway').replace(/\s+/g, ' ').trim();
 let index = null;
 export function search(q, limit = 40) {
-  // The Transit Center's bays go by its name too: their stops are named for its street address.
-  index = index || D.stops.map((s, i) => ({ i, text: norm(s.name + ' ' + s.town + ' ' + s.code + ' ' + s.id + ' ' + (s.by || '') + (s.hub ? ' ' + D.hub.name + ' ' + (D.hub.short || '') : '')) }));
-  const words = norm(q).split(' ').filter(Boolean);
+  // The Transit Center's bays go by its name too: their stops are named for its street address. A stop's number as
+  // the agency writes it (0516) has the feed's (516) in it, so either finds it.
+  index = index || D.stops.map((s, i) => ({ i, text: norm(s.name + ' ' + s.town + ' ' + stopNo(s) + ' ' + s.id + ' ' + (s.by || '') + (s.hub ? ' ' + D.hub.name + ' ' + (D.hub.short || '') : '')) }));
+  const words = norm(q).replace(/^(?:stop|#)\s*(?=\d+$)/, '').split(' ').filter(Boolean);   // 'stop 516' is its number
   if (!words.length) return [];
   // The Transit Center's bays share one address: the first stands for them all (the screens show it as the Transit Center).
   let hubSeen = false;

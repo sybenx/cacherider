@@ -1,6 +1,6 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, routeAlerts, timesOn, familyNow, dayAlert, quietWords, offDayWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
+import { D, stopNo, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, routeAlerts, timesOn, familyNow, dayAlert, quietWords, offDayWords, dayShape, alertsUntil, poolAt, POOL, A, distance, skipsAt, passesAt, lastBuses } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom, isGone, minsTo } from '../time.js';
 import { routeNames, routeName, html, icon, badge, time, sched, corners, depRow, cancelledRow, routeLinks, routeLinkItems, headsign, side, liveMark, liveWord, lively, when, wasLine, loopArrival, minsOut, lastTag, acrossRow, replaceTo, oneEach } from '../ui.js';
 import { cancelledAt } from '../rt.js';
@@ -22,10 +22,10 @@ export function render({ id, full, run, on }, clockNow) {
   // Back to the page before when it's the app's own (each entry knows it, main.js), else home: opened from a search or
   // a link in a chat, the tab's history went on past the app, and Back left it.
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a>
-    ${shareButton({ url: siteLink('stop/' + s.id), title: s.name, lines: [`Stop ${s.code || s.id}${s.town && s.town !== 'Logan' ? ' · ' + s.town : ''}`, 'Its next buses, live when they report'] })}
+    ${shareButton({ url: siteLink('stop/' + s.id), title: s.name, lines: [`Stop ${stopNo(s) || s.id}${s.town && s.town !== 'Logan' ? ' · ' + s.town : ''}`, 'Its next buses, live when they report'] })}
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
   const sd = side(si);
-  const eyebrow = `${s.town} · Stop ${s.code || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces
+  const eyebrow = `${s.town} · Stop ${stopNo(s) || s.id}${sd ? ` · ${sd} side` : ''}${s.by ? ` · ${s.by}` : ''}`;   // the number stays: it's what a rider quotes on the phone; the landmark is what the bus announces
   const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
   // Routes that don't call here going past on a detour: theirs too while it lasts, each badge marked as on a detour and
   // a way to where its buses go.
@@ -62,7 +62,7 @@ export function render({ id, full, run, on }, clockNow) {
     const alt = list.flatMap(u => u.on.filter(id => id !== s.id && !u.ri.every(ri => closedRoutes(stopIndex(id), clockNow.ymd).has(ri))).map(id => ({ u, t: D.stops[stopIndex(id)] })))
       .map(x => ({ ...x, d: distance(s.lat, s.lon, x.t.lat, x.t.lon) })).filter(x => x.d <= (x.u.gone.includes(s.id) ? Infinity : 500)).sort((x, y) => x.d - y.d)[0];
     const twin = s.twin && D.stops[s.twin[0]] === alt?.t;
-    return alt ? html`<div class="sub">${alt.u.who} buses stop at <a href="#/stop/${alt.t.id}">${alt.t.name}</a> (stop ${alt.t.code}) on their way round, ${twin ? 'across the road' : `a ${walkMins(s.lat, s.lon, alt.t.lat, alt.t.lon)} min walk from here`}.</div>` : '';
+    return alt ? html`<div class="sub">${alt.u.who} buses stop at <a href="#/stop/${alt.t.id}">${alt.t.name}</a> (stop ${stopNo(alt.t)}) on their way round, ${twin ? 'across the road' : `a ${walkMins(s.lat, s.lon, alt.t.lat, alt.t.lon)} min walk from here`}.</div>` : '';
   };
   // A way the bus calls here only when asked (16 northbound at Pepperidge Farms): said once, with the number to ask.
   const req = nextAt(si, 60, clockNow).find(t => t.req);

@@ -373,7 +373,7 @@ feed = (table('feed_info.txt', required=False) or [{}])[0]
 out = {
     'agency': {'name': agency['agency_name'], 'brand': H.get('brand', agency['agency_name']), 'url': H.get('agency_url', agency.get('agency_url', '')),
                'tz': agency.get('agency_timezone', 'America/Denver'), 'phone': agency.get('agency_phone', ''),
-               'fares': H.get('agency_fares', agency.get('agency_fare_url', ''))},
+               'fares': H.get('agency_fares', agency.get('agency_fare_url', '')), 'codeDigits': int(H.get('stop_code_digits', 0))},
     'feed': {'version': feed.get('feed_version', ''), 'start': feed.get('feed_start_date', ''), 'end': feed.get('feed_end_date', ''),
              'built': datetime.date.today().isoformat()},
     'routes': routes, 'services': services, 'exceptions': exceptions, 'holidays': agency_holidays, 'headsigns': headsigns,

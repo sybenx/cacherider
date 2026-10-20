@@ -2,7 +2,7 @@
 // leaves your stop. A saved stop takes the hero; without one, the nearest
 // stop; without location, the Transit Center pulse, with both systems and one
 // ask for location beneath it. Search lives on its own page.
-import { D, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes, maySkip, tripStops, routeOrder, liftHex } from '../data.js';
+import { D, stopNo, nextAt, nextPulse, pulseGroup, nextServiceDay, timesOn, newTimetable, recent, saved, setSaved, search, nearest, stop, distance, systemAlerts, quietWords, stopAlerts, closedRoutes, maySkip, tripStops, routeOrder, liftHex } from '../data.js';
 import { relative, fmtDay, metres, clock, clockText, dayName, now, minsTo, isDue } from '../time.js';
 import { routeName, routeNames, html, icon, badge, badges, time, sched, corners, stopRow, side, esc, headsign, liveMark, liveWord, when, wasLine, loopArrival, minsOut, lastTag, fillLater, moved, detourNotice, lively, schedOf, heardName, routeList, routeHref } from '../ui.js';
 import { busOn, busDelay, AT_STOP } from '../rt.js';
@@ -215,7 +215,7 @@ function stopHeroBlock(si, why, clockNow) {
   const g = window.__app && window.__app.geo;
   const mine = saved().includes(s.id);   // a saved stop keeps its star, nearest or not
   const way = g ? html`${html.raw(pointerMark(s.lat, s.lon, g, true))} · ` : '';
-  const eye = html`<div class="eye"><span class="eyebrow${mine ? ' savedmark' : ''}">${mine ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · ${way}Stop ${s.code || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched(next[0])}</div>`;
+  const eye = html`<div class="eye"><span class="eyebrow${mine ? ' savedmark' : ''}">${mine ? icon('star', 12, 1.5, 'currentColor') : ''}${why} · ${way}Stop ${stopNo(s) || s.id}</span>${next[0] && next[0].live ? liveMark(liveWord(next[0])) : sched(next[0])}</div>`;
   if (!next.length) {
     const resume = nextServiceDay(clockNow);
     return html`<div class="hero">${eye}<a class="hero-main" href="#/stop/${s.id}"><span class="stopname">${s.name}</span><div class="hero-none">Nothing scheduled${resume && resume !== clockNow.ymd ? html`<span class="sub">Buses resume ${fmtDay(resume, true)}</span>` : ''}</div></a></div>`;

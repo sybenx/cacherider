@@ -2,7 +2,7 @@
 // its route's it is, B2), the same wherever it's asked
 // (the Stops tab's page, the Map tab's box, the header's box on a wide screen). Only where a result leads differs:
 // on the map it shows there (forMap), and while one end of a journey is being chosen it's that end (forPick).
-import { D, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets, opOf, roadOf, familyKey, familyOf, family, isHalf, corridorKey, dayPart, nextRunOf, routeBuses, routeRunsOn } from '../data.js';
+import { D, stopNo as stopNoOf, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets, opOf, roadOf, familyKey, familyOf, family, isHalf, corridorKey, dayPart, nextRunOf, routeBuses, routeRunsOn } from '../data.js';
 import { metres, clockText, now, dayName } from '../time.js';
 import { routeName, html, icon, badge, badges, stopRow, esc, headsign, routeList, routeHref, isLoop, named, nthWords } from '../ui.js';
 import { parseAddress, geocode, townState, spotKey, spotOf, atPath, byWalk, steepWalk } from '../geo.js';
@@ -122,7 +122,7 @@ function busRows(q) {
   const num = b => b.u ? String(b.name ?? '').replace(/\D/g, '') : String(b.label);
   const all = [...cs, ...us.map(b => ({ ...b, u: true }))];
   let hits = all.filter(b => num(b) === n);
-  const exact = hits.length > 0, stopNo = D.stops.some(s => String(s.code) === n), first = exact && (!!m[1] || !stopNo);
+  const exact = hits.length > 0, stopNo = D.stops.some(s => s.code && (s.code === n || stopNoOf(s) === n)), first = exact && (!!m[1] || !stopNo);   // 516 or 0516
   if (!exact && n.length === 3) { const part = all.filter(b => num(b).startsWith(n)); if (part.length <= 3) hits = part; }
   if (!hits.length) {
     const fleet = all.some(b => num(b).length === 4 && num(b).slice(0, 2) === n.slice(0, 2)) && !stopNo;
