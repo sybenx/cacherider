@@ -16,7 +16,7 @@ import { placeNamed } from '../places.js';
 import { hubHero, mount as hubMount } from './hub.js';
 import { byWalk, spotOf, spotKey, walkMins, steepWalk } from '../geo.js';
 import { isWide } from '../wide.js';
-import { tripCard } from './go.js';
+import { tripCards } from './go.js';
 
 export function render({ q, page, pick, from }, clockNow) {
   const app = window.__app;
@@ -69,10 +69,10 @@ function landing(clockNow, app) {
   // one is saved (a saved stop is on this page wherever the rider is: the big one away from the rest, else under it).
   const saveHint = html`<p class="land-hint">${icon('star', 15)}<span>Tap <b>Save</b> on a stop's page to keep it here, wherever you are.</span></p>`;
   if (!sv.length && stopHero && !atHub) parts.push(saveHint);
-  // A trip saved on the directions page: its way now from the end the rider is at, under the big one (go.js).
+  // Trips saved on the directions page: their ways now, each from the end the rider is at, under the big one (go.js).
   // Nothing at all without one.
-  const trip = tripCard(clockNow, geo);
-  if (trip) parts.push(trip.html);
+  const trips = tripCards(clockNow, geo);
+  if (trips) parts.push(trips.html);
 
   const heroId = heroU !== undefined ? 'u:' + U.stops[heroU].id : heroSi !== undefined ? stop(heroSi).id : null;
   if (!atHub && heroU === undefined && heroSi !== undefined) yours.push([heroSi, heroWhy === 'Saved' ? 'saved' : 'near']);
@@ -103,7 +103,7 @@ function landing(clockNow, app) {
     ${first ? html`<button class="btn btn-primary btn-lg blueprint" id="near-ask" type="button">${corners()}${icon('near', 20)}Show the stops near me</button>
       <a class="btn btn-secondary btn-lg" href="#/map/me">${icon('pin', 20)}Pick a spot on the map</a>
       <span class="ask-note">Location stays on this device, used only to sort stops.</span>` : whereFrom(geo)}</div>`);
-  parts.push(homeLine(geo, trip), hubLine(clockNow), shuttleLine(clockNow), isWide() ? '' : routesLine());   // wide, the chips below are the routes
+  parts.push(homeLine(geo, trips), hubLine(clockNow), shuttleLine(clockNow), isWide() ? '' : routesLine());   // wide, the chips below are the routes
   // And what the app does, shown rather than said: the stops with the most buses today (by the timetable's departures,
   // not by riders: there's no count of those, so not 'popular' or 'busiest'), with their next buses.
   // A newcomer may find their own there; either way the page isn't half empty on a first visit.
@@ -335,10 +335,10 @@ function whereFrom(geo) {
   return geo ? html`<div class="land-near">${icon('pin', 16)}<span>Near the spot you picked</span><span aria-hidden="true">·</span><a href="#/map/me">Change</a><span aria-hidden="true">·</span><button type="button" class="land-link" id="near-live">Use my location</button></div>`
     : html`<div class="land-near"><button type="button" class="land-link" id="near-live">${icon('near', 16)}Use my location</button><span aria-hidden="true">·</span><a href="#/map/me">${icon('pin', 16)}Pick a spot on the map</a></div>`;
 }
-function homeLine(geo, trip) {
+function homeLine(geo, trips) {
   const h = placeNamed('Home');
   if (!h || (geo && distance(geo.lat, geo.lon, h.lat, h.lon) < 300)) return '';
-  if (trip && distance(trip.to.lat, trip.to.lon, h.lat, h.lon) <= 150) return '';   // the saved trip's card shows the way home already
+  if (trips && trips.to.some(p => distance(p.lat, p.lon, h.lat, h.lon) <= 150)) return '';   // a saved trip from where you are shows the way home already
   return html`<a class="land-hub land-home" href="#/go/${spotKey(h.lat, h.lon, 'Home')}">${icon('house', 18)}<span class="col"><span>Take me home</span>${h.label ? html`<span class="sub">${h.label}</span>` : ''}</span>${icon('fwd', 18)}</a>`;
 }
 /** The Transit Center as a line: when the next group leaves and how soon, its tab a tap away. It was a framed card

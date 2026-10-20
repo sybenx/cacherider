@@ -859,6 +859,14 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .trip .tw-none { font-family: var(--font-heading); font-weight: 600; font-size: 1.375rem; line-height: 1.15; }
 .trip .tw-last b { color: var(--color-text); font-weight: 600; }
 .trip .tripback { margin-top: 0; }
+/* the trips after the first, a row each in the stop rows' shape: where to, its buses and last chance; when to leave */
+.trip .triprows { border-top: 0; }
+.triprow .tr-legs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.triprow .tr-legs .sep { color: var(--cr-line-strong, var(--cr-muted)); }
+.triprow .tr-last { font-size: 0.7812rem; color: var(--cr-muted); }
+.triprow .tr-legs .badge + .tr-last, .triprow .tr-legs .chip + .tr-last { margin-left: 6px; }
+.triprow .tr-last b { color: var(--color-text); font-weight: 600; }
+.triprow .end .rel { white-space: nowrap; }
 /* nothing saved yet: what Save does, a line under the big stop (home.js) */
 .land-hint { display: flex; align-items: flex-start; gap: 8px; margin: 14px 28px 6px 16px; font-size: 0.8125rem; line-height: 1.4; color: var(--cr-muted); text-wrap: pretty; }
 .land-hint svg { flex: none; margin-top: 1px; color: var(--color-accent-700); }
