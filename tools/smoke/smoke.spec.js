@@ -1447,6 +1447,64 @@ test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts
   }
 });
 
+test('a season\'s route goes with its season: the Pumpkin Walk off the map, the routes and search after its last night', async ({ page }) => {
+  // Its nights staged as one, a week from now, whatever the feed's are: that evening it's on the routes list, in search,
+  // on the map and has its tab; the next noon none of them, its two stops gone from the map and search too. And a
+  // timetable run out (every one of Connect's calendars ended that night, the next not in) isn't every route's season
+  // over: the next noon the routes are all still there.
+  const day = new Date(Date.now() + 7 * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Denver' }).replace(/-/g, '');
+  let runOut = false, staged = false;
+  await page.route(/\/data\/cvtd\.json/, async r => {
+    const j = await (await r.fetch()).json(), ri = j.routes.findIndex(x => /^pumpkin/i.test(x.short));
+    const n = {};   // its rows by calendar: the fullest one's are its night
+    for (const per of Object.values(j.times)) for (const [sid, rows] of Object.entries(per)) n[sid] = (n[sid] || 0) + rows.filter(t => t[1] === ri).length;
+    const from = Object.keys(n).sort((x, y) => n[y] - n[x])[0];
+    staged = ri >= 0 && n[from] > 0;
+    if (staged) {
+      j.services.push({ id: 'SEASON', days: [1, 1, 1, 1, 1, 1, 1], start: day, end: day, desc: 'Season' });
+      for (const per of Object.values(j.times)) {
+        const night = (per[from] || []).filter(t => t[1] === ri);
+        for (const sid in per) per[sid] = per[sid].filter(t => t[1] !== ri);
+        if (night.length) per.SEASON = night;
+      }
+    }
+    const ops = new Set(j.routes.filter(x => x.op).map(x => x.op.service));
+    if (runOut) for (const sv of j.services) if (!ops.has(sv.id) && sv.end > day) sv.end = day;
+    await r.fulfill({ json: j });
+  });
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
+  await open(page);
+  test.skip(!staged, 'no Pumpkin Walk in the timetable');
+  const s = await page.evaluate(async day => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), ri = d.D.routes.findIndex(r => /^pumpkin/i.test(r.short));
+    const ms = (ymd, h) => new Date(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6), h).getTime();   // the agency's clock (the browser's zone)
+    return { ri, href: '#/map/route/' + encodeURIComponent(d.D.routes[ri].short), stops: [...new Set(Object.values(d.D.routes[ri].stops).flat())].map(si => d.D.stops[si].id),
+      evening: ms(day, 19), after: ms(t.dayFrom(day, 1).ymd, 12) };
+  }, day);
+  const hook = () => page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
+  /** On the map: its lines, its stops drawn, and Route 1's lines. */
+  const drawn = () => page.evaluate(s => import('/app/data.js').then(d => { const m = window.__map, l = m && m.getSource('lines'), st = m && m.getSource('stops');
+    if (!l || !st || !l.serialize().data.features.length) return null;
+    const fs = l.serialize().data.features;
+    return [fs.some(f => f.properties.route === s.ri), st.serialize().data.features.filter(f => s.stops.includes(f.properties.id)).length, fs.some(f => f.properties.route === d.D.routeByShort['1'])]; }), s);
+  const found = () => page.evaluate(async () => (await import('/app/data.js')).search('pumpkin walk').length);
+  const tab = page.locator('#tabs a[href="#/pumpkin"], #topnav a[href="#/pumpkin"]').filter({ visible: true });
+  for (const [when, on, out] of [[s.evening, true, false], [s.after, false, false], [s.after, true, true]]) {
+    runOut = out;
+    await page.clock.setFixedTime(new Date(when));
+    await page.goto('about:blank');   // a load of its own, the timetable fetched again (a hash alone keeps the page)
+    await open(page, '#/routes');
+    await expect(page.locator(`a.row[href="${s.href}"]`)).toHaveCount(on ? 1 : 0);
+    await expect(page.locator('a.row[href="#/map/route/1"]')).toHaveCount(1);
+    if (!out) await expect(tab).toHaveCount(on ? 1 : 0);   // (a run-out timetable's has no night to come: no tab)
+    expect(await found() > 0).toBe(on);
+    await hook();
+    await go(page, '#/map');
+    await mapReady(page);
+    await expect.poll(drawn, { timeout: 20_000 }).toEqual(on ? [true, s.stops.length, true] : [false, 0, true]);
+  }
+});
+
 test('a route drawn as a line: its key stops, a fold kept open through a redraw, every stop', async ({ page }) => {
   // The Blue Loop: its stops on a rail, the stops between its key stops folded. A fold opened stays open as the feed
   // redraws the sheet; 'Every stop' unfolds the lot, 'Key stops' folds them again.

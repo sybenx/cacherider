@@ -4,7 +4,7 @@
 // and their hours, so next October's, or a night added or dropped, needs nothing here. The art is drawn in
 // pumpkin-art.js, no image to fetch. Its look is Claude Design's, the walk at night (the project's
 // templates/pumpkin-walk-explore).
-import { D, stopNo, nextAt, timesOn, distance, tripEnd, cutAfter } from '../data.js';
+import { D, stopNo, nextAt, timesOn, distance, tripEnd, cutAfter, offSeason } from '../data.js';
 import { now, dayFrom, dayName, fmtDay, clock, clockText, clockShort, minsTo } from '../time.js';
 import { html, icon, liveMark, liveWord, sched, lively } from '../ui.js';
 import { rt, rtStale } from '../rt.js';
@@ -41,13 +41,11 @@ function nights(ri, clockNow) {
 }
 
 /** Whether the season is on: a night with a shuttle still to come, tonight's till a quarter hour after its last. The
- *  tab is there while it is, and goes by itself after the last night. */
+ *  tab is there while it is, and goes by itself after the last night, the route's line and tile with it (offSeason). */
 export function pumpkinOn(clockNow = now()) {
   const ri = pumpkinRoute();
   closesAt(ri, clockNow);
-  if (ri < 0 || !stopsOf(ri).length) return false;
-  const ns = nights(ri, clockNow);
-  return ns.some((n, k) => n.n && (k > 0 || clockNow.min <= n.last + 15));
+  return ri >= 0 && stopsOf(ri).length > 0 && !offSeason(clockNow).has(ri);
 }
 
 /** The frame put into the map once (it shows while the view is up: #body.pk-on, main.js). */

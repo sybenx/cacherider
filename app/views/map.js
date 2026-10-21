@@ -2,7 +2,7 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, BASE, nearest, stop, route, nextAt, timed, POOL, servicesOn, nextServiceDay, holidayOn, offDayWords, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
+import { D, BASE, nearest, stop, offSeason, route, nextAt, timed, POOL, servicesOn, nextServiceDay, holidayOn, offDayWords, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, maySkip, skipsAt, lastBuses, pathDistance, pref, opOf, carriesOn, agencyRuns } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, nthWords, travel } from '../ui.js';
 import { nearMe, morph } from '../main.js';
@@ -227,11 +227,15 @@ function closedOrMaybe(s, i, ymd) {
   return { closed, maybe: !closed && skipsAt(s.id).length > 0 };
 }
 function stopsGeo() {
-  const ymd = now().ymd;
+  const c0 = now(), ymd = c0.ymd;
   const { stops: done, wears } = doneToday();
-  return { type: 'FeatureCollection', features: D.stops.map((s, i) => {
-    const w = wears.get(i), raw = '#' + route(w && w[0] === 'c' ? w[1] : s.routes[0]).color;
-    const c = w && w[0] === 'u' ? uline(w[1]) : sinkLine(raw), dc = w && w[0] === 'u' ? uline(w[1]) : lift(raw); return { type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes: s.routes, color: c, dcolor: dc, gone: faded(c, false), dgone: faded(dc, true), done: done.has(i), ...closedOrMaybe(s, i, ymd) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } }; }) };
+  const off = offSeason(c0);
+  return { type: 'FeatureCollection', features: D.stops.flatMap((s, i) => {
+    // a route out of season (data.js) not one of its routes, nor its colour; a stop of such routes alone not drawn
+    const routes = off.size ? s.routes.filter(ri => !off.has(ri)) : s.routes;
+    if (!routes.length && s.routes.length) return [];
+    const w = wears.get(i), raw = '#' + route(w && w[0] === 'c' ? w[1] : routes[0]).color;
+    const c = w && w[0] === 'u' ? uline(w[1]) : sinkLine(raw), dc = w && w[0] === 'u' ? uline(w[1]) : lift(raw); return [{ type: 'Feature', id: +s.id, properties: { id: s.id, name: s.name, by: s.hub ? '' : s.by || '', routes, color: c, dcolor: dc, gone: faded(c, false), dgone: faded(dc, true), done: done.has(i), ...closedOrMaybe(s, i, ymd) }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } }]; }) };
 }
 /** A stop's fill and edge: a closed one (or an unannounced detour's) a ring; its route's colour when a route's in
  *  view; else its first route's, faded at the town's zoom once its last bus has been, as the lines are. */
@@ -858,7 +862,7 @@ const drawn = { lines: null, closed: null, key: null, cut: null, cutKey: null };
  *  passed (linesKeyOf): those move with the buses. */
 function closedKeyOf(clockNow) {
   const d = doneToday(clockNow);
-  return clockNow.ymd + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify([...d.wears]) + [...d.routes].join() + '|' + [...loopsOut()].sort().join() + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
+  return clockNow.ymd + [...offSeason(clockNow)].join() + '|' + [...d.stops].join() + '|' + [...d.loops].join() + d.pool + JSON.stringify([...d.wears]) + [...d.routes].join() + '|' + [...loopsOut()].sort().join() + JSON.stringify(activeAlerts(clockNow.ymd).map(a => [a.ri || [], a.stops || []])) + JSON.stringify((A.seen || []).map(u => [u.d.id, u.n, u.d.last, u.announced, u.d.way.length]));   // traced along the streets: redrawn
 }
 /** What the route lines' faded stretches are drawn from: each stretch the day's last bus has passed, and on the one
  *  it's on, where it is, to a hundred metres or so and a tenth of the way. Kept out of closedKeyOf: in it, every word
@@ -882,6 +886,9 @@ async function loadShapes(m = map, all = true) {
     const over = doneToday().routes;   // a route with nothing left today: its whole line, ends and all
     drawn.lines.features = drawn.lines.features.map(f => over.has(f.properties.route) && !f.properties.done ? { ...f, properties: { ...f.properties, done: true } } : f);
     drawn.lines.features.unshift(...done); drawn.closed = drawn.cut.closed; drawn.key = key + '|' + lk;   // the passed under the lines still running, where they share a road
+    // A route out of season (the Pumpkin Walk after its last night, data.js): not drawn, its tab gone with it.
+    const off = offSeason(c);
+    if (off.size) { drawn.lines = { ...drawn.lines, features: drawn.lines.features.filter(f => !off.has(f.properties.route)) }; drawn.closed = { ...drawn.closed, features: drawn.closed.features.filter(f => !off.has(f.properties.route)) }; }
   }
   closedKey = key; linesKey = lk;
   if (m.getSource('lines')) m.getSource('lines').setData(drawn.lines);

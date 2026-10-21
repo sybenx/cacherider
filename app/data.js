@@ -944,6 +944,41 @@ export function routeRunsOn(ri, ymd) {
   return false;
 }
 
+/** The routes out of season: none of their runs left today (the last a quarter hour gone) and none in the three weeks
+ *  after. A season's route after its last night, the Pumpkin Walk's on 20 Oct 2026 (the feed keeps it, its calendar
+ *  run out), goes from the map, the routes and search with its tab (pumpkin.js), at the same minute; and is back three
+ *  weeks before its next first night. By the timetable alone, no route named. Once a minute. */
+const SEASON_DAYS = 21;
+let routeMins = null, offKey = '', offSet = new Set();
+const aheadOn = new Map();   // a day → the routes running on one of the SEASON_DAYS after it
+export function offSeason(c = now()) {
+  const key = c.ymd + ':' + c.min + ':' + [...cutAfter.values()].join();
+  if (key === offKey) return offSet;
+  if (!routeMins) {   // a calendar's minutes for each of its routes, latest last
+    routeMins = {};
+    for (const per of Object.values(D.times)) for (const [sid, list] of Object.entries(per)) for (const t of list) ((routeMins[sid] ||= {})[t[1]] ||= []).push(t[0]);
+    for (const by of Object.values(routeMins)) for (const r in by) by[r].sort((a, b) => a - b);
+  }
+  if (!aheadOn.has(c.ymd)) {
+    const on = new Set();
+    for (let k = 1; k <= SEASON_DAYS; k++) { const ymd = dayFrom(c.ymd, k).ymd; D.routes.forEach((r, ri) => { if (!on.has(ri) && routeRunsOn(ri, ymd)) on.add(ri); }); }
+    aheadOn.set(c.ymd, on);
+  }
+  const ahead = aheadOn.get(c.ymd);
+  // a route's last today, and yesterday's past midnight (its minutes past 1440): as timesOn offers them (cutAfter)
+  const lastOn = (ymd, ri) => { let m = -Infinity; for (const sid of servicesOn(ymd)) { const ms = (routeMins[sid] || {})[ri]; if (ms) for (let i = ms.length - 1; i >= 0; i--) if (ms[i] <= (cutAfter.get(ri) ?? Infinity)) { m = Math.max(m, ms[i]); break; } } return m; };
+  const yday = dayFrom(c.ymd, -1).ymd;
+  const off = D.routes.map((r, ri) => ri).filter(ri => !ahead.has(ri) && c.min > lastOn(c.ymd, ri) + 15 && c.min > lastOn(yday, ri) - 1440 + 15);
+  // A timetable run out (its calendars ended, the next not in yet) isn't every route's season over: a season is a route
+  // or two while the agency runs the rest. Then the whole network stays drawn, without times, as it was before seasons.
+  offSet = new Set(D.routes.some((r, ri) => !r.op && !off.includes(ri)) ? off : []);
+  offKey = key;
+  return offSet;
+}
+/** A stop of routes out of season alone (the Pumpkin Walk's two after its last night): off the map, out of search and
+ *  the stops near you, as its routes are. */
+const offOf = off => si => { const rs = D.stops[si].routes; return off.size > 0 && rs.length > 0 && rs.every(ri => off.has(ri)); };
+
 /** The next departures from a stop, rolling into the days ahead. Each carries day (0 = today) and ymd. */
 /** Set by the live module: a departure today as the realtime feed has it, with `min` moved to the predicted
  *  minute and `live` set, or `gone` when the bus has already been. Untouched when the feed has nothing. */
@@ -1096,7 +1131,8 @@ export function bearing(lat1, lon1, lat2, lon2) {
 }
 export const compass8 = deg => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
 export function nearest(lat, lon, n = 8) {
-  return D.stops.map((s, i) => ({ i, d: distance(lat, lon, s.lat, s.lon) })).sort((a, b) => a.d - b.d).slice(0, n);
+  const off = offOf(offSeason());
+  return D.stops.map((s, i) => ({ i, d: distance(lat, lon, s.lat, s.lon) })).filter(x => !off(x.i)).sort((a, b) => a.d - b.d).slice(0, n);
 }
 
 /** A stop's number as the agency writes it: Connect's four figures, 0516 where its feed has 516 (the agency's width,
@@ -1114,7 +1150,8 @@ export function search(q, limit = 40) {
   if (!words.length) return [];
   // The Transit Center's bays share one address: the first stands for them all (the screens show it as the Transit Center).
   let hubSeen = false;
-  const hits = index.filter(e => words.every(w => e.text.includes(w)) && (!D.stops[e.i].hub || !(hubSeen || !(hubSeen = true)))).map(e => e.i);
+  const off = offOf(offSeason());
+  const hits = index.filter(e => words.every(w => e.text.includes(w)) && !off(e.i) && (!D.stops[e.i].hub || !(hubSeen || !(hubSeen = true)))).map(e => e.i);
   // Stops with the words in the order given ('500 north' on 500 North) before those with them scattered ('60 North
   // 500 East'); then, in one town, street numbers read in order.
   const phrase = words.join(' ');

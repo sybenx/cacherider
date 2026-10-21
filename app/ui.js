@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf } from './data.js';
+import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing, stopsAway } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
@@ -55,13 +55,15 @@ export function badges(ris, size = 24, wide = false) {
 export const routeHref = ri => '#/map/route/' + encodeURIComponent(isHalf(ri) ? familyKey(ri) : D.routes[ri].short);
 /** Every route once, for a list or a grid of them: the timetable's order, a family once, and another operator's route
  *  on a route's road right after it (Route 16, then the Preston commuter, its midday run). `others`: the operators'
- *  routes on no road of the agency's, left for a list of their own. */
+ *  routes on no road of the agency's, left for a list of their own. Not one out of season (the Pumpkin Walk after its
+ *  last night, offSeason). */
 export function routeList() {
-  const out = [], others = [];
+  const out = [], others = [], off = offSeason();
   for (const ri of D.routes.keys()) {
+    if (off.has(ri)) continue;
     if (opOf(ri)) { if (roadOf(ri) === null) others.push(ri); continue; }
     if (out.some(x => !opOf(x) && familyKey(x) === familyKey(ri))) continue;
-    out.push(ri, ...kinOf(ri));
+    out.push(ri, ...kinOf(ri).filter(k => !off.has(k)));
   }
   return { list: out, others };
 }
