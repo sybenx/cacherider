@@ -172,7 +172,12 @@ function style(sat = true) {
       // A detour: between the served stops either side of a closed run, the line goes to dots over a paper casing.
       // Each dot wears a thin halo in the map's colour, so it reads even on its own route's other pass, while the
       // gaps still show whatever runs underneath. The halo is 1.7× the dot with the dash scaled to match, so they align.
-      { id: 'trk-path', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': townFade(['get', col], ['get', col === 'dcolor' ? 'dgone' : 'gone']), 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3, 17, 5], 'line-dasharray': [0, 1.6], 'line-opacity': ['get', 'sure'] } },   // dots, closer than a notice's, and never the shuttle's dashes
+      // The way round the buses have been taking: solid, as a road they drive is everywhere on the map, a little thinner
+      // than a route's line and cased in the paper's colour, as no route's line is, so it doesn't pass for the route's
+      // usual way; the stretch they skip dotted (below). It was dots too, closer set, and on Route 11's round Macey's
+      // (21 Oct) nothing said which was closed and which was open.
+      { id: 'trk-casing', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.6, 14, 5, 17, 8], 'line-opacity': ['get', 'sure'] } },
+      { id: 'trk-path', type: 'line', source: 'trk', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': townFade(['get', col], ['get', col === 'dcolor' ? 'dgone' : 'gone']), 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.2, 14, 2.5, 17, 4], 'line-opacity': ['get', 'sure'] } },
       { id: 'route-closed-halo', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': flavor === 'dark' ? '#101214' : '#f2f2f3', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.55, 14, 5.95, 17, 10.2], 'line-dasharray': [0, 2.2 / 1.7] } },
       { id: 'route-closed', type: 'line', source: 'lclosed', layout: { 'line-cap': 'round' }, paint: { 'line-color': townFade(['get', col], ['get', col === 'dcolor' ? 'dgone' : 'gone']), 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 3.5, 17, 6], 'line-dasharray': [0, 2.2], 'line-opacity': ['coalesce', ['get', 'sure'], 0.9] } },
       // a stand-in line (stop to stop, no shape) is a faint thin sketch until its route is lit
@@ -298,7 +303,7 @@ function closedSegments(fc) {
         const u = roundOf(+ri, run), way = u ? wayCut(shapes, u, run.filter(si => skipped(u, si)).map(si => D.stops[si]), +ri, served) : [];
         for (const cut of way) {   // each line cut once for a way round: two runs it went round, a stop it made between, are one stretch
           const k = cut.shape + ':' + u.id + ':' + Math.round(cut.s0);
-          if (cut.pieces.length && !done.has(k)) { done.add(k); cuts.push({ ...cut, ri: +ri, r, sure, why: [...new Set(u.gone.flatMap(id => [...(why[ri + ':' + id] || [])]))].join() }); }
+          if (cut.pieces.length && !done.has(k)) { done.add(k); cuts.push({ ...cut, ri: +ri, r, sure, why: [...new Set([...u.gone.flatMap(id => [...(why[ri + ':' + id] || [])]), u.id])].join() }); }   // and the way round itself: its dots and its line one card
         }
         // A line of the route the way round doesn't fit (one reaching the stop by another street): as before.
         const fit = new Set(way.map(c => c.shape));
@@ -747,7 +752,11 @@ function openDetour(ids, tap) {
   const items = detourOf(ids);
   if (!items) { wantSeen = { hash: location.hash, ids, tap }; return; }
   wantSeen = null;
-  const ris = detourRoutes(items.filter(x => ids.includes(x.id)));   // the routes of what was tapped or linked, not of a notice said with it
+  // The routes of what was tapped or linked, not of a notice said with it; and those all of it is about: Route 11's
+  // dots round Macey's (a notice closing the stop to the 11 and the Blue Loop, and the 11's way round) are Route 11's.
+  const asked = items.filter(x => ids.includes(x.id)), all = detourRoutes(asked);
+  const common = all.filter(ri => asked.every(x => (isWay(x) ? x.ri : alertRoutes(x)).some(r2 => familyKey(r2) === familyKey(ri))));
+  const ris = common.length ? common : all;
   selected = null; uHilite = ''; hiLines = ris; hiLoops = []; focusRoute = ris.length === 1 ? ris[0] : undefined; applySelection();
   detourCard(items, ris, tap);
   if (tap) return;
@@ -773,7 +782,9 @@ function detourOf(ids) {
   // Two ways round the relay keeps apart that skip the same stops of the same route (where the buses left or came back
   // a little off): one detour, the surer said. The Blue Loop's on 16 Oct read twice, '2 in a row' over '12 in a row'.
   const same = (u, v) => u !== v && u.d.route === v.d.route && u.gone.join() === v.gone.join() && (v.n > u.n || v.n === u.n && v.d.last > u.d.last);
-  return items.filter(x => !isWay(x) || !items.some(v => isWay(v) && same(x, v)));
+  // The notices first, then the ways round: one card whichever part of it was tapped (on 21 Oct Route 11's dots round
+  // Macey's opened the notice first and its way round the way first, and with other routes).
+  return items.filter(x => !isWay(x) || !items.some(v => isWay(v) && same(x, v))).sort((x, y) => isWay(x) - isWay(y));
 }
 /** A notice and a way round the buses took are one detour: the same route, the way round announced (unannounced ones
  *  are kept apart from the notices), and the notice's stops where the buses went round, one they skipped or one within
@@ -781,7 +792,11 @@ function detourOf(ids) {
  *  of 950 South Main, the stop its notice closes, and skipped none. */
 function oneDetour(a, u) {
   if (!u.announced || !alertRoutes(a).some(ri => u.ri.includes(ri))) return false;
-  return (a.stops || []).some(id => u.gone.includes(id) || (si => si !== undefined && pathDistance(D.stops[si].lat, D.stops[si].lon, u.d.way) < 300)(D.stopById[id]));
+  if ((a.stops || []).some(id => u.gone.includes(id))) return true;
+  // By where only for a way round no notice of its routes names a stop it skipped: the Blue Loop's on 21 Oct, skipping
+  // 950 South Main (its own notice's), came by Macey's and was said on Route 11's card for Macey's closed.
+  if (activeAlerts(now().ymd).some(b => alertRoutes(b).some(ri => u.ri.includes(ri)) && (b.stops || []).some(id => u.gone.includes(id)))) return false;
+  return (a.stops || []).some(id => (si => si !== undefined && pathDistance(D.stops[si].lat, D.stops[si].lon, u.d.way) < 300)(D.stopById[id]));
 }
 /** A detour's routes, one of a timetable's halves (16 AM and PM): the half on the road now or next. */
 const detourRoutes = items => [...new Map(items.flatMap(x => isWay(x) ? x.ri : alertRoutes(x)).map(ri => [familyKey(ri), ri])).values()].map(ri => familyNow(ri, now()));
@@ -789,13 +804,13 @@ const detourRoutes = items => [...new Map(items.flatMap(x => isWay(x) ? x.ri : a
  *  title, its words a tap away (folded, as on a route's sheet), and the stops it closes; and each way round the buses
  *  took, how many in a row (the count is how sure: two a doubt, three quite sure, four and on all but certain), since
  *  when, by which streets, the stops they skipped and those they came past (served: where to wait instead), and that
- *  it's what the buses showed, posted by the agency or not. The one tapped first. */
+ *  it's what the buses showed, posted by the agency or not. The notices first, then the ways round, whichever was tapped. */
 function detourCard(items, ris, tap = false) {
   const card = col.querySelector('#mapcard'), brand = D.agency.brand;
   const links = ids => ids.filter(id => D.stopById[id] !== undefined).map(id => D.stops[D.stopById[id]]).map(t => html`<a href="#/stop/${t.id}">${t.name}</a>`).reduce((acc, x, i) => acc.concat(i ? [' · ', x] : [x]), []);
   const known = a => (a.stops || []).filter(id => D.stopById[id] !== undefined);
   const notices = items.filter(x => !isWay(x)), ways = items.filter(isWay);
-  const kind = notices.length ? (notices.some(a => /detour/i.test(a.title + ' ' + a.text)) ? 'Detour' : notices.flatMap(known).length > 1 ? 'Stops closed' : 'Stop closed')
+  const kind = notices.length ? (ways.length || notices.some(a => /detour/i.test(a.title + ' ' + a.text)) ? 'Detour' : notices.flatMap(known).length > 1 ? 'Stops closed' : 'Stop closed')
     : ways.every(u => u.announced) ? 'Detour' : 'Unannounced detour';
   const rows = html`<div class="roadroutes">${ris.map(ri => { const r = D.routes[ri]; return html`<a class="roadroute" href="#/map/route/${encodeURIComponent(r.short)}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</a>`; })}</div>`;
   const notice = a => html`<details class="callout alert rs-alert"><summary>${icon('ban', 20)}<b>${a.title}</b><span class="more">More</span></summary><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></details>
@@ -804,8 +819,8 @@ function detourCard(items, ris, tap = false) {
   const way = u => html`${notices.length && !u.announced ? html`<span class="eyebrow">Unannounced</span>` : ''}<p><b>${lastBuses(u)} went this way</b>${u.by.length ? ', by ' + u.by.join(' and ') : ''}. ${u.n >= 4 ? 'The' : 'Seen since ' + u.since + ', the'} latest at ${u.last}.</p>
       ${u.gone.length ? html`<p class="muted">Skipped: ${links(u.gone)}</p>` : ''}
       ${u.on.length ? html`<p class="muted">Came past: ${links(u.on)}</p>` : ''}
-      ${u.announced ? html`<p class="fine">Seen from ${brand}'s buses: the dots are the way they've been taking.</p>`
-        : html`<p class="fine">Unannounced: seen from ${brand}'s buses, not posted by ${brand}. Times at skipped stops are kept until it is.</p>`}`;
+      ${u.announced ? html`<p class="fine">Seen from ${brand}'s buses: the solid line is the way they've been taking, the dotted what they skip.</p>`
+        : html`<p class="fine">Unannounced: seen from ${brand}'s buses, not posted by ${brand}: the solid line is the way they've been taking, the dotted what they skip. Times at skipped stops are kept until it is.</p>`}`;
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">${kind}</span>${rows}</div>
     <div class="detourcard">${items.map(x => html`<div class="ditem">${isWay(x) ? way(x) : notice(x)}</div>`)}</div>`.s;
   card.scrollTop = 0;
@@ -848,10 +863,10 @@ function dotsNear(p, r) {
 }
 /** A detour's routes by its id, a notice's or a way round's. */
 const routesOfId = id => { const x = id.startsWith('seen') ? (A.seen || []).find(u => u.id === id) : A.alerts.find(a => a.id === id); return !x ? [] : isWay(x) ? x.ri : alertRoutes(x); };
-/** The ways round the buses have been seen to take (data.js's A.seen, announced or not), along the streets, dashed
+/** The ways round the buses have been seen to take (data.js's A.seen, announced or not), along the streets, solid
  *  in the route's colour, fainter while only two buses have gone that way. */
 function trackedPaths() {
-  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), gone: faded(sinkLine('#' + D.routes[ri].color), false), dgone: faded(lift('#' + D.routes[ri].color), true), done: doneToday().routes.has(ri), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
+  return { type: 'FeatureCollection', features: (A.seen || []).flatMap(u => u.ri.slice(0, 1).map(ri => ({ type: 'Feature', properties: { color: sinkLine('#' + D.routes[ri].color), dcolor: lift('#' + D.routes[ri].color), gone: faded(sinkLine('#' + D.routes[ri].color), false), dgone: faded(lift('#' + D.routes[ri].color), true), done: doneToday().routes.has(ri), sure: u.n >= 3 || u.announced ? 0.95 : 0.6, id: u.id, route: ri, fam: familyKey(ri) }, geometry: { type: 'LineString', coordinates: u.d.way.map(([la, lo]) => [lo, la]) } }))) };
 }
 /** The route lines as last drawn: a restyle (light to dark, say) starts from them, so the routes never blink out
  *  while they're worked out again. */
@@ -2260,7 +2275,7 @@ function quiet() {
 // dots and times, all converging on one block, are put away, and the buses standing in their bays with them (each
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5;
-const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'route-arrows-all', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
+const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'route-arrows-all', 'runs-arrows', 'route-closed', 'route-closed-halo', 'trk-casing', 'trk-path', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -2713,7 +2728,9 @@ function litLines(m, lines, loops, soft = false) {
   const own = dk ? 'dcolor' : 'color', gone = dk ? 'dgone' : 'gone';
   m.setPaintProperty('route-lines', 'line-color', any ? ['get', gone] : townFade(['get', own], ['get', gone]));
   m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : 0.75);
-  if (m.getLayer('trk-path')) m.setPaintProperty('trk-path', 'line-color', any ? ['get', gone] : townFade(['get', own], ['get', gone]));   // a detour the buses showed us fades with its route
+  // A detour the buses showed us fades with its route; a route lit, its own way round in its colour, as the road its
+  // buses are on (faded, solid, it read as another route's line beside its dotted stretch).
+  if (m.getLayer('trk-path')) m.setPaintProperty('trk-path', 'line-color', any ? ['case', ['in', ['get', 'fam'], ['literal', (soft ? [] : lines).map(familyKey)]], ['get', own], ['get', gone]] : townFade(['get', own], ['get', gone]));
   // the shuttle's loops faded back by colour too, not see-through: two on one road didn't add up the way Connect's don't
   m.setPaintProperty('usu-lines', 'line-color', any ? ['get', 'gone'] : townFade(['get', 'color'], ['get', 'gone']));
   m.setPaintProperty('usu-lines', 'line-opacity', ['case', ['get', 'approx'], 0.35, 0.9]);
