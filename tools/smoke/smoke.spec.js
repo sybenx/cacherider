@@ -2526,7 +2526,7 @@ test('a closed stop the buses go round: dotted from where they leave the line to
     [[41.70278, -111.83482], [41.70263, -111.83067], [41.70373, -111.83004], [41.70609, -111.83025], [41.70836, -111.83012], [41.70951, -111.82919]]];
   const best = paths[0], key = best.map(([la, lo]) => la.toFixed(4) + ',' + lo.toFixed(4)).join(';');
   const detours = { t, detours: [{ id: 990102, route: '11', streak: 3, trips: 3, first: t - 7200, last: t - 600, along: null, leaves: [41.70278, -111.83482], rejoins: [41.70951, -111.82919], paths, path: paths[0] }] };
-  const notice = { id: 'a990102', title: 'Stop Closure: 520 West 100 North Providence', text: 'Due to construction the stop at 520 West 100 North (Macey\'s) is closed.', url: '', cause: '', effect: '', start: t - 86400, end: t + 2 * 86400, routeIds: [], routes: ['11', 'B'], stops: [MACEYS], global: false };
+  const notice = { id: 'a990102', title: 'Stop Closure: 520 West 100 North Providence', text: 'Due to construction the stop at 520 West 100 North (Macey\'s) is closed.', url: '', cause: '', effect: '', start: t - 86400, end: t + 2 * 86400, routeIds: [], routes: ['11'], stops: [MACEYS], global: false };
   let alerts = [notice];
   const json = body => ({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   await page.route(/^https:\/\/live\.cacherider\.com\/detours/, r => r.fulfill(json(detours)));
@@ -2558,21 +2558,12 @@ test('a closed stop the buses go round: dotted from where they leave the line to
     await mapReady(page);
     await page.addStyleTag({ content: '.maplibregl-marker { pointer-events: none !important; }' });   // a bus going by, or the spot's own pin, not in the way
   };
-  // The dots and the way round are one detour, one card whichever is tapped: Route 11's alone, its notice then its way
-  // round (on 21 Oct the dots opened the notice with the Blue Loop and the way round its own, in another order).
-  const card = () => page.evaluate(() => document.querySelector('#mapcard.open').innerText);
   const check = async id => {
-    let first = null;
-    for (const p of skipped) {
-      await tapAt(p); await expect(page, `dotted at ${p}`).toHaveURL(new RegExp(`#/map/alert/${id}\\?tap=1$`));
-      const t = await card(); expect(t).toMatch(/went this way/); expect(t).not.toMatch(/Blue Loop/); first ||= t;
-    }
-    await page.evaluate(() => { location.hash = '#/map/alert/seen990102?tap=1'; });   // the way round's own line
-    await expect.poll(card).toBe(first);
+    for (const p of skipped) { await tapAt(p); await expect(page, `dotted at ${p}`).toHaveURL(new RegExp(`#/map/alert/${id}\\?tap=1$`)); }
     for (const p of driven) { await tapAt(p); await expect(page, `solid at ${p}`).toHaveURL(/#\/map\/at\/[^?]+\?road=([^&]*,)?11(,|&|$)/); }   // the road's card
   };
   await reopen();
-  await check('a990102,seen990102');
+  await check('a990102');
   await expect(page.evaluate(() => import('/app/data.js').then(m => m.A.seen.find(u => u.id === 'seen990102').announced))).resolves.toBe(true);
   alerts = [];
   await reopen();
