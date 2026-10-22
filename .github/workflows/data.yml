@@ -31,6 +31,18 @@ jobs:
         run: |
           pip install -q mapbox-vector-tile==2.2.0
           python3 tools/reduce.py /tmp/cvtd.zip --hints tools/hints.json --out data
+      # A route still in the feed but with no trips (the Blue Loop on 22 Oct 2026, CVTD's feed unchanged in name) is the
+      # feed broken, not the route gone: yesterday's timetable stands and the run ends red.
+      - name: No route emptied
+        run: |
+          python3 - <<'EOF' || { git checkout -- data/cvtd.json data/cvtd-shapes.json; echo "BROKE=${BROKE:+$BROKE }data/cvtd.json" >> "$GITHUB_ENV"; }
+          import json, subprocess, sys
+          old = json.loads(subprocess.run(['git', 'show', 'HEAD:data/cvtd.json'], capture_output=True, text=True).stdout)
+          new = json.load(open('data/cvtd.json'))
+          had = {r['id'] for r in old['routes'] if r.get('stops')}
+          lost = [r['short'] or r['long'] for r in new['routes'] if r['id'] in had and not r.get('stops')]
+          if lost: print('::error::routes left with no trips:', ', '.join(lost)); sys.exit(1)
+          EOF
       # Each tool below that reads from elsewhere runs through tools/upstream.py: its source unreachable, or nothing
       # worth keeping (75), and yesterday's file stands, green; the tool broken, and yesterday's file stands, the
       # night's timetable still goes up, and the run ends red (tools/kept.sh, and the last step).
