@@ -68,7 +68,9 @@ async function lines() {
     }
     return Math.sqrt(d2);
   };
-  const off = (key, p) => Math.hypot(p[0], p[1]) > HUB_R && dist(key, p) > OFF;
+  // A route with no line in the file is no bus off its route: on 22 Oct the night's timetable had the Blue Loop with no
+  // trips and no line, every Blue Loop report was off, and the whole loop was kept as one way round (the relay's 157).
+  const off = (key, p) => segs(key).length > 0 && Math.hypot(p[0], p[1]) > HUB_R && dist(key, p) > OFF;
   // Metres along the route's line from p on to q, the shortest of its lines that pass both (within NEAR of a
   // vertex), or null: how far a bus going along has to go from where a way round leaves to where it rejoins.
   const between = (key, p, q) => {
