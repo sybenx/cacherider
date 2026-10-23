@@ -889,6 +889,17 @@ test('the panel on the right: a stop, directions and a route each framed in the 
   await expect(btns).toHaveCount(2);
   for (const b of await btns.all()) { const bb = await b.boundingBox(); expect(bb.x).toBeGreaterThanOrEqual(side.x); }
   await clear([[s.lat, s.lon]]);
+  // A run of it opened from its rows: its sheet over the panel, not over the map (it opened on the left, the map a strip).
+  const run = page.locator('#side .runopen, #side .next[data-trip]').filter({ visible: true }).first();
+  if (await run.count()) {
+    await run.click();
+    const sheet = page.locator('#runsheet .rs').filter({ visible: true });
+    await expect(sheet).toBeVisible();
+    const rb = await still(sheet);
+    expect(rb.x).toBeGreaterThanOrEqual(side.x - 1);
+    await page.goBack();
+    await expect(page.locator('#runsheet .rs')).toHaveCount(0);
+  }
   // Directions: both ends on the map left of the panel.
   await go(page, '#/go/@41.74180,-111.80900:Old%20Main/at/41.73632,-111.83415/Utah%20Podiatry');
   await expect(page.locator('#side .jsum').filter({ visible: true }).first()).toBeVisible();
