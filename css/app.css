@@ -1017,6 +1017,10 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .dial .pw { font-family: var(--font-heading); font-weight: 600; font-size: 1.875rem; line-height: 1.02; letter-spacing: -.01em; }
 .dial .hint { font-size: 0.7812rem; line-height: 1.3; color: var(--cr-muted); }
 .dial.live .pw { color: var(--color-accent-700); }
+/* a stop's, at the foot of its page: small, the times first */
+.dial.small { flex-direction: row; margin: 0; gap: 12px; padding: 8px 12px; }
+.dial.small .face { width: 56px; height: 56px; }
+.dial.small .pw { font-size: 1.25rem; }
 .dial[aria-pressed="true"] .hint { color: var(--color-accent-700); }
 @media (prefers-reduced-motion: reduce) { .dial .ring, .dial .needle { transition: none; } }
 /* the Transit Center pick's times open the bay's stop page */
@@ -1507,6 +1511,9 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .stop-page .head .badges .badge { min-width: 30px; height: 26px; padding: 0 5px; border-radius: 5px; font-size: 1.0625rem; }
 /* the two sides: this one picked (a filled dot, the accent's edge), the one across a tap to its page */
 .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+/* a stop's two ways to go, under its name: buttons, side by side, as the sides above them */
+.gobtns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.gobtns .btn { min-height: 40px; font-size: 0.9375rem; padding: 0 10px; color: var(--color-accent-700); }
 .side { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px 7px; border: 1.5px solid var(--cr-line); border-radius: 12px; background: var(--cr-card); color: var(--color-text); text-decoration: none; font-size: 0.8125rem; line-height: 1.3; min-width: 0; }
 .side b { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; font-weight: 700; white-space: nowrap; }
 .side .to { padding-left: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

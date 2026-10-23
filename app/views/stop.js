@@ -9,8 +9,8 @@ import { U, chips, liveTag } from '../usu.js';
 import { metres as m2 } from '../time.js';
 import { afterSave, app } from '../main.js';
 import { restOfDay, runSheet, wireSheet, sheetRun } from './stopwide.js';
-import { wirePointers, pointerDial } from '../pointer.js';
 import { atPath } from '../geo.js';
+import { wirePointers, pointerDial } from '../pointer.js';
 
 export function render({ id, full, run, on }, clockNow) {
   const si = stopIndex(id);
@@ -30,13 +30,18 @@ export function render({ id, full, run, on }, clockNow) {
   // feed's 'Inbound side').
   const q = s.twin ? null : quarter(travel(si)), sd = q === null ? '' : ['Northbound', 'Eastbound', 'Southbound', 'Westbound'][q];
   const where = html`${s.by ? html`<b>${s.by}</b> · ` : ''}${s.town && s.town !== 'Logan' ? s.town + ' · ' : ''}Stop ${stopNo(s) || s.id}${sd ? ` · ${sd}` : ''}`;
-  const g = app.geo;   // how far and which way, turning with the phone, whenever there's a fix
   // Across the road, the stop for the other way and the commonest wrong one to stand at: this side and that side as
   // two buttons under the name, each with the way its buses run, the map above labelled to match (map.js sideLabels).
-  parts.push(html`<div class="head"><h1>${s.name}</h1><span class="where">${where}</span>${routeLinks(si)}${s.twin ? sidesRow(si) : ''}</div>`);
-  // The way here and on from here, and what a timed stop means: after the times, not ahead of them.
-  const tail = html`<div class="stoptail"><div class="golinks"><a class="golink" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>${tpLine(si)}</div>`;
-  if (g) parts.push(html.raw(pointerDial(s.lat, s.lon, g, s.name)));   // the compass: which way and how far, turning with the phone
+  // The way here and on from here as two buttons under the name, where they're seen: the user, 'somehow "How to get
+  // here and > From here" are hidden way down on the page. i think they should be more obvious buttons and the compass
+  // can be either ripped out or made smaller. i'm not sold on the compass anyway.', then 'compass does work, so maybe
+  // keep it': kept, small, at the foot of the page after the times.
+  const goBtns = html`<div class="gobtns"><a class="btn btn-secondary" href="#/go/${s.id}">${icon('route', 16)}How to get here</a><a class="btn btn-secondary" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div>`;
+  parts.push(html`<div class="head"><h1>${s.name}</h1><span class="where">${where}</span>${routeLinks(si)}${s.twin ? sidesRow(si) : ''}${goBtns}</div>`);
+  // What a timed stop means, and the compass (which way and how far, turning with the phone, whenever there's a fix):
+  // after the times, not ahead of them.
+  const g = app.geo, tp = tpLine(si), dial = g ? html.raw(pointerDial(s.lat, s.lon, g, s.name).replace('class="dial"', 'class="dial small"')) : '';
+  const tail = tp || dial ? html`<div class="stoptail">${tp}${dial}</div>` : '';
 
   const aside = [];   // the shuttle stop on the same pole
   const sh = U && U.sharedByCvtd[si];

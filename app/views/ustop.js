@@ -26,7 +26,7 @@ export function render({ id }, clockNow) {
   const key = spotKey(s.lat, s.lon, s.name);
   parts.push(html`<div class="head"><span class="eyebrow">${eyebrow}</span><h1>${s.name}</h1>${cs ? html`<span class="muted" style="font-size:0.875rem">Connect stop: ${cs.name}</span>` : ''}
     <div class="badges wide">${chips(s.routes, 30)}${cs ? html.raw(routeLinkItems(D.stopById[cs.id])) : ''}</div>
-    <div class="golinks"><a class="golink" href="#/go/${key}">${icon('route', 16)}How to get here</a><a class="golink" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div></div>`);
+    <div class="gobtns"><a class="btn btn-secondary" href="#/go/${key}">${icon('route', 16)}How to get here</a><a class="btn btn-secondary" href="#/go/-/${atPath({ lat: s.lat, lon: s.lon, label: s.name })}">${icon('fwd', 16)}From here</a></div></div>`);
 
   const rows = board(si);
   if (hasData() && noBuses() && !isStale()) {
