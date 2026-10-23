@@ -865,6 +865,44 @@ test('the panel on the right, set in Settings: the map\'s buttons across from it
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.panel || 'left')).toBe('left');
 });
 
+test('the panel on the right: a stop, directions and a route each framed in the map left of it, their pages in it', async ({ page }, info) => {
+  // The user: 'we need a smoke test for those with right panel preferences set on'. The map frames what's picked in the
+  // room the panel leaves (map.js room, the panel the map's padding): on the right, that room is left of it.
+  test.skip(phone(info), 'a wide screen\'s panel');
+  await page.addInitScript(() => {
+    try { localStorage.setItem('cr-panel', 'right'); } catch { /* none */ }
+    import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
+  });
+  await open(page);
+  await page.waitForFunction(() => document.documentElement.dataset.panel === 'right');
+  await mapReady(page);
+  const side = await page.locator('#side').boundingBox();
+  expect(Math.round(side.x + side.width)).toBe(page.viewportSize().width);
+  // Each point on screen: left of the panel, under the search bar, on the map (settled: read till two reads agree).
+  const onScreen = pts => page.evaluate(pts => { const m = window.__map, r = m.getContainer().getBoundingClientRect(); return pts.map(([la, lo]) => { const q = m.project([lo, la]); return [Math.round(r.left + q.x), Math.round(r.top + q.y)]; }); }, pts);
+  const settled = async pts => { let a = await onScreen(pts); for (let k = 0; k < 20; k++) { await page.waitForTimeout(300); const b = await onScreen(pts); if (JSON.stringify(a) === JSON.stringify(b)) return b; a = b; } return a; };
+  const clear = async (pts, from = 0) => { for (const [x, y] of await settled(pts)) { expect(x).toBeGreaterThan(from); expect(x).toBeLessThan(side.x); expect(y).toBeGreaterThan(60); expect(y).toBeLessThan(page.viewportSize().height); } };
+  // A stop: its page in the panel, its two buttons there, the stop on the map left of it.
+  const s = await page.evaluate(async () => { const d = await import('/app/data.js'); const x = d.D.stops.find(s => !s.hub && s.routes.length >= 2 && !s.out); return { id: x.id, lat: x.lat, lon: x.lon }; });
+  await go(page, '#/stop/' + s.id);
+  const btns = page.locator('#side .gobtns a').filter({ visible: true });
+  await expect(btns).toHaveCount(2);
+  for (const b of await btns.all()) { const bb = await b.boundingBox(); expect(bb.x).toBeGreaterThanOrEqual(side.x); }
+  await clear([[s.lat, s.lon]]);
+  // Directions: both ends on the map left of the panel.
+  await go(page, '#/go/@41.74180,-111.80900:Old%20Main/at/41.73632,-111.83415/Utah%20Podiatry');
+  await expect(page.locator('#side .jsum').filter({ visible: true }).first()).toBeVisible();
+  await clear([[41.73632, -111.83415], [41.74180, -111.80900]]);
+  // A route: its page in the panel, its line framed left of it (its stops' extremes).
+  const r = await page.evaluate(async () => { const d = await import('/app/data.js'); const ri = d.D.routes.findIndex(r => r.short === '3'); const ids = [...new Set(Object.values(d.D.routes[ri].stops || {}).flat())].map(i => d.D.stops[i]);
+    const by = f => ids.reduce((a, b) => f(b) < f(a) ? b : a); return { short: d.D.routes[ri].short, pts: [by(s => s.lat), by(s => -s.lat), by(s => s.lon), by(s => -s.lon)].map(s => [s.lat, s.lon]) }; });
+  await go(page, '#/map/route/' + encodeURIComponent(r.short));
+  const rh = page.locator('#side .routehead').filter({ visible: true }).first();
+  await expect(rh).toBeVisible();
+  expect((await rh.boundingBox()).x).toBeGreaterThanOrEqual(side.x);
+  await clear(r.pts);
+});
+
 test('the Center: a bus two-thirds of a run down is held for its next run, which leaves on time', async ({ page }) => {
   // Route 8's 2:00, its bus in at 2:27: 'leaving any second', when it went out on the 2:30 (2026-10-09). Made up from
   // the timetable: a route's half-hourly departure from the Center, the clock set to 22 minutes after it.
