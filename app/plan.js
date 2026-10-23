@@ -5,7 +5,7 @@
 import { D, stop, timesOn, tripStops, tripEnd, nextTrip, distance, nearest, servicesOn } from './data.js';
 import { lively, isLoop } from './ui.js';
 import { dayFrom } from './time.js';
-import { walkMins, steepWalk, avoidSteep, useCrossings } from './geo.js';
+import { walkMins } from './geo.js';
 
 const WALK_TO = 1000;     // how far a rider is sent on foot to a first stop
 const WALK_FROM = 350;    // a stop this near the one asked for is as good, with the walk said
@@ -14,11 +14,8 @@ const AHEAD = 150;        // minutes of departures looked at first from each fir
 const MAX_ON = 8;         // buses tried first from a first stop, and from a shuttle stop to change at (a bus stop's: all the day's)
 const CHANGE_WALK = 250;  // a change can be to a stop this near: the Transit Center's other bays, the stop across the road
 const WALK_LESS = 3;      // minutes on foot a way must spare to be kept for walking less: a minute or two is no reason to ride round a loop
-// Every walk is timed by geo.js's walkMins: distance at a walking pace, and the climb (a minute for each 10 m up,
-// Naismith's rule), from where the rider is to where they're going, so up the bench costs what down it doesn't.
-// Avoiding steep walks (the rider's choice, geo.js): a walk with a steep climb in it is no walk (null), and left out.
-let FLAT = false;
-const walkTo = (a, b, d) => FLAT && steepWalk(a, b) ? null : walkMins(a.lat, a.lon, b.lat, b.lon, d);
+// Every walk is timed by geo.js's walkMins, the one rule: the straight line and a third again, at a walking pace.
+const walkTo = (a, b, d) => walkMins(a.lat, a.lon, b.lat, b.lon, d);
 const walkable = x => x.walk !== null;
 
 // ---- the Aggie Shuttle. `SH`, for the search under way, is what usu.js's planNet() gives while the shuttle runs:
@@ -43,11 +40,11 @@ function nearU(lat, lon, max) {
  *  Connect's, and the shuttle's while it runs. */
 const nears = new Map();
 function connectNear(si) {
-  let n = nears.get(si + '|' + FLAT);
+  let n = nears.get(si);
   if (!n) {
     const s = stop(si);
     n = [{ si, walk: 0 }, ...nearest(s.lat, s.lon, 16).filter(x => x.i !== si && x.d <= CHANGE_WALK).map(x => ({ si: x.i, walk: walkTo(s, stop(x.i), x.d) })).filter(walkable)];
-    nears.set(si + '|' + FLAT, n);
+    nears.set(si, n);
   }
   return n;
 }
@@ -193,15 +190,10 @@ const asked = new Map();   // the last asks, by their words and a twenty-second 
 export function journeys(origin, dest, clockNow, days = 8, sh = null, live = true, by = null) {
   // Answered from memory within twenty seconds for the same ask: a far destination (home, out past the stops) took
   // a second or more to search, twice every feed, and the page stuttered with it.
-  const flat = avoidSteep();
-  const key = JSON.stringify([flat, useCrossings(), origin.si !== undefined ? origin.si : [+origin.lat.toFixed(5), +origin.lon.toFixed(5)], typeof dest === 'object' ? [+dest.lat.toFixed(5), +dest.lon.toFixed(5)] : dest, clockNow.ymd, clockNow.min, days, sh ? sh.now : null, live, by, Math.floor(Date.now() / 20000)]);
+  const key = JSON.stringify([origin.si !== undefined ? origin.si : [+origin.lat.toFixed(5), +origin.lon.toFixed(5)], typeof dest === 'object' ? [+dest.lat.toFixed(5), +dest.lon.toFixed(5)] : dest, clockNow.ymd, clockNow.min, days, sh ? sh.now : null, live, by, Math.floor(Date.now() / 20000)]);
   if (asked.has(key)) return asked.get(key);
   if (asked.size > 40) asked.clear();
-  // Avoiding steep walks: those ways; none at all without one, the ways there are, said as steep (`steep`).
-  FLAT = flat;
-  let out = journeys0(origin, dest, clockNow, days, sh, live, by);
-  if (flat && out.walk === undefined && !out.plans.length) { FLAT = false; out = { ...journeys0(origin, dest, clockNow, days, sh, live, by), steep: true }; }
-  FLAT = false;
+  const out = journeys0(origin, dest, clockNow, days, sh, live, by);
   asked.set(key, out);
   return out;
 }
@@ -240,7 +232,7 @@ function journeys0(origin, dest, clockNow, days, sh, live, by) {
   const apart = Math.round(distance(o.lat, o.lon, d.lat, d.lon));
   // Walking the whole way, timed as any walk is: a way by bus that's no quicker and spares less than WALK_LESS of it
   // isn't offered (from Logan's court, round the Green Loop's south end to Zions, 22 minutes with 11 on foot, beside
-  // the 10 to walk there; Route 9 from across the road the rider's way). Null on a steep walk avoided: nothing beaten.
+  // the 10 to walk there; Route 9 from across the road the rider's way).
   const foot = walkTo(o, d, apart);
   if (origin.si === dest || apart <= WALK_FROM) return { walk: apart, plans: [] };
   // No stop within a walk of where they're going, or of where they are: no bus goes, and nothing to search (a
@@ -389,17 +381,11 @@ function search(starts, wanted, at, dest, ymd, min0, live, day, by, upto, from, 
     }
   }
   // Only journeys no other beats on every count: leaving later, arriving sooner, walking less (the minutes on foot,
-  // the climb in them, and WALK_LESS of them at least), with fewer changes the tiebreak where two arrive as soon. So
+  // WALK_LESS of them at least), with fewer changes the tiebreak where two arrive as soon. So
   // a way that spares the walk is kept though it's no faster (Route 2 and across the road to the Green Loop, not up
   // the hill on foot); one that spares a minute by riding on round a loop is not.
   if (by !== null) for (let i = found.length - 1; i >= 0; i--) if (found[i].arrive > by) found.splice(i, 1);
   for (const p of found) p.walk = p.legs.reduce((n, l) => n + (l.kind === 'walk' ? l.mins : 0), 0);
-  // A way with a steep walk (up or down, geo.js isSteep) never beats a flat one out of the list: the climb down the
-  // bluff to Crocket Avenue, sooner by the clock, isn't a better way than Route 3 to Riverside Drive.
-  const legEnd = (x, end) => x === undefined || x === null ? end : typeof x === 'object' ? x : pt(x);
-  const tripFrom = from, tripTo = typeof dest === 'object' ? dest : stop(dest);
-  const ok = q => !!q && Number.isFinite(q.lat) && Number.isFinite(q.lon);
-  for (const p of found) p.hill = p.legs.some(l => { if (l.kind !== 'walk') return false; const a = legEnd(l.from, tripFrom), b = legEnd(l.to, tripTo); return ok(a) && ok(b) && steepWalk(a, b); });
   // Beaten on foot: no sooner than walking there, and either not WALK_LESS minutes less of it, or the minutes it spares
   // on foot (each counted as two of riding or waiting) not worth the time it adds: from the Wolf Pack Way stop to the
   // Rush FunPlex, 22 minutes on foot, the 5 and the 16 took two and a half hours to spare five.
@@ -412,9 +398,9 @@ function search(starts, wanted, at, dest, ymd, min0, live, day, by, upto, from, 
   found.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
   const kept = [];
   for (const p of found) {
-    if (!kept.some(q => q.leave >= p.leave && q.arrive <= p.arrive && q.walk < p.walk + WALK_LESS && (q.arrive < p.arrive || q.changes <= p.changes) && !(q.hill && !p.hill))) kept.push(p);
+    if (!kept.some(q => q.leave >= p.leave && q.arrive <= p.arrive && q.walk < p.walk + WALK_LESS && (q.arrive < p.arrive || q.changes <= p.changes))) kept.push(p);
   }
   if (by !== null) kept.sort((a, b) => b.leave - a.leave || a.arrive - b.arrive || a.walk - b.walk);
   else kept.sort((a, b) => a.arrive - b.arrive || a.walk - b.walk || a.changes - b.changes);
-  return kept.slice(0, 4);
+  return kept.slice(0, 8);   // plenty to choose from: the rider knows the hills and the roads
 }

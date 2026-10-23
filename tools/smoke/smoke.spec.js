@@ -105,6 +105,48 @@ test('a stop out of the timetable: its page, saved, at the top of home', async (
   await expect(page.locator('.mine-row').filter({ visible: true }).first()).toContainText(/No buses stop at .+ one of your stops/);
 });
 
+test('a stop\'s row for a loop\'s next lap says where its bus is now, still on the lap before, and how many stops away', async ({ page }) => {
+  // The user, at 995 South Main: 'my issue is also knowing which blue loop will get there at that time. so if the blue
+  // is sitting at ITC, or if it's driving by north walmart'. Staged: a loop's lap today and the lap after it in the same
+  // run, the clock a minute before the lap's third call, its bus between its second and third stops; a stop five calls
+  // into the next lap.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), loops = d.D.hub.loops || [];
+    for (const ri of loops) for (const [si] of d.D.stops.entries()) for (const row of d.timesOn(si, c.ymd).filter(x => x.r === ri)) {
+      const nx = d.nextTrip(row.trip, c.ymd);
+      if (nx === undefined || !d.runOf(row.trip, c.ymd).includes(nx)) continue;
+      const st = d.tripStops(row.trip), sn = d.tripStops(nx);
+      if (st.length < 8 || sn.length < 8 || st[0][0] < 360 || sn[sn.length - 1][0] > 1300) continue;
+      const k = sn[5][1], mine = d.D.stops[k];
+      if (mine.hub || sn.slice(0, 5).some(x => x[1] === k) || st.some(x => x[1] === k)) continue;
+      const a = d.D.stops[st[1][1]], b = d.D.stops[st[2][1]];
+      if (d.distance(a.lat, a.lon, b.lat, b.lon) < 200) continue;
+      return { id: d.D.trips[row.trip], nid: d.D.trips[nx], sn: sn.map(([m, x]) => [m, d.D.stops[x].id]), st: st.map(([m, x]) => [m, d.D.stops[x].id]), stop: mine.id, next: b.name, by: b.by || '', hub: !!b.hub,
+        mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], at: Date.now() + ((st[2][0] - 1 - c.min) * 60 + 30 - c.sec) * 1000, ahead: st.length - 2 + 5 };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no loop running two laps in a row today');
+  await page.clock.setFixedTime(new Date(pick.at));
+  const T = Math.floor(pick.at / 1000), base = T - 30 - (pick.st[2][0] - 1) * 60;
+  // the feed's word on the lap after too, its bus still on this one (as Connect's feed has it)
+  feed = { t: T, trips: { [pick.id]: { v: '9002', ts: T, s: pick.st.slice(2).map(([m, sid], i) => [sid, i + 2, base + m * 60, 0]) },
+    [pick.nid]: { v: '9002', ts: T, s: pick.sn.map(([m, sid], i) => [sid, i, base + m * 60, 0]) } },
+    buses: [{ id: '9002', label: '9002', trip: pick.id, lat: pick.mid[0], lon: pick.mid[1], bearing: 0, speed: 5, ts: T }] };
+  await page.reload();
+  await go(page, '#/stop/' + pick.stop);
+  const tag = page.locator('.row .livetag, .row .sched').filter({ hasText: 'stops away' }).filter({ visible: true }).first();
+  await expect(tag).toBeVisible({ timeout: 20_000 });
+  const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await expect(tag).toContainText(new RegExp(' · by ' + esc(pick.hub ? 'the Transit Center' : pick.by || pick.next) + ' · \\d+ stops away'));
+  const n = +(await tag.textContent()).match(/(\d+) stops away/)[1];
+  expect(n).toBeGreaterThan(pick.ahead - 4);   // its lap's stops still to come and this lap's up to here (a stop a notice closes not counted)
+  expect(n).toBeLessThanOrEqual(pick.ahead + 1);
+});
+
 test('home: the big stop\'s bus on its way as a line, here at its stop, gone with the feed; the Save hint till a stop is saved', async ({ page }) => {
   // The relay's answer made up, as the timetable has a trip run: the clock half a minute into the minute before its
   // second call, its bus between its first two stops, and the rider at its fifth. Its line: the bus, its next stop, the
@@ -162,7 +204,7 @@ test('home: the big stop\'s bus on its way as a line, here at its stop, gone wit
   await expect(page.locator('.yourstop').filter({ visible: true }).first()).toContainText('Bus 9001 · 3 stops away');
   // The stop's own page says it on the bus's row, on its Live line, as the big stop does
   await go(page, '#/stop/' + pick.stop);
-  await expect(page.locator('.row.next .livetag').filter({ visible: true }).first()).toContainText('3 stops away');
+  await expect(page.locator('.row.next .livetag').filter({ visible: true }).first()).toContainText(/ · at .+ · 3 stops away/);   // where it is, and how far
   // The feed without it: the big stop as it was
   feed = feedOf();
   await go(page, '#/');
@@ -464,9 +506,6 @@ test('search: a route, every route, a street, a place, an address', async ({ pag
   // A place on campus by 'USU' and a word: the Institute of Religion by campus (a church in the map's data).
   await go(page, '#/search?q=' + encodeURIComponent('USU Institute'));
   await expect(page.getByText(/Institute of Religion/).filter({ visible: true }).first()).toBeVisible();
-  // Its stops by the walk there and back, the climb counted: up on the bench, not the Scotsman's at the hill's foot
-  // (nearer on the flat map; first while the elevation grid was drawn over the wrong ground).
-  await expect(page.locator('a.stoprow[href^="#/stop/"] .name').filter({ visible: true }).first()).not.toHaveText(/590 North 600 East/);
   // A street by what the town calls it: 10th West is 1000 West's stops; the Dugway a place.
   await go(page, '#/search?q=' + encodeURIComponent('10th west'));
   await expect(page.getByText(/10th West is 1000 West/).filter({ visible: true }).first()).toBeVisible();
@@ -1321,48 +1360,6 @@ test('the map\'s search over its card: the Center\'s board raised on a phone, a 
   await expect(page).toHaveURL(new RegExp(id));
 });
 
-test('a steep walk down is steep too: the bluff from 400 North down to Crocket Avenue', async ({ page }) => {
-  // From the Center to the closed Crocket Avenue stop the Green Loop and a climb down the bluff came first, not called
-  // steep (only up was), and Route 3 to Riverside Drive, flat, second or third (2026-10-09).
-  await open(page);
-  const r = await page.evaluate(async () => {
-    const d = await import('/app/data.js'), g = await import('/app/geo.js');
-    await g.loadElevation();
-    const off = d.D.stops.find(s => s.name === '651 East 400 North'), crocket = { lat: 41.73621, lon: -111.81286 };
-    if (!off) return null;
-    const s = g.slope(off.lat, off.lon, crocket.lat, crocket.lon), flat = Math.ceil(d.distance(off.lat, off.lon, crocket.lat, crocket.lon) / g.PACE);
-    return { down: Math.round(s.down), steep: g.isSteep(s), mins: g.walkMins(off.lat, off.lon, crocket.lat, crocket.lon), flat };
-  });
-  test.skip(!r, 'no stop at 651 East 400 North');
-  expect(r.down).toBeGreaterThanOrEqual(8);
-  expect(r.steep).toBe(true);
-  expect(r.mins).toBeGreaterThan(r.flat);   // slower going down it than on the flat
-});
-
-test('walks along the ways: the real path, and over a busy road only at its light', async ({ page }) => {
-  // data/walknet.json (tools/walknet.py): a walk found along the footways, paths, steps, sidewalks and streets, not as
-  // the crow flies; US 91 crossed only at a light or a marked crossing, as walks.json has them, unless crosswalks are off.
-  await open(page);
-  const r = await page.evaluate(async () => {
-    const d = await import('/app/data.js'), g = await import('/app/geo.js');
-    if (!await g.loadWalkNet()) return null;
-    const s651 = d.D.stops.find(x => x.name === '651 East 400 North'), crocket = { lat: 41.73621, lon: -111.81286 };
-    const down = g.walkWay(s651.lat, s651.lon, crocket.lat, crocket.lon);
-    const over = g.walkWay(41.78315, -111.83096, 41.78406, -111.83789), straight = g.crossingsOff(() => g.walkWay(41.78315, -111.83096, 41.78406, -111.83789));
-    return {
-      path: down.coords.length, longer: down.d > d.distance(s651.lat, s651.lon, crocket.lat, crocket.lon) * 1.2, steep: g.steepWalk(s651, crocket),
-      light: over.via.some(v => !v.none), overD: over.d, straightD: straight.d, straightNone: straight.via.some(v => v.none),
-    };
-  });
-  test.skip(!r, 'no walking network');
-  expect(r.path).toBeGreaterThan(4);   // a path, not a line
-  expect(r.longer).toBe(true);         // round by the trail, not straight down the bluff
-  expect(r.steep).toBe(true);
-  expect(r.light).toBe(true);          // over US 91 at a light
-  expect(r.overD).toBeGreaterThan(r.straightD + 300);
-  expect(r.straightNone).toBe(true);   // crosswalks off: straight over, said so
-});
-
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
@@ -2100,34 +2097,6 @@ test('a tablet turned: the phone\'s card goes as the page comes in beside the ma
   await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);
 });
 
-test('directions: a walk over a busy road goes by its crossing, said', async ({ page }) => {
-  // The Transit Center to the Rush FunPlex: off Route 5 on the east side of US 91 (Main Street, 4 lanes, 50 mph),
-  // the FunPlex on the west. The walk goes over at the lights, and says so; the map's walk bends there too.
-  await open(page);
-  await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.74061,-111.83124/Transit%20Center');
-  await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/Cross .*Main Street.* at the (light|crosswalk)/);
-  await expect(page.getByText(/(crow flies, but|sidewalks, paths and streets,) over a busy road/).filter({ visible: true }).first()).toBeVisible();
-  await expect(page.locator('a.walkall')).toHaveCount(0);   // three miles: not a walk worth offering beside the bus
-  // Straight over US 91 it's the stop across from the Eccles Ice Center instead, the same bus, sooner: said, and the
-  // Crosswalks chip there to take it. (Only while the way is Route 5 alone: no way, or tomorrow's, nothing to compare;
-  // and Route 16 PM up Main to Preston, its afternoon trips out of the Center, is the way straight over too, the same
-  // bus to the same stop, so there's no other way to say.)
-  const rides = await page.locator('.jsum .js-legs .badge').filter({ visible: true }).allInnerTexts();
-  if (rides.length === 1 && rides[0].trim() === '5' && !(await page.getByText(/nothing more today/).filter({ visible: true }).count())) {
-    await expect(page.locator('.straightalt').filter({ visible: true }).first()).toContainText(/Straight across Main Street \(no crosswalk\).*min (sooner|later)/);
-    await expect(page.locator('.chip[data-xing]').filter({ visible: true }).first()).toBeVisible();
-  }
-  // From the Wolf Pack Way stop itself: the light 480 m out of the way, so both said, and the Crosswalks chip turns it.
-  await go(page, '#/go/@41.78406,-111.83789:Rush%20FunPlex/at/41.78315,-111.83096/Wolf%20Pack');
-  const chip = page.locator('.chip[data-xing]').filter({ visible: true }).first();
-  await expect(chip).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/or straight across, \d+ min less/);
-  await chip.click();
-  await expect(page.locator('.sub.cross').filter({ visible: true }).first()).toContainText(/Straight across Main Street.*or at the light/);
-  await page.locator('.chip[data-xing]').filter({ visible: true }).first().click();
-  await expect(page.locator('.chip[data-xing]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
-});
-
 test('directions, no stop a walk off: the nearest starts in view, one picked, and it stays put', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s card over the map');
   // From far out of the valley's routes: no way by bus.
@@ -2189,14 +2158,17 @@ test('directions, no stop a walk off the place: the nearest a bus gets you, one 
   await expect(page).toHaveURL(new RegExp(href + '$'));
 });
 
-test('directions arriving by a time: the shuttle the way picked, when it is the best', async ({ page }) => {
+test('directions arriving by a time: the shuttle among the ways, said as the shuttle is', async ({ page }) => {
   // The Aztec Building's chapel to the Institute of Religion, by 7 PM on a weekday to come: the Evening Express (to
-  // 10 PM), its longest wait counted, leaves later than any bus that makes it; the Stadium Express (to 5 PM) no way.
+  // 10 PM), its longest wait counted, one of the ways (walks timed flat, the Blue Loop and a walk up the bench leaves
+  // later, first); the Stadium Express (to 5 PM) no way.
   await open(page);
   const d = new Date(); do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6);
   const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
   await go(page, '#/go/@41.74335,-111.81510:Institute/at/41.75484,-111.81505/Aztec?t=a' + ymd + '-1900');
   const picked = page.locator('.jsum').filter({ visible: true }).first();
+  await expect(picked).toBeVisible();
+  if (!/Evening/.test(await picked.innerText())) await page.locator('.jrow[data-go]:not(.jsum)').filter({ hasText: 'Evening' }).filter({ visible: true }).first().click();
   await expect(picked).toContainText('Evening');
   await expect(picked).toContainText(/Leave by/);   // no timetable: a leave-by and a latest, not times it's due
   await expect(picked).toContainText(/at the latest/);
@@ -2204,9 +2176,30 @@ test('directions arriving by a time: the shuttle the way picked, when it is the 
   await expect(page.getByText(/A bus at least every \d+ min/).filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.jrow').filter({ hasText: 'Stadium' })).toHaveCount(0);
   await expect(page.locator('.sa-row')).toHaveCount(0);   // said as the way, not beside it
-  // Walking the whole way beside it: how long, how far, up the bench to campus.
-  await expect(page.locator('a.walkall').filter({ visible: true }).first()).toContainText(/\d+ min · .* (ft|m) up/);
-  await expect(page.locator('a.walkall b.hill').filter({ visible: true }).first()).toHaveText(/steep/i);   // the word first, not the feet alone
+  // Walking the whole way beside it: how long, how far.
+  await expect(page.locator('a.walkall').filter({ visible: true }).first()).toContainText(/\d+ min · [\d.,]+ (ft|mi|m|km)\b/);
+});
+
+test('walks by the one rule, the same before and after the paths load; steep ground red on the directions map only', async ({ page }) => {
+  // The user: 'map routing. we should do it the stupid way, lots of options, fast and stupid', and 'show where there are
+  // steep areas somehow. a red overlay on land showing on particularly steep slopes that's only visible in routing view'.
+  await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
+  await open(page);
+  // A walk's minutes: the crow's line and a third again, at 75 m a minute; the paths' file in or not.
+  const rule = () => page.evaluate(async () => { const g = await import('/app/geo.js'), d = await import('/app/data.js'); const p = [41.73999, -111.83690, 41.74061, -111.83124];
+    return [g.walkMins(...p), Math.max(1, Math.ceil(d.distance(...p) * 1.3 / 75))]; });
+  const [a, b] = await rule();
+  expect(a).toBe(b);
+  await page.evaluate(() => import('/app/geo.js').then(g => g.loadWalkNet()));
+  expect((await rule())[0]).toBe(a);
+  // Old Main from Utah Podiatry: up the bench, the way drawn; the steep layer shown, then gone on the plain map.
+  await go(page, '#/go/@41.74180,-111.80900:Old%20Main/at/41.73632,-111.83415/Utah%20Podiatry');
+  await expect(page.locator('.jsum').filter({ visible: true }).first()).toBeVisible();
+  const vis = () => page.evaluate(() => { const m = window.__map; return m && m.getLayer('jr-steep') ? m.getLayoutProperty('jr-steep', 'visibility') : 'none'; });
+  await expect.poll(vis, { timeout: 20_000 }).toBe('visible');
+  await expect(page.locator('[data-steep], [data-xing]')).toHaveCount(0);   // no Avoid steep, no Crosswalks: the map shows the hills
+  await go(page, '#/map');
+  await expect.poll(vis, { timeout: 10_000 }).toBe('none');
 });
 
 test('directions: a ride no quicker than walking, sparing little of it, isn\'t offered (Logan\'s court to the Center)', async ({ page }) => {
@@ -2256,36 +2249,6 @@ test('a route\'s first run the other way, turned round from this way, doesn\'t s
   const partway = r.filter(x => !x.hub);
   expect(partway.length, 'one way of the 15 leaves from partway along').toBeGreaterThan(0);
   for (const x of partway) { expect(x.own, 'its run began before it').toBe(false); expect(x.startHub, 'at the Center').toBe(true); }
-});
-
-test('directions: avoid steep walks, on and off, and in Settings', async ({ page }) => {
-  // West of campus up to the Institute: the quickest way walks up the bench. Avoiding steep: a way without (or, with
-  // none, the ways there are, said so); the chip kept as the rider's choice, Settings showing it.
-  await open(page);
-  await go(page, '#/go/@41.74335,-111.81510:Institute/at/41.74245,-111.83000/West%20of%20campus');
-  // The quickest way walks up the bench at most hours (which way is quickest is the hour's): where it does, the chip.
-  await expect(page.locator('.jsum').filter({ visible: true }).first()).toBeVisible();
-  const chip = page.locator('.chip[data-steep]').filter({ visible: true }).first();
-  const steepNow = await page.locator('.tl b.hill.steep').filter({ visible: true }).count() > 0;
-  if (steepNow) {
-    await expect(chip).toHaveAttribute('aria-pressed', 'false');
-    await chip.click();
-    await expect(page.locator('.chip[data-steep]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
-    await expect(async () => {
-      const steep = await page.locator('.tl b.hill.steep').filter({ visible: true }).count();
-      const said = await page.getByText('Every way here has a steep walk').filter({ visible: true }).count();
-      expect(steep === 0 || said > 0).toBe(true);
-    }).toPass();
-  }
-  await go(page, '#/about');
-  if (!steepNow) await page.locator('[data-steep="avoid"]').filter({ visible: true }).first().click();   // nothing steep this hour: chosen in Settings instead
-  await expect(page.locator('[data-steep="avoid"]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('[data-steep="allow"]').filter({ visible: true }).first().click();
-  await expect(page.locator('[data-steep="allow"]').filter({ visible: true }).first()).toHaveAttribute('aria-pressed', 'true');
-  // A place's stops: the shuttle's among them, marked as the shuttle's; one up the hill said STEEP.
-  await go(page, '#/search?q=' + encodeURIComponent('USU Institute'));
-  await expect(page.locator('a.stoprow[href^="#/usu/"]').filter({ visible: true }).first()).toContainText('Aggie Shuttle');
-  await expect(page.locator('a.stoprow b.hill.steep').filter({ visible: true }).first()).toBeVisible();
 });
 
 test('directions: the planner over random trips throws on none', async ({ page }, info) => {

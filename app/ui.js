@@ -94,9 +94,9 @@ export function time(min, size = 26, est = false) {
   return raw(`<span class="t t-${size}${est ? ' est' : ''}">${c.h}<small>${c.ap}</small></span>`);
 }
 
-export const sched = t => raw(t && t.req
+export const sched = (t, more = '') => raw(t && t.req
   ? `<span class="sched req" title="The bus calls here this way only when asked: pull the cord to get off, or call ${esc(D.agency.phone)} ahead to be picked up">On request</span>`
-  : `<span class="sched">${icon('clock', 11).s}Scheduled${t && t.onTime ? ' · on time' : ''}</span>`);
+  : `<span class="sched">${icon('clock', 11).s}Scheduled${t && t.onTime ? ' · on time' : ''}${esc(more)}</span>`);
 export const corners = () => raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>');
 
 /** What a departure is headed for: 'to N Logan · CV Hospital', 'to Preston', 'Island · Wilson · Tabernacle', 'Green
@@ -194,11 +194,13 @@ export function lastTag(t) {
 export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
-  // `away`: on a stop's own rows, how far its bus is, where the feed has one on the trip short of here: what a rider
-  // checks ('how far away is it?'), said on the Live line ('Live · 7 min late · 11 stops away').
-  const sa = opts.away && t.live ? stopsAway(t, clockNow) : null;
-  const far = sa ? ' · ' + (sa.away === 0 ? 'at this stop' : `${sa.away} ${sa.away === 1 ? 'stop' : 'stops'} away`) : '';
-  const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t) + far).s : sched(t).s;
+  // `away`: on a stop's own rows, where its bus is and how far, where the feed has one on the trip short of here or
+  // on the run before: what a rider checks ('how far away is it?', and which Blue Loop bus is this one), said on the
+  // Live line ('Live · 7 min late · by North Walmart · 11 stops away', 'Estimated · at the Transit Center · 14 stops
+  // away'), or the Scheduled one where the timetable's minute stands.
+  const sa = opts.away && !t.gone ? stopsAway(t, clockNow) : null;   // a Scheduled row's too: its bus due in from the run before
+  const far = !sa ? '' : sa.away === 0 ? ' · at this stop' : ` · ${busWhere(sa)} · ${sa.away} ${sa.away === 1 ? 'stop' : 'stops'} away`;
+  const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t) + far).s : sched(t, far).s;
   const b = t.si !== undefined ? routeBadgeLink(t.r, t.si, 36, t.dir) : badge(t.r, 36).s;
   // `noRel`: no 'how long' under the time, where the day's heading above already names its day ('tomorrow, Tue' on
   // every row under 'Tuesday 20 Oct' said it again and again)
@@ -240,8 +242,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const num = s.hub ? '' : 'Stop ' + (stopNo(s) || s.id);
   const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';
   const way = opts.point ? pointerMark(s.lat, s.lon, opts.point) + (num ? ' · ' : '') : '';
-  // `steep`: the walk to it (or, for a place's stops, either way) has a steep climb: said in a word, bold
-  const dist = `<span class="dist">${way}${esc([opts.dist, s.by, num].filter(Boolean).join(' · '))}${opts.steep ? ' · <b class="hill steep">Steep</b> walk' : ''}${alert ? (opts.dist || num || way ? ' · ' : '') + alert : ''}</span>`;
+  const dist = `<span class="dist">${way}${esc([opts.dist, s.by, num].filter(Boolean).join(' · '))}${alert ? (opts.dist || num || way ? ' · ' : '') + alert : ''}</span>`;
   // `dest`: where the next bus goes (a road's stops, both sides: which side is which way)
   const go = opts.dest && next ? `<span class="go">${badge(next.r, 20).s}${esc(headsign(next))}</span>` : '';
   return raw(`<a class="stoprow${opts.here ? ' here' : ''}"${opts.here ? ' id="here"' : ''} href="#/stop/${esc(s.id)}"><div class="mid"><span class="name">${esc(opts.name || s.name)}${town}</span>${go}${dist}${go ? '' : badges(s.routes, 24).s}</div>${end}</a>`);
@@ -255,6 +256,8 @@ export function stopRow(si, next0, clockNow, opts = {}) {
  *  in `.addr` (muted, its own line), `town` (', Hyrum') after the address, or the name when there's no landmark. */
 /** A timed stop's mark in a list of a route's stops: the timetable is kept to here, an early bus waiting. */
 export const timedMark = () => raw(`<span class="tpmark" title="A timed stop: buses don't leave before their scheduled time">${icon('clock', 12).s}Timed stop</span>`);
+/** Where a departure's bus is (rt.js stopsAway): at the stop it's at, else by the one it's heading for. */
+const busWhere = sa => { const s = stop(sa.where); return (sa.at ? 'at ' : 'by ') + (s.hub ? 'the ' + D.hub.name : heardName(sa.where).name); };
 export function heardName(si) {
   const s = stop(si);
   return s.hub ? { name: D.hub.name, addr: '' } : s.by ? { name: s.by, addr: s.name } : { name: s.name, addr: '' };

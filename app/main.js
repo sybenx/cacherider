@@ -649,8 +649,8 @@ async function boot() {
   // files for search, the shuttle, POOL and walks, which follow it.
   try {
     await Promise.all([load(), loadAlerts({ relay: false })]);
-    extras = Promise.all([loadGrid(), loadUSU(), loadPlaces(), loadPool(), loadElevation(), loadWalks()]).catch(() => {}).then(() => { extrasReady = true; });   // the lie of the land, for timing walks; shared kerbs need the timetable's stops
-    // The ways themselves, after: every walk along them once they're in (geo.js), the page drawn again with them.
+    extras = Promise.all([loadGrid(), loadUSU(), loadPlaces(), loadPool(), loadElevation(), loadWalks()]).catch(() => {}).then(() => { extrasReady = true; });   // the lie of the land, for the directions' steep grounds; shared kerbs need the timetable's stops
+    // The ways themselves, after: every walk drawn along them once they're in (geo.js), the page drawn again with them.
     extras.then(() => loadWalkNet()).then(net => { if (net) render(); }).catch(() => {});
     if (!lightFirst()) await extras;
   } catch (e) {

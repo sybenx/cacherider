@@ -709,15 +709,35 @@ export function callAt(st, si, min) {
 }
 /** How far a departure's bus is from its stop, in the stops it has still to call at: this one counted, the one it's at
  *  not, nor one Connect's notice closes to its route (the feed, knowing no detours, still predicts it), as its card
- *  lists them. `away` 0 when it's at this one; null without a bus on the trip short of here (on the trip before, or the
- *  feed quiet). The home page's big stop and a stop's rows say it alike ('Bus 1181 · 4 stops away', 'Live · 4 stops
- *  away'); `j`, `k` and `at` are where on the trip, for the home page's line. */
+ *  lists them; and where it is now (`where`, the stop it's at or heading for). `away` 0 when it's at this one; null
+ *  without a bus on the trip short of here or on the run before it (the feed quiet). The home page's big stop and a
+ *  stop's rows say it alike ('Bus 1181 · 4 stops away', 'Live · by North Walmart · 4 stops away'); `j`, `k` and `at`
+ *  are where on the trip, for the home page's line, and `prev` that the bus is still on the run before (a loop's lap
+ *  before, a route's run out): its stops still to come on that one counted first. */
 export function stopsAway(t, clockNow) {
   if (t.day !== 0 || t.trip === undefined || t.si === undefined) return null;
-  const on = busOn(t.trip);
-  if (!on || on.next === undefined) return null;
-  const b = on.bus, st = tripStops(t.trip), k = callAt(st, t.si, t.live ? t.min - t.live.delay : t.min);
+  const st = tripStops(t.trip), k = callAt(st, t.si, t.live ? t.min - t.live.delay : t.min);
   if (k < 0) return null;
+  const on = busOn(t.trip);
+  if (!on) {
+    // The user, at 995 South Main: the Blue Loop's rows said nothing of their buses while the Green Loop's said '9 stops
+    // away': 'my issue is also knowing which blue loop will get there at that time. so if the blue is sitting at ITC,
+    // or if it's driving by north walmart'. The bus of a loop's next lap is still on this one.
+    const pt = prevTrip(t.trip, clockNow.ymd);
+    if (pt === undefined || !runOf(t.trip, clockNow.ymd).includes(pt)) return null;
+    const po = busOn(pt);
+    if (!po || po.next === undefined) return null;
+    const ps = tripStops(pt), j = callAt(ps, po.next, clockNow.min - (busDelay(po.bus) ?? 0));
+    if (j < 0) return null;
+    const at = distance(po.bus.lat, po.bus.lon, D.stops[po.next].lat, D.stops[po.next].lon) <= AT_STOP;
+    const open = (x, ri) => !closedRoutes(x, clockNow.ymd).has(ri);
+    let ahead = 0;
+    for (let i = j; i < ps.length; i++) if ((i === j && at) || open(ps[i][1], t.r)) ahead++;
+    for (let i = 0; i < k; i++) if (open(st[i][1], t.r)) ahead++;
+    return { bus: po.bus, away: ahead - (at ? 1 : 0) + 1, where: po.next, at, prev: true };
+  }
+  if (on.next === undefined) return null;
+  const b = on.bus;
   // Where its next stop is on the trip: the call nearest the timetable's minute the bus is at. Past this one (a loop
   // calling here twice, its next the later), it isn't coming to this call.
   const j = callAt(st, on.next, clockNow.min - (busDelay(b) ?? 0));
@@ -725,7 +745,7 @@ export function stopsAway(t, clockNow) {
   const at = distance(b.lat, b.lon, D.stops[on.next].lat, D.stops[on.next].lon) <= AT_STOP;   // at its stop: that one isn't to come
   let ahead = 0;
   for (let i = j; i < k; i++) if ((i === j && at) || !closedRoutes(st[i][1], clockNow.ymd).has(t.r)) ahead++;
-  return { bus: b, away: j === k && at ? 0 : ahead - (at ? 1 : 0) + 1, j, k, at };
+  return { bus: b, away: j === k && at ? 0 : ahead - (at ? 1 : 0) + 1, j, k, at, where: on.next };
 }
 /** A bus of a route stopped in the Transit Center, set to go out on it: the one that leaves next, whatever bus the
  *  feed names (a swap bus is put in, parked at the bay, while the late one finishes its run). Only on a trip out from

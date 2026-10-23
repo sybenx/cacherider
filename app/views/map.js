@@ -6,7 +6,7 @@ import { D, BASE, nearest, stop, offSeason, route, nextAt, timed, POOL, services
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
 import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, nthWords, travel } from '../ui.js';
 import { nearMe, morph } from '../main.js';
-import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, steepWalk, walkWay } from '../geo.js';
+import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, walkWay, steepImage } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, offDuty, busNth, busOn, busStops, busPlace, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, HUB_IN, AT_STOP } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
@@ -3291,8 +3291,6 @@ function setSpot(at) {
   const apply = () => map.getSource('spot') && map.getSource('spot').setData(at ? circle(at.lat, at.lon) : { type: 'FeatureCollection', features: [] });
   if (ready) apply(); else map.once('load', apply);
 }
-/** A spot's walk to a stop or back up from it, steep either way (a place is walked to and from). */
-const steepBoth = (a, b) => steepWalk(a, b) || steepWalk(b, a);
 /** The map's own data is OpenStreetMap's, and anyone can put it right: a building or a crossing missing, a place gone,
  *  a street misnamed. Its editor, at this spot, under a spot's card; 'Improve this map' in the map's credits. A rider
  *  who fixes it sees it here at the next cut of the tiles (the places and crossings, the next night). */
@@ -3326,7 +3324,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null, swa
   // campus they're the nearer buses. One at the same pole as a Connect stop is listed as well, its loops and their
   // buses being what its row says (the Connect stop's row says only Connect's).
   const ushare = !U ? [] : byWalk(nearestUSU(at.lat, at.lon, 6).filter(x => x.d <= 400 && U.stops[x.i].routes.length), at.lat, at.lon, true, x => U.stops[x.i]).slice(0, 3).map(x => ({ ...x, u: true }));
-  // By the walk, there and back, the climb counted (a road's stops, along it, by distance)
+  // By the walk, there and back (a road's stops, along it, by distance)
   const rows = [...near, ...ushare].sort((a, b) => road ? a.d - b.d : (a.cost ?? a.d / 75) - (b.cost ?? b.d / 75) || a.d - b.d);
   const card = col.querySelector('#mapcard');
   // A start picked for directions: the way there from this spot is the card's one button, the nearest stops under it.
@@ -3342,7 +3340,7 @@ function showAt(at, app, clockNow, forId = null, toFrom = null, road = null, swa
   const lines = () => by.length || uby.length ? html`<div class="roadroutes">${by.map(ri => { const r = D.routes[ri]; return html`<button type="button" class="roadroute" data-ri="${ri}">${badge(ri, 30)}<span class="mid"><span class="name">${routeName(ri, false)}</span>${r.desc ? html`<span class="sub">${r.desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')}</span>` : ''}</span>${icon('fwd', 18)}</button>`; })}${uby.map(ri => html`<a class="roadroute" href="#/map/uroute/${encodeURIComponent(U.routes[ri].id)}">${chip(ri, 30)}<span class="mid"><span class="name">${U.routes[ri].name}</span><span class="sub">Aggie Shuttle · ${U.routes[ri].stops.length} stops</span></span>${icon('fwd', 18)}</a>`)}</div>` : '';
   // The stops at once, their next buses (and a road's route times on the map) the moment after.
   const markup = bare => html`<div class="grip"></div><div class="head"><span class="eyebrow">${swap ? 'Change directions' : forId ? 'Start from' : toFrom ? 'Go to' : road ? 'On this road' : 'Nearest stops to'}</span><div class="name"><span>${at.label || 'this spot'}</span>${road ? '' : placeStar(at)}</div>${lines()}</div>${go}
-    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare, steep: steepBoth(at, U.stops[x.i]) }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare, steep: !road && steepBoth(at, D.stops[x.i]) })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}${osmFix(at)}`.s;
+    ${rows.length ? rows.map(x => x.u ? stopRowU(x.i, { dist: metres(x.d) + ' away', bare }) : stopRow(x.i, bare ? null : next(x.i), clockNow, { dist: metres(x.d) + ' away', dest: !!road, bare })) : html`<div class="empty"><p>No stops within ${metres(4000)} of there.</p></div>`}${osmFix(at)}`.s;
   card.innerHTML = markup(true);
   const spotKeyNow = 'at:' + at.lat.toFixed(4) + ',' + at.lon.toFixed(4);
   afterPaint(() => {
@@ -3965,7 +3963,7 @@ export function runFocus(si) {
 }
 
 // ---- a way from the directions page, drawn: each ride along its route's line in the route's colour (a shuttle's
-// along its loop), the walks dashed in the paper's ink as the crow flies, the change ringed, the start and the end
+// along its loop), the walks dotted in the paper's ink along the paths, the steep ground red, the change ringed, the start and the end
 // marked, and only the stops it calls at, each tappable as anywhere. On a phone its card is the way's own, the others
 // a swipe away; beside a wide screen's panel the directions page stays, the way picked marked there.
 let JR = null, jrKey = null, jrFramed = null, jrBounds = null;
@@ -3973,27 +3971,30 @@ let JR = null, jrKey = null, jrFramed = null, jrBounds = null;
 const frameWay = (duration = 600) => { if (JR && jrBounds) frame(jrBounds, { margin: wide() ? 40 : 28, maxZoom: 16.5, bearing: 0, duration }); };
 const ink = () => dark() ? '#eef0f2' : '#1d1f20', paperInk = () => dark() ? '#101214' : '#f2f2f3';
 const jpt = x => typeof x === 'string' ? U.stops[+x.slice(1)] : D.stops[x];
-/** A crosswalk's mark for the map: a dark rounded square with white zebra stripes, 2× for sharpness. */
-function xwalkImage() {
-  const s = 40, c = document.createElement('canvas'); c.width = c.height = s;
-  const g = c.getContext('2d');
-  g.fillStyle = '#1d1f20'; g.strokeStyle = '#ffffff'; g.lineWidth = 3;
-  g.beginPath(); g.roundRect(2, 2, s - 4, s - 4, 8); g.fill(); g.stroke();
-  g.fillStyle = '#ffffff';
-  for (let k = 0; k < 4; k++) g.fillRect(9 + k * 6.5, 10, 3.5, 20);
-  return g.getImageData(0, 0, s, s);
-}
-/** The layers a way adds, once (and again after a restyle, which drops them): its walks, its ring and its ends. */
+/** The layers a way adds, once (and again after a restyle, which drops them): the steep ground, its walks, its ring and
+ *  its ends. */
 function addJourneyLayers(m) {
   addRunLayers(m);
+  steepShown(m, true);
   if (m.getSource('jr')) return;
   m.addSource('jr', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   m.addLayer({ id: 'jr-walk', type: 'line', source: 'jr', filter: ['==', ['get', 'k'], 'walk'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ink(), 'line-width': 3, 'line-dasharray': [0.1, 2] } }, 'stops');
-  // A crossing a walk takes: a zebra-striped mark, its words beside it.
-  if (!m.hasImage('xwalk')) m.addImage('xwalk', xwalkImage(), { pixelRatio: 2 });
-  m.addLayer({ id: 'jr-cross', type: 'symbol', source: 'jr', filter: ['==', ['get', 'k'], 'cross'], layout: { 'icon-image': 'xwalk', 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-anchor': 'left', 'text-offset': [1.3, 0], 'text-optional': true }, paint: { 'text-color': ink(), 'text-halo-color': paperInk(), 'text-halo-width': 2 } });
   m.addLayer({ id: 'jr-ring', type: 'circle', source: 'jr', filter: ['==', ['get', 'k'], 'change'], paint: { 'circle-radius': 13, 'circle-opacity': 0, 'circle-stroke-width': 3, 'circle-stroke-color': ink() } });
   m.addLayer({ id: 'jr-ends', type: 'circle', source: 'jr', filter: ['in', ['get', 'k'], ['literal', ['start', 'end']]], paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'k'], 'end'], ink(), paperInk()], 'circle-stroke-width': 3, 'circle-stroke-color': ['case', ['==', ['get', 'k'], 'end'], paperInk(), ink()] } });
+}
+/** Steep ground (geo.js steepImage), in red under the routes: on the directions' map only, where a rider picks a way
+ *  with walking in it. The walks are timed as if the town were flat; this is where it isn't. */
+function steepShown(m, on) {
+  if (on && !m.getSource('steep')) {
+    const img = steepImage();
+    if (!img) return;
+    m.addSource('steep', { type: 'image', ...img });
+    // under the basemap's labels and the routes, whichever comes first: the street names stay clear of the red
+    const ids = m.getStyle().layers.map(l => l.id), first = m.getStyle().layers.find(l => l.type === 'symbol');
+    const before = first && ids.indexOf(first.id) < ids.indexOf('route-lines') ? first.id : 'route-lines';
+    m.addLayer({ id: 'jr-steep', type: 'raster', source: 'steep', paint: { 'raster-opacity': 0.6, 'raster-resampling': 'linear', 'raster-fade-duration': 0 } }, before);
+  }
+  if (m.getLayer('jr-steep')) m.setLayoutProperty('jr-steep', 'visibility', on ? 'visible' : 'none');
 }
 /** A shuttle ride's line: its loop from where it's boarded, round to where it's left. */
 function loopLeg(l) {
@@ -4031,6 +4032,7 @@ async function mainJourney(J, app) {
   if (!ready) { if (J) map.once('load', () => mainJourney(J, app)); return; }
   if (!(J && J.none) && jrNone) {
     jrNone = null; jrNoneB = null; if (nearBy === 'none') markNear();   // its own marks only: the near view may have just made its own
+    if (!J) steepShown(map, false);
     if (map.getSource('jr')) map.getSource('jr').setData({ type: 'FeatureCollection', features: [] });
     const card = col.querySelector('#mapcard');
     if (!J && card.querySelector(':scope > .gonone')) card.classList.remove('open', 'peek');
@@ -4061,6 +4063,7 @@ async function mainJourney(J, app) {
   if (!J) {
     if (!JR) return;
     JR = null; jrKey = null; jrFramed = null;
+    steepShown(map, false);
     for (const id of ['run', 'jr']) if (map.getSource(id)) map.getSource(id).setData({ type: 'FeatureCollection', features: [] });
     for (const id of [...RUN_HIDE, 'stop-selected']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
     map.setFilter('stops', null); map.setFilter('usu-stops', null);
@@ -4096,12 +4099,9 @@ async function mainJourney(J, app) {
   p.legs.forEach((l, k) => {
     if (l.kind === 'walk') {
       const a = k === 0 ? [J.from.lon, J.from.lat] : ll(l.from), b = k === p.legs.length - 1 ? [J.to.lon, J.to.lat] : ll(l.to);
-      // As it's walked (geo.js walkWay): along the sidewalks, paths and steps where they're known, else straight but by
-      // its crossings where it goes over a busy road.
-      const w = walkWay(a[1], a[0], b[1], b[0]), xs = w.via.filter((v, i) => !v.none && !w.via.slice(0, i).some(o => o.lat === v.lat && o.lon === v.lon));   // (a corner's two roads, one mark)
-      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: w.coords || [a, ...xs.map(v => [v.lon, v.lat]), b] } });
-      // Where to cross, marked: a light or a crosswalk, said beside it.
-      for (const v of xs) marks.push({ type: 'Feature', properties: { k: 'cross', label: v.kind === 's' ? 'Cross at the light' : 'Cross here' }, geometry: { type: 'Point', coordinates: [v.lon, v.lat] } });
+      // Drawn along the sidewalks, paths and streets where they're known (geo.js walkWay), else straight: for the eye
+      // only, the walk's minutes are the one rule's.
+      marks.push({ type: 'Feature', properties: { k: 'walk' }, geometry: { type: 'LineString', coordinates: walkWay(a[1], a[0], b[1], b[0]) } });
     } else if (k > 0 && p.legs[k - 1].kind === 'ride') marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(l.from) } });
     else if (k > 1 && p.legs[k - 1].kind === 'walk' && p.legs[k - 2].kind === 'ride') {
       marks.push({ type: 'Feature', properties: { k: 'change' }, geometry: { type: 'Point', coordinates: ll(p.legs[k - 2].to) } });

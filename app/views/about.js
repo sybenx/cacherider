@@ -4,7 +4,6 @@ import { fmtDay, is24, isKm, clockText, now, metres } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
 import { shareBlock, siteLink, fillQRs } from '../share.js';
 import { U } from '../usu.js';
-import { avoidSteep, setAvoidSteep } from '../geo.js';
 import { installState, installSheet, app, themeButton, cycleTheme, nearMe, nearOff, toggleClock, toggleUnits, render as redraw } from '../main.js';
 import { isWide } from '../wide.js';
 import { TEST } from './test.js';
@@ -24,7 +23,6 @@ export function render({ section }, clockNow) {
       <div class="setrow"><div class="col"><span class="t">Clock</span><span class="s">3:10 PM or 15:10</span></div><div class="seg" role="group" aria-label="Clock"><button type="button" data-clock="12" aria-pressed="${is24() ? 'false' : 'true'}">12-hour</button><button type="button" data-clock="24" aria-pressed="${is24() ? 'true' : 'false'}">24-hour</button></div></div>
       <div class="setrow"><div class="col"><span class="t">Distance</span><span class="s">500 ft or 150 m</span></div><div class="seg" role="group" aria-label="Distance"><button type="button" data-units="mi" aria-pressed="${isKm() ? 'false' : 'true'}">Miles</button><button type="button" data-units="km" aria-pressed="${isKm() ? 'true' : 'false'}">Kilometers</button></div></div>
       ${isWide() ? html`<div class="setrow"><div class="col"><span class="t">Panel</span><span class="s">Which side of the map the stops and pages go, on this computer</span></div><div class="seg" role="group" aria-label="Panel"><button type="button" data-side="left" aria-pressed="${pref('panel') === 'right' ? 'false' : 'true'}">Left</button><button type="button" data-side="right" aria-pressed="${pref('panel') === 'right' ? 'true' : 'false'}">Right</button></div></div>` : ''}
-      <div class="setrow"><div class="col"><span class="t">Steep walks</span><span class="s">Directions without a steep climb on foot, where there's a way</span></div><div class="seg" role="group" aria-label="Steep walks"><button type="button" data-steep="allow" aria-pressed="${avoidSteep() ? 'false' : 'true'}">Allow</button><button type="button" data-steep="avoid" aria-pressed="${avoidSteep() ? 'true' : 'false'}">Avoid</button></div></div>
       <div class="setrow"><div class="col"><span class="t">Location</span><span class="s">${app.geo ? 'On · sorts stops by distance' : 'Off · turn on to sort stops by distance'}</span>${app.geo ? html`<span class="s">Last found ${clockText(now(new Date(app.geo.at)).min)}${app.geo.acc ? ' · ±' + metres(app.geo.acc) : ''}${app.geo.stale ? ' · the phone hasn’t found a newer one' : ''}</span>` : ''}</div><button class="btn btn-secondary" id="aboutnear" type="button">${app.geo ? 'Turn off' : 'Turn on'}</button></div>
     </div>
     ${installState() === 'installed' ? '' : html`<div class="section">${icon('down', 16)}On your home screen</div>
@@ -93,10 +91,7 @@ async function mount(el) {
     if (right) document.documentElement.dataset.panel = 'right'; else delete document.documentElement.dataset.panel;
     redraw();
   };
-  for (const b of el.querySelectorAll('[data-steep]')) b.onclick = () => {
-    setAvoidSteep(b.dataset.steep === 'avoid');
-    for (const o of el.querySelectorAll('[data-steep]')) o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
-  };
+
   const nr = el.querySelector('#aboutnear');
   if (nr) nr.onclick = () => app.geo ? nearOff() : nearMe();
   const go = el.querySelector('#install-go');
