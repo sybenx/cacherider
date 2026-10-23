@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, maySkip, skipsAt, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason } from './data.js';
+import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing, stopsAway } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
@@ -200,14 +200,11 @@ export function depRow(t0, clockNow, opts = {}) {
   const far = sa ? ' · ' + (sa.away === 0 ? 'at this stop' : `${sa.away} ${sa.away === 1 ? 'stop' : 'stops'} away`) : '';
   const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t) + far).s : sched(t).s;
   const b = t.si !== undefined ? routeBadgeLink(t.r, t.si, 36, t.dir) : badge(t.r, 36).s;
-  // An unannounced detour may be taking this route round the stop: the time kept, a question beside it.
-  const u = t.si !== undefined && maySkip(stop(t.si).id, t.r) && skipsAt(stop(t.si).id).find(u => u.ri.includes(t.r));
-  const q = u ? `<span class="sub qnote">The last ${u.n} skipped this stop<span class="qmark">?</span></span>` : '';
   // `noRel`: no 'how long' under the time, where the day's heading above already names its day ('tomorrow, Tue' on
   // every row under 'Tuesday 20 Oct' said it again and again)
   // `size`: the time's (the stop page's next bus, larger); `relHtml`: 'how long' as markup of its own (its day, warned)
   const relEl = opts.relHtml !== undefined ? (opts.relHtml ? `<span class="rel">${opts.relHtml}</span>` : '') : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`;
-  return raw(`<div class="row${opts.href ? ' tap' : ''}${opts.cls ? ' ' + opts.cls : ''}"${opts.attrs || ''}>${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${q}${lastTag(t).s}</div><div class="end">${when(t, opts.size || 26).s}${loopArrival(t) || opts.noRel ? '' : relEl}</div></div>`);
+  return raw(`<div class="row${opts.href ? ' tap' : ''}${opts.cls ? ' ' + opts.cls : ''}"${opts.attrs || ''}>${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}</div><div class="end">${when(t, opts.size || 26).s}${loopArrival(t) || opts.noRel ? '' : relEl}</div></div>`);
 }
 
 /** A run the feed says is cancelled, in a list of departures: its time struck, 'Cancelled', nothing to count down to. */
@@ -241,7 +238,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
   const end = opts.bare ? '' : shut !== null ? closedEnd(shut, clockNow) : opts.later ? `<div class="end" data-later="${si}"></div>` : stopEnd(next, clockNow, opts);
   const town = s.town && s.town !== 'Logan' ? `<span class="town">, ${esc(s.town)}</span>` : '';
   const num = s.hub ? '' : 'Stop ' + (stopNo(s) || s.id);
-  const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : skipsAt(s.id).length ? `<span class="qnote">${esc(skipsAt(s.id).map(u => u.who).join(', '))} skipped last ${Math.max(...skipsAt(s.id).map(u => u.n))}<span class="qmark">?</span></span>` : '';
+  const alert = A.byStop[s.id] && stopAlerts(si, clockNow.ymd).length ? '<span class="alert">Detour</span>' : '';
   const way = opts.point ? pointerMark(s.lat, s.lon, opts.point) + (num ? ' · ' : '') : '';
   // `steep`: the walk to it (or, for a place's stops, either way) has a steep climb: said in a word, bold
   const dist = `<span class="dist">${way}${esc([opts.dist, s.by, num].filter(Boolean).join(' · '))}${opts.steep ? ' · <b class="hill steep">Steep</b> walk' : ''}${alert ? (opts.dist || num || way ? ' · ' : '') + alert : ''}</span>`;

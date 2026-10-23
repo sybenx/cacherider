@@ -1,5 +1,5 @@
 // The schedule, loaded once, and the questions the screens ask of it.
-import { now, dayFrom, dayDiff, setZone, dayName, fmtDay, clockText, isGone } from './time.js';
+import { now, dayFrom, dayDiff, setZone, dayName, clockText, isGone } from './time.js';
 
 export let D = null;           // the reduced feed
 export const BASE = new URL('..', import.meta.url).href;   // the app's root, wherever it is served from
@@ -263,154 +263,9 @@ export async function loadAlerts({ relay = true } = {}) {
       for (const id of a.stops || []) (byStop[id] ||= []).push(a);
       for (const ri of a.ri) (byRoute[ri] ||= []).push(a);
     }
-    let seen = [];
-    if (relay && pref('detours') !== 'off') try {
-      const r = await fetch(LIVE_URL + 'detours', { cache: 'no-store', signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
-      if (r.ok) {
-        const list = ((await r.json()).detours || []).filter(d => d.streak >= 2);
-        // Each way round along the streets (the map's own tiles), for the stops it passes and the streets it takes:
-        // the reports alone, twenty seconds apart, cut across blocks and miss them. Traced ways kept on the phone, so
-        // an open finds them at once; one not traced yet goes as reported, and is traced once the page is up
-        // (decoding the tiles is most of a second's work, not to stand in the way of the first page).
-        const kept = traced(), todo = [];
-        for (const d of list) {
-          d.best = (d.paths || [d.path]).reduce((m, p) => p.length > m.length ? p : m);
-          const k = wayKey(d.best), t = kept[k];
-          if (t) { d.way = t.way; d.streets = t.streets; } else { d.way = d.best; d.streets = []; todo.push(d); }
-        }
-        seen = unannounced(list, byStop);
-        if (renew(j.alerts, seen)) seen = unannounced(list, byStop);
-        if (todo.length) idle(async () => {
-          const { alongStreets } = await import('./roads.js');
-          const keep = traced();
-          for (const d of todo) {
-            try { const w = await alongStreets(d.best); d.way = w.coords.map(([lo, la]) => [la, lo]); d.streets = w.streets; keep[wayKey(d.best)] = { way: d.way, streets: d.streets, at: Date.now() }; } catch { /* as reported */ }
-          }
-          const recent = Object.entries(keep).sort((x, y) => y[1].at - x[1].at).slice(0, 16);   // the last few, not every way ever
-          try { localStorage.removeItem('cr-ways'); localStorage.setItem('cr-ways-2', JSON.stringify(Object.fromEntries(recent))); } catch { /* traced again next time */ }
-          let again = unannounced(list, A.byStop);
-          if (renew(A.alerts, again)) again = unannounced(list, A.byStop);
-          A = { ...A, seen: again };
-          window.dispatchEvent(new Event('seenchange'));
-        });
-      }
-    } catch { /* the agency's alone */ }
-    A = { ...j, byStop, byRoute, seen, loadedAt: relay ? Date.now() : A.loadedAt };   // the file alone is no check of the relay
+    A = { ...j, byStop, byRoute, loadedAt: relay ? Date.now() : A.loadedAt };   // the file alone is no check of the relay
   } catch { /* the app is fine without alerts */ }
 }
-/** Connect's notice past its posted end while its buses still go round the same way: in force again, with what keeps
- *  it so. The Route 2 and 5 detours on 200 East were posted to end Tue 29 Sep and dropped; on Thursday the buses were
- *  still going round, 15 in a row, skipping just the stops the notices named, and the app called it unannounced. Only
- *  a lapsed notice (kept on in alerts.json for this), only by a detour quite sure (3 in a row and more) of the same
- *  route skipping the notice's stops and no others. True when one was kept on. */
-function renew(alerts, seen) {
-  let any = false;
-  const ymd = now().ymd;
-  for (const a of alerts) {
-    if (!a.lapsed || a.stillOn || alertOn(a, ymd)) continue;
-    const u = seen.find(u => u.n >= 3 && u.gone.length && u.ri.some(ri => a.ri.includes(ri)) && u.gone.every(id => (a.stops || []).includes(id)));
-    if (u) { a.stillOn = { n: u.n, last: u.last }; any = true; }
-  }
-  return any;
-}
-const wayKey = path => path.map(([la, lo]) => la.toFixed(4) + ',' + lo.toFixed(4)).join(';');
-const traced = () => { try { return JSON.parse(localStorage.getItem('cr-ways-2') || '{}'); } catch { return {}; } };
-const idle = f => (window.requestIdleCallback || (g => setTimeout(g, 1500)))(f, { timeout: 4000 });
-/** Unannounced detours: seen from the buses themselves (the relay's watch, worker/src/detours.js), kept apart from
- *  the agency's notices everywhere (A.seen, never A.alerts): never counted with them, never a stop closed or a time
- *  dropped on the buses' word, only a question asked. Each: the stops of a route's line between where its buses left
- *  it and where they came back (gone: perhaps skipped), less any they passed on the way round (on: a stop a detour
- *  passes is served, so where to wait instead), the streets they took, and how many buses in a row went round. One the
- *  agency has every stop of in a notice in force is announced: only its way round is drawn, which notices never give.
- *  ?detours=off in the address turns them off on a phone. */
-const TRACK_ON = 45;   // metres from a way round a stop is on it
-function unannounced(list, byStop) {
-  const ymd = now().ymd, out = [];
-  for (const d of list) {
-    const ris = D.routes.map((r, i) => i).filter(i => D.routes[i].short.split(' ')[0] === d.route);
-    const gone = new Set();
-    // A point lies between two stops when it's nearer each than they are to each other: firmly, or only loosely, where
-    // the way through it is longer than a way only ever heading for the next stop can be (√2 the straight way, round a
-    // block's corner, and 45 m either side, as near as a stop is to a way round to be on it); a line passing it turns
-    // back round a block.
-    const between = ([la, lo], a, b) => {
-      const ab = distance(a.lat, a.lon, b.lat, b.lon), pa = distance(a.lat, a.lon, la, lo), pb = distance(la, lo, b.lat, b.lon);
-      return pa < ab && pb < ab && (pa + pb > Math.SQRT2 * ab + 2 * TRACK_ON ? 'loose' : 'firm');
-    };
-    for (const ri of ris) for (const seq of Object.values(D.routes[ri].stops || {})) {
-      // Where in the line's stops the buses left it and came back: between stop k and the next, k and how far along the
-      // straight way from one to the other it falls (a point behind the first, where the line bends, held at its start,
-      // so the line's pass the other way along the same street keeps its order); at a stop, the stop. The stops between
-      // are those gone round; one before where they left, or past where they came back, is served (the bus's track ends
-      // at the corner, short of it: Route 2's 979 North 200 East, past its corner at 1000 North, was counted skipped).
-      // The stops within 300 m of each end, as it was, missed one a long block off: the Blue Loop's way round on 15 Oct
-      // came back 307 m past 950 South Main St, and read as announced with nothing skipped. A detour faked round each
-      // stop of every route's line: 94% found exactly (68% before), a stop the buses passed counted in 12 of 8556 (176).
-      // Loosely between two stops only where it's nowhere firmly (at a stop, or firmly between two others): the Blue
-      // Loop's way round on 16 Oct (the relay's detour 92) left 1200 South 23 m from 520 West 100 North and read as on
-      // the line's way back from 453 West 100 North to 950 South Main St, 380 m off it, which came out the closest pair:
-      // 453 West 100 North served, where the same way round leaving 25 m on (its detour 103) skipped both. Route 11's
-      // round Macey's, off its line at 1700 South and Main, three sides of a block from 410 West 1700 South to 520 West
-      // 100 North, is nowhere firmly and keeps its loose place. The detours faked round each stop, and each two, leaving
-      // and coming back on the line's own shape a quarter, half and three quarters of the way to the next stop: 94.5%
-      // found exactly (94.2%), none worse, a stop the buses passed counted no more often (24 of 13725).
-      const at = ([la, lo]) => {
-        const out = [], kx = 111320 * Math.cos(la * Math.PI / 180), xy = s => [(s.lon - lo) * kx, (s.lat - la) * 110540];
-        seq.forEach((si, k) => {
-          const s = D.stops[si], n = D.stops[seq[k + 1]], how = n && between([la, lo], s, n);
-          if (distance(la, lo, s.lat, s.lon) <= TRACK_ON) out.push([k, 'firm']);
-          if (!how) return;
-          const [ax, ay] = xy(s), [bx, by] = xy(n), dx = bx - ax, dy = by - ay;
-          out.push([k + Math.min(0.99, Math.max(0.01, -(ax * dx + ay * dy) / (dx * dx + dy * dy))), how]);
-        });
-        const firm = out.filter(x => x[1] === 'firm');
-        return (firm.length ? firm : out).map(x => x[0]);
-      };
-      // The closest pair in order: a line that passes the same corner twice (out and back) would otherwise take in the
-      // whole run between.
-      let i = null, j = null;
-      for (const a of at(d.leaves)) for (const b of at(d.rejoins)) if (b > a && (i === null || b - a < j - i)) { i = a; j = b; }
-      if (i === null) continue;
-      for (let k = Math.floor(i) + 1; k < j; k++) {
-        const s = D.stops[seq[k]];
-        if (!s.hub && pathDistance(s.lat, s.lon, d.way) > TRACK_ON) gone.add(s.id);
-      }
-    }
-    const ids = [...gone];
-    // Not one the agency's notice closes to its routes, passed or not: the Blue Loop's way round on 15 Oct went by
-    // 520 West 100 North, closed for construction, and offered it as where to wait instead.
-    const shut = id => (byStop[id] || []).some(a => alertOn(a, ymd) && ris.some(ri => a.ri.includes(ri)));
-    const on = D.stops.filter(s => !s.hub && !gone.has(s.id) && !shut(s.id) && pathDistance(s.lat, s.lon, d.way) <= TRACK_ON).map(s => s.id);
-    const announced = !ids.length || ids.every(shut);
-    // The streets of the way round: those between the one it left and the one it came back to.
-    const st = d.streets || [], by = st.length > 2 ? st.slice(1, -1) : st.slice(1);
-    // Since when they've gone round: the relay's first bus that way, unless one has gone along the usual way since
-    // (`along`), the run counted again after it. The Blue Loop's on 15 Oct, first round at 2:14 PM, one along at 4:57
-    // and 9 in a row after, read 'every Blue Loop bus since 2:14 PM'.
-    const from = d.along > d.first ? d.along : d.first;
-    out.push({ id: 'seen' + d.id, d, ri: ris, who: ris.length ? routeWord(ris[0]) : 'Route ' + d.route, n: d.streak, gone: ids, on, by, announced,
-      since: seenAt(from), last: seenAt(d.last) });
-  }
-  return out;
-}
-/** When a bus was seen going round, its day said when it wasn't today: at six in the morning, yesterday's '8:08 PM'
- *  read as last night's an hour ago or this evening's to come. '8:08 PM', '8:08 PM yesterday', '8:08 PM on Tuesday',
- *  '8:08 PM on Tue 29 Sep'. */
-function seenAt(epoch) {
-  const c = now(new Date(epoch * 1000)), today = now().ymd, back = dayDiff(c.ymd, today);
-  return clockText(c.min) + (back <= 0 ? '' : back === 1 ? ' yesterday' : back < 7 ? ' on ' + dayName(c.ymd) : ' on ' + fmtDay(c.ymd));
-}
-/** The unannounced detours that may skip a stop; and every detour that passes it on its way round, announced or not (a
- *  stop passed on a detour is served: the Blue Loop's round by 45 West 1200 South on 15 Oct, under Connect's notice,
- *  was left out, and that stop's page said nothing of it). */
-export const skipsAt = id => (A.seen || []).filter(u => !u.announced && u.gone.includes(id));
-export const passesAt = id => (A.seen || []).filter(u => u.on.includes(id));
-/** Whether a route may be skipping a stop, by an unannounced detour. */
-export const maySkip = (id, ri) => skipsAt(id).some(u => u.ri.includes(ri)) && !closedRoutes(D.stopById[id], now().ymd).has(ri);   // closed by the agency: its word, not our question
-/** What the tracks show, said as it is and no further: 'The last 3 Route 12 buses', or with more in a row, 'Every
- *  Route 12 bus since 7:20 PM (5 in a row)'. No 'likely': the count is the confidence. */
-export const lastBuses = u => u.n >= 4 ? `Every ${u.who} bus since ${u.since} (${u.n} in a row)` : `The last ${u.n} ${u.who} buses`;
-const routeWord = ri => { const r = D.routes[ri]; return /^[A-Z]$/.test(r.short) ? r.long : 'Route ' + r.short.split(' ')[0]; };
 /** Metres from a point to a path of [lat, lon] points. */
 export function pathDistance(lat, lon, path) {
   const k = 111320 * Math.cos(lat * Math.PI / 180), xy = ([a, b]) => [(b - lon) * k, (a - lat) * 110540];
@@ -444,7 +299,6 @@ const ymdOf = epoch => (ymdFmt ||= new Intl.DateTimeFormat('en-CA', { timeZone: 
 /** When the last of some alerts ends, as ymd, for 'the detour ends Tue 29 Sep'; null when none says. An
  *  alert naming a day in its title ends that day. */
 export function alertsUntil(alerts) {
-  if (alerts.some(a => a.stillOn)) return null;   // one kept on by the buses past its end: when it ends isn't known
   let last = null;
   for (const a of alerts) { const e = a.names && (!a.end || a.names > endDay(a)) ? a.names : a.end ? endDay(a) : null; if (e && (!last || e > last)) last = e; }
   return last;
@@ -459,7 +313,7 @@ const endDay = a => {
 };
 let hmFmt = null;
 // A notice past its end the buses are still keeping to (renew(), below) is in force: no end known.
-export const alertOn = (a, ymd) => !!a.stillOn || (!a.start || ymdOf(a.start) <= ymd) && (!a.end || endDay(a) >= ymd || (a.names && a.names >= ymd)) && !doneToday(a, ymd);
+export const alertOn = (a, ymd) => (!a.start || ymdOf(a.start) <= ymd) && (!a.end || endDay(a) >= ymd || (a.names && a.names >= ymd)) && !doneToday(a, ymd);
 /** On its last day an alert is over when its buses are: a day's detour posted until midnight stops marking stops
  *  after its routes' last trips have run (the whole system's, for an alert naming none), with time for a late one:
  *  a route's last run is on time, near enough, but a loop's can be half an hour behind. */
@@ -512,12 +366,12 @@ export function systemAlerts(ymd) { return A.alerts.filter(a => !(a.stops || [])
 export function activeAlerts(ymd) { return A.alerts.filter(a => alertOn(a, ymd)); }
 /** A stop every route of it skips today, by the agency's notices (closed for construction, a detour round it): the
  *  last day the notices close it ('20261010', a notice to Sat 11:59 PM closed through Saturday), or '' where one has
- *  no end or the buses are keeping to it past its end. Null when a route still stops. */
+ *  no end. Null when a route still stops. */
 export function closedThrough(si, ymd) {
   const s = D.stops[si], shut = closedRoutes(si, ymd);
   if (!s.routes.length || !s.routes.every(ri => shut.has(ri))) return null;
   const alerts = stopAlerts(si, ymd);
-  if (alerts.some(a => a.stillOn || (!a.end && !a.names))) return '';
+  if (alerts.some(a => !a.end && !a.names)) return '';
   return alerts.reduce((m, a) => { const e = a.names || ymdOf(a.end); return e > m ? e : m; }, '');
 }
 /** Routes that skip a stop on a day: an alert naming both the route and the stop. */

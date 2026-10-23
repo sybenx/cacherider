@@ -1,6 +1,6 @@
 // Directions to a stop or a spot: from where the rider is, or from a stop they name. Each way there is one card: the walk
 // to the first stop, the bus, where to change, where to get off, in order, with when.
-import { D, stop, stopIndex, distance, tripStops, POOL, inPool, skipsAt, nextAt, recent, timesOn, corridor, tripEnd, closedRoutes, agencyRuns, offDayWords, nearest, quietWords } from '../data.js';
+import { D, stop, stopIndex, distance, tripStops, POOL, inPool, nextAt, recent, timesOn, corridor, tripEnd, closedRoutes, agencyRuns, offDayWords, nearest, quietWords } from '../data.js';
 import { rt, busOn, nextStopOf, isLoop } from '../rt.js';
 import { clockText, clock, relative, metres, heightOf, fmtDay, dayName, now, dayFrom, isGone, minsTo } from '../time.js';
 import { html, icon, badge, time, headsign, liveMark, liveWord, corners, stopTitle, heardName, replaceTo } from '../ui.js';
@@ -550,13 +550,6 @@ function timeline(p, J) {
       out.push(tl(null, 'none', html`<div class="tl-change"><span class="eyebrow">Change · ${wait <= 0 ? 'the bus is waiting' : `${wait} min to spare`}</span><span class="name">Stay at ${stopWords(l.from)} for ${l.u ? chip(l.r, 20) : badge(l.r, 20)}</span></div>`, 'change' + (within(prev.off, l.on) ? ' now' : ''), colour(l)));
     }
     const first = l === rides[0], on = !l.u && first && l.t.live ? whereabouts(l) : '';
-    const q = si => {
-      if (l.u || !stop(si)) return '';
-      const id = stop(si).id, u = skipsAt(id).find(u => u.ri.includes(l.r));
-      if (!u) return '';
-      const s0 = stop(si), alt = u.on.map(x => stop(stopIndex(x))).filter(Boolean).sort((a, b) => distance(s0.lat, s0.lon, a.lat, a.lon) - distance(s0.lat, s0.lon, b.lat, b.lon))[0];
-      return html`<span class="sub qnote">Skipped by the last ${u.n} of these buses<span class="qmark">?</span>${alt ? html` · they came past <a href="#/stop/${alt.id}">${alt.name}</a> instead` : ''}</span>`;
-    };
     // The bus gone (today, its time past): the next one of its route from the same stop, so a rider who missed it
     // has the answer in the same place.
     let missed = '';
@@ -571,11 +564,11 @@ function timeline(p, J) {
     }
     // A shuttle at a time picked has no times, only its longest wait: be at the stop by a time, nothing claimed after.
     out.push(tl(l.t.every ? null : l.on, 'on', html`<span class="name">${stopWords(l.from)}</span>${addrLine(l.from)}${l.t.every ? html`<span class="sub">Be at the stop by <b>${clockText(l.on)}</b></span>` : ''}
-      <span class="tl-bus">${l.u ? chip(l.r, 28) : badge(l.r, 28)}<span>${toward(l)}</span>${l.u ? (l.t.every ? '' : liveMark('Estimated')) : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${q(l.from)}${on ? html`<span class="sub">${on}</span>` : ''}${missed}
+      <span class="tl-bus">${l.u ? chip(l.r, 28) : badge(l.r, 28)}<span>${toward(l)}</span>${l.u ? (l.t.every ? '' : liveMark('Estimated')) : l.t.live ? liveMark(liveWord(l.t)) : ''}</span>${on ? html`<span class="sub">${on}</span>` : ''}${missed}
       <span class="sub">${l.t.every ? `A bus at least every ${l.t.every} min · then ${Math.max(1, l.off - l.on - l.t.every)} min, ${l.n} ${l.n === 1 ? 'stop' : 'stops'}` : `Ride ${l.n} ${l.n === 1 ? 'stop' : 'stops'} · ${Math.max(1, l.off - l.on)} min`}</span>`, 'ride' + (within(l.on, l.off) ? ' now' : ''), colour(l)));
     // Getting off: the last walk, where there is one, said here; before a change, the change's own frame follows.
     const lastWalk = next && next.kind === 'walk' && !(p.legs[k + 2] && p.legs[k + 2].kind === 'ride') ? next : null;
-    out.push(tl(l.t.every ? null : l.off, next ? 'ring' : 'end', html`<span class="name">${next ? 'Get off at ' : ''}${stopWords(l.to)}</span>${addrLine(l.to)}${q(l.to)}${lastWalk ? html`<span class="sub">${icon('walk', 14)} Walk ${metres(wayOf(at(l.to), J && J.to).d || lastWalk.d)} · about ${lastWalk.mins} min${hillWords(at(l.to), J && J.to)}</span>${crossNote(wayOf(at(l.to), J && J.to))}` : ''}`,
+    out.push(tl(l.t.every ? null : l.off, next ? 'ring' : 'end', html`<span class="name">${next ? 'Get off at ' : ''}${stopWords(l.to)}</span>${addrLine(l.to)}${lastWalk ? html`<span class="sub">${icon('walk', 14)} Walk ${metres(wayOf(at(l.to), J && J.to).d || lastWalk.d)} · about ${lastWalk.mins} min${hillWords(at(l.to), J && J.to)}</span>${crossNote(wayOf(at(l.to), J && J.to))}` : ''}`,
       (next ? 'off' : 'end') + (lastWalk && within(l.off, p.arrive) ? ' now' : ''), next && next.kind === 'walk' && p.legs[k + 2] ? colour(p.legs[k + 2]) : next && next.kind === 'ride' ? colour(next) : ''));
   });
   // The end: where you're going, at the arrival, after the last walk.

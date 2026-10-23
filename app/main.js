@@ -645,8 +645,6 @@ function wireHover() {
 }
 
 async function boot() {
-  // Detours seen from the buses: ?detours=off in the address turns them off on this phone, ?detours on again.
-  try { const q = new URLSearchParams(location.search); if (q.has('detours')) pref('detours', q.get('detours') === 'off' ? 'off' : null); } catch { /* no address to read */ }
   // The first page asks only for the timetable and the alerts file, both kept on the phone: never the relay, never the
   // files for search, the shuttle, POOL and walks, which follow it.
   try {
@@ -705,7 +703,6 @@ async function boot() {
     lastMin = m;
     render(true);
   }, 5000);
-  window.addEventListener('seenchange', () => render());   // the detours seen from the buses, traced along the streets
   // Back to the app: drawn again at once, by the clock and the timetable (the feed's old word is past trusting by now),
   // and again as the feed and the notices come in. It waited on the notices after ten minutes away, and the page as it
   // was left, its countdown running on, stood there till they came.
