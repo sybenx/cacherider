@@ -2038,9 +2038,6 @@ function sideLabels() {
     const far = () => map.getContainer().classList.toggle('sides-far', map.getZoom() < 15);
     map.on('zoom', far); far();
     map.on('rotate', () => placeSides());
-    // And once the map settles, should they be up and aren't (or the other way): the smoke test's labels were missing
-    // now and then in a full run, a page shown by some way that didn't ask for them. One key's compare when they're right.
-    map.on('idle', () => { if (ready && sideWant().key !== sideKey) sideLabels(); });
   }
   if (key !== sideKey) {
     sideKey = key;
@@ -3559,7 +3556,13 @@ function busIn(id, app) {
   requestAnimationFrame(() => frame(b, { maxZoom: 16, bearing: 0, duration: 700 }));
 }
 async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, alertTap, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, busTap, goPick, page }, app, clockNow) {
+  // The address this was asked for, before the map's made: a page gone on from while it was (the home page's call
+  // still waiting on init as a stop's came in) is the newer call's to show. The home page's, resumed after the stop's,
+  // put the map back to the town and the stop down, the stop's page beside it (the smoke test's 'This side' missing,
+  // now and then, in a full run).
+  const asked = location.hash;
   await init(app);
+  if (location.hash !== asked) return;
   // A spot's address that isn't a place (a link cut short, #/map/at/41.7; or #/map/at/abc, #/map/at/95,10) is the map
   // alone: its card threw as the pin was placed, and the map stood there with nothing said.
   if (at && !(Number.isFinite(at.lat) && Number.isFinite(at.lon) && Math.abs(at.lat) <= 90 && Math.abs(at.lon) <= 180)) at = null;
