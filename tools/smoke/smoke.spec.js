@@ -1790,6 +1790,37 @@ test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time
   await expect(page.locator('#runsheet .rs-bus').filter({ visible: true })).toHaveText(new RegExp('^Bus \\d of \\d · ' + pick.letter + '\\d'));
 });
 
+test('stop: a run opens on the Transit Center it left and ends at the Transit Center it gets in to', async ({ page }) => {
+  // The user: 'next clicking on any bus, the top of the list should have the transit center, and so should teh bottom.
+  // so i can see when it will get to the transit center'. 55 North Main at midday on a day with buses: a loop's run
+  // (the feed cuts the Blue Loop's there, the Center mid-trip) and a numbered route's (12, out and back as two trips).
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), si = d.D.stopById['7547679'], loops = d.D.hub.loops || [];
+    for (let k = 0; k < 8; k++) {
+      const ymd = t.dayFrom(c.ymd, k).ymd, rows = d.timesOn(si, ymd).filter(r => r.min >= 660 && r.min <= 900);
+      const loop = rows.find(r => loops.includes(r.r)), route = rows.find(r => !loops.includes(r.r) && d.D.routes[r.r].short === '12') || rows.find(r => !loops.includes(r.r));
+      if (loop && route) return { trips: [loop.trip, route.trip], at: Date.now() + ((t.dayDiff(c.ymd, ymd) * 1440 + 600 - c.min) * 60 - c.sec) * 1000 };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no midday loop and route at 55 North Main this week');
+  await page.clock.setFixedTime(new Date(pick.at));   // 10 AM that day: its midday times in the stop's day
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  for (const trip of pick.trips) {
+    await go(page, '#/stop/7547679');
+    await page.locator(`button.hr-dep[data-trip="${trip}"]`).filter({ visible: true }).first().click();
+    await expect(page).toHaveURL(/\?run=/);
+    const rows = page.locator('#runsheet .run-stop').filter({ visible: true });
+    await expect(rows.first()).toContainText('Transit Center');
+    await expect(rows.first().locator('em')).toHaveText(/^(left|leaves)$/);
+    await expect(rows.last()).toContainText('Transit Center');
+    await expect(rows.last().locator('em')).toHaveText('gets in');
+    expect(await rows.count()).toBeGreaterThan(3);   // this stop's run between them, not the Center twice
+  }
+});
+
 test('stop: this side and across the road, two buttons under the name and the map labelled to match', async ({ page }) => {
   // Richard's Hall (1011 East 700 North) and Industrial Science across 700 North, or any stop with one across the road.
   await open(page);

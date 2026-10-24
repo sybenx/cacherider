@@ -1,7 +1,7 @@
 // A stop's day hour by hour, and a run from it: its stops from here on, in a sheet over the page, drawn on the big
 // map beside the page where there is one, else on a small map of the sheet's own.
-import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest, timed, busOf } from '../data.js';
-import { rt, busNth } from '../rt.js';
+import { D, stop, tripStops, tripEnd, timesOn, nextTrip, prevTrip, tripRoute, closedRoutes, onRequest, timed, busOf } from '../data.js';
+import { rt, busNth, callAt } from '../rt.js';
 import { clock, clockText, clockShort, fmtDay, isGone, now } from '../time.js';
 import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark, routeName, nthWords } from '../ui.js';
 import { isWide } from '../wide.js';
@@ -28,23 +28,45 @@ function wholeTrip(ti) {
 /** One ride on from this stop on the bus that calls at it: every stop after it with its time, and on through the
  *  Transit Center (or wherever the timetable cuts a loop's runs) on the same bus's next run, until it's round to
  *  this stop again or its day is done. A wait between runs, or a change of route, is a row of its own. The feed's
- *  estimate in blue for the first run, where it has the bus; after a wait the timetable's times stand. */
-function runParts(t, si, ymd) {
+ *  estimate in blue for the first run, where it has the bus; after a wait the timetable's times stand.
+ *  The user: 'next clicking on any bus, the top of the list should have the transit center, and so should teh bottom.
+ *  so i can see when it will get to the transit center'. So the list opens on when this bus left (or leaves) the
+ *  Center, and ends where it next gets in there: the end of a route's way back, a loop's lap. The feed cuts runs
+ *  where it likes (a Blue Loop run from 55 North Main itself, through the Center and round to 55 North Main; a Green
+ *  Loop's at 750 North Main; Route 12's at 83 West Main, its way back the next trip), so both are found along the
+ *  bus's runs of this route, not this trip's ends. A stop at the Center itself has no row above it: it is the Center. */
+function runParts(t, si, ymd, clockNow) {
   const delay = t.live && !isLoop(t.r) ? t.live.delay || 0 : 0;
   const legs = [], rows = [], points = [];
-  let ti = t.trip, ri = t.r, seq = wholeTrip(ti), from = seq.findIndex(([, s]) => s === si) + 1, back = false, ended = false;
+  let ti = t.trip, ri = t.r, seq = wholeTrip(ti), from = callAt(seq, si, t.live ? t.min - (t.live.delay || 0) : t.min) + 1,   // a loop calling here twice (the Blue Loop at 55 North Main): the call at this time, not its first
+    back = false, ended = false;
   const add = (m, s, legNo, r) => {
     const skip = closedRoutes(s, ymd).has(r), est = legNo === 0 && !!delay;
     rows.push({ m: m + (legNo === 0 ? delay : 0), s, skip, est, leg: legNo, r, req: onRequest(s, r, tripRoute(ti).dir) });
   };
+  // Back along the bus's runs, this route's, to the Center it left: this trip's stops before this one, then the trips
+  // the same bus ran before it, as long as it didn't sit (runOf's 45 min).
+  let left = null;
+  if (!stop(si).hub) {
+    let bti = t.trip, bs = seq, upto = from - 1;
+    for (let k = 0; k < 4 && !left; k++) {
+      for (let i = upto - 1; i >= 0; i--) if (stop(bs[i][1]).hub) { left = { m: bs[i][0] + (k === 0 ? delay : 0), s: bs[i][1], est: k === 0 && !!delay }; break; }
+      if (left) break;
+      const p = prevTrip(bti, ymd), pr = p !== undefined && tripRoute(p), ps = pr ? wholeTrip(p) : [];
+      if (!pr || pr.r !== t.r || !ps.length || bs[0][0] - ps[ps.length - 1][0] > 45) break;
+      bti = p; bs = ps; upto = ps.length;
+    }
+  }
+  let atHub = false;   // the ride got in at the Center: its last row, and the list ends there
   points.push({ si, t: 'You · ' + clockText(t.min + delay), rank: 0, leg: 0, r: t.r });
   legs.push({ ri, seq: [[t.min, si]] });
   for (let legNo = 0; legNo < 6; legNo++) {
     for (const [m, s] of seq.slice(from)) {
       if (legNo > 0 && s === si) { back = m; break; }   // round to this stop again: the ride ends where it began
       add(m, s, legNo, ri); legs[legNo].seq.push([m, s]);
+      if (stop(s).hub) { atHub = true; break; }   // in at the Center: what the user asked the list to show, and its end
     }
-    if (back !== false) break;
+    if (back !== false || atHub) break;
     const n = nextTrip(ti, ymd);
     if (n === undefined) { ended = true; break; }
     const nr = tripRoute(n), ns = wholeTrip(n);
@@ -70,6 +92,7 @@ function runParts(t, si, ymd) {
       return `<div class="run-div"><span class="run-t">${x.inMin !== null ? esc(clock(x.inMin).h) : ''}<small>${x.inMin !== null ? esc(clock(x.inMin).ap) : ''}</small></span><span class="run-n"><b>${esc(name)}</b><em>${x.inMin !== null ? 'in ' + esc(clockText(x.inMin)) + ' · ' : ''}out ${esc(clockText(x.outMin))} · ${what}</em></span></div>`;
     }
     const end = x === lastStop && ended;
+    if (x === lastStop && atHub) return `<a class="run-stop run-hub${x.leg ? ' later' : ''}" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t${x.est ? ' est' : ''}">${esc(clock(x.m).h)}<small>${esc(clock(x.m).ap)}</small></span><span class="run-n">${esc(D.hub.name)}<em>gets in</em></span></a>`;
     // A stop the detour skips: one quiet line in its place, the landmark alone, not a stop's row with a dash for a time.
     if (x.skip) return `<a class="run-stop skipped" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t"></span><span class="run-n">${esc(heardName(x.s).name)} <em>skipped · detour</em></span></a>`;
     const name = heard(x.s).s;   // the landmark the bus announces, the address under it
@@ -84,10 +107,13 @@ function runParts(t, si, ymd) {
     points.push({ si: x.s, t: x.skip ? '' : x === lastStop && ended ? clockText(x.m) + ' · end' : clock(x.m).h, rank: x === lastStop ? 1 : i + 2, leg: x.leg, r: x.r });
   });
   shown = { key: t.trip + ':' + si + ':' + delay + ':' + rows.length, trip: t.trip, ymd, legs: legs.filter(l => l.seq.length > 1 || legs.indexOf(l) === 0), points };
+  // The Center it left, above this stop's rows: 'left' once the time's gone, else 'leaves' (a run picked ahead).
+  const gone = left && (ymd < clockNow.ymd || (ymd === clockNow.ymd && isGone({ min: left.m, day: 0 }, clockNow)));
+  const head = left ? `<a class="run-stop run-hub" href="#/stop/${esc(stop(left.s).id)}" data-id="${esc(stop(left.s).id)}" data-si="${left.s}"><span class="run-t${left.est ? ' est' : ''}">${esc(clock(left.m).h)}<small>${esc(clock(left.m).ap)}</small></span><span class="run-n">${esc(D.hub.name)}<em>${gone ? 'left' : 'leaves'}</em></span></a>` : '';
   const foot = back !== false ? `<p class="run-then">Back at this stop at ${esc(clockText(back))}.</p>` : '';
   return {
     top: (close, step = '') => `<div class="run-top">${badge(t.r, 26).s}<div class="col"><b>The ${esc(clockText(t.min))}<span class="rs-here"> from here</span></b><span class="muted">${esc(headsign(t))}${delay ? ` · running ${delay} min late` : ''}</span>${whichBus(t, ymd)}</div>${step}<button type="button" class="btn btn-ghost btn-icon" ${close} aria-label="Close">${icon('close', 20).s}</button></div>`,
-    list: stopsRows.length ? `<div class="run-stops">${html1}</div>` : '<p class="muted">This stop is the end of its run.</p>',
+    list: stopsRows.length ? `<div class="run-stops">${head}${html1}</div>` : '<p class="muted">This stop is the end of its run.</p>',
     foot,
   };
 }
@@ -131,7 +157,7 @@ export function runSheet(si, next, clockNow, trip, on) {
   const d = dayOf(si, next, clockNow);
   const t = (d && d.ymd === on && d.rows.find(x => x.trip === trip)) || next.find(x => x.trip === trip && x.ymd === on);
   if (!t) return null;
-  const p = runParts(t, si, on);
+  const p = runParts(t, si, on, clockNow);
   const row = d && d.ymd === on ? d.rows : next.filter(x => x.ymd === on);
   const i = row.findIndex(x => x.trip === trip), today = on === clockNow.ymd;
   const stepBtn = (x, dir) => x ? `<button type="button" class="rs-step${today && isGone(x, clockNow) ? ' past' : ''}" data-trip="${x.trip}" data-on="${on}" data-step="${dir}" aria-label="The ${esc(clockText(x.min))}">${dir < 0 ? icon('back', 18).s : ''}<span>${esc(clock(x.min).h)}</span>${dir > 0 ? icon('fwd', 18).s : ''}</button>`
