@@ -1,13 +1,24 @@
 // A stop's day hour by hour, and a run from it: its stops from here on, in a sheet over the page, drawn on the big
 // map beside the page where there is one, else on a small map of the sheet's own.
-import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest, timed } from '../data.js';
-import { clock, clockText, clockShort, fmtDay, isGone } from '../time.js';
-import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark, routeName } from '../ui.js';
+import { D, stop, tripStops, tripEnd, timesOn, nextTrip, tripRoute, closedRoutes, onRequest, timed, busOf } from '../data.js';
+import { rt, busNth } from '../rt.js';
+import { clock, clockText, clockShort, fmtDay, isGone, now } from '../time.js';
+import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark, routeName, nthWords } from '../ui.js';
 import { isWide } from '../wide.js';
 
 // The run last laid out, for its map.
 let shown = null;
 
+/** Which of its route's buses that day runs a trip, as dispatch numbers them ('Bus 2 of 3 · G2'), and today the
+ *  vehicle on that run now, by its number ('· bus 1182'), for a run still to come here (one gone may have been
+ *  another bus: they swap at a shift's change). The user, of a time tapped in the day: 'i'd like to be able
+ *  to tell if its green 1,2, or 3. maybe the bus number too if you can fit it.' Nothing for a route with one bus. */
+function whichBus(t, ymd) {
+  const x = t.trip !== undefined ? busOf(t.trip, ymd) : null;
+  if (!x) return '';
+  const c = now(), v = ymd === c.ymd && !t.gone && !isGone(t, c) ? rt.buses.find(b => { const y = busNth(b); return y && y.key === x.key && y.n === x.n; }) : null;
+  return `<span class="muted rs-bus">${esc(nthWords(t.r, x))}${v ? ' · bus ' + esc(v.label) : ''}</span>`;
+}
 /** A trip's stops with its last, where it lets off, which the departures leave out. */
 function wholeTrip(ti) {
   const seq = tripStops(ti), te = tripEnd(ti);
@@ -75,17 +86,18 @@ function runParts(t, si, ymd) {
   shown = { key: t.trip + ':' + si + ':' + delay + ':' + rows.length, trip: t.trip, ymd, legs: legs.filter(l => l.seq.length > 1 || legs.indexOf(l) === 0), points };
   const foot = back !== false ? `<p class="run-then">Back at this stop at ${esc(clockText(back))}.</p>` : '';
   return {
-    top: (close, step = '') => `<div class="run-top">${badge(t.r, 26).s}<div class="col"><b>The ${esc(clockText(t.min))}<span class="rs-here"> from here</span></b><span class="muted">${esc(headsign(t))}${delay ? ` · running ${delay} min late` : ''}</span></div>${step}<button type="button" class="btn btn-ghost btn-icon" ${close} aria-label="Close">${icon('close', 20).s}</button></div>`,
+    top: (close, step = '') => `<div class="run-top">${badge(t.r, 26).s}<div class="col"><b>The ${esc(clockText(t.min))}<span class="rs-here"> from here</span></b><span class="muted">${esc(headsign(t))}${delay ? ` · running ${delay} min late` : ''}</span>${whichBus(t, ymd)}</div>${step}<button type="button" class="btn btn-ghost btn-icon" ${close} aria-label="Close">${icon('close', 20).s}</button></div>`,
     list: stopsRows.length ? `<div class="run-stops">${html1}</div>` : '<p class="muted">This stop is the end of its run.</p>',
     foot,
   };
 }
 
-/** The day at a stop, an hour to a column, from the current hour; the next day with buses once today's are done.
- *  A time is a button: its run, from here on, shows under the day. */
+/** The day at a stop, an hour to a column, the whole of it, the ones gone muted (the user: 'i'd like to be able to see
+ *  the previous times in the day. i think the rest of today maybe should be the whole day all the time'); the next day
+ *  with buses once today's are done. A time is a button: its run, from here on, shows under the day. */
 function dayOf(si, next, clockNow) {
-  let rows = timesOn(si, clockNow.ymd).map(t => lively({ ...t, day: 0, ymd: clockNow.ymd })).filter(t => !t.gone);
-  let head = 'The rest of today', from = Math.floor(clockNow.min / 60), today = true, ymd = clockNow.ymd;
+  let rows = timesOn(si, clockNow.ymd).map(t => lively({ ...t, day: 0, ymd: clockNow.ymd }));
+  let head = 'Today', from = 0, today = true, ymd = clockNow.ymd;
   if (!rows.some(t => t.min >= clockNow.min) && next[0]) {
     rows = timesOn(si, next[0].ymd); from = 0; today = false; ymd = next[0].ymd;
     head = next[0].day === 1 ? 'Tomorrow · ' + fmtDay(next[0].ymd, true) : fmtDay(next[0].ymd, true);
@@ -93,22 +105,21 @@ function dayOf(si, next, clockNow) {
   rows = rows.filter(t => Math.floor(t.min / 60) >= from).sort((a, b) => a.min - b.min);
   return rows.length ? { rows, head, from, today, ymd } : null;
 }
-const depBtn = (t, d, clockNow, on) => `<button type="button" class="hr-dep${d.today && isGone(t, clockNow) ? ' past' : ''}${on ? ' on' : ''}" data-trip="${t.trip}" data-on="${d.ymd}" aria-pressed="${on ? 'true' : 'false'}">${badge(t.r, 20).s}<span class="${t.live ? 'est' : ''}">${esc(clock(t.min).h)}</span></button>`;
+const depBtn = (t, d, clockNow, on) => `<button type="button" class="hr-dep${d.today && (t.gone || isGone(t, clockNow)) ? ' past' : ''}${on ? ' on' : ''}" data-trip="${t.trip}" data-on="${d.ymd}" aria-pressed="${on ? 'true' : 'false'}">${badge(t.r, 20).s}<span class="${t.live ? 'est' : ''}">${esc(clock(t.min).h)}</span></button>`;
 
 /** The day at a stop, an hour to a column, from the current hour; the next day with buses once today's are done.
  *  A time is a button for its run, which opens in a sheet over the page (`pick.trip` the one open). */
 export function restOfDay(si, next, clockNow, pick) {
   const d = dayOf(si, next, clockNow);
   if (!d) return '';
-  const { rows, head, from, today } = d;
-  // The whole day, the ones gone too (a rider checking what they missed, or the timetable as printed): its own page,
-  // which nothing linked to.
+  const { rows, head, today } = d;
   const hours = new Map();
   for (const t of [...rows].sort((a, b) => a.min - b.min)) { const h = Math.floor(t.min / 60); if (!hours.has(h)) hours.set(h, []); hours.get(h).push(t); }   // by when each leaves, a late bus in its place
   const last = rows.reduce((x, t) => t.min > x.min ? t : x, rows[0]);
-  const cols = [...hours].map(([h, list]) => `<div class="hr${today && h === from ? ' now' : ''}"><span class="hr-h">${esc(clockShort(h * 60))}</span>${list.map(t => depBtn(t, d, clockNow, pick.trip === t.trip)).join('')}</div>`).join('');
+  const nowH = Math.floor(clockNow.min / 60);
+  const cols = [...hours].map(([h, list]) => `<div class="hr${today && h === nowH ? ' now' : ''}"><span class="hr-h">${esc(clockShort(h * 60))}</span>${list.map(t => depBtn(t, d, clockNow, pick.trip === t.trip)).join('')}</div>`).join('');
   const lastLine = `Last bus ${clockText(last.min)} · ${routeName(last.r, false)}`;
-  return html`<section class="ws-sec ws-day phone-day"><div class="ws-eye"><span>${head}</span><span>${lastLine}</span></div><div class="hours">${raw(cols)}</div><p class="day-hint">Tap a time for its stops from here on.${today ? raw(` <a href="#/stop/${encodeURIComponent(D.stops[si].id)}/all">The whole day</a>, gone ones too.`) : ''}</p></section>`;
+  return html`<section class="ws-sec ws-day phone-day"><div class="ws-eye"><span>${head}</span><span>${lastLine}</span></div><div class="hours">${raw(cols)}</div><p class="day-hint">Tap a time for its stops from here on.</p></section>`;
 }
 
 // ---- the run: a sheet over the stop page, with its own address (…?run=trip&on=day), so Back closes it

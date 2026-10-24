@@ -2024,15 +2024,23 @@ function applySelection() {
  *  labels; from the streets in only (the stops' labels' zoom). Their address labels, and the shuttle's stop names at
  *  either curb, are put away meanwhile. Not under a run (its address has ?run=) or a way drawn; gone with the page. */
 let sideMarks = [], sideKey = '', sideWired = false;
+/** The stop whose sides are to be labelled now, or '' (and its index). */
+function sideWant() {
+  const m = /^#\/stop\/([^/?]+)$/.exec(location.hash), si = m && m[1] === selected ? D.stopById[selected] : undefined;
+  const s = si !== undefined ? D.stops[si] : null;
+  return { si, s, key: s && s.twin && !JR ? s.id : '' };
+}
 function sideLabels() {
   if (!map || !ready) return;
-  const m = /^#\/stop\/([^/?]+)$/.exec(location.hash), si = m && m[1] === selected ? D.stopById[selected] : undefined;
-  const s = si !== undefined ? D.stops[si] : null, key = s && s.twin && !JR ? s.id : '';
+  const { si, s, key } = sideWant();
   if (!sideWired) {
     sideWired = true;
     const far = () => map.getContainer().classList.toggle('sides-far', map.getZoom() < 15);
     map.on('zoom', far); far();
     map.on('rotate', () => placeSides());
+    // And once the map settles, should they be up and aren't (or the other way): the smoke test's labels were missing
+    // now and then in a full run, a page shown by some way that didn't ask for them. One key's compare when they're right.
+    map.on('idle', () => { if (ready && sideWant().key !== sideKey) sideLabels(); });
   }
   if (key !== sideKey) {
     sideKey = key;

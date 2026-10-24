@@ -1762,6 +1762,34 @@ test('stop: its page, a route badge, a run, the whole day, saved and unsaved', a
   await expect(page).toHaveURL(/#\/map\/route\//);
 });
 
+test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time opens its run, saying which of its buses', async ({ page }) => {
+  // The user: 'i'd like to be able to see the previous times in the day. i think the rest of today maybe should be the
+  // whole day all the time', and of a time tapped there: 'i'd like to be able to tell if its green 1,2, or 3'.
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), loops = d.D.hub.loops || [];
+    for (const ri of loops) for (const [si, s] of d.D.stops.entries()) {
+      if (s.hub) continue;
+      const rows = d.timesOn(si, c.ymd).filter(x => x.r === ri);
+      if (rows.length < 4 || !rows.some(x => d.busOf(x.trip, c.ymd))) continue;
+      const all = d.timesOn(si, c.ymd).map(x => x.min);
+      return { id: s.id, first: Math.floor(Math.min(...all) / 60), letter: d.D.routes[ri].short };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no loop with numbered buses today');
+  await go(page, '#/stop/' + pick.id);
+  const day = page.locator('.ws-day').filter({ visible: true }).first();
+  await expect(day.locator('.ws-eye span').first()).toHaveText(/^Today$/i);
+  const h0 = await day.locator('.hr-h').first().textContent();
+  const want = pick.first % 12 === 0 ? 12 : pick.first % 12;
+  expect(h0.trim()).toMatch(new RegExp('^' + want + '\\s*(AM|PM)$', 'i'));   // from the day's first bus, not this hour
+  await expect(page.getByRole('link', { name: 'The whole day' })).toHaveCount(0);
+  await day.locator('button.hr-dep', { has: page.locator('.badge', { hasText: new RegExp('^' + pick.letter + '$') }) }).first().click();
+  await expect(page).toHaveURL(/\?run=/);
+  await expect(page.locator('#runsheet .rs-bus').filter({ visible: true })).toHaveText(new RegExp('^Bus \\d of \\d · ' + pick.letter + '\\d'));
+});
+
 test('stop: this side and across the road, two buttons under the name and the map labelled to match', async ({ page }) => {
   // Richard's Hall (1011 East 700 North) and Industrial Science across 700 North, or any stop with one across the road.
   await open(page);
