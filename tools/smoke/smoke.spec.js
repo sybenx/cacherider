@@ -147,6 +147,50 @@ test('a stop\'s row for a loop\'s next lap says where its bus is now, still on t
   expect(n).toBeLessThanOrEqual(pick.ahead + 1);
 });
 
+test('a route\'s page never says to stay on a bus that goes out of service for hours, as 16 AM\'s last run before 16 PM', async ({ page }) => {
+  // The user: 'i noticed there's an option to "stay on bus 16 from the am and it will become the pm bus. this is
+  // nonsense. there's hours gaps between. and the bus goes out of service'. Staged: a bus partway through a 16 AM run
+  // whose next run in the timetable is a 16 PM one hours on, the feed listing both for the same bus, as it does.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js');
+    let c = t.now();
+    for (let k = 0; k < 8; k++, c = t.dayFrom(t.now().ymd, k)) {
+      const ymd = c.ymd;
+      for (const [ri, r] of d.D.routes.entries()) {
+        if (d.familyKey(ri) !== '16') continue;
+        for (const [si] of d.D.stops.entries()) for (const row of d.timesOn(si, ymd).filter(x => x.r === ri)) {
+          const nx = d.nextTrip(row.trip, ymd);
+          if (nx === undefined) continue;
+          const tr = d.tripRoute(nx), st = d.tripStops(row.trip), sn = d.tripStops(nx), te = d.tripEnd(row.trip);
+          if (!tr || tr.r === ri || d.familyKey(tr.r) !== '16' || !te || sn[0][0] - te.min < 120 || st.length < 4) continue;
+          const a = d.D.stops[st[1][1]], b = d.D.stops[st[2][1]];
+          return { ymd, short: r.short, id: d.D.trips[row.trip], nid: d.D.trips[nx], st: st.map(([m, x]) => [m, d.D.stops[x].id]), sn: sn.map(([m, x]) => [m, d.D.stops[x].id]),
+            mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], min: st[2][0] - 1 };
+        }
+      }
+    }
+    return null;
+  });
+  test.skip(!pick, 'no 16 AM run followed by a 16 PM one hours on, this week');
+  const [y, mo, dd] = [pick.ymd.slice(0, 4), pick.ymd.slice(4, 6), pick.ymd.slice(6)];
+  const at = new Date(`${y}-${mo}-${dd}T${String(Math.floor(pick.min / 60)).padStart(2, '0')}:${String(pick.min % 60).padStart(2, '0')}:30-06:00`);
+  await page.clock.setFixedTime(at);
+  const T = Math.floor(at.getTime() / 1000), base = T - 30 - pick.min * 60;
+  feed = { t: T, trips: { [pick.id]: { v: '9003', ts: T, s: pick.st.slice(2).map(([m, sid], i) => [sid, i + 2, base + m * 60, 0]) },
+    [pick.nid]: { v: '9003', ts: T, s: pick.sn.map(([m, sid], i) => [sid, i, base + m * 60, 0]) } },
+    buses: [{ id: '9003', label: '9003', trip: pick.id, lat: pick.mid[0], lon: pick.mid[1], bearing: 0, speed: 5, ts: T }] };
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  await expect.poll(() => page.evaluate(async () => !!(await import('/app/rt.js')).findBus('c:9003')), { timeout: 20_000 }).toBe(true);
+  await page.waitForTimeout(1500);
+  await expect(page.locator('.section.onward')).toHaveCount(0);
+  await expect(page.getByText(/Stay on bus 9003/)).toHaveCount(0);
+});
+
 test('home: the big stop\'s bus on its way as a line, here at its stop, gone with the feed; the Save hint till a stop is saved', async ({ page }) => {
   // The relay's answer made up, as the timetable has a trip run: the clock half a minute into the minute before its
   // second call, its bus between its first two stops, and the rider at its fifth. Its line: the bus, its next stop, the

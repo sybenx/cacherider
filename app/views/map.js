@@ -1395,8 +1395,12 @@ function follow(ri, along, buses, clockNow) {   // along: a bus's place on the r
   const lead = buses.filter(b => along(b) >= 0).sort((a, b) => along(b) - along(a))[0];
   if (lead) {
     const ti = D.trips.indexOf(lead.trip), nti = ti >= 0 ? nextOf(lead, ti, clockNow) : undefined, tr = nti !== undefined && tripRoute(nti);
-    if (tr && tr.r !== ri) {
-      const st = tripStops(nti);
+    // Only a bus that goes straight on as another route: the user, of 'stay on bus 16 from the am and it will become the
+    // pm bus': 'this is nonsense. there's hours gaps between. and the bus goes out of service'. Its next run starting
+    // more than 45 minutes after this one ends (the run sheet's rule, stopwide.js), or the other half of its own route
+    // (16 AM to 16 PM, one route to a rider), isn't offered.
+    const st = tr ? tripStops(nti) : null, te = ti >= 0 ? tripEnd(ti) : null, end = te ? te.min : ti >= 0 ? tripStops(ti).slice(-1)[0][0] : null;
+    if (tr && tr.r !== ri && familyKey(tr.r) !== familyKey(ri) && end !== null && st.length && st[0][0] - end <= 45) {
       out.later = html`<div class="section onward">${icon('swap', 16)}<span>Stay on bus ${lead.label}: it becomes ${routeName(tr.r)} at ${clockText(st[0][0])}</span>${html.raw(routeBadgeLink(tr.r, st[0][1], 24, tr.dir))}</div>
         <div class="list rs-list">${tripRows(nti, 0, clockNow, true)}</div>`;
     }

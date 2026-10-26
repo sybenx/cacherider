@@ -36,7 +36,9 @@ function wholeTrip(ti) {
  *  Loop's at 750 North Main; Route 12's at 83 West Main, its way back the next trip), so both are found along the
  *  bus's runs of this route, not this trip's ends. A stop at the Center itself has no row above it: it is the Center. */
 function runParts(t, si, ymd, clockNow) {
-  const delay = t.live && !isLoop(t.r) ? t.live.delay || 0 : 0;
+  // A loop's rows follow its bus too when it's late (the user: the 7:21 PM's sheet listed 7:18 and 7:19 under it, the
+  // timetable's); early, a loop waits out its lead, so its minutes stand.
+  const delay = !t.live ? 0 : isLoop(t.r) ? Math.max(0, t.live.delay || 0) : t.live.delay || 0;
   const legs = [], rows = [], points = [];
   let ti = t.trip, ri = t.r, seq = wholeTrip(ti), from = callAt(seq, si, t.live ? t.min - (t.live.delay || 0) : t.min) + 1,   // a loop calling here twice (the Blue Loop at 55 North Main): the call at this time, not its first
     back = false, ended = false;
