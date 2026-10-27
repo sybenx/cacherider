@@ -2239,8 +2239,8 @@ function hubBuses() {
     m.el.classList.toggle('parked', hubOn && !!b && distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= HUB_IN && !(b.speed > 1));
   }
 }
-/** While the Center's board is up, its stops small and faint until the streets close in (16 and on), the route lines as
- *  they are: the buses easier to find among them (a trial, the user, 2026-10-27: the lines put away made the buses
+/** While the Center's board is up, its stops small and faint until the streets close in (16 and on), the route lines
+ *  kept at half strength: the buses easier to find among them (a trial, the user, 2026-10-27: the lines put away made the buses
  *  easy to find; 'stops less prominent… and keep route lines'). A paint change, nothing laid out again. */
 const FAINT = [
   ['stops', 'circle-radius', ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 2.5, 15.5, 3.5, 17, 8, 19, 11]],
@@ -2248,6 +2248,10 @@ const FAINT = [
   ['stops', 'circle-opacity', ['interpolate', ['linear'], ['zoom'], 12, 0.35, 15.5, 0.55, 16.5, 1]],
   ['stops', 'circle-stroke-opacity', ['interpolate', ['linear'], ['zoom'], 12, 0.35, 15.5, 0.55, 16.5, 1]],
   ['stop-labels', 'text-opacity', ['step', ['zoom'], 0, 16.5, 1]],   // their names too: a desk's view had them all up
+  // The lines at half strength, thinner: where each route runs, under buses drawn in the same colours, which stand out
+  // over them (the user, trying it: 'try it', of lines kept but paler)
+  ['route-lines', 'line-opacity', 0.4],
+  ['route-lines', 'line-width', ['interpolate', ['linear'], ['zoom'], 11, 1, 14, 2, 17, 4]],
 ];
 let faintKept = null;
 function faintStops(on) {
@@ -2634,7 +2638,7 @@ function litLines(m, lines, loops, soft = false) {
   // still to be run tonight standing out; in at the streets, every line as ever.
   const own = dk ? 'dcolor' : 'color', gone = dk ? 'dgone' : 'gone';
   m.setPaintProperty('route-lines', 'line-color', any ? ['get', gone] : townFade(['get', own], ['get', gone]));
-  m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : 0.75);
+  m.setPaintProperty('route-lines', 'line-opacity', any ? 1 : faintAt ? 0.4 : 0.75);   // the Center's board up: its lines at half strength (FAINT)
   // the shuttle's loops faded back by colour too, not see-through: two on one road didn't add up the way Connect's don't
   m.setPaintProperty('usu-lines', 'line-color', any ? ['get', 'gone'] : townFade(['get', 'color'], ['get', 'gone']));
   m.setPaintProperty('usu-lines', 'line-opacity', ['case', ['get', 'approx'], 0.35, 0.9]);
