@@ -853,32 +853,32 @@ test('the Center: a group NOW in its minute; gone by with one late route still i
     const t = await import('/app/time.js'), ui = await import('/app/ui.js');
     return { name: ui.routeNames([runs[0].ri]), then: t.clock(q.min + 30).h, now: t.clock(q.min).h };
   }, pick);
-  // Its own minute, every bus in: NOW, not 0:00
+  // Its own minute, every bus in: the group one row of their badges, All here, leaving now
   feed = await feedOf(pick.runs.length);
   await go(page, '#/hub');
-  const board = page.locator('.tc-together').filter({ visible: true }).first(), count = board.locator('.tc-count');
-  await expect(board.locator('.tc-seg.in')).toHaveCount(pick.runs.length, { timeout: 20_000 });   // the feed's word in
-  await expect(count).toHaveText('NOW');
-  await page.clock.setFixedTime(new Date(pick.at + 80_000));   // still NOW in its second minute: not late till 2 min
-  await expect(count).toHaveText('NOW');
+  const grp = h => page.locator('.tcl-grp').filter({ visible: true }).filter({ has: page.locator('.tcl-grp-h b', { hasText: new RegExp('^' + h + '$') }) }).first();
+  const all = grp(late.now).locator('.tcl-all');
+  await expect(all).toBeVisible({ timeout: 20_000 });
+  await expect(all.locator('.badge')).toHaveCount(pick.runs.length);   // the feed's word in
+  await expect(grp(late.now).locator('.tcl-grp-h span')).toHaveText('leaving now');
+  // a tap opens it, a row each, every one Here; and it folds again
+  await all.click();
+  await expect(grp(late.now).locator('.tcl-row .tcl-st.here')).toHaveCount(pick.runs.length);
+  await grp(late.now).locator('.tcl-fold').click();
+  await expect(grp(late.now).locator('.tcl-all')).toBeVisible();
   // 3½ min on, one route still in, late; the rest gone, their bays dropped from the feed (each still 'leaving now' for
-  // the minute after: rt.js LEFT_GRACE, by the clock, so it's moved on past that)
+  // the minute after: rt.js LEFT_GRACE, by the clock, so it's moved on past that). The late one is a group of its own,
+  // at when it'll go, said as an estimate, its row Here and due at the group's minute; not folded, being one.
   await page.clock.setFixedTime(new Date(pick.at + 180_000));
   feed = await feedOf(1);
   await page.waitForTimeout(6000);   // a poll with it
   await page.clock.setFixedTime(new Date(pick.at + 250_000));
   feed = await feedOf(1);
-  // the note first: it's the feed's (before its first word the board is the timetable's, the group gone by its clock)
-  await expect(board.locator('.tc-note').first()).toContainText(`Of the ${late.now}s, ${late.name} leaves late`, { timeout: 20_000 });
-  await expect(board.locator('.top .t').first()).toHaveText(new RegExp('^' + late.then));
-  await expect(board.locator('.tc-seg.in')).toHaveCount(0);   // its bus in is the late run's, not this group's
-  // Half the group or more still in, late: the group is still up, how long past its minute counting, in the late red
-  feed = await feedOf(Math.ceil(pick.runs.length / 2));
-  await expect(board.locator('.top .t').first()).toHaveText(new RegExp('^' + late.now), { timeout: 20_000 });
-  await expect(count).toHaveText('+4:40');
-  await expect(count).toHaveClass(/\blate\b/);
-  await page.clock.setFixedTime(new Date(pick.at + 252_000));
-  await expect(count).toHaveText('+4:42');
+  const lateRow = page.locator('.tcl-row').filter({ visible: true }).filter({ has: page.locator('.tcl-late', { hasText: 'Late · due ' + late.now }) });
+  await expect(lateRow).toHaveCount(1, { timeout: 20_000 });
+  await expect(lateRow.locator('.tcl-st')).toHaveText('Here');
+  await expect(page.locator('.tcl-grp').filter({ visible: true }).filter({ has: lateRow }).locator('.tcl-grp-h b small')).toHaveText('about');
+  await expect(grp(late.now)).toHaveCount(0);   // the group's minute gone by: none left at it
 });
 
 test('the Center\'s compass: north up and south up, one to the other', async ({ page }) => {
@@ -1207,7 +1207,9 @@ test('the Center\'s board follows the feed with the search box focused, its focu
   await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
   await go(page, '#/hub');
   await polled(page, relay.T);
-  const late = n => page.locator('.tcb-row .sub').filter({ hasText: `Live · ${n} min late` });
+  // its row's group at when it'll leave, by the feed: 2 min late, then 4
+  const at = await page.evaluate(async m => { const t = await import('/app/time.js'); return [t.clock(m + 2).h, t.clock(m + 4).h]; }, run.start);
+  const late = n => page.locator('.tcl-grp').filter({ visible: true }).filter({ has: page.locator('.tcl-late') }).locator('.tcl-grp-h b', { hasText: new RegExp('^about ' + at[n === 2 ? 0 : 1] + '$') });
   await expect(late(2)).toHaveCount(1);
   const box = page.locator(phone(info) ? '#mapsearch input' : '#topsearch input');
   await box.focus();
@@ -1235,7 +1237,7 @@ test('the Center back from the background: a bus that left while the app was awa
   await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
   await go(page, '#/hub');
   await polled(page, relay.T);
-  const late = page.locator('.tcb-row .sub').filter({ hasText: /^Live · \d+ min late/ });
+  const late = page.locator('.tcl-late').filter({ visible: true });
   await expect(late).toHaveCount(1);
   const shown = v => page.evaluate(v => {
     for (const [k, get] of [['visibilityState', () => v], ['hidden', () => v === 'hidden']]) Object.defineProperty(document, k, { configurable: true, get });
@@ -2080,21 +2082,51 @@ test('Transit Center: directions there from its board, to any of its bays', asyn
   expect(a).toBe(b);
 });
 
-test('Transit Center: the board, a route picked from the strip, the bays', async ({ page }, info) => {
+test('Transit Center: the board, a row to its bus or its route, the Center on the map', async ({ page }, info) => {
   await open(page, '#/hub');
   await mapReady(page);
-  await expect(page.getByText(/Next departure|No buses today|Next buses/i).filter({ visible: true }).first()).toBeVisible();
-  const seg = page.locator('a.tc-seg').filter({ visible: true }).first();
-  if (await seg.count()) {
-    await seg.click();
-    await expect(page).toHaveURL(/#\/hub\/.+/);
-    await expect(page.locator('.tc-pick')).toBeVisible();
-    await page.locator('.tc-pick a[aria-label="Close"]').click();
-    await expect(page).toHaveURL(/#\/hub$/);
+  await expect(page.locator('.tcl-head h1').filter({ visible: true })).toHaveText('Transit Center');
+  await expect(page.locator('.tcl-grp, .tcl-note').filter({ visible: true }).first()).toBeVisible();
+  // on a phone the map opens wide on the Center, its label on it (the bays come in zoomed in)
+  if (phone(info)) await expect(page.locator('.hubtag').filter({ visible: true })).toContainText('Transit Center');
+  // a row: its bus on the map where there's one out, else its route picked, its next few and its day from here
+  const row = page.locator('a.tcl-row').filter({ visible: true }).first();
+  if (await row.count()) {
+    // (which it is can change with the feed between a look and a tap: a bus come into it)
+    await row.click();
+    await expect(page).toHaveURL(/#\/(map\/bus|hub)\/.+/);
+    if (/#\/hub\//.test(page.url())) {
+      await expect(page.locator('.tc-pick')).toBeVisible();
+      await page.locator('.tc-pick a[aria-label="Close"]').click();
+      await expect(page).toHaveURL(/#\/hub$/);
+    }
   }
-  if (phone(info)) await expect(page.locator('.hbay').filter({ visible: true }).first()).toBeVisible();
   // A bay stands at its pole (OSM's, tools/reduce.py) with its stop: the badge, the stop's dot and the walks to it one place.
   expect(await page.evaluate(async () => { const d = await import('/app/data.js'); return d.D.hub.bays.filter(b => b.lat !== d.D.stops[b.stop].lat || b.lon !== d.D.stops[b.stop].lon).length; })).toBe(0);
+});
+
+test('Transit Center: a bus standing in it is a badge in its label, its own marker put away, a tap to it', async ({ page }) => {
+  // The half hour's buses in were one bus drawn and '+9' on the map (2026-10-27): each now a badge in the Center's label.
+  const relay = { T: 0, feed: null, alerts: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const run = await centreRun(page, 30);
+  test.skip(!run, 'no run from the Center today');
+  relay.feed = bayFeed(run, 0); relay.T = relay.feed.t;
+  await page.clock.setFixedTime(new Date(run.at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await go(page, '#/hub');
+  await polled(page, relay.T);
+  const badge = page.locator('.hubtag .in a[href="#/map/bus/c%3A9001"]');
+  await expect(badge).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.maplibregl-marker.bus.athub')).toHaveCount(1);
+  // pulled out and on its way: out of the label, drawn as itself
+  relay.feed = bayFeed(run, 150, true); relay.T = relay.feed.t;
+  await page.clock.setFixedTime(new Date(run.at + 150_000));
+  await polled(page, relay.T);
+  await expect(badge).toHaveCount(0);
+  await expect(page.locator('.maplibregl-marker.bus.athub')).toHaveCount(0);
 });
 
 test('Transit Center: the rest of the day, a line a route with its last bus, a tap to its every time; after the last, the next day\'s', async ({ page }) => {
@@ -2128,8 +2160,11 @@ test('Transit Center: the rest of the day, a line a route with its last bus, a t
     await page.evaluate(() => history.replaceState(null, '', '#/hub'));   // the board afresh at that time, nothing picked
     await page.reload();
     await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+    const more = page.locator('.tcl-more').filter({ visible: true }).first();   // today's, behind a tap; another day's, out
+    await expect(page.locator('.tcd').first()).toBeAttached({ timeout: 20_000 });
+    if (await more.count()) await more.click();
     const sec = page.locator('.tcd').filter({ visible: true }).first();
-    await expect(sec).toBeAttached({ timeout: 20_000 });
+    await expect(sec).toBeVisible();
     return sec;
   };
   let sec = await board(pick.at);
@@ -2163,20 +2198,20 @@ test('Transit Center on a wide screen: the map left where it is, the bays on the
   await someBus(page);   // markers on the map to measure it by, when buses are out
   // Where each bus marker sits on the screen: flown to the Center, every one would be hundreds of pixels off; a live
   // bus creeps a few. (No bus out: the bays not shown is the check.)
-  const spots = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.maplibregl-marker.bus')].map(e => { const r = e.getBoundingClientRect(); return [e.title, [r.x, r.y]]; })));
+  // (Not a bus put in the Center's label, nor one held off its edge: the label comes with the board.)
+  const spots = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.maplibregl-marker.bus:not(.athub):not(.heldoff)')].map(e => { const r = e.getBoundingClientRect(); return [e.title, [r.x, r.y]]; })));
   const moved = (a, b) => Math.max(0, ...Object.keys(a).filter(k => b[k]).map(k => Math.hypot(a[k][0] - b[k][0], a[k][1] - b[k][1])));
   const before = await spots();
   await page.locator('#topnav a[href="#/hub"]').click();
-  await expect(page.getByText(/Next departure|No buses today|Next buses/i).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.tcl-head h1').filter({ visible: true })).toHaveText('Transit Center');
   await page.waitForTimeout(1500);
   expect(moved(before, await spots()), 'pixels the map moved').toBeLessThan(60);
-  await expect(page.locator('.hbay')).toHaveCount(0);
-  // The tab again: the ask to see the bays, framed then.
+  // The tab again: the ask to see the Center, framed then, its label on it.
   await page.locator('#topnav a[href="#/hub"]').click();
-  await expect(page.locator('.hbay').filter({ visible: true }).first()).toBeVisible();
-  // Left for the Map tab: back where the map was, the bays gone.
+  await expect(page.locator('.hubtag').filter({ visible: true })).toBeVisible();
+  // Left for the Map tab: the label gone with the board.
   await page.locator('#topnav a[href="#/map"]').click();
-  await expect(page.locator('.hbay')).toHaveCount(0);
+  await expect(page.locator('.hubtag')).toHaveCount(0);
 });
 
 test('directions: each way in, a plan, no way, from only', async ({ page }) => {
