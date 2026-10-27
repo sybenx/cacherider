@@ -2191,6 +2191,7 @@ test('Transit Center: the rest of the day, a line a route with its last bus, a t
 
 test('Transit Center on a wide screen: the map left where it is, the bays on the tab again', async ({ page }, info) => {
   test.skip(phone(info), 'on a phone the Center is the map, flown to');
+  await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
   // From the Stops page, its panel already beside the map: from the Map tab the panel comes in, and the map keeps the
   // place looked at in the middle of what's left, half the panel over, whichever page it is.
   await open(page, '#/');
@@ -2202,16 +2203,22 @@ test('Transit Center on a wide screen: the map left where it is, the bays on the
   const spots = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.maplibregl-marker.bus:not(.athub):not(.heldoff)')].map(e => { const r = e.getBoundingClientRect(); return [e.title, [r.x, r.y]]; })));
   const moved = (a, b) => Math.max(0, ...Object.keys(a).filter(k => b[k]).map(k => Math.hypot(a[k][0] - b[k][0], a[k][1] - b[k][1])));
   const before = await spots();
+  const faint = () => page.evaluate(() => JSON.stringify(window.__map.getPaintProperty('stops', 'circle-opacity')));
+  const asDrawn = await faint();
   await page.locator('#topnav a[href="#/hub"]').click();
   await expect(page.locator('.tcl-head h1').filter({ visible: true })).toHaveText('Transit Center');
   await page.waitForTimeout(1500);
   expect(moved(before, await spots()), 'pixels the map moved').toBeLessThan(60);
+  // The route lines still drawn (every line went, 2026-10-27); the stops faint, back as drawn on the Map tab.
+  expect(await page.evaluate(() => window.__map.getLayoutProperty('route-lines', 'visibility'))).not.toBe('none');
+  expect(await faint()).not.toBe(asDrawn);
   // The tab again: the ask to see the Center, framed then, its label on it.
   await page.locator('#topnav a[href="#/hub"]').click();
   await expect(page.locator('.hubtag').filter({ visible: true })).toBeVisible();
   // Left for the Map tab: the label gone with the board.
   await page.locator('#topnav a[href="#/map"]').click();
   await expect(page.locator('.hubtag')).toHaveCount(0);
+  expect(await faint()).toBe(asDrawn);
 });
 
 test('directions: each way in, a plan, no way, from only', async ({ page }) => {
