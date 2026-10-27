@@ -1,6 +1,6 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
 import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason, keptOn, daysOff } from './data.js';
-import { predict, lateWords, isLoop, loopSpacing, stopsAway } from './rt.js';
+import { predict, lateWords, isLoop, loopSpacing, stopsAway, unseen } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
 import { clock, clockText, relative, now, metres, minsTo, isDue, dayFrom, dayName, fmtDay, MON_SHORT } from './time.js';
@@ -96,7 +96,7 @@ export function time(min, size = 26, est = false) {
 
 export const sched = (t, more = '') => raw(t && t.req
   ? `<span class="sched req" title="The bus calls here this way only when asked: pull the cord to get off, or call ${esc(D.agency.phone)} ahead to be picked up">On request</span>`
-  : `<span class="sched">${icon('clock', 11).s}Scheduled${t && t.onTime ? ' · on time' : ''}${esc(more)}</span>`);
+  : (u => `<span class="sched${u ? ' unseen' : ''}">${icon('clock', 11).s}Scheduled${t && t.onTime ? ' · on time' : u ? ' · bus not seen' : ''}${esc(more)}</span>`)(!!t && unseen(t)));
 export const corners = () => raw('<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>');
 
 /** What a departure is headed for: 'to N Logan · CV Hospital', 'to Preston', 'Island · Wilson · Tabernacle', 'Green
@@ -183,7 +183,7 @@ export function when(t, size = 26) {
 }
 function whenRaw(t, size) {
   if (loopArrival(t)) return minsOut(t, size);
-  if (!t.live) return time(t.min, size);
+  if (!t.live) return unseen(t) ? raw(time(t.min, size).s.replace(/<\/span>$/, '<i class="unseen-q" title="Its bus isn\u2019t in the live feed">?</i></span>')) : time(t.min, size);
   if (!moved(t)) return time(t.min, size, true);
   return raw(`<span class="whent"><s class="was" style="font-size:${Math.max(12, Math.round(size * .55)) / 16}rem">${esc(clock(schedOf(t)).h)}</s>${time(t.min, size, true).s}</span>`);
 }

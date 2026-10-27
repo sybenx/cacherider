@@ -5,7 +5,7 @@ import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn
 import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone, fmtDay, howOften, clockAnd } from '../time.js';
 import { html, esc, icon, badge, routeName, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, daysOffNote, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { dayCard } from '../holiday.js';
-import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
+import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, unseen, HUB_IN, HUB_STILL } from '../rt.js';
 import { strip, mountStrip, dayPick, dayRow } from './strip.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
@@ -157,7 +157,7 @@ function nextHour(st, pick, clockNow) {
     const tag = !first || !tags || s.off ? '' : s.eta === 0 ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : '';
     return html`<a class="tcb-row${pick === s.k ? ' on' : ''}" href="${first ? cardHref(s, pick) : '#/hub' + (pick === s.k ? '' : '/' + s.k)}">
       <span class="tcb-t">${was(schedOf(t), t.min)}<span class="t${t.live ? ' est' : ''}">${clock(t.min).h}</span></span>
-      ${badge(t.r, 26)}<span class="tcb-mid"><span class="dest">${headsign(t)}</span><span class="sub${t.live ? ' live' : ''}">${t.live ? liveWord(t) : t.onTime ? 'Scheduled · on time' : 'Scheduled'}</span>${lastTag(t)}</span>
+      ${badge(t.r, 26)}<span class="tcb-mid"><span class="dest">${headsign(t)}</span><span class="sub${t.live ? ' live' : unseen(t) ? ' unseen' : ''}">${t.live ? liveWord(t) : t.onTime ? 'Scheduled · on time' : unseen(t) ? 'Scheduled · bus not seen' : 'Scheduled'}</span>${lastTag(t)}</span>
       <span class="tcb-tag">${tag ? html.raw(`<span class="tag${tag === 'HERE' ? ' in' : ''}">${tag}</span>`) : ''}</span></a>`;
   });
   return html`<div class="tcb"><div class="section between"><span>${title}</span>${rows.some(r => r.t.live) ? html`<span class="note">crossed out · scheduled</span>` : ''}</div>
@@ -388,6 +388,8 @@ function whereWord(s) {
   if (s.eta > 0) return { cls: 'away', w: s.eta + ' min away' };
   if (s.loose) return { cls: 'quiet', w: 'Out, no estimate' };
   if (s.away) return { cls: 'quiet', w: 'On an earlier run' };
+  // Its bus should be out by now and the feed has none on its run (rt.js unseen): not one not out yet.
+  if (s.dep && s.dep.day === 0 && unseen(lively(s.dep))) return { cls: 'quiet unseen', w: 'Bus not seen' };
   return { cls: 'quiet', w: 'No live position' };
 }
 /** Late enough to say (2 min, as every screen moves a time: ui.js moved). Early isn't said: a bus in early waits for its
@@ -416,7 +418,7 @@ function boardBody(st, clockNow) {
   for (const r of rows) { const g = at(r.t), last = groups[groups.length - 1]; if (last && last.g === g) last.rows.push(r); else groups.push({ g, t: r.t, rows: [r] }); }
   const row = ({ t, s, first }) => {
     if (t.cancelled) return cancelledRow(t);
-    const ww = first ? whereWord(s) : { cls: 'quiet', w: 'Scheduled' }, bus = first && (s.at || s.bus);
+    const ww = first ? whereWord(s) : unseen(lively(t)) ? { cls: 'quiet unseen', w: 'Scheduled · bus not seen' } : { cls: 'quiet', w: 'Scheduled' }, bus = first && (s.at || s.bus);
     // A tap: its bus on the map, where there's one; else the route, its next few and its day from here.
     const href = bus ? '#/map/bus/' + encodeURIComponent(bus) : '#/hub/' + encodeURIComponent(s.k);
     return html`<a class="tcl-row" href="${href}">${badge(t.r, 26)}<span class="tcl-to">${headsign(t)}${lastTag(t)}</span><span class="tcl-st ${ww.cls}">${ww.w}</span>${late(t) ? html`<span class="tcl-late">Late · due ${clock(schedOf(t)).h}</span>` : ''}</a>`;

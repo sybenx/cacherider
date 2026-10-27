@@ -688,6 +688,52 @@ export function cancelledAt(si, clockNow = now(), within = 60, ok = null) {
     .map(t => ({ ...t, day: 0, ymd: clockNow.ymd, cancelled: true }));
 }
 
+/** A departure today whose bus should be on the road by now, by the timetable's block (a run of trips 45 min apart at
+ *  most, whatever route: 2 and 5 swap all day), and the feed has no bus on any trip of it: its time stands, with a
+ *  doubt. The Blue Loop's third bus gone from the feed (2026-10-27, 10:31), its 9:53 still going round and its 10:41 to
+ *  follow: every screen had them 'Scheduled', as a run not out yet. The user: 'that bus still exists, so the scheduled
+ *  time should probably still show. probably with a questionmark in case the bus really isn't there.' Not said: before
+ *  the block's first trip starts (5 min's grace: a driver logs in late on pulling out), more than 90 min ahead (a spare
+ *  may be out by then), with the feed quiet or without a bus at all, with a bus of the block's routes on no trip the
+ *  timetable knows (a detour's, from the tracker: it may be this one), or with two buses on one block of its routes (a
+ *  driver logged in on the wrong run: the run it should be on then looks empty). */
+const blocks = new Map();   // ymd:trip → the block's trips, the timetable's (worked out once a day)
+function blockOf(ti, ymd) {
+  const key = ymd + ':' + ti;
+  if (blocks.has(key)) return blocks.get(key);
+  if (blocks.size > 4000) blocks.clear();
+  const gap = (a, b) => { const e = tripEnd(a), sa = tripStops(a), sb = tripStops(b); return sa.length && sb.length ? sb[0][0] - (e ? e.min : sa[sa.length - 1][0]) : Infinity; };
+  const run = [ti];
+  for (let p = prevTrip(ti, ymd); p !== undefined && run.length < 40 && gap(p, run[0]) <= 45; p = prevTrip(p, ymd)) run.unshift(p);
+  for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 40 && gap(run[run.length - 1], n) <= 45; n = nextTrip(n, ymd)) run.push(n);
+  const b = { trips: run, start: (tripStops(run[0])[0] || [Infinity])[0], routes: new Set(run.map(x => tripRoute(x)?.r)) };
+  for (const x of run) blocks.set(ymd + ':' + x, b);
+  return b;
+}
+let seenAt = -1, seenTrips = null, looseRoutes = null;
+export function unseen(t, clockNow = now()) {
+  if (t.trip === undefined || t.day || t.live || t.gone || t.cancelled || rtStale() || !D.trips || !tripIdx) return false;
+  if (D.routes[t.r] && D.routes[t.r].op) return false;
+  if (!rt.buses.length) return false;   // a feed with no bus in it at all is the feed's fault, not every bus's
+  if (seenAt !== rt.at) {
+    seenAt = rt.at; seenTrips = new Set(); looseRoutes = new Set();
+    const on = new Map();   // a block → its buses
+    for (const b of [...rt.buses, ...rt.parked]) {
+      if (!tripIdx.has(b.trip)) { looseRoutes.add(b.ri); continue; }
+      seenTrips.add(b.trip);
+      const k = blockOf(tripIdx.get(b.trip), clockNow.ymd);
+      (on.get(k) || on.set(k, new Set()).get(k)).add(b.id);
+    }
+    for (const [k, ids] of on) if (ids.size > 1) for (const ri of k.routes) looseRoutes.add(ri);
+    for (const [id, u] of Object.entries(rt.trips)) if (u.v) seenTrips.add(id);
+  }
+  if (t.min - clockNow.min > 90) return false;
+  const b = blockOf(t.trip, clockNow.ymd);
+  if (clockNow.min < b.start + 5) return false;
+  if ([...b.routes].some(ri => looseRoutes.has(ri))) return false;
+  return !b.trips.some(x => seenTrips.has(D.trips[x]));
+}
+
 /** How late a bus is now: the feed's minute at the stop it calls at next against the timetable's. The number every
  *  screen agrees on: the feed's word at its trip's last stop (`lastDelay`) is its guess at the rest of the run, and
  *  can be six minutes more. Null without a word. */

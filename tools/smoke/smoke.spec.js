@@ -918,6 +918,39 @@ test('a bus gone quiet: grey after three minutes without a report, off the map a
   await expect(page.getByText(/last heard from at/).filter({ visible: true }).first()).toBeVisible();
 });
 
+test('a run whose bus should be out and isn\'t in the feed: its time stands, \'Scheduled · bus not seen\', a ? on it', async ({ page }) => {
+  // The relay's answer made up: one bus out on another route's trip (a feed with buses in it), none on the run picked,
+  // a trip under way by the timetable with a stop still to come; then a bus put on the run, and the doubt goes.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  // A weekday mid-morning, buses out: on the real clock a Sunday has none, and the test skipped.
+  const when = new Date(); do when.setDate(when.getDate() + 1); while (when.getDay() === 0 || when.getDay() === 6); when.setHours(10, 40, 30, 0);
+  await page.clock.setFixedTime(when);
+  await open(page, '#/');
+  const pick = await page.evaluate(async () => {
+    const { D, timesOn, tripStops, tripRoute } = await import('/app/data.js'), { now } = await import('/app/time.js'), n = now();
+    for (let ti = 0; ti < D.trips.length; ti++) {
+      const st = tripStops(ti), r = tripRoute(ti);
+      if (!r || D.routes[r.r].op || st.length < 2 || st[0][0] > n.min - 5) continue;
+      const ahead = st.find(([m]) => m >= n.min + 3 && m <= n.min + 30);
+      if (!ahead || !timesOn(ahead[1], n.ymd).some(t => t.trip === ti && t.min === ahead[0])) continue;
+      const other = D.trips.findIndex((_, k) => k !== ti && tripRoute(k) && tripRoute(k).r !== r.r);
+      return { trip: D.trips[ti], other: D.trips[other], stop: D.stops[ahead[1]].id, min: ahead[0], lat: D.stops[ahead[1]].lat, lon: D.stops[ahead[1]].lon };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no trip under way right now');
+  const t = Math.floor(when.getTime() / 1000), bus = trip => ({ id: '9201', label: '9201', trip, lat: pick.lat + 0.01, lon: pick.lon, bearing: 0, speed: 5, ts: t });
+  feed = { t, trips: {}, buses: [bus(pick.other)] };
+  await go(page, '#/stop/' + pick.stop);
+  await expect(page.locator('.sched.unseen').filter({ visible: true }).first()).toContainText('bus not seen');
+  await expect(page.locator('.unseen-q').filter({ visible: true }).first()).toBeVisible();
+  feed = { t: t + 1, trips: {}, buses: [{ ...bus(pick.trip), ts: t + 1 }] };
+  await page.reload();   // the clock held, the app's next ask of the relay is on opening
+  await expect.poll(() => page.evaluate(async p => { const { unseen } = await import('/app/rt.js'), { D } = await import('/app/data.js'), { now } = await import('/app/time.js');
+    const { rt } = await import('/app/rt.js'); return rt.buses.some(b => b.trip === p.trip) ? unseen({ trip: D.trips.indexOf(p.trip), r: 0, min: p.min, day: 0 }, now()) : null; }, pick), { timeout: 30000 }).toBe(false);
+});
+
 test('map: a bus wears its route\'s number, a grey one its arrow, two at one spot a +1', async ({ page }) => {
   // The relay's answer made up, by the Center: two buses of one route at one spot (one picked, by its address), a third
   // up the street, a fourth not heard from in five minutes (grey). Their trip one the timetable doesn't know, its route

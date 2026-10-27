@@ -1364,9 +1364,11 @@ function foldRows(xs, ri, seq) {
       // Each by its way too, a stop on a line both ways (16's along Main) its own on each.
       const ids = held.map(x => ri + '/' + x.k + '/' + x.si), open = ids.some(k => openFolds.has(k));
       // Its times first to last in route order; where they don't run on (a bus just past its first stop, that one's
-      // next the trip after), from the first.
-      const ts = held.map(x => x.n && x.n.day === 0 ? lively(x.n).min : null), a = ts[0] !== null ? clock(ts[0]) : null, z = ts[ts.length - 1];
+      // next the trip after), from the soonest. From the first, the Blue Loop's fold past 1300 North Main was 'from
+      // 10:51', the next bus but one: the one due there at 10:32 to 10:37 hidden in it (2026-10-27).
+      const ts = held.map(x => x.n && x.n.day === 0 ? lively(x.n).min : null), z = ts[ts.length - 1];
       const up = ts.every((t, k) => t !== null && (!k || t >= ts[k - 1])), b = up ? clock(z) : null;
+      const soon = ts.filter(t => t !== null), a = up ? clock(ts[0]) : soon.length ? clock(Math.min(...soon)) : null;
       const span = !a ? '' : ' · ' + (!up ? 'from ' + a.h + (a.ap ? ' ' + a.ap : '') : a.h === b.h ? a.h + (a.ap ? ' ' + a.ap : '') : a.h + (a.ap !== b.ap ? ' ' + a.ap : '') + '–' + b.h + (b.ap ? ' ' + b.ap : ''));
       out.push(html`<details class="rs-fold" data-stops="${ids.join(' ')}"${open ? html.raw(' open') : ''}><summary class="rs-foldsum"><span>${held.length} stops${span}</span>${icon('down', 16)}</summary>${held.map(x => x.row)}</details>`);
     }

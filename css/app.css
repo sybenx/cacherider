@@ -173,6 +173,9 @@ svg { display: block; flex: none; }
 a.section.pick { color: var(--color-text); text-decoration: none; min-height: 48px; align-items: center; }
 a.section.pick > .note { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--color-accent); font-weight: 500; white-space: nowrap; }
 .sched { display: inline-flex; align-items: center; gap: 4px; font-size: var(--tag-size); font-weight: 500; letter-spacing: calc(.12em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); white-space: nowrap; }
+/* A run whose bus should be out and isn't in the feed (rt.js unseen): its time stands, with a doubt. */
+.sched.unseen { color: var(--warn-ink); }
+.unseen-q { font-style: normal; font-size: .62em; font-weight: 600; color: var(--cr-muted); margin-left: 1px; vertical-align: super; line-height: 0; }
 .rel { font-size: 0.8438rem; color: var(--cr-muted); }
 .fine { padding: 14px 16px 18px; font-size: 0.7812rem; line-height: 1.45; color: var(--cr-muted); }
 .fine a { color: inherit; }
@@ -1113,6 +1116,7 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 .tcb-mid .dest { font-size: 0.9062rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tcb-mid .sub { font-size: var(--tag-size); font-weight: 500; letter-spacing: calc(.1em * var(--tag-k)); text-transform: var(--tag-case); color: var(--cr-muted); }
 .tcb-mid .sub.live { color: var(--color-accent-700); }
+.tcb-mid .sub.unseen { color: var(--warn-ink); }
 .tcb-tag { display: flex; justify-content: flex-end; }
 .tcb-tag .tag { font-family: var(--font-heading); font-weight: 600; font-size: 0.6875rem; padding: 2px 5px; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--cr-line); }
 .tcb-tag .tag.in { background: var(--color-accent-100); color: var(--color-accent-900); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent); }
@@ -1136,6 +1140,7 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 .tcl-to .lastrun { margin-left: 6px; }
 .tcl-st { text-align: right; white-space: nowrap; font-size: 0.875rem; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
 .tcl-st.here { color: var(--color-accent-700); font-weight: 700; }
+.tcl-st.unseen { color: var(--warn-ink); }
 .tcl-late { grid-column: 2 / 4; font-size: 0.8125rem; font-weight: 600; color: var(--cr-late); }
 .tcl-all { grid-template-columns: 1fr auto; }
 .tcl-badges { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -1210,6 +1215,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 .c-turn svg { display: inline-block; vertical-align: -3px; margin-right: 4px; }
 .croute .c-b { display: flex; gap: 3px; margin-top: 4px; }
 .croute .c-r { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 0.8125rem; color: var(--cr-muted); white-space: nowrap; }
+.croute .c-r .sched.unseen { white-space: normal; max-width: 7.5em; text-align: right; align-items: flex-start; }   /* 'Scheduled · bus not seen' on two lines: on one, the stop's name went a word a line */
 .croute .c-t .whent { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }   /* the timetable's minute struck above the estimate */
 .croute .c-t .was { font-size: 0.6875rem !important; line-height: 1.1; }
 /* A route drawn as a line (map.js LINE, on trial): its stops on a rail in the route's colour (--rc, as the map draws
