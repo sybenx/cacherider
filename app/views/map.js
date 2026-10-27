@@ -3132,15 +3132,18 @@ function busRouteHref(id) {
 }
 /** Beside a wide screen's panel, the page a bus was clicked from (a stop, the Center), and the route it opened: a click
  *  off it, on nothing, goes back there. It went to the Map tab, whatever the rider had been looking at. */
-let busFrom = null;
+// A stop's page the bus was clicked from, its dot put down there first (a click off it): back to the page, the dot
+// still down. It came back lit, the stop the rider had put away picked again.
+let busFrom = null, stopDown = null;
 const routeAway = () => {
   const b = busFrom; busFrom = null;
+  stopDown = b && b.down && wide() && location.hash.startsWith(b.route) ? b.hash : null;
   replaceTo(b && wide() && location.hash.startsWith(b.route) ? b.hash : '#/map');   // in place, not a new entry: Back reopened the route
 };
 function selectBus(id, app) {
   clearSpot();
   // Beside the panel (a wide screen, off the Map tab) a bus opens its route there, as a stop opens its page.
-  if (wide() && app.route.name !== 'map') { const h = busRouteHref(id); if (h) { busFrom = { hash: location.hash, route: h.split('?')[0].split('/').slice(0, 4).join('/') }; openTo(h); return; } }
+  if (wide() && app.route.name !== 'map') { const h = busRouteHref(id); if (h) { busFrom = { hash: location.hash, route: h.split('?')[0].split('/').slice(0, 4).join('/'), down: /^#\/stop\//.test(location.hash) && selected === null }; openTo(h); return; } }
   const c = findBus(id), b = c || live.buses.find(x => x.id === id);
   selectedBus = id; selectedU = null; selected = null; uHilite = '';
   // A Connect bus draws its way on, not its whole route: the route's line, if lit, drops back so the bus's reads.
@@ -3714,6 +3717,9 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
       const s = stop(si);
       const changed = lastFocused !== stopId;
       lastFocused = stopId;
+      // Back to it from a bus's route, its dot put down before: down still, the map where it is.
+      const down = stopDown === location.hash; stopDown = null;
+      if (down && !page) { selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection(); return; }
       selected = stopId; uHilite = ''; hiLines = s.hub ? [...s.routes] : []; hiLoops = []; applySelection();
       // On the Map tab the card decides the framing, so the stop sits above it; beside the
       // stop list there is no card, and a fresh arrival eases to the stop itself.

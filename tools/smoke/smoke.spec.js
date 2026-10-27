@@ -434,6 +434,31 @@ test('bus click-off: back where the rider was', async ({ page }, info) => {
   expect(await stepAt(page)).toEqual(was);   // in place, not a step Back
 });
 
+test('a stop put down, then a bus clicked and clicked off: the stop stays down', async ({ page }, info) => {
+  // The user: 'i clicked on a stop, clicked on the map to deselect. clicked on a bus, clicked on the map again and the
+  // stop highlighted'. Beside a wide screen's panel a click off a stop puts its dot down, its page staying; a bus's
+  // route, clicked off, goes back to that page, and the dot came back lit.
+  test.skip(phone(info), 'a phone\'s click off a stop puts its page away too');
+  await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
+  await open(page);
+  const id = await someStop(page);
+  await go(page, '#/stop/' + id);
+  await mapReady(page);
+  const lit = () => page.evaluate(() => JSON.stringify(window.__map.getFilter('stop-selected')));
+  await expect.poll(lit).toContain(id);
+  await clickNothing(page);
+  await expect(page).toHaveURL(new RegExp('#/stop/' + id + '$'));
+  await expect.poll(lit).not.toContain(id);
+  const bus = await someBus(page);
+  test.skip(!bus, 'no Connect bus out');
+  await bus.evaluate(el => el.click());
+  await expect(page).toHaveURL(/#\/map\/route\/.+\?bus=/);
+  await clickNothing(page);
+  await expect(page).toHaveURL(new RegExp('#/stop/' + id + '$'));
+  await page.waitForTimeout(600);
+  expect(await lit()).not.toContain(id);
+});
+
 test('a tap off a card, a sheet, a route puts it away in place: never a step Back, not even a double click', async ({ page }, info) => {
   // A tap on nothing stepped Back where the address before was the one put away to, and the card put away was a
   // Forward away. With a mouse, a double click (the map's zoom in) went Back twice: off the map to Stops, and the next
