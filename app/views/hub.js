@@ -103,14 +103,10 @@ export function render({ bay }, clockNow) {
   const H = D.hub;
   const { st, pick } = board(bay, clockNow);
 
-  const parts = [];
-  parts.push(html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1>${getHere()}</div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`);
-  parts.push(together(st, clockNow), detourNotice(clockNow));
-  parts.push(loops(st, pick, clockNow));
-  if (pick) parts.push(picked(st[pick], clockNow), dayTimes(st[pick], clockNow));
-  parts.push(nextHour(st, pick, clockNow));
-  if (!pick) parts.push(restOfDay(st, clockNow));
-  parts.push(footnote(st));
+  const parts = pick
+    ? [html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1>${getHere()}</div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`,
+      detourNotice(clockNow), picked(st[pick], clockNow), dayTimes(st[pick], clockNow), nextHour(st, pick, clockNow), footnote(st)]
+    : [html`<div class="tcl">${boardHead()}${boardBody(st, clockNow)}</div>`];
   return { html: parts.join(''), mount, title: H.name, keepScroll: true, key: 'hub' };
 }
 
@@ -335,44 +331,6 @@ function together(st, clockNow) {
     ${leaving.length ? html`<div class="bars"><div class="segs" style="grid-template-columns:repeat(${leaving.length},minmax(0,1fr))">${html.raw(segs)}</div>${note}</div>` : ''}</div>`;
 }
 
-/** A route's last departure from here today, gone already, and about when its run ends: null when none left today. */
-function lastLeft(ri, clockNow) {
-  const bay = D.hub.bays.find(b => b.routes.includes(ri));
-  // Gone by the feed's word where it has one, as every list says (time.js): a late last run hasn't left yet.
-  const gone = bay ? timesOn(bay.stop, clockNow.ymd).filter(t => t.r === ri).map(t => lively({ ...t, day: 0, ymd: clockNow.ymd })).filter(t => isGone(t, clockNow)).map(t => schedOf(t)) : [];
-  if (!gone.length) return null;
-  const min = Math.max(...gone), end = lastTripOn(ri, clockNow.ymd);
-  return { min, back: end && end.end ? Math.max(end.end[0], min) : min + 30 };
-}
-/** The two loops, side by side: the next one's time, the one after, and where its bus is. */
-function loops(st, pick, clockNow) {
-  const ls = (D.hub.loops || []).map(keyOf).filter(k => st[k] && st[k].dep);
-  if (!ls.length) return '';
-  // How often they come: the commonest gap between the next few.
-  const gaps = ls.flatMap(k => { const m = nextFromHub(st[k].ris[0], 5, clockNow).filter(t => t.day === 0).map(schedOf); return m.slice(1).map((x, i) => x - m[i]); });
-  const every = gaps.length ? [...gaps].sort((a, b) => gaps.filter(g => g === b).length - gaps.filter(g => g === a).length)[0] : null;
-  const cells = ls.map(k => {
-    const s = st[k], r = D.routes[s.ris[0]], t = s.dep, then = s.deps[1];
-    // Done leaving for the day, its last run may still be out, coming in to end there: said, not 'not running'.
-    const last = s.off ? lastLeft(s.ris[0], clockNow) : null, lastOut = !!last && s.eta !== 0 && (s.out || clockNow.min < last.back) && clockNow.min < last.back + 30;   // the feed's bus, or the timetable's end
-    const where = s.off ? (lastOut ? (s.eta > 0 ? `Last run · back in ${s.eta} min` : `Last run left ${clockText(last.min)}`) : last ? 'Done for today' : 'Not running today') : s.eta === 0 ? 'Bus is here' : s.eta > 0 ? `Bus ${s.eta} min out` : s.away ? 'Bus on its run' : s.loose ? 'Out, no estimate' : 'Not reporting';
-    // Its bus at its stop: board it now, and the line beneath is the bus after (a rider who misses this one wants
-    // that, not when this one pulls out).
-    // In and waiting for its minute (a bus in early holds for the timetable): that minute, with the wait. In and
-    // due, or being spaced: NOW.
-    const here = t.day === 0 && !s.off && s.eta === 0, waiting = here && t.min > clockNow.min;
-    const thenTime = then && then.day === 0 ? html`${was(schedOf(then), then.min)}<span class="${then.live ? 'est' : ''}">${clock(then.min).h}</span>` : '';
-    const rel = waiting ? html`Here · leaves ${relative(t, clockNow)}` : here ? (thenTime ? html`Next bus ${thenTime}` : '') : t.day === 0 ? html`${relative(t, clockNow)}${thenTime ? html` · then ${thenTime}` : ''}` : dayName(t.ymd);
-    return html`<a class="tc-loop${pick === k ? ' on' : ''}" href="${cardHref(s, pick)}">
-      <span class="who">${badge(s.ris[0], 36)}<span class="name">${r.long}</span></span>
-      <span class="when">${here && !waiting ? html`<span class="t t-36 est">NOW</span>` : html`${wasLine(t)}<span class="whent">${time(t.min, 36, !!t.live)}</span>`}<span class="rel">${rel}</span></span>
-      ${lastTag(t)}${waiting ? '' : html`<span class="where${s.out && (!s.off || lastOut) ? ' live' : ''}"><i></i>${where}</span>`}</a>`;   // waiting, its 'Here' says where it is
-  });
-  return html`<div class="tc-loops blueprint">${corners()}
-    <div class="top"><span class="eyebrow">The loops</span>${every ? html`<span class="note">Every ${every} min, on their own timetable</span>` : ''}</div>
-    <div class="grid">${cells}</div></div>`;
-}
-
 /** The board as a phone's map card: its head, all a swiped-down card keeps, the countdown to the routes leaving
  *  together (or, a bay picked, that route's card); under it the loops, the next hour and the footnote. */
 /** Directions to the Center, as a stop's page has them: searched for, it was four taps away, through a route and a bay.
@@ -385,7 +343,90 @@ export function hubSheet({ bay }, clockNow) {
   const { st, pick } = board(bay, clockNow);
   return pick
     ? { pick, head: picked(st[pick], clockNow), body: html`${detourNotice(clockNow)}${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
-    : { pick, head: together(st, clockNow), body: html`${getHere()}${detourNotice(clockNow)}${loops(st, pick, clockNow)}${nextHour(st, pick, clockNow)}${restOfDay(st, clockNow)}${footnote(st)}` };
+    : { pick, head: html`<div class="tcl">${boardHead()}</div>`, body: html`<div class="tcl">${boardBody(st, clockNow)}</div>` };
+}
+
+// ---- The board: when the buses get here and when they leave (the user, 2026-10-21; mockup 2026-10-27, direction A).
+// One list, grouped by when buses leave: each group its minute and how long till it goes, each row its route, where it
+// goes and where its bus is. A group whose buses are all in is one row of their badges, opened by a tap. The countdown
+// card, the loops' boxes and the bars were three ways of saying the same few departures, in heavy type, and the map's
+// badges a fourth.
+/** Groups opened by a tap (by day and minute), and the rest of the day shown: kept across the minute's redraws. */
+const openGroups = new Set();
+let restShown = false;
+function boardHead() {
+  const b = D.hub.bays[0];
+  return html`<div class="tcl-head"><h1>${D.hub.name}</h1><div class="tcl-sub"><span>${D.hub.address}</span>${b ? html`<span aria-hidden="true">·</span><a href="#/go/${D.stops[b.stop].id}">How to get here</a>` : ''}</div></div>`;
+}
+/** Where a route's next bus is, in a few words: Here, N min away, or why there's no telling. A not-reporting route and
+ *  one whose bus isn't out yet are both 'No live position': the feed can't be told apart on them yet (2026-10-27, to be
+ *  looked at again with real data: does GMV report a bus before its first trip?). */
+function whereWord(s) {
+  if (rtStale()) return { cls: 'quiet', w: '' };   // the feed's not in, or quiet: the footnote says so, once
+  if (s.op) return { cls: 'quiet', w: 'No live position' };   // another operator's: no feed has its buses
+  if (s.eta === 0) return { cls: 'here', w: 'Here' };
+  if (s.eta > 0) return { cls: 'away', w: s.eta + ' min away' };
+  if (s.loose) return { cls: 'quiet', w: 'Out, no estimate' };
+  if (s.away) return { cls: 'quiet', w: 'On an earlier run' };
+  return { cls: 'quiet', w: 'No live position' };
+}
+/** Late enough to say (2 min, as every screen moves a time: ui.js moved). Early isn't said: a bus in early waits for its
+ *  minute. */
+const late = t => !t.cancelled && moved(t) && t.min > schedOf(t);
+function boardBody(st, clockNow) {
+  const rank = k => (st[k].loop ? 2000 : st[k].op ? 1000 : 0) + (parseInt(k) || 999);   // 1, 2 … 15, then the loops
+  const at = t => t.day * 1440 + t.min;
+  const all = keys().map(k => ({ s: st[k], deps: st[k].ris.flatMap(ri => nextFromHub(ri, 4, clockNow)).sort((a, b) => at(a) - at(b)) }));
+  // The next hour; with nothing in it (the evening, a Sunday, a gap), the hour from the next bus, so the list says when
+  // things start again (as nextHour).
+  const soon = all.some(({ deps }) => deps.some(t => t.day === 0 && minsTo(t, clockNow) <= 60));
+  const firsts = all.flatMap(({ deps }) => deps.slice(0, 1)), start = firsts.length ? Math.min(...firsts.map(at)) : null;
+  const rows = [];
+  if (start !== null) {
+    const from = soon ? clockNow.min : start;
+    for (const { s, deps } of all) deps.filter(t => soon ? t.day === 0 && minsTo(t, clockNow) <= 60 : at(t) - from <= 60 && at(t) >= from)
+      .forEach((t, i) => rows.push({ t, s, first: soon && i === 0 }));
+    // Cancelled runs in the hour, struck in their place (as nextHour).
+    if (soon) for (const { s } of all) for (const b of D.hub.bays.filter(b => b.routes.some(ri => s.ris.includes(ri))))
+      for (const t of cancelledAt(b.stop, clockNow, 60, t => s.ris.includes(t.r))) if (!rows.some(r => r.t.cancelled && r.t.trip === t.trip)) rows.push({ t, s, first: false });
+  }
+  // By when each leaves: a late bus in the group of when it'll go (the feed's word), not the timetable's minute.
+  rows.sort((a, b) => at(a.t) - at(b.t) || rank(a.s.k) - rank(b.s.k));
+  const groups = [];
+  for (const r of rows) { const g = at(r.t), last = groups[groups.length - 1]; if (last && last.g === g) last.rows.push(r); else groups.push({ g, t: r.t, rows: [r] }); }
+  const row = ({ t, s, first }) => {
+    if (t.cancelled) return cancelledRow(t);
+    const ww = first ? whereWord(s) : { cls: 'quiet', w: 'Scheduled' }, bus = first && (s.at || s.bus);
+    // A tap: its bus on the map, where there's one; else the route, its next few and its day from here.
+    const href = bus ? '#/map/bus/' + encodeURIComponent(bus) : '#/hub/' + encodeURIComponent(s.k);
+    return html`<a class="tcl-row" href="${href}">${badge(t.r, 26)}<span class="tcl-to">${headsign(t)}${lastTag(t)}</span><span class="tcl-st ${ww.cls}">${ww.w}</span>${late(t) ? html`<span class="tcl-late">Late · due ${clock(schedOf(t)).h}</span>` : ''}</a>`;
+  };
+  const out = groups.map(({ g, t, rows: rs }) => {
+    // How long till it goes, by the one clock (time.js): from the minute's start, 'leaving now' at its minute and past it
+    // while a late bus is still to go.
+    const n = minsTo(t, clockNow);
+    const when = t.day > 0 ? (t.day === 1 ? 'tomorrow' : dayName(t.ymd)) : n <= 0 ? 'leaving now' : 'leaves in ' + n + ' min';
+    const est = rs.some(r => late(r.t));   // a late bus's time is the feed's estimate: said as one
+    const head = html`<div class="tcl-grp-h"><b>${est ? html`<small>about</small> ` : ''}${clock(t.min).h}</b><span>${when}</span></div>`;
+    // Every bus here: one row of their badges (16 AM and PM as one). A route with no position can't be said to be in:
+    // it keeps its own row, under. Three at the least: one or two rows are no longer than their badges.
+    const here = rs.filter(r => r.first && !r.t.cancelled && whereWord(r.s).cls === 'here'), rest = rs.filter(r => !here.includes(r));
+    const foldable = here.length >= 3 && rest.every(r => r.first && whereWord(r.s).w === 'No live position');
+    if (!foldable) return html`<section class="tcl-grp">${head}${rs.map(row)}</section>`;
+    const key = t.ymd + ':' + g, open = openGroups.has(key);
+    return html`<section class="tcl-grp fold${open ? ' open' : ''}" data-g="${key}">${head}
+      <button type="button" class="tcl-all" aria-expanded="false">${html`<span class="tcl-badges">${here.map(r => badge(r.t.r, 26))}</span>`}<span class="tcl-st here">All here ›</span></button>
+      <div class="tcl-rows">${here.map(row)}<button type="button" class="tcl-fold">Show as one row</button></div>${rest.map(row)}</section>`;
+  });
+  // Nothing in the hour: why, when it's the day that's done (or never started: a Sunday, Thanksgiving, by its name).
+  const ranToday = D.hub.bays.some(b => timesOn(b.stop, clockNow.ymd).length);
+  const title = soon ? '' : rows[0] && rows[0].t.day === 0 ? html`<div class="tcl-note">Nothing leaves in the next hour.</div>`
+    : html`<div class="tcl-note"><b>${ranToday ? 'No more buses today' : 'No buses today'}</b>${ranToday ? '' : ' · ' + offDayWords(clockNow.ymd)}</div>`;
+  // The rest of the day behind a tap; another day's (today's all gone), out, under its own heading.
+  const day = restOfDay(st, clockNow), later = !!day && !/The rest of today/.test(day.s || day);
+  return html`${detourNotice(clockNow)}${title}${out.length ? out : html`<p class="tc-foot">Nothing scheduled in the next week.</p>`}
+    ${!day ? '' : later ? html`<div class="tcl-rest later">${day}</div>` : html`<div class="tcl-rest${restShown ? ' open' : ''}"><button type="button" class="tcl-more">The rest of today</button>${day}</div>`}
+    <p class="tc-foot">${rtDown() ? 'Live bus positions aren’t coming in right now, so every time here is the scheduled one.' : html`Bus positions from ${D.agency.brand}’s live feed.`}</p>`;
 }
 
 /** The bays for the map, one badge a route (16 AM and PM as one), at its bay's stop as the timetable places it: the
@@ -402,7 +443,10 @@ export function bays(bay, clockNow) {
     // the bus is the bus, drawn where it reports, its arrow showing the way.
     const in_ = tags && !s.off && s.eta === 0, bus = in_ ? rt.buses.find(x => x.id === s.at) : null;
     const here = !!bus && distance(bus.lat, bus.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(bus.speed > PARKED);
-    const tag = !tags || s.off ? '' : in_ ? 'HERE' : s.eta > 0 ? s.eta + ' MIN' : s.dep && s.dep.day === 0 && s.leave !== null ? clock(s.leave).h : '';   // no bus on its way: when the next leaves
+    // Only a bus in has a badge, at its bay: the badges of routes with no bus in, each with a time, were sixteen squares
+    // where the buses stand (2026-10-27). When each leaves is the board's.
+    if (!here) return null;
+    const tag = '';
     return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, bus: here ? bus.id : null, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: nameOfKey(k, s.ris[0]) };
   }).filter(Boolean);
 }
@@ -480,6 +524,17 @@ function footnote(st) {
 let shownPick = null;
 /** The countdown's ticker, and a picked route's card brought into view: for the page and the map's card alike. */
 export function mount(el) {
+  if (!el._tcl) {
+    el._tcl = true;
+    el.addEventListener('click', e => {
+      const b = e.target.closest('.tcl-all, .tcl-fold, .tcl-more');
+      if (!b) return;
+      if (b.classList.contains('tcl-more')) { restShown = !restShown; b.parentElement.classList.toggle('open', restShown); return; }
+      const g = b.closest('.tcl-grp'), key = g.dataset.g, open = !openGroups.has(key);
+      if (open) openGroups.add(key); else openGroups.delete(key);
+      g.classList.toggle('open', open);
+    });
+  }
   // A route just picked: its card opens below the loops, so bring it into view if it's off the screen. Once per
   // pick, not on the minute's redraw, which keeps the rider's place.
   const card = el.querySelector('.tc-pick'), pick = card ? location.hash : null;

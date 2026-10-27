@@ -956,7 +956,14 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 #map.hubon .bus { z-index: 2; }
 #map.hubon .bus.parked { z-index: 0; }
 .bus.athub { display: none; }   /* its route's badge stands on it */
-.maplibregl-marker.hbay { z-index: 3; }   /* the bays' badges over every bus: one driving by covered a route's badge, its time with it (its own bus in is the badge's HERE) */
+.maplibregl-marker.hbay { z-index: 3; }
+/* The Center's label from the streets about it (map.js hubLabel): its name and a badge for each bus in it. */
+.hubtag { max-width: 168px; padding: 5px 7px 6px; border-radius: 10px; background: var(--color-bg); box-shadow: inset 0 0 0 1px var(--cr-line), var(--shadow-md); font-family: var(--font-system); font-size: 0.75rem; color: var(--cr-muted); cursor: pointer; }
+.hubtag .n { display: block; font-weight: 700; font-size: 0.75rem; color: var(--color-text); white-space: nowrap; }
+.hubtag .in { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.hubtag .in a { display: flex; text-decoration: none; }
+.hubtag .badge { font-family: var(--font-system); font-weight: 800; min-width: 22px; height: 19px; padding: 0 4px; border-radius: 4px; font-size: 0.6875rem; letter-spacing: 0; }
+.hubtag .none { display: block; }   /* the bays' badges over every bus: one driving by covered a route's badge, its time with it (its own bus in is the badge's HERE) */
 .hbay .tag.in { background: var(--color-accent-700); color: var(--color-bg); box-shadow: 0 0 0 1.5px var(--color-bg); }   /* in: solid, the live blue, as a late one's is red (it was a pale tint, missed) */
 .hbay .tag.late { background: var(--cr-late); color: #fff; box-shadow: 0 0 0 1.5px var(--color-bg); }   /* its bus in late, so out late */
 .hbay.off > * { opacity: .45; filter: grayscale(1); }   /* done for the day: no colour, nothing to board (on the contents: the marker's own opacity is MapLibre's) */
@@ -1105,6 +1112,39 @@ button.hr-dep.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--color-accent); 
 .tcb-tag .tag { font-family: var(--font-heading); font-weight: 600; font-size: 0.6875rem; padding: 2px 5px; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--cr-line); }
 .tcb-tag .tag.in { background: var(--color-accent-100); color: var(--color-accent-900); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent); }
 /* the rest of the Center's day: a line a route, its badges and how it leaves (the words beside one badge, under many) */
+/* The Transit Center's board (hub.js boardBody): one list in the system face, grouped by when buses leave. */
+.tcl { font-family: var(--font-system); }
+.tcl .badge { font-family: var(--font-system); font-weight: 800; min-width: 30px; height: 24px; padding: 0 6px; border-radius: 5px; font-size: 0.8125rem; letter-spacing: 0; }
+.tcl-head { padding: 2px 16px 8px; }
+.tcl-head h1 { font-family: var(--font-system); font-size: 1.1875rem; font-weight: 700; letter-spacing: -.01em; }
+.tcl-sub { display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.8125rem; color: var(--cr-muted); }
+.tcl-sub a { color: var(--color-accent-700); text-decoration: none; }
+.tcl .notice { padding-top: 0; }
+.tcl-note { padding: 4px 16px 0; font-size: 0.875rem; color: var(--cr-muted); }
+.tcl-grp { border-top: 1px solid var(--cr-line); padding-bottom: 4px; }
+.tcl-grp-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 16px 4px; font-variant-numeric: tabular-nums; }
+.tcl-grp-h b { font-size: 1.0625rem; font-weight: 700; }
+.tcl-grp-h b small { font-size: 0.875rem; font-weight: 500; color: var(--cr-late); }
+.tcl-grp-h span { font-size: 0.9375rem; font-weight: 650; }
+.tcl-row, .tcl-all { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 2px 10px; width: 100%; min-height: 44px; padding: 6px 16px; color: inherit; text-decoration: none; font: inherit; text-align: left; background: none; border: 0; cursor: pointer; }
+.tcl-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9375rem; }
+.tcl-to .lastrun { margin-left: 6px; }
+.tcl-st { text-align: right; white-space: nowrap; font-size: 0.875rem; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
+.tcl-st.here { color: var(--color-accent-700); font-weight: 700; }
+.tcl-late { grid-column: 2 / 4; font-size: 0.8125rem; font-weight: 600; color: var(--cr-late); }
+.tcl-all { grid-template-columns: 1fr auto; }
+.tcl-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.tcl-grp.fold .tcl-rows, .tcl-grp.fold.open .tcl-all { display: none; }
+.tcl-grp.fold.open .tcl-rows { display: block; }
+.tcl-fold, .tcl-more { font: inherit; font-size: 0.875rem; color: var(--color-accent-700); background: none; border: 0; padding: 4px 16px 8px; cursor: pointer; }
+.tcl-rest { border-top: 1px solid var(--cr-line); }
+.tcl-more { display: block; width: 100%; text-align: left; font-size: 0.9375rem; padding: 12px 16px; }
+.tcl-more::after { content: ' ›'; }
+.tcl-rest.open .tcl-more::after { content: ' ⌄'; }
+.tcl-rest:not(.later) > .tcd { display: none; }
+.tcl-rest.open > .tcd { display: block; }
+.tcl-rest:not(.later) .tcd > .section > span:first-child { display: none; }   /* 'The rest of today': the button says it */
+@media (hover: hover) { .tcl-row:hover, .tcl-all:hover { background: var(--cr-hover); } }
 .tcd-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 48px; padding: 8px 16px; border-bottom: 1px solid var(--cr-line); color: inherit; text-decoration: none; }
 .tcd-w { flex: 1 1 14em; font-size: 0.9375rem; }
 .tcd-none .tcd-w { color: var(--cr-muted); }

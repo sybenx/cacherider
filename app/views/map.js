@@ -2108,10 +2108,16 @@ function quiet() {
 const HUB_Z = 17.5;
 const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'route-arrows-all', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
+let hubQuiet = false;   // the lines and stops put away: at the bays, and while the Center's board is up (the streets and the buses, as its mockup)
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
+  if (!map) return;
   const on = !!D.hub && !MT.R && !JR && map.getZoom() >= HUB_Z && map.getBounds().contains([D.hub.lon, D.hub.lat]);
-  if (on || hubOn) for (const id of HUB_HIDE) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') === on) map.setLayoutProperty(id, 'visibility', on ? 'none' : 'visible');
+  // The board up, the map is its streets and buses: every route's line and stop drawn round the Center was a tangle
+  // over the buses it's there to show (the mockup the user took, 2026-10-27, had none).
+  const quiet = on || (!!D.hub && !MT.R && !JR && /^#\/hub/.test(location.hash));
+  if (quiet || hubQuiet) for (const id of HUB_HIDE) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') === quiet) map.setLayoutProperty(id, 'visibility', quiet ? 'none' : 'visible');
+  hubQuiet = quiet;
   if (on !== hubOn) {
     hubOn = on;
     paper(on);
@@ -2125,6 +2131,7 @@ function hubCheck() {
     hubBuses(); stackBuses();   // a bus off its badge again has a spot again
   }
   if (on) easeBays();
+  hubLabel();
 }
 /** Back to north-up, once the move that left the Center is over (a turn in the middle of a pinch would fight the
  *  fingers): the south-up was the Center's framing, as the lines' absence was its view. */
@@ -2231,8 +2238,52 @@ let onBadges = new Set();
 function hubBuses() {
   for (const [id, m] of busMarkers) {
     const b = m.kind === 'c' ? rt.buses.find(x => x.id === id) : null;
-    m.el.classList.toggle('athub', hubOn && onBadges.has(id));
+    m.el.classList.toggle('athub', (hubOn && onBadges.has(id)) || inTag.has(id));
     m.el.classList.toggle('parked', hubOn && !!b && distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= HUB_IN && !(b.speed > 1));
+  }
+}
+// ---- The Center from the streets about it (the board up, below the bays' zoom): its name, and a badge for each bus
+// standing in it, a tap to that bus. At the half hour ten buses in were drawn as one and '+9' (stackBuses), the rest
+// hidden. A bus on its way in that would land on the label is held at its edge, never drawn over its badges, nor they
+// over it (the user's two asks, 2026-10-27: easier to read, and never hiding where the buses are).
+let hubTag = null, inTag = new Set(), tagWired = false;
+function hubLabel() {
+  if (!map) return;
+  if (!tagWired) { tagWired = true; window.addEventListener('hashchange', hubCheck); }   // on and off with the board, not only with a move
+  const want = !!D.hub && !hubOn && !MT.R && !JR && /^#\/hub/.test(location.hash);
+  const standing = want && !rtStale() ? rt.buses.filter(b => distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= HUB_IN && !(b.speed > 1)) : [];
+  inTag = new Set(standing.map(b => b.id));
+  if (!want) { if (hubTag) { hubTag.marker.remove(); hubTag = null; } }
+  else {
+    if (!hubTag) {
+      const el = document.createElement('div');
+      el.className = 'hubtag';
+      // Its badges are their buses'; the rest of it is the Center's, a tap in to its bays.
+      el.addEventListener('click', e => { e.stopPropagation(); if (!e.target.closest('a')) frame(hubBounds(), { ...hubFit(), duration: 500 }); });
+      hubTag = { el, marker: new maplibregl.Marker({ element: el, anchor: 'bottom', offset: [0, 4] }).setLngLat([D.hub.lon, D.hub.lat]).addTo(map) };
+    }
+    const n = b => parseInt(D.routes[b.ri].short) || 999;   // 1, 2 … 15, then the loops
+    const bs = standing.sort((a, b) => n(a) - n(b) || (D.routes[a.ri].short < D.routes[b.ri].short ? -1 : 1));
+    const inner = `<span class="n">${D.hub.name}</span>` + (bs.length ? `<span class="in">${bs.map(b => `<a href="#/map/bus/${encodeURIComponent(b.id)}" aria-label="${routeName(b.ri, false)} · bus ${b.label}">${badge(b.ri, 20).s}</a>`).join('')}</span>` : rtStale() ? '' : '<span class="none">No buses in</span>');
+    if (hubTag.el.innerHTML !== inner) hubTag.el.innerHTML = inner;
+  }
+  hubBuses();
+  holdOffTag();
+}
+/** Each bus that would land on the Center's label, moved on the screen to the label's nearest edge, room left for it. */
+function holdOffTag() {
+  const w = hubTag ? hubTag.el.offsetWidth : 0, h = hubTag ? hubTag.el.offsetHeight : 0, M = 15;
+  const hp = w ? map.project([D.hub.lon, D.hub.lat]) : null, box = { l: -w / 2 - M, r: w / 2 + M, t: -h + 4 - M, b: 4 + M };
+  for (const m of busMarkers.values()) {
+    let off = [0, 0];
+    if (hp && m.to && !m.el.classList.contains('athub')) {
+      const q = map.project(m.to), x = q.x - hp.x, y = q.y - hp.y;
+      if (x > box.l && x < box.r && y > box.t && y < box.b) {
+        const d = [x - box.l, box.r - x, y - box.t, box.b - y], i = d.indexOf(Math.min(...d));
+        off = i === 0 ? [box.l - x, 0] : i === 1 ? [box.r - x, 0] : i === 2 ? [0, box.t - y] : [0, box.b - y];
+      }
+    }
+    if (m.heldOff || off[0] || off[1]) { m.marker.setOffset(off); m.heldOff = !!(off[0] || off[1]); m.el.classList.toggle('heldoff', m.heldOff); }
   }
 }
 /** The board as a phone's card: the countdown alone at first (the map's the thing), the loops and the next hour a
@@ -2261,7 +2312,8 @@ let sheetRest = 0, sheetFolded = false;   // the board's top, from the map's; fo
  *  70%, scrolling inside), and the swipes did one thing on it and another on the Center's. */
 const boardCard = card => !!card && card.classList.contains('open') && (!!card.querySelector(':scope > .hubsheet') || (!wide() && !!card.querySelector(':scope > .pagesheet, :scope > .routesheet')));
 function sheetPlace(card) {
-  const H = map.getContainer().clientHeight, top = topCover();
+  const H = map.getContainer().clientHeight;
+  let top = topCover();
   const g = card.querySelector(':scope > .grip'), stopPage = card.querySelector(':scope > .pagesheet'), routeList = card.querySelector(':scope > .routesheet');
   let headH, open;
   if (routeList) {
@@ -2280,7 +2332,10 @@ function sheetPlace(card) {
   } else {
     const h = card.querySelector(':scope > .head');
     headH = (g ? g.offsetHeight : 24) + (h ? h.offsetHeight : 100) + 1;
-    open = hubRoom();
+    // The Center's board rests on 40% of the map and goes no higher than 60%, its list scrolling inside from there:
+    // scrolled as one page over the map, it covered the buses (the user, 2026-10-27).
+    open = Math.round(H * 0.6);
+    top = Math.max(top, Math.round(H * 0.4));
   }
   const rest = Math.max(top, Math.min(open, H - headH));
   sheetRest = sheetFolded ? Math.max(rest, H - headH) : rest;
@@ -2424,6 +2479,13 @@ function hubRoom() {
   const z = Math.min(18.4, Math.max(HUB_Z + 0.2, Math.log2(width / (512 * spanX))));
   return Math.round(topCover() + 2 * HUB_M + spanY * 512 * 2 ** z);
 }
+/** The Center and the streets about it, about three blocks each way: what its board opens on, so the buses on their
+ *  way in are in view. It opened on the bays alone, and a bus a block out was off the screen. */
+const HUB_WIDE = 650;   // metres each way
+function hubWide() {
+  const dy = HUB_WIDE / 111000, dx = HUB_WIDE / (111000 * Math.cos(D.hub.lat * Math.PI / 180));
+  return new maplibregl.LngLatBounds([D.hub.lon - dx, D.hub.lat - dy], [D.hub.lon + dx, D.hub.lat + dy]);
+}
 let hubFlew = false;   // the Center flown to (from a view with it on screen): the way back is flown too, where it's to such a view
 function fitHub(arriving = false, duration = 700, fly = false, kept = false) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
@@ -2442,7 +2504,7 @@ function fitHub(arriving = false, duration = 700, fly = false, kept = false) {
   // stuttered. From further out it's there at once, as it was.
   const flies = fly && !WEAK && !matchMedia('(prefers-reduced-motion: reduce)').matches && map.getBounds().contains([D.hub.lon, D.hub.lat]);
   if (arriving) hubFlew = flies;
-  if (!frame(hubBounds(), { ...hubFit(), duration: arriving ? (flies ? 550 : 0) : duration })) return;
+  if (!frame(hubWide(), { margin: 0, bearing: hubBearing(), minZoom: 14, maxZoom: 16, duration: arriving ? (flies ? 550 : 0) : duration })) return;
   hubTurned = true; northDue = false;
 }
 
@@ -2552,7 +2614,7 @@ function litLines(m, lines, loops, soft = false) {
   m.setFilter('usu-line-on', ['in', ['get', 'id'], ['literal', loops]]);
   if (m.getLayer('usu-on-edge')) m.setFilter('usu-on-edge', ['all', ['==', ['get', 'edge'], true], ['in', ['get', 'id'], ['literal', loops]]]);
   const any = lines.length > 0 || loops.length > 0 || soft, dk = dark();
-  if (m.getLayer('route-arrows-all') && !hubOn && !MT.R) m.setLayoutProperty('route-arrows-all', 'visibility', any ? 'none' : 'visible');   // something picked: its own arrows
+  if (m.getLayer('route-arrows-all') && !hubQuiet && !MT.R) m.setLayoutProperty('route-arrows-all', 'visibility', any ? 'none' : 'visible');   // something picked: its own arrows
   m.setPaintProperty('route-on', 'line-color', ['get', soft ? (dk ? 'dsoft' : 'soft') : dk ? 'dcolor' : 'color']);
   // Nothing picked: the stretches the day's last bus has been by (doneToday) drawn faded at the town's zoom, what's
   // still to be run tonight standing out; in at the streets, every line as ever.
@@ -3039,6 +3101,7 @@ export function liveUpdate(app) {
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);
   if (hubOn) { hubBadges(); hubBuses(); }
+  hubLabel();
   stackBuses();   // after the Center's: a bus its badge stands on isn't drawn there, and has no spot
   if (selectedBus) { if (seen.has(selectedBus)) busCard(app); else { selectedBus = null; hiLoops = []; hiLines = []; applySelection(); routeTimesSoon(focusRoute !== undefined ? focusRoute : null, now()); col.querySelector('#mapcard').classList.remove('open'); } }
 }
