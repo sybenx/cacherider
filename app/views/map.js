@@ -2108,16 +2108,13 @@ function quiet() {
 const HUB_Z = 17.5;
 const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'route-arrows-all', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
 let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
-let hubQuiet = false;   // the lines and stops put away: at the bays, and while the Center's board is up (the streets and the buses, as its mockup)
+let faintAt = null;   // the style the stops were made faint in, while the Center's board is up; null when they're as drawn
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
   if (!map) return;
   const on = !!D.hub && !MT.R && !JR && map.getZoom() >= HUB_Z && map.getBounds().contains([D.hub.lon, D.hub.lat]);
-  // The board up, the map is its streets and buses: every route's line and stop drawn round the Center was a tangle
-  // over the buses it's there to show (the mockup the user took, 2026-10-27, had none).
-  const quiet = on || (!!D.hub && !MT.R && !JR && /^#\/hub/.test(location.hash));
-  if (quiet || hubQuiet) for (const id of HUB_HIDE) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') === quiet) map.setLayoutProperty(id, 'visibility', quiet ? 'none' : 'visible');
-  hubQuiet = quiet;
+  if (on || hubOn) for (const id of HUB_HIDE) if (map.getLayer(id) && (map.getLayoutProperty(id, 'visibility') !== 'none') === on) map.setLayoutProperty(id, 'visibility', on ? 'none' : 'visible');
+  faintStops(!!D.hub && !MT.R && !JR && /^#\/hub/.test(location.hash));
   if (on !== hubOn) {
     hubOn = on;
     paper(on);
@@ -2241,6 +2238,23 @@ function hubBuses() {
     m.el.classList.toggle('athub', (hubOn && onBadges.has(id)) || inTag.has(id));
     m.el.classList.toggle('parked', hubOn && !!b && distance(b.lat, b.lon, D.hub.lat, D.hub.lon) <= HUB_IN && !(b.speed > 1));
   }
+}
+/** While the Center's board is up, its stops small and faint until the streets close in (16 and on), the route lines as
+ *  they are: the buses easier to find among them (a trial, the user, 2026-10-27: the lines put away made the buses
+ *  easy to find; 'stops less prominent… and keep route lines'). A paint change, nothing laid out again. */
+const FAINT = [
+  ['stops', 'circle-radius', ['interpolate', ['linear'], ['zoom'], 11, 1.5, 14, 2.5, 15.5, 3.5, 17, 8, 19, 11]],
+  ['stops', 'circle-stroke-width', ['interpolate', ['linear'], ['zoom'], 11, 0.5, 15.5, 0.8, 17, 1.5]],
+  ['stops', 'circle-opacity', ['interpolate', ['linear'], ['zoom'], 12, 0.35, 15.5, 0.55, 16.5, 1]],
+  ['stops', 'circle-stroke-opacity', ['interpolate', ['linear'], ['zoom'], 12, 0.35, 15.5, 0.55, 16.5, 1]],
+  ['stop-labels', 'text-opacity', ['step', ['zoom'], 0, 16.5, 1]],   // their names too: a desk's view had them all up
+];
+let faintKept = null;
+function faintStops(on) {
+  if (faintAt && faintAt !== map.style) { faintAt = null; faintKept = null; }   // a new style (the theme): drawn afresh, as it was
+  if (on === !!faintAt || !map.getLayer('stops')) return;
+  if (on) { faintKept = FAINT.map(([id, k]) => [id, k, map.getPaintProperty(id, k)]); for (const [id, k, v] of FAINT) if (map.getLayer(id)) map.setPaintProperty(id, k, v); faintAt = map.style; }
+  else { for (const [id, k, v] of faintKept || []) if (map.getLayer(id)) map.setPaintProperty(id, k, v === undefined ? null : v); faintAt = null; faintKept = null; }
 }
 // ---- The Center from the streets about it (the board up, below the bays' zoom): its name, and a badge for each bus
 // standing in it, a tap to that bus. At the half hour ten buses in were drawn as one and '+9' (stackBuses), the rest
@@ -2614,7 +2628,7 @@ function litLines(m, lines, loops, soft = false) {
   m.setFilter('usu-line-on', ['in', ['get', 'id'], ['literal', loops]]);
   if (m.getLayer('usu-on-edge')) m.setFilter('usu-on-edge', ['all', ['==', ['get', 'edge'], true], ['in', ['get', 'id'], ['literal', loops]]]);
   const any = lines.length > 0 || loops.length > 0 || soft, dk = dark();
-  if (m.getLayer('route-arrows-all') && !hubQuiet && !MT.R) m.setLayoutProperty('route-arrows-all', 'visibility', any ? 'none' : 'visible');   // something picked: its own arrows
+  if (m.getLayer('route-arrows-all') && !hubOn && !MT.R) m.setLayoutProperty('route-arrows-all', 'visibility', any ? 'none' : 'visible');   // something picked: its own arrows
   m.setPaintProperty('route-on', 'line-color', ['get', soft ? (dk ? 'dsoft' : 'soft') : dk ? 'dcolor' : 'color']);
   // Nothing picked: the stretches the day's last bus has been by (doneToday) drawn faded at the town's zoom, what's
   // still to be run tonight standing out; in at the streets, every line as ever.
