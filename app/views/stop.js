@@ -182,7 +182,7 @@ export function render({ id, full, run, on }, clockNow) {
 function tpLine(si) {
   const ris = stop(si).routes.filter(ri => timed(si, ri));
   if (!ris.length) return '';
-  return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Routes\b/, 'routes')}: buses don't leave before their scheduled time.</span></span>`;   // 'routes 2 and 5', but 'Route 16', its name
+  return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Routes\b/, 'routes')}: buses wait here until their scheduled time.</span></span>`;   // 'routes 2 and 5', but 'Route 16', its name
 }
 const cap = w => w ? w[0].toUpperCase() + w.slice(1) : w;
 

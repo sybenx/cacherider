@@ -55,6 +55,10 @@ jobs:
             echo "::error::a route left with no trips, and its last trips not kept; yesterday's timetable stands"
             git checkout -- data/cvtd.json data/cvtd-shapes.json; echo "BROKE=${BROKE:+$BROKE }data/cvtd.json" >> "$GITHUB_ENV"
           fi
+      # Each trip's timed stops, for the relay to tell a bus gone by one early (worker/src/early.js): from the night's
+      # timetable as it goes up, the kept route's trips and all.
+      - name: Timed stops per trip, for the relay
+        run: python3 tools/timed.py
       # Each tool below that reads from elsewhere runs through tools/upstream.py: its source unreachable, or nothing
       # worth keeping (75), and yesterday's file stands, green; the tool broken, and yesterday's file stands, the
       # night's timetable still goes up, and the run ends red (tools/kept.sh, and the last step).
@@ -111,7 +115,7 @@ jobs:
           if [ "$changed" != yes ]; then echo 'no change'; if [ -n "$DATA_NOTE" ]; then echo "$DATA_NOTE"; fi; git checkout -- data; exit 0; fi
           git config user.name 'transit data'
           git config user.email 'actions@users.noreply.github.com'
-          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json data/gone-stops.json data/walks.json data/walknet.json
+          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json data/gone-stops.json data/walks.json data/walknet.json data/timed.json
           if [ -n "$DATA_NOTE" ]; then git commit -m "Transit data: $(date -u +%Y-%m-%d)" -m "$DATA_NOTE"; else git commit -m "Transit data: $(date -u +%Y-%m-%d)"; fi
           # Onto whatever another run (alerts, the timetable, the map) pushed meanwhile, a few tries.
           for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done; exit 1

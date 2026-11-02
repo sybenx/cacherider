@@ -255,7 +255,7 @@ export function stopRow(si, next0, clockNow, opts = {}) {
  *  stops), stopTitle and the address stay first. `heardName` gives the two as words; `heard` as markup, the address
  *  in `.addr` (muted, its own line), `town` (', Hyrum') after the address, or the name when there's no landmark. */
 /** A timed stop's mark in a list of a route's stops: the timetable is kept to here, an early bus waiting. */
-export const timedMark = () => raw(`<span class="tpmark" title="A timed stop: buses don't leave before their scheduled time">${icon('clock', 12).s}Timed stop</span>`);
+export const timedMark = () => raw(`<span class="tpmark" title="A timed stop: buses wait here until their scheduled time">${icon('clock', 12).s}Timed stop</span>`);
 /** Where a departure's bus is (rt.js stopsAway): at the stop it's at, else by the one it's heading for. */
 const busWhere = sa => { const s = stop(sa.where); return (sa.at ? 'at ' : 'by ') + (s.hub ? 'the ' + D.hub.name : heardName(sa.where).name); };
 export function heardName(si) {

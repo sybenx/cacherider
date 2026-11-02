@@ -16,6 +16,7 @@
 // that has stopped moving shows its age to a client without trusting its clock.
 
 import { watchStart, watchStep, watchEnd, detoursJSON, inService } from './detours.js';
+import { earlyStart, earlyStep, earlyEnd, earlyJSON } from './early.js';
 
 const UPSTREAM = 'https://mycvtdbus.org/gtfs-rt/';
 const RTPI = 'https://mycvtdbus.org/api/rtpi?path=';
@@ -66,6 +67,18 @@ export default {
     if (path === '/alerts') return alerts(cors);
     if (path === '/detours') {
       try { return new Response(JSON.stringify(await detoursJSON(env)), { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' } }); }
+      catch (e) { return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }); }
+    }
+    if (path === '/early') {
+      // Today's buses gone by a timed stop early (src/early.js), for the bus card; a minute old at most.
+      // Made once a minute at each edge, however many phones ask (a Worker's own answers aren't cached in front of it).
+      const key = new Request(url.origin + '/early'), hit = await caches.default.match(key);
+      if (hit) return new Response(hit.body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' } });
+      try {
+        const s = JSON.stringify(await earlyJSON(env));
+        ctx.waitUntil(caches.default.put(key, new Response(s, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' } })));
+        return new Response(s, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' } });
+      }
       catch (e) { return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }); }
     }
     if (path !== '/' && path !== '/live') return new Response('Not found', { status: 404, headers: cors });
@@ -172,6 +185,8 @@ async function track(env) {
   try { W = await watchStart(env); } catch (e) { /* the samples still go in */ }
   // Nothing running by the timetable (every route out of its hours): the feed not asked, nothing written.
   if (W && !W.L.anyInHours(Date.now())) return;
+  let E = null;
+  try { E = await earlyStart(); } catch (e) { /* the samples still go in */ }
   for (let i = 0; i < SAMPLES; i++) {
     if (i) await new Promise(r => setTimeout(r, EVERY));
     if (Date.now() - began > RUN_FOR) break;
@@ -185,9 +200,11 @@ async function track(env) {
       const rows = out.buses.map(b => { const key = keyOf(b.route) || keyOfTrip(b.trip) || ''; return [b.label || b.id, b.trip || '', key, b.lat, b.lon, b.bearing, b.speed, b.ts, W ? +inService(W, out, b, key, t) : 1]; });
       await env.TRACKS.prepare('INSERT OR REPLACE INTO samples (t, buses) VALUES (?, ?)').bind(t, JSON.stringify(rows)).run();
       if (W) watchStep(W, t, rows);
+      if (E) try { earlyStep(E, out, t, b => keyOf(b.route) || keyOfTrip(b.trip)); } catch (e) { /* nothing early said this sample */ }
     } catch (e) { /* a sample missed */ }
   }
-  if (W) await watchEnd(env, W, Math.floor(Date.now() / 1000));
+  if (W) try { await watchEnd(env, W, Math.floor(Date.now() / 1000)); } catch (e) { /* the next minute's; the early ones still go in */ }
+  if (E) try { await earlyEnd(env, E, Math.floor(Date.now() / 1000)); } catch (e) { /* the next minute's */ }
   if (new Date().getUTCMinutes() === 0) await env.TRACKS.prepare('DELETE FROM samples WHERE t < ?').bind(Math.floor(Date.now() / 1000) - KEEP).run();
 }
 

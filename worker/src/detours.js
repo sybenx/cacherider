@@ -108,7 +108,7 @@ const far = (L, p, lat, lon) => { const q = L.xy(lat, lon); return Math.hypot(p[
 /** The agency's clock: [weekday, Monday 0, minutes since midnight] at a moment. Mountain time worked out by its own rule
  *  (daylight time from 2 am on March's second Sunday to 2 am on November's first), since Intl's first use in a run loads
  *  the zone data, near 60 ms: six free-plan runs' worth. Any other zone, Intl after all. */
-function clockOf(tz) {
+export function clockOf(tz) {
   if (tz === 'America/Denver' || tz === 'America/Boise') {
     return ms => {
       const y = new Date(ms).getUTCFullYear();
