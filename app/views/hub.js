@@ -443,11 +443,11 @@ export function bays(bay, clockNow) {
     // the bus is the bus, drawn where it reports, its arrow showing the way.
     const in_ = tags && !s.off && s.eta === 0, bus = in_ ? rt.buses.find(x => x.id === s.at) : null;
     const here = !!bus && distance(bus.lat, bus.lon, D.hub.lat, D.hub.lon) <= IN_RADIUS && !(bus.speed > PARKED);
-    // Only a bus in has a badge, at its bay: the badges of routes with no bus in, each with a time, were sixteen squares
-    // where the buses stand (2026-10-27). When each leaves is the board's.
-    if (!here) return null;
+    // Every route's badge at its bay, so a rider finds where its stop is (the user, 2026-11-02); grey while its bus isn't
+    // in, fainter still when it's done for the day, and under the buses then (app.css). No time on it: with a time each, they were sixteen squares where the buses
+    // stand (2026-10-27). When each leaves is the board's.
     const tag = '';
-    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, bus: here ? bus.id : null, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: nameOfKey(k, s.ris[0]) };
+    return { k, lat: b.lat, lon: b.lon, color: '#' + r.color, text: '#' + r.text, tag, late: tag && s.late ? s.late : 0, bus: here ? bus.id : null, away: !here, off: s.off, on: pick === k, dim: !!pick && pick !== k, title: nameOfKey(k, s.ris[0]) + (here ? ' · here' : s.off ? ' · done for today' : tags ? ' · not in' : '') };
   }).filter(Boolean);
 }
 

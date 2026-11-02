@@ -2087,8 +2087,18 @@ test('Transit Center: the board, a row to its bus or its route, the Center on th
   await mapReady(page);
   await expect(page.locator('.tcl-head h1').filter({ visible: true })).toHaveText('Transit Center');
   await expect(page.locator('.tcl-grp, .tcl-note').filter({ visible: true }).first()).toBeVisible();
-  // on a phone the map opens wide on the Center, its label on it (the bays come in zoomed in)
-  if (phone(info)) await expect(page.locator('.hubtag').filter({ visible: true })).toContainText('Transit Center');
+  // on a phone the map opens on the bays, every route's badge at its stop (grey while its bus isn't in); the tab
+  // again, out to the streets about it, the Center's label on it; again, the bays
+  if (phone(info)) {
+    await expect(page.locator('.hbay').first()).toBeVisible();
+    expect(await page.locator('.hbay').count()).toBeGreaterThan(8);
+    const tab = page.locator('#tabs a[href="#/hub"]');
+    await tab.click();
+    await expect(page.locator('.hubtag').filter({ visible: true })).toContainText('Transit Center');
+    await expect(page.locator('.hbay')).toHaveCount(0);
+    await tab.click();
+    await expect(page.locator('.hbay').first()).toBeVisible();
+  }
   // a row: its bus on the map where there's one out, else its route picked, its next few and its day from here
   const row = page.locator('a.tcl-row').filter({ visible: true }).first();
   if (await row.count()) {
@@ -2118,6 +2128,8 @@ test('Transit Center: a bus standing in it is a badge in its label, its own mark
   await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
   await go(page, '#/hub');
   await polled(page, relay.T);
+  // a phone opens on the bays: its tab again, out to the streets about it, where the label is
+  if (await page.locator('#tabs').isVisible()) { await page.waitForTimeout(800); await page.locator('#tabs a[href="#/hub"]').click(); }
   const badge = page.locator('.hubtag .in a[href="#/map/bus/c%3A9001"]');
   await expect(badge).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('.maplibregl-marker.bus.athub')).toHaveCount(1);
@@ -2212,9 +2224,14 @@ test('Transit Center on a wide screen: the map left where it is, the bays on the
   // The route lines still drawn (every line went, 2026-10-27); the stops faint, back as drawn on the Map tab.
   expect(await page.evaluate(() => window.__map.getLayoutProperty('route-lines', 'visibility'))).not.toBe('none');
   expect(await faint()).not.toBe(asDrawn);
-  // The tab again: the ask to see the Center, framed then, its label on it.
+  // The tab again: the ask to see the Center, its bays framed then, every route's badge at its stop; again, out to the
+  // streets about it, its label on it.
+  await page.locator('#topnav a[href="#/hub"]').click();
+  await expect(page.locator('.hbay').first()).toBeVisible();
+  await page.waitForTimeout(1000);
   await page.locator('#topnav a[href="#/hub"]').click();
   await expect(page.locator('.hubtag').filter({ visible: true })).toBeVisible();
+  await expect(page.locator('.hbay')).toHaveCount(0);
   // Left for the Map tab: the label gone with the board.
   await page.locator('#topnav a[href="#/map"]').click();
   await expect(page.locator('.hubtag')).toHaveCount(0);

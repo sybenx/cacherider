@@ -954,9 +954,10 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .hbay .tag { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); font-family: var(--font-heading); font-weight: 600; font-size: 0.625rem; line-height: 1; letter-spacing: .03em; padding: 2px 4px; white-space: nowrap; background: var(--color-bg); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--cr-line); border-radius: 3px; }
 /* at the Center: a bus moving over the badges, one standing under its badge (its number is what a rider reads) */
 #map.hubon .bus { z-index: 2; }
-#map.hubon .bus.parked { z-index: 0; }
+#map.hubon .bus.parked { z-index: 1; }   /* over a grey badge, under a bus's own */
 .bus.athub { display: none; }   /* its route's badge stands on it */
 .maplibregl-marker.hbay { z-index: 3; }
+.maplibregl-marker.hbay.away { z-index: 0; }   /* its bus not in: under every bus, one standing in the Center too */
 /* The Center's label from the streets about it (map.js hubLabel): its name and a badge for each bus in it. */
 .hubtag { max-width: 168px; padding: 5px 7px 6px; border-radius: 10px; background: var(--color-bg); box-shadow: inset 0 0 0 1px var(--cr-line), var(--shadow-md); font-family: var(--font-system); font-size: 0.75rem; color: var(--cr-muted); cursor: pointer; }
 .hubtag .n { display: block; font-weight: 700; font-size: 0.75rem; color: var(--color-text); white-space: nowrap; }
@@ -966,7 +967,8 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .hubtag .none { display: block; }   /* the bays' badges over every bus: one driving by covered a route's badge, its time with it (its own bus in is the badge's HERE) */
 .hbay .tag.in { background: var(--color-accent-700); color: var(--color-bg); box-shadow: 0 0 0 1.5px var(--color-bg); }   /* in: solid, the live blue, as a late one's is red (it was a pale tint, missed) */
 .hbay .tag.late { background: var(--cr-late); color: #fff; box-shadow: 0 0 0 1.5px var(--color-bg); }   /* its bus in late, so out late */
-.hbay.off > * { opacity: .45; filter: grayscale(1); }   /* done for the day: no colour, nothing to board (on the contents: the marker's own opacity is MapLibre's) */
+.hbay.away > * { opacity: .55; filter: grayscale(1); }   /* its bus not in: no colour, nothing to board now */
+.hbay.off > * { opacity: .3; filter: grayscale(1); }   /* done for the day (on the contents: the marker's own opacity is MapLibre's) */
 .hbay.dim > * { opacity: .35; }
 .hbay.on .b { box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent); }
 .mapcard .hubhead { padding: 0 0 6px; }

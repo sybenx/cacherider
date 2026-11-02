@@ -2192,7 +2192,7 @@ function hubBadges() {
       hubMarks.set(b.k, m);
     }
     m.el.classList.add('hbay');   // toggled, not set: the marker's own classes place it
-    for (const [c, on] of [['on', b.on], ['dim', b.dim], ['off', b.off]]) m.el.classList.toggle(c, on);
+    for (const [c, on] of [['on', b.on], ['dim', b.dim], ['away', b.away], ['off', b.off]]) m.el.classList.toggle(c, on);
     m.el.href = b.on ? '#/hub' : '#/hub/' + b.k;
     m.el.title = b.title;
     const inner = `<span class="b" style="background:${b.color};color:${b.text}">${b.k}</span>` + (b.tag ? `<span class="tag${b.tag === 'HERE' ? ' in' : b.late ? ' late' : ''}"${b.late ? ` title="${b.late} min late"` : ''}>${b.tag.replace(' MIN', 'm')}</span>` : '');
@@ -2505,7 +2505,7 @@ function hubWide() {
   return new maplibregl.LngLatBounds([D.hub.lon - dx, D.hub.lat - dy], [D.hub.lon + dx, D.hub.lat + dy]);
 }
 let hubFlew = false;   // the Center flown to (from a view with it on screen): the way back is flown too, where it's to such a view
-function fitHub(arriving = false, duration = 700, fly = false, kept = false) {
+function fitHub(arriving = false, duration = 700, fly = false, kept = false, close = arriving || hubOn) {
   // Where the map was, for the Map tab to go back to: kept from the arrival, not from a route picked after a zoom out.
   // Arrived at from the map zoomed in on the Center already (its badges up), that's where it was: it was kept only when
   // the Center's view was off, and the Map tab went back to a view from before, the town's.
@@ -2522,7 +2522,10 @@ function fitHub(arriving = false, duration = 700, fly = false, kept = false) {
   // stuttered. From further out it's there at once, as it was.
   const flies = fly && !WEAK && !matchMedia('(prefers-reduced-motion: reduce)').matches && map.getBounds().contains([D.hub.lon, D.hub.lat]);
   if (arriving) hubFlew = flies;
-  if (!frame(hubWide(), { margin: 0, bearing: hubBearing(), minZoom: 14, maxZoom: 16, duration: arriving ? (flies ? 550 : 0) : duration })) return;
+  // In to the bays, each route's badge at its stop (the user, 2026-11-02: 'so people can find where the stops are');
+  // the streets about it, the buses on their way in, a second tap of its tab (hubAgain), or the rider's own zoom out.
+  const t = close ? [hubBounds(), hubFit()] : [hubWide(), { margin: 0, bearing: hubBearing(), minZoom: 14, maxZoom: 16 }];
+  if (!frame(t[0], { ...t[1], duration: arriving ? (flies ? 550 : 0) : duration })) return;
   hubTurned = true; northDue = false;
 }
 
@@ -3040,13 +3043,14 @@ function leaveHubKept() {
   stayAt = map.unproject([x, y]); stayOff = true; replaceTo('#/map');   // in place, not a new entry: Back brought the board back
 }   // stayOff: the Center left by a tap off its board, the map kept
 export function leaveHub() { if (!wide() || hubTurned) backDue = true; }   // a wide screen's map moved only by the tab again: else nothing to put back
-/** The Transit Center tab tapped at the Center: framed again, as the tab first framed it (the rider may have zoomed
- *  out or panned off), and on a phone its board back up if it was put away. */
+/** The Transit Center tab tapped at the Center: in on the bays, and out to the streets about it (the buses on their
+ *  way in) the next, one to the other; zoomed out or panned off by hand, the bays again. On a phone its board back up
+ *  if it was put away. */
 export function hubAgain(app) {
   if (!map) return;
   // Beside a wide screen's panel the first visit left the map alone (showPage); the tab again is the ask to see the
   // bays: framed then, as an arrival, so leaving puts the map back where it was.
-  if (wide() && !hubTurned) fitHub(true, 700, true); else fitHub();   // flown, as the Map tab flies a phone there (fitHub: not on a weak device, nor with less motion asked for)
+  if (wide() && !hubTurned) fitHub(true, 700, true); else fitHub(false, 700, false, false, !hubOn);   // flown, as the Map tab flies a phone there (fitHub: not on a weak device, nor with less motion asked for)
   if (!wide() && app.route.name === 'map' && !col.querySelector('#mapcard.open > .hubsheet')) hubCard(now());
 }
 
