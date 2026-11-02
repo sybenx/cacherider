@@ -35,7 +35,10 @@ export function earlyStep(E, out, t, keyOf) {
     // The bus the feed has on the trip, and only it (a swap bus at the Center reports the trip it's covering too).
     if (!u || u.c || !u.s || !u.s.length || (u.v && u.v !== b.id) || (b.ts && t - b.ts > 60)) continue;
     // The nearest timed stop behind the bus: the last of the trip's the feed no longer lists, before the first it does.
-    const left = new Set(u.s.map(x => x[0]));
+    // A stop listed but stamped a minute gone is gone by: on the Blue Loop's trips the feed keeps a stop the bus has
+    // passed, stamped with when, and steps on by the timetable (bus 1171 by 50 North Main at 4:28:31 on 2 Nov, its
+    // 4:41, still listed at 4:38).
+    const left = new Set(u.s.filter(x => !(x[2] < t - 60)).map(x => x[0]));
     let behind = null;
     for (const x of list) { if (left.has(x[0])) break; behind = x; }
     if (!behind) continue;

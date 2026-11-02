@@ -1377,7 +1377,10 @@ const earlyPick = page => page.evaluate(async src => {
     return null;
 }, stopsOf.toString());
 
-test('a bus gone by a timed stop early: the stops after it the feed\'s, early, not held to their minutes, and its card says so', async ({ page }) => {
+/** A bus gone by a timed stop early, seen twice (two tests below): `kept`, the feed lists the stops it has passed, stamped
+ *  with when, as on the Blue Loop's trips (from where the timetable has the bus: the timed stop it went by); otherwise
+ *  it has dropped them. */
+async function goneEarly(page, kept) {
   // 7:23 PM, 30 Oct: Route 15's bus 1175 went by 781 S Main at 65 km/h for its 7:28, and by the timed stops after it
   // as early; of the trips that left one 2 min early or more over two weeks, most left the next as early (rt.js
   // watchEarly). Told the timetable's minute there, a rider found the bus gone. A route's trip (Route 15's where there's
@@ -1391,7 +1394,7 @@ test('a bus gone by a timed stop early: the stops after it the feed\'s, early, n
   const [mk] = pick.pts[pick.k], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mk - 3) * 60;   // the day's minute 0
   const [lat, lon, bearing] = pick.spot;
   relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: Math.round(bearing), speed: 9, ts: T }], trips: {
-    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m - 3) * 60, 0]).slice(pick.k + 1) } } };
+    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m - 3) * 60 - (i <= pick.k ? 60 : 0), 0]).slice(kept ? pick.k : pick.k + 1) } } };
   await page.clock.setFixedTime(new Date(pick.at));
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
@@ -1413,6 +1416,12 @@ test('a bus gone by a timed stop early: the stops after it the feed\'s, early, n
   await mapReady(page);
   await go(page, '#/map/bus/c:9001?tap=1');
   await expect(page.locator('#mapcard .buscard')).toContainText(/Left .+ at least 2 min early, so it may be early at the stops ahead/);
+}
+test('a bus gone by a timed stop early: the stops after it the feed\'s, early, not held to their minutes, and its card says so', ({ page }) => goneEarly(page, false));
+test('a bus gone by a timed stop early, the feed still listing it as on the Blue Loop: the same', ({ page }) => {
+  // 4:28 PM, 2 Nov: bus 1171 went by 50 North Main for its 4:41; the feed stamped it 4:28:31 and kept it listed, stepping
+  // on by the timetable, and nothing was said (the relay's rule and the app's waited for the feed to drop the stop).
+  return goneEarly(page, true);
 });
 
 test('a bus the relay saw go by a timed stop early: its stops ahead early from one look, and its card says how often today', async ({ page }) => {

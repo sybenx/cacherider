@@ -254,6 +254,14 @@ export function earlyToday(label) {
   }
   return [...by.values()].sort((a, b) => b.n - a.n || a.first - b.first);
 }
+/** A trip's next call as the feed has it, for telling a bus gone by early: its first listed stop not stamped a minute
+ *  gone. On the Blue Loop's trips the feed keeps a stop the bus has passed, stamped with when, and steps on by the
+ *  timetable: bus 1171 by 50 North Main at 4:28:31 on 2 Nov, its 4:41, still listed at 4:38. */
+function nextCall(u, nowS) {
+  let n = null;
+  for (const [sid, seq, time, rel] of u.stops) if (seq !== u.end && rel !== 1 && !(time < nowS - 60) && (!n || seq < n.seq)) n = { sid, seq, time };
+  return n;
+}
 const earlyLeft = new Map(), earlySeen = new Map();   // trip id → { si, by: minutes early at the least, v: its bus, at }; the same seen once, to see again
 export const leftEarly = id => earlyLeft.get(id) || null;
 function watchEarly(trips, buses, nowS) {
@@ -267,15 +275,17 @@ function watchEarly(trips, buses, nowS) {
     const u = trips[id];
     // Over: four hours on, the run cancelled, another bus on it, or the bus no longer early at its next stop (held up
     // since, or held after all): its waits back, and nothing said.
-    const sm = u && u.first && D.stopById[u.first.sid] !== undefined ? schedMin(D.stopById[u.first.sid], u.ti) : null;
-    if (nowS - e.at > 4 * 3600 || (u && (u.cancelled || u.v !== e.v || (sm !== null && toMin(u.first.time) - sm >= 0)))) earlyLeft.delete(id);
+    const n = u && nextCall(u, nowS), sm = n && D.stopById[n.sid] !== undefined ? schedMin(D.stopById[n.sid], u.ti) : null;
+    if (nowS - e.at > 4 * 3600 || (u && (u.cancelled || u.v !== e.v || (sm !== null && toMin(n.time) - sm >= 0)))) earlyLeft.delete(id);
   }
   for (const b of buses) {
     const u = trips[b.trip];
     if (!u || u.est || !u.first || b.id !== 'c:' + u.v || nowS - b.ts > 60 || u.ti === undefined || !tripInfo[u.ti]) continue;
     const ri = tripInfo[u.ti].r;
     if (isLoop(ri) && loopSpacing(ri)) continue;
-    const pts = withEnd(u.ti), next = pts.findIndex(([, si], k) => k < pts.length - 1 && D.stops[si].id === u.first.sid);
+    const n = nextCall(u, nowS);
+    if (!n) continue;
+    const pts = withEnd(u.ti), next = pts.findIndex(([, si], k) => k < pts.length - 1 && D.stops[si].id === n.sid);
     // The nearest timed stop behind it (not the trip's first, where it starts), and only that one.
     for (let i = next - 1; i >= 1; i--) {
       const [m, si] = pts[i], st = D.stops[si];
