@@ -52,11 +52,12 @@ for ri, r in lost:
             for m, rr, hi, di, ti in rows:
                 if rr != ri: continue
                 calls.setdefault(ti, []).append((m, int(si))); svc[ti] = sv; info[ti] = (old['headsigns'][hi], di)
-    # Its line: the shape the last timetable drew it with, renamed so the feed's own can't clash.
+    # Its line: the shape the last timetable drew it with, renamed so the feed's own can't clash. Kept a night before,
+    # it's named so already: once (it was kept-kept-32000 the second night, a kept- more each night after).
     shape = ''
     for ln in old_lines:
         if ln['route'] != ri: continue
-        sid = 'kept-' + str(ln['shape'])
+        sid = str(ln['shape']) if str(ln['shape']).startswith('kept-') else 'kept-' + str(ln['shape'])
         if not shape: shape = sid
         if sid in shape_ids: continue
         shape_ids.add(sid)
