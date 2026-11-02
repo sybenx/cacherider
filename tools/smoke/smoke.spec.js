@@ -1356,6 +1356,61 @@ test('a timed stop on the way: a bus ahead waits there, and it and the stops aft
   for (const [m, stop] of pick.pts.slice(pick.k, pick.k + 2)) expect(await rowSays(page, pick.id, stop, m)).toEqual(['Scheduled · on time', m]);
 });
 
+test('a bus gone by a timed stop early: the stops after it the feed\'s, early, not held to their minutes, and its card says so', async ({ page }) => {
+  // 7:23 PM, 30 Oct: Route 15's bus 1175 went by 781 S Main at 65 km/h for its 7:28, and by the timed stops after it
+  // as early; of the trips that left one 2 min early or more over two weeks, most left the next as early (rt.js
+  // watchEarly). Told the timetable's minute there, a rider found the bus gone. A route's trip (Route 15's where there's
+  // one), its bus past its first timed stop on the way, 60% to the stop after, 2½ min before the timed stop's minute;
+  // the feed 3 min early at every stop on.
+  const relay = { T: 0, feed: null, alerts: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const pick = await page.evaluate(async src => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [], seen = new Set();
+    const stopsOf = new Function('return ' + src)();
+    const routes = D.routes.map((r, ri) => ri).filter(ri => !loops.includes(ri) && !D.routes[ri].op).sort((a, b) => (D.routes[b].short === '15') - (D.routes[a].short === '15'));
+    for (const ri of routes) for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const row of d.timesOn(si, c.ymd)) {
+      if (row.r !== ri || seen.has(row.trip)) continue;
+      seen.add(row.trip);
+      const st = d.tripStops(row.trip), k = st.findIndex(([, x], i) => i >= 2 && d.timed(x, ri) && !D.stops[x].hub);
+      if (k < 0 || k + 3 >= st.length || D.stops[st[k + 1][1]].hub || st[k + 1][0] - st[k][0] < 1 || st[k][0] < 420) continue;
+      const a = D.stops[st[k][1]], b = D.stops[st[k + 1][1]];
+      if (d.distance(a.lat, a.lon, b.lat, b.lon) < 300) continue;
+      const k2 = st.findIndex(([, x], i) => i > k && d.timed(x, ri) && !D.stops[x].hub);   // the next timed stop, where it would have been held
+      if (k2 < 0) continue;
+      return { id: D.trips[row.trip], pts: stopsOf(d, row.trip), k, k2, at: Date.now() + ((st[k][0] - 3 - c.min) * 60 + 30 - c.sec) * 1000,
+        spot: [a.lat + (b.lat - a.lat) * 0.6, a.lon + (b.lon - a.lon) * 0.6, d.bearing(a.lat, a.lon, b.lat, b.lon)] };
+    }
+    return null;
+  }, stopsOf.toString());
+  test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
+  const [mk] = pick.pts[pick.k], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mk - 3) * 60;   // the day's minute 0
+  const [lat, lon, bearing] = pick.spot;
+  relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: Math.round(bearing), speed: 9, ts: T }], trips: {
+    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m - 3) * 60, 0]).slice(pick.k + 1) } } };
+  await page.clock.setFixedTime(new Date(pick.at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await polled(page, T);
+  expect(await rowSays(page, pick.id, pick.pts[pick.k2][1], pick.pts[pick.k2][0])).toEqual(['Scheduled · on time', pick.pts[pick.k2][0]]);   // one look: nothing said yet
+  // a second look, five seconds on, the bus further along: one look past a stop could be a bus waiting beyond its pole
+  const [a, b] = [pick.pts[pick.k], pick.pts[pick.k + 1]], T2 = relay.T = T + 5;
+  relay.feed = { ...relay.feed, t: T2, now: T2, buses: [{ ...relay.feed.buses[0], lat: a[2] + (b[2] - a[2]) * 0.75, lon: a[3] + (b[3] - a[3]) * 0.75, ts: T2 }] };
+  await page.clock.setFixedTime(new Date(pick.at + 5000));
+  await polled(page, T2);
+  // the next stop and the next timed stop: the feed's minutes, 3 early, live; not held to the timetable's, on time
+  for (const [m, stop] of [pick.pts[pick.k + 1], pick.pts[pick.k2]]) {
+    const [word, min] = await rowSays(page, pick.id, stop, m);
+    expect(word).toMatch(/early/);
+    expect(min).toBeLessThan(m);
+  }
+  // its card: running early, gone by the timed stop at least 2 min early
+  await go(page, '#/map');
+  await mapReady(page);
+  await go(page, '#/map/bus/c:9001?tap=1');
+  await expect(page.locator('#mapcard .buscard')).toContainText(/Left .+ at least 2 min early, so it may be early at the stops ahead/);
+});
+
 test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s card over the map');
   await open(page);

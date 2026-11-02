@@ -167,6 +167,7 @@ async function tick(force) {
     for (const b of buses) if (trips[b.trip] && !trips[b.trip].est && trips[b.trip].v && b.id === 'c:' + trips[b.trip].v && tripIdx.has(b.trip) && !agrees(b, trips[b.trip], tripIdx.get(b.trip), j.t)) { delete trips[b.trip]; doubt.add(b.trip); }
     for (const b of buses) if (!trips[b.trip] && !doubt.has(b.trip) && tripIdx.has(b.trip) && j.t - b.ts < 180) { const u = fromPlace(b, tripIdx.get(b.trip), j.t); if (u) { u.waits = waitsOf(u.ti, u.stops, u.end, j.t); trips[b.trip] = u; } }
     rt.doubt = doubt;
+    watchEarly(trips, buses, j.t);
     // A bay gone from a trip's predictions since the answer before: its bus pulled out, at some moment between that
     // answer and this one, and it's stamped with the earlier, the last time it was seen there. Polled every few seconds
     // that's all but now; after a gap it isn't. Stamped with now, a phone back in the app (hidden, it asks nothing) had
@@ -216,6 +217,57 @@ function waitsOf(ti, s, end, nowS) {
     if (wait > 0) waits.set(n, time + wait);
   }
   return waits;
+}
+/** A bus that left a timed stop early: seen past it, on its way, with the stop's minute two or more still to come.
+ *  Early once, it's seldom held at the timed stops after: of 49 trips that left one two minutes early or more (the
+ *  relay's tracks, 19 Oct to 2 Nov), 35 left the next as early again, where 4% of all trips leave one even a minute
+ *  early. Its stops ahead are the feed's times then, its waits (waitsOf) dropped: told a minute early, a rider waits
+ *  a minute; told the timetable's, the bus has gone (Route 15's bus 1175 by 781 S Main at 7:23 PM on 30 Oct, at
+ *  65 km/h, for its 7:28). How early is the least it can have been: when it was first seen past, not when it went.
+ *  The feed has the stop behind it and the bus is past it, on a leg after, 100 m on, and further on at the next look:
+ *  all of that, or nothing's said.
+ *  Kept for the trip while it's out; seen past another early, that one's said. Not at the Transit Center (its bay's
+ *  own rules), nor a loop spacing its buses (early with all the others, and waiting for nothing anyway). */
+const earlyLeft = new Map(), earlySeen = new Map();   // trip id → { si, by: minutes early at the least, v: its bus, at }; the same seen once, to see again
+export const leftEarly = id => earlyLeft.get(id) || null;
+function watchEarly(trips, buses, nowS) {
+  for (const [id, e] of earlyLeft) {
+    const u = trips[id];
+    // Over: four hours on, the run cancelled, another bus on it, or the bus no longer early at its next stop (held up
+    // since, or held after all): its waits back, and nothing said.
+    const sm = u && u.first && D.stopById[u.first.sid] !== undefined ? schedMin(D.stopById[u.first.sid], u.ti) : null;
+    if (nowS - e.at > 4 * 3600 || (u && (u.cancelled || u.v !== e.v || (sm !== null && toMin(u.first.time) - sm >= 0)))) earlyLeft.delete(id);
+  }
+  for (const b of buses) {
+    const u = trips[b.trip];
+    if (!u || u.est || !u.first || b.id !== 'c:' + u.v || nowS - b.ts > 60 || u.ti === undefined || !tripInfo[u.ti]) continue;
+    const ri = tripInfo[u.ti].r;
+    if (isLoop(ri) && loopSpacing(ri)) continue;
+    const pts = withEnd(u.ti), next = pts.findIndex(([, si], k) => k < pts.length - 1 && D.stops[si].id === u.first.sid);
+    // The nearest timed stop behind it (not the trip's first, where it starts), and only that one.
+    for (let i = next - 1; i >= 1; i--) {
+      const [m, si] = pts[i], st = D.stops[si];
+      if (!timed(si, ri) || st.hub) continue;
+      const by = Math.floor(((m - toMin(nowS)) * 60 - nowS % 60) / 60), off = distance(b.lat, b.lon, st.lat, st.lon);
+      let past = false;
+      for (let k = i + 1; k <= Math.min(next + 1, pts.length - 1) && !past; k++) past = onLeg(b, pts, k) !== Infinity;
+      const was = earlyLeft.get(b.trip), seen = earlySeen.get(b.trip);
+      // Two looks in a row, the bus further on at the second: one look past a stop could be a bus waiting its minute
+      // beyond the pole. Thirty minutes at most (a run after midnight: its minutes past 1440, the clock's from 0).
+      if (by >= 2 && by <= 30 && past && off > 100 && !(was && was.si === si)) {
+        if (seen && seen.si === si && off >= seen.off + 20) { earlyLeft.set(b.trip, { si, by: seen.by, v: u.v, at: nowS }); earlySeen.delete(b.trip); }
+        else if (!seen || seen.si !== si) earlySeen.set(b.trip, { si, by, off });
+      } else if (seen && seen.si === si) earlySeen.delete(b.trip);
+      break;
+    }
+  }
+  for (const id of earlySeen.keys()) if (!trips[id]) earlySeen.delete(id);
+  // Its stops ahead as the feed has them: no waits, and its lateness at the trip's end from those.
+  for (const [id, u] of Object.entries(trips)) {
+    if (!earlyLeft.has(id) || !u.waits || !u.waits.size) continue;
+    u.waits = new Map();
+    if (u.last && D.stopById[u.last.sid] !== undefined) { const sm = schedMin(D.stopById[u.last.sid], u.ti); if (sm !== null) u.lastDelay = toMin(u.last.time) - sm; }
+  }
 }
 /** A trip's Transit Center call while its bus is yet to leave it: where in the trip it is, the timetable's minute
  *  there and the feed's. The feed runs a bus on from the Center as soon as it gets in, and has the loops (whose
