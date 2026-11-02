@@ -49,7 +49,7 @@ jobs:
           }
           emptied && exit 0
           if kept=$(python3 tools/keeproute.py /tmp/cvtd.zip /tmp/cvtd-kept.zip) && python3 tools/reduce.py /tmp/cvtd-kept.zip --hints tools/hints.json --out data && emptied; then
-            note="CVTD's feed lists $(echo $kept | sed 's/ /, /g') with no trips; kept on the last timetable's."
+            note="CVTD's feed lists $(echo "$kept" | paste -sd , - | sed 's/,/, /g') with no trips; kept on the last timetable's."
             echo "::warning::$note"; echo "DATA_NOTE=$note" >> "$GITHUB_ENV"
           else
             echo "::error::a route left with no trips, and its last trips not kept; yesterday's timetable stands"
