@@ -1356,16 +1356,9 @@ test('a timed stop on the way: a bus ahead waits there, and it and the stops aft
   for (const [m, stop] of pick.pts.slice(pick.k, pick.k + 2)) expect(await rowSays(page, pick.id, stop, m)).toEqual(['Scheduled · on time', m]);
 });
 
-test('a bus gone by a timed stop early: the stops after it the feed\'s, early, not held to their minutes, and its card says so', async ({ page }) => {
-  // 7:23 PM, 30 Oct: Route 15's bus 1175 went by 781 S Main at 65 km/h for its 7:28, and by the timed stops after it
-  // as early; of the trips that left one 2 min early or more over two weeks, most left the next as early (rt.js
-  // watchEarly). Told the timetable's minute there, a rider found the bus gone. A route's trip (Route 15's where there's
-  // one), its bus past its first timed stop on the way, 60% to the stop after, 2½ min before the timed stop's minute;
-  // the feed 3 min early at every stop on.
-  const relay = { T: 0, feed: null, alerts: () => [] };
-  await stageRelay(page, relay);
-  await open(page);
-  const pick = await page.evaluate(async src => {
+/** A route's trip (Route 15's where there's one) with a timed stop on the way, 300 m or more from the stop after it,
+ *  and another timed stop after that: the bus 60% of the way on, 2½ min before the first's minute. */
+const earlyPick = page => page.evaluate(async src => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [], seen = new Set();
     const stopsOf = new Function('return ' + src)();
     const routes = D.routes.map((r, ri) => ri).filter(ri => !loops.includes(ri) && !D.routes[ri].op).sort((a, b) => (D.routes[b].short === '15') - (D.routes[a].short === '15'));
@@ -1382,7 +1375,18 @@ test('a bus gone by a timed stop early: the stops after it the feed\'s, early, n
         spot: [a.lat + (b.lat - a.lat) * 0.6, a.lon + (b.lon - a.lon) * 0.6, d.bearing(a.lat, a.lon, b.lat, b.lon)] };
     }
     return null;
-  }, stopsOf.toString());
+}, stopsOf.toString());
+
+test('a bus gone by a timed stop early: the stops after it the feed\'s, early, not held to their minutes, and its card says so', async ({ page }) => {
+  // 7:23 PM, 30 Oct: Route 15's bus 1175 went by 781 S Main at 65 km/h for its 7:28, and by the timed stops after it
+  // as early; of the trips that left one 2 min early or more over two weeks, most left the next as early (rt.js
+  // watchEarly). Told the timetable's minute there, a rider found the bus gone. A route's trip (Route 15's where there's
+  // one), its bus past its first timed stop on the way, 60% to the stop after, 2½ min before the timed stop's minute;
+  // the feed 3 min early at every stop on.
+  const relay = { T: 0, feed: null, alerts: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const pick = await earlyPick(page);
   test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
   const [mk] = pick.pts[pick.k], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mk - 3) * 60;   // the day's minute 0
   const [lat, lon, bearing] = pick.spot;
@@ -1409,6 +1413,33 @@ test('a bus gone by a timed stop early: the stops after it the feed\'s, early, n
   await mapReady(page);
   await go(page, '#/map/bus/c:9001?tap=1');
   await expect(page.locator('#mapcard .buscard')).toContainText(/Left .+ at least 2 min early, so it may be early at the stops ahead/);
+});
+
+test('a bus the relay saw go by a timed stop early: its stops ahead early from one look, and its card says how often today', async ({ page }) => {
+  // The relay keeps what it sees all day (worker/src/early.js): a phone opened after the bus went by knows, and the
+  // card says how often today, as the user, who dispatches, asked: 'this bus missed this timepoint N times today'.
+  const relay = { T: 0, feed: null, early: [], alerts: () => [] };
+  await stageRelay(page, relay);
+  await open(page);
+  const pick = await earlyPick(page);
+  test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
+  const [mk, sk] = pick.pts[pick.k], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mk - 3) * 60;
+  const [lat, lon, bearing] = pick.spot;
+  relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: Math.round(bearing), speed: 9, ts: T }], trips: {
+    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m - 3) * 60, 0]).slice(pick.k + 1) } } };
+  relay.early = [['9001', 'an-earlier-run', '15', sk, mk - 60, T - 3600, 3], ['9001', pick.id, '15', sk, mk, T - 20, 2]];
+  await page.clock.setFixedTime(new Date(pick.at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await polled(page, T);
+  // one look of its own: the relay's word does, the next timed stop the feed's early minute
+  await expect.poll(async () => (await rowSays(page, pick.id, pick.pts[pick.k2][1], pick.pts[pick.k2][0]))[0], { timeout: 10_000 }).toMatch(/early/);
+  await go(page, '#/map');
+  await mapReady(page);
+  await go(page, '#/map/bus/c:9001?tap=1');
+  const card = page.locator('#mapcard .buscard');
+  await expect(card).toContainText(/Left .+ at least 2 min early/);
+  await expect(card).toContainText(/Left .+ early twice today/);
 });
 
 test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', async ({ page }, info) => {
@@ -2675,6 +2706,7 @@ async function stageRelay(page, relay) {
   const json = body => ({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   await page.route(/^https:\/\/live\.cacherider\.com\/alerts/, r => r.fulfill(json({ alerts: relay.alerts() })));
   await page.route(/\/data\/alerts\.json/, r => r.fulfill(json({ alerts: relay.alerts() })));
+  await page.route(/^https:\/\/live\.cacherider\.com\/early/, r => r.fulfill(json({ t: relay.T, early: relay.early || [] })));
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => relay.feed ? r.fulfill(json(relay.feed)) : r.abort());
 }
 const stopClosure = (relay, id, routes, stops) => ({ id, title: 'Stop Closure', text: 'Due to construction the stop is closed.', url: '', cause: '', effect: '', start: relay.T - 86400, end: relay.T + 2 * 86400, routeIds: [], routes, stops, global: false });

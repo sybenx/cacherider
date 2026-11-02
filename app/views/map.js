@@ -8,7 +8,7 @@ import { routeName, html, icon, timedMark, badge, badges, time, sched, corners, 
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, walkWay, steepImage } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { rt, findBus, offDuty, busNth, busOn, busStops, busPlace, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, leftEarly, HUB_IN, AT_STOP } from '../rt.js';
+import { rt, findBus, offDuty, busNth, busOn, busStops, busPlace, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, leftEarly, earlyToday, HUB_IN, AT_STOP } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
@@ -3256,9 +3256,14 @@ function connectCard(b, app, bare = false) {
   const nth = off ? null : busNth(b, clockNow);
   // Gone by a timed stop early (rt.js watchEarly): said once, in a rider's words, and why its times ahead are early.
   const ahead = off || rtStale() ? null : leftEarly(b.trip);
+  // And how often today, by the relay's record: one quiet line, as 'Bus 2 of 3 · B2' is (the user, who dispatches:
+  // 'this bus missed this timepoint N times today'), each timed stop with its count.
+  // Not when it'd only say again what the line on this run says (that stop, once).
+  const day = off ? [] : earlyToday(b.label).filter((e, i, all) => !(all.length === 1 && e.n === 1 && ahead && ahead.si === e.si));
+  const times = n => n === 1 ? 'once' : n === 2 ? 'twice' : n + ' times';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
-    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<span class="nth">${nthWords(b.ri, nth)}</span>` : ''}</span></div>
+    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<span class="nth">${nthWords(b.ri, nth)}</span>` : ''}${day.length ? html`<span class="nth">Left ${day.map((e, i) => heardName(e.si).name + (i ? ' ' : ' early ') + times(e.n) + (i ? '' : ' today')).join(', ')}</span>` : ''}</span></div>
     ${ahead ? html`<div class="hours">${icon('clock', 15)}<span>Left ${heardName(ahead.si).name} at least ${ahead.by} min early, so it may be early at the stops ahead too.</span></div>` : ''}
     ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may have moved on' : b.free ? 'its last run was ' + routeName(b.ri) + '. Not one to wait for' : 'its last run is over. Not one to wait for'}.</span></div>` : ''}${alsoHere(b.id)}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}

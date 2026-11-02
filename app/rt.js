@@ -182,6 +182,7 @@ async function tick(force) {
     for (const [k, ms] of left) if (t0 - ms > 600000) left.delete(k);
     for (const ri of D.hub.loops || []) watchLoop(ri, trips, buses, t0);
     rt.trips = trips; rt.buses = buses; rt.parked = parked; rt.t = j.t; rt.at = Date.now(); rt.error = null;
+    if (Date.now() - earlyAt > 60000) { earlyAt = Date.now(); fetchEarly(); }
   } catch (e) {
     rt.error = e.message || 'unreachable';
   }
@@ -228,9 +229,40 @@ function waitsOf(ti, s, end, nowS) {
  *  all of that, or nothing's said.
  *  Kept for the trip while it's out; seen past another early, that one's said. Not at the Transit Center (its bay's
  *  own rules), nor a loop spacing its buses (early with all the others, and waiting for nothing anyway). */
+/** The relay's record of today's (worker/src/early.js), each [bus, trip, route, stop id, minute, seen, how early], asked
+ *  once a minute while the feed is: the same rule as watchEarly's, kept by the relay all day whoever had the app open,
+ *  so a phone opened after a bus went by knows, and its card can say how often today. */
+let earlyAt = 0, relayEarly = [], relayEarlyAt = 0;
+async function fetchEarly() {
+  try {
+    const j = await (await fetch(RT_URL + 'early', { signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined })).json();
+    if (!Array.isArray(j.early)) return;
+    relayEarlyAt = Date.now();
+    if (JSON.stringify(j.early) !== JSON.stringify(relayEarly)) { relayEarly = j.early; for (const fn of listeners) fn(); }
+  } catch { /* the last word stands a while; the app's own looks go on */ }
+}
+/** The relay's word while it's fresh: ten minutes without a good answer and it's put by (past 3 AM, yesterday's). */
+const relayEarlyNow = () => Date.now() - relayEarlyAt < 600000 ? relayEarly : [];
+/** A bus's timed stops left early today, by the relay, each { si, n }: most first, then the earliest seen. */
+export function earlyToday(label) {
+  const by = new Map();
+  for (const [bus, , , sid, , seen] of relayEarlyNow()) {
+    const si = D.stopById[sid];
+    if (bus !== label || si === undefined) continue;
+    const e = by.get(si) || { si, n: 0, first: seen };
+    e.n += 1; by.set(si, e);
+  }
+  return [...by.values()].sort((a, b) => b.n - a.n || a.first - b.first);
+}
 const earlyLeft = new Map(), earlySeen = new Map();   // trip id → { si, by: minutes early at the least, v: its bus, at }; the same seen once, to see again
 export const leftEarly = id => earlyLeft.get(id) || null;
 function watchEarly(trips, buses, nowS) {
+  // The relay's, for a trip out now that this phone didn't see go by: its latest, checked below as the phone's own are.
+  // Only the bus that went by: on the trip now, by its number (another bus taking the run over isn't early).
+  for (const [bus, trip, , sid, , seen, by] of relayEarlyNow()) {
+    const u = trips[trip], si = D.stopById[sid], was = earlyLeft.get(trip), on = u && buses.find(b => b.id === 'c:' + u.v);
+    if (on && on.label === bus && si !== undefined && (!was || was.at < seen) && was?.si !== si) earlyLeft.set(trip, { si, by, v: u.v, at: seen });
+  }
   for (const [id, e] of earlyLeft) {
     const u = trips[id];
     // Over: four hours on, the run cancelled, another bus on it, or the bus no longer early at its next stop (held up
