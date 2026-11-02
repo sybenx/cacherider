@@ -2424,11 +2424,12 @@ test('walks by the one rule, the same before and after the paths load; steep gro
 test('directions: a ride no quicker than walking, sparing little of it, isn\'t offered (Logan\'s court to the Center)', async ({ page }) => {
   // From the Municipal Court, just after the 9 and the 6 had gone at 6:18, the Green Loop came first: on at 355 North
   // Main, south round its loop and back up to Zions, 22 minutes with 11 on foot, where the walk is 10. The 9 and the 6
-  // from across the road are the ways; walking beats the Green on every count.
+  // from across the road are the ways; walking beats the Green on every count. At 6:21 since CVTD's feed of 2 Nov 2026
+  // moved the 6's stop at 400 North 13 m nearer, and its 6:20 could be caught from 6:18.
   await open(page);
   const d = new Date(); d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
   const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
-  await go(page, '#/go/@41.74061,-111.83124:Transit%20Center/at/41.73999,-111.83690/Logan%20Municipal%20Court?t=' + ymd + '-0618');
+  await go(page, '#/go/@41.74061,-111.83124:Transit%20Center/at/41.73999,-111.83690/Logan%20Municipal%20Court?t=' + ymd + '-0621');
   await expect(page.locator('.jsum').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.jrow .badge[title="Green Loop"]').filter({ visible: true })).toHaveCount(0);
   await expect(page.locator('.jsum .badge').filter({ visible: true }).first()).toHaveText('9');

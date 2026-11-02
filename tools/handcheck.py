@@ -61,4 +61,5 @@ for f in H.get('hand_routes', []):
         if not any(d.startswith(str(y)) for d in hr.get('holidays', [])): say(f'{name}: no {y} holidays in {f} yet')
 
 if notes and os.environ.get('GITHUB_ENV'):
-    with open(os.environ['GITHUB_ENV'], 'a') as e: e.write('DATA_NOTE=' + ' '.join(notes) + '\n')
+    # After any note an earlier step left (a route kept on its last trips, tools/keeproute.py), not over it.
+    with open(os.environ['GITHUB_ENV'], 'a') as e: e.write('DATA_NOTE=' + ' '.join(filter(None, [os.environ.get('DATA_NOTE')] + notes)) + '\n')
