@@ -1,7 +1,7 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun, offDayWords } from '../data.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun, offDayWords, keptOn } from '../data.js';
 import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone, fmtDay, howOften, clockAnd } from '../time.js';
 import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
@@ -71,7 +71,7 @@ function status(k, clockNow) {
   const out = eta !== null || loose || away;
   const off = !today || (!out && dep.min - clockNow.min > 90);
   const leave = dep ? dep.min : null;   // the feed's word, with its bus's arrival, from predict(): every screen agrees
-  const late = today && !loop ? Math.max(0, leave - schedOf(dep)) : 0;
+  const late = today && !loop && !keptOn(dep.r) ? Math.max(0, leave - schedOf(dep)) : 0;   // an old timetable's minute: late by it is no one's to say
   return { k, ris, loop, op, deps, dep, eta, at: eta === 0 ? bus : null, bus: eta > 0 || (eta === null && away) ? bus : null, out, loose: eta === null && loose, doubt: eta === null && loose && doubt, away: eta === null && !loose && away, off, leave, late: late >= 2 ? late : 0 };
 }
 /** Where a route's card on the board goes: the route picked on the board, or put back. (It went to the bus on the map

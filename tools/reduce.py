@@ -42,6 +42,9 @@ raw_routes.sort(key=route_key)
 dirs = {}
 for d in table('directions.txt', required=False):
     dirs.setdefault(d['route_id'], ['', ''])[int(d['direction_id'])] = d['direction']
+# A route the feed lists with no trips, put back on its last timetable's (tools/keeproute.py): the date of that
+# timetable, for the app to say its times are old (kept.txt, written by keeproute beside the trips it puts back).
+kept = {k['route_id']: k['since'] for k in table('kept.txt', required=False)}
 routes = []
 route_idx = {}
 for r in raw_routes:
@@ -50,7 +53,7 @@ for r in raw_routes:
     routes.append({
         'id': r['route_id'], 'short': r['route_short_name'], 'long': long, 'desc': r.get('route_desc', '').strip(),
         'color': (r.get('route_color') or '888888').upper(), 'text': (r.get('route_text_color') or '000000').upper(),
-        'dirs': dirs.get(r['route_id'], ['', '']),
+        'dirs': dirs.get(r['route_id'], ['', '']), **({'kept': kept[r['route_id']]} if r['route_id'] in kept else {}),
     })
 
 # ---- services: every calendar row, with its dates, so the app can pick the right one for any day

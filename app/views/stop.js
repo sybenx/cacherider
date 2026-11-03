@@ -1,8 +1,8 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
-import { D, stopNo, stopIndex, stop, nextAt, timed, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, offDayWords, dayShape, alertsUntil, poolAt, POOL, A, distance } from '../data.js';
+import { D, stopNo, stopIndex, stop, nextAt, timed, keptOn, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, offDayWords, dayShape, alertsUntil, poolAt, POOL, A, distance } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom, isGone, minsTo } from '../time.js';
-import { routeNames, routeName, html, icon, corners, depRow, cancelledRow, routeLinks, headsign, lively, sidesRow, travel, quarter, replaceTo, oneEach } from '../ui.js';
+import { routeNames, routeName, html, icon, corners, depRow, cancelledRow, routeLinks, headsign, lively, sidesRow, travel, quarter, replaceTo, oneEach, keptDay } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -180,9 +180,11 @@ export function render({ id, full, run, on }, clockNow) {
 
 /** A timed stop for some of its routes (a timepoint): which, and what it means for a rider waiting. */
 function tpLine(si) {
-  const ris = stop(si).routes.filter(ri => timed(si, ri));
-  if (!ris.length) return '';
-  return html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Routes\b/, 'routes')}: buses wait here until their scheduled time.</span></span>`;   // 'routes 2 and 5', but 'Route 16', its name
+  const all = stop(si).routes.filter(ri => timed(si, ri)), ris = all.filter(ri => !keptOn(ri)), old = all.filter(ri => keptOn(ri));
+  // One on an old timetable (data.js keptOn): its minutes here may not be the ones its bus waits for, said so, and no
+  // more: not that its bus is early.
+  if (!all.length) return '';
+  return html`${ris.length ? html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames(ris).replace(/^Routes\b/, 'routes')}: buses wait here until their scheduled time.</span></span>` : ''}${old.map(ri => html`<span class="tpline">${icon('clock', 14)}<span>A timed stop for ${routeNames([ri])}, but its times here are from an old timetable (${keptDay(ri)}) and may be off.</span></span>`)}`;   // 'routes 2 and 5', but 'Route 16', its name
 }
 const cap = w => w ? w[0].toUpperCase() + w.slice(1) : w;
 

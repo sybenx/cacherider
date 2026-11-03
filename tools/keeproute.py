@@ -11,6 +11,9 @@ rebuilt from data/cvtd.json and data/cvtd-shapes.json at HEAD as GTFS rows: its 
 reduced file keeps no seconds), its timepoints, its blocks (the next trip each bus runs) and its line. Rebuilt each
 night from the last, it stands as it was until the feed has the route's trips again.
 
+The route's timetable is old, and the app says so: kept.txt goes in the new zip, the route and the date of the
+timetable it's on (the last one's, carried night to night), which tools/reduce.py puts on the route ('kept').
+
 Only what the new feed can carry: a calendar it no longer has is the old one's row, a stop it no longer has is left
 out of the trips, said here. Prints the routes put back ('Blue Loop'), one a line; none, exit 1.
 """
@@ -38,7 +41,7 @@ stop_ids = {s['stop_id'] for s in table('stops.txt')}
 calendar = {c['service_id'] for c in table('calendar.txt')}
 trip_ids = {t['trip_id'] for t in trips}
 shape_ids = {r['shape_id'] for r in table('shapes.txt')}
-add = {'trips.txt': [], 'stop_times.txt': [], 'shapes.txt': [], 'calendar.txt': []}
+add = {'trips.txt': [], 'stop_times.txt': [], 'shapes.txt': [], 'calendar.txt': [], 'kept.txt': []}
 DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 hms = lambda m: f'{m // 60:02d}:{m % 60:02d}:00'
 
@@ -89,10 +92,13 @@ for ri, r in lost:
         add['stop_times.txt'] += [{'trip_id': tid, 'arrival_time': hms(m), 'departure_time': hms(m), 'stop_id': old['stops'][si]['id'],
                                    'stop_sequence': k, 'pickup_type': 0, 'timepoint': int(si in tps)} for k, (m, si) in enumerate(cs)]
     if missing: print(f'{r["short"]}: stops no longer in the feed, left out of its kept trips:', ' '.join(sorted(missing)), file=sys.stderr)
+    add['kept.txt'].append({'route_id': r['id'], 'since': r.get('kept') or old['feed']['built']})
     print(r['long'] or r['short'])
 
 with zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED) as out:
+    out.writestr('kept.txt', 'route_id,since\r\n' + ''.join(f"{k['route_id']},{k['since']}\r\n" for k in add['kept.txt']))
     for name in z.namelist():
+        if name == 'kept.txt': continue
         body = z.read(name)
         if add.get(name):
             cols = header(name)

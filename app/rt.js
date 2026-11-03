@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes, timed } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes, timed, keptOn } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -202,7 +202,7 @@ async function tick(force) {
  *  waits for nothing. Bus 1179, in at 39 S State at 2:38 for the 2:40 there, sat till 2:40 and went. */
 function waitsOf(ti, s, end, nowS) {
   const waits = new Map(), info = ti !== undefined && tripInfo[ti];
-  if (!info || (isLoop(info.r) && loopSpacing(info.r))) return waits;
+  if (!info || (isLoop(info.r) && loopSpacing(info.r)) || keptOn(info.r)) return waits;   // nor on an old timetable: its minutes aren't the ones it runs to
   const seq = tripStops(ti);
   let k = 0, wait = 0;
   for (const [sid, n, time, rel] of s) {
@@ -246,9 +246,9 @@ const relayEarlyNow = () => Date.now() - relayEarlyAt < 600000 ? relayEarly : []
 /** A bus's timed stops left early today, by the relay, each { si, n }: most first, then the earliest seen. */
 export function earlyToday(label) {
   const by = new Map();
-  for (const [bus, , , sid, , seen] of relayEarlyNow()) {
-    const si = D.stopById[sid];
-    if (bus !== label || si === undefined) continue;
+  for (const [bus, trip, , sid, , seen] of relayEarlyNow()) {
+    const si = D.stopById[sid], ti = tripIdx.get(trip), tr = ti !== undefined ? tripRoute(ti) : null;
+    if (bus !== label || si === undefined || (tr && keptOn(tr.r))) continue;
     const e = by.get(si) || { si, n: 0, first: seen };
     e.n += 1; by.set(si, e);
   }
@@ -269,6 +269,7 @@ function watchEarly(trips, buses, nowS) {
   // Only the bus that went by: on the trip now, by its number (another bus taking the run over isn't early).
   for (const [bus, trip, , sid, , seen, by] of relayEarlyNow()) {
     const u = trips[trip], si = D.stopById[sid], was = earlyLeft.get(trip), on = u && buses.find(b => b.id === 'c:' + u.v);
+    if (u && tripInfo[u.ti] && keptOn(tripInfo[u.ti].r)) continue;
     if (on && on.label === bus && si !== undefined && (!was || was.at < seen) && was?.si !== si) earlyLeft.set(trip, { si, by, v: u.v, at: seen });
   }
   for (const [id, e] of earlyLeft) {
@@ -282,7 +283,7 @@ function watchEarly(trips, buses, nowS) {
     const u = trips[b.trip];
     if (!u || u.est || !u.first || b.id !== 'c:' + u.v || nowS - b.ts > 60 || u.ti === undefined || !tripInfo[u.ti]) continue;
     const ri = tripInfo[u.ti].r;
-    if (isLoop(ri) && loopSpacing(ri)) continue;
+    if ((isLoop(ri) && loopSpacing(ri)) || keptOn(ri)) continue;   // an old timetable's minutes: early by them is no one's to say
     const n = nextCall(u, nowS);
     if (!n) continue;
     const pts = withEnd(u.ti), next = pts.findIndex(([, si], k) => k < pts.length - 1 && D.stops[si].id === n.sid);

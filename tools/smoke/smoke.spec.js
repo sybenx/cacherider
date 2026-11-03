@@ -1424,6 +1424,48 @@ test('a bus gone by a timed stop early, the feed still listing it as on the Blue
   return goneEarly(page, true);
 });
 
+test('a route on an old timetable: no bus called early by it, and its card, route and timed stop say its times are old', async ({ page }) => {
+  // 2 Nov: CVTD's feed listed the Blue Loop with no trips (on a detour), and the nightly put its 21 Oct timetable back
+  // (tools/keeproute.py, the route's 'kept'). Its buses went by 50 North Main 12 min before that timetable's minute. The
+  // user, who dispatches: 'our times are old, so we don't know actually whether the bus is departing early on purpose
+  // or not ... We should not word it in a way that blames the driver.' Every route marked so here, the bus as in the
+  // test of a bus gone by a timed stop early, and the relay with it gone by early twice today.
+  const relay = { T: 0, feed: null, early: [], alerts: () => [] };
+  await stageRelay(page, relay);
+  await page.route(/\/data\/cvtd\.json/, async r => { const res = await r.fetch(), j = await res.json(); for (const x of j.routes) x.kept = '2026-10-21'; await r.fulfill({ response: res, json: j }); });
+  await open(page);
+  const pick = await earlyPick(page);
+  test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
+  const [mk, sk] = pick.pts[pick.k], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mk - 3) * 60;
+  const [lat, lon, bearing] = pick.spot;
+  relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: Math.round(bearing), speed: 9, ts: T }], trips: {
+    [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m - 3) * 60, 0]).slice(pick.k + 1) } } };
+  relay.early = [['9001', pick.id, '15', sk, mk, T - 20, 2]];
+  await page.clock.setFixedTime(new Date(pick.at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await polled(page, T);
+  const [a, b] = [pick.pts[pick.k], pick.pts[pick.k + 1]], T2 = relay.T = T + 5;
+  relay.feed = { ...relay.feed, t: T2, now: T2, buses: [{ ...relay.feed.buses[0], lat: a[2] + (b[2] - a[2]) * 0.75, lon: a[3] + (b[3] - a[3]) * 0.75, ts: T2 }] };
+  await page.clock.setFixedTime(new Date(pick.at + 5000));
+  await polled(page, T2);
+  // its rows: Live, the feed's minute, and no word on early or late; nothing kept as left early
+  const [word] = await rowSays(page, pick.id, pick.pts[pick.k2][1], pick.pts[pick.k2][0]);
+  expect(word).toBe('Live');
+  expect(await page.evaluate(async id => (await import('/app/rt.js')).leftEarly(id), pick.id)).toBeNull();
+  await go(page, '#/map');
+  await mapReady(page);
+  await go(page, '#/map/bus/c:9001?tap=1');
+  const card = page.locator('#mapcard .buscard');
+  await expect(card).toContainText('Its times are from an old timetable (21 Oct), so we can\'t tell if this bus is early or on time.');
+  await expect(card).not.toContainText(/min early|min late|Left /);
+  const short = await page.evaluate(async id => { const d = await import('/app/data.js'); return d.D.routes[d.tripRoute(d.D.trips.indexOf(id)).r].short; }, pick.id);
+  await go(page, '#/map/route/' + encodeURIComponent(short));
+  await expect(page.locator('.rs-op').first()).toContainText('These times are from an old timetable (21 Oct) and may be off.');
+  await go(page, '#/stop/' + pick.pts[pick.k2][1]);
+  await expect(page.locator('.tpline').first()).toContainText('but its times here are from an old timetable (21 Oct) and may be off.');
+});
+
 test('a bus the relay saw go by a timed stop early: its stops ahead early from one look, and its card says how often today', async ({ page }) => {
   // The relay keeps what it sees all day (worker/src/early.js): a phone opened after the bus went by knows, and the
   // card says how often today, as the user, who dispatches, asked: 'this bus missed this timepoint N times today'.

@@ -1,6 +1,6 @@
 // A stop's day hour by hour, and a run from it: its stops from here on, in a sheet over the page, drawn on the big
 // map beside the page where there is one, else on a small map of the sheet's own.
-import { D, stop, tripStops, tripEnd, timesOn, nextTrip, prevTrip, tripRoute, closedRoutes, onRequest, timed, busOf } from '../data.js';
+import { D, stop, tripStops, tripEnd, timesOn, nextTrip, prevTrip, tripRoute, closedRoutes, onRequest, timed, busOf, keptOn } from '../data.js';
 import { rt, busNth, callAt } from '../rt.js';
 import { clock, clockText, clockShort, fmtDay, isGone, now } from '../time.js';
 import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark, routeName, nthWords } from '../ui.js';
@@ -37,8 +37,9 @@ function wholeTrip(ti) {
  *  bus's runs of this route, not this trip's ends. A stop at the Center itself has no row above it: it is the Center. */
 function runParts(t, si, ymd, clockNow) {
   // A loop's rows follow its bus too when it's late (the user: the 7:21 PM's sheet listed 7:18 and 7:19 under it, the
-  // timetable's); early, a loop waits out its lead, so its minutes stand.
-  const delay = !t.live ? 0 : isLoop(t.r) ? Math.max(0, t.live.delay || 0) : t.live.delay || 0;
+  // timetable's); early, a loop waits out its lead, so its minutes stand. On an old timetable (keptOn) nothing waits
+  // for its minutes: the bus's own.
+  const delay = !t.live ? 0 : isLoop(t.r) && !keptOn(t.r) ? Math.max(0, t.live.delay || 0) : t.live.delay || 0;
   const legs = [], rows = [], points = [];
   let ti = t.trip, ri = t.r, seq = wholeTrip(ti), from = callAt(seq, si, t.live ? t.min - (t.live.delay || 0) : t.min) + 1,   // a loop calling here twice (the Blue Loop at 55 North Main): the call at this time, not its first
     back = false, ended = false;
@@ -98,7 +99,7 @@ function runParts(t, si, ymd, clockNow) {
     // A stop the detour skips: one quiet line in its place, the landmark alone, not a stop's row with a dash for a time.
     if (x.skip) return `<a class="run-stop skipped" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t"></span><span class="run-n">${esc(heardName(x.s).name)} <em>skipped · detour</em></span></a>`;
     const name = heard(x.s).s;   // the landmark the bus announces, the address under it
-    return `<a class="run-stop${x.leg ? ' later' : ''}" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t${x.est ? ' est' : ''}">${esc(clock(x.m).h)}<small>${esc(clock(x.m).ap)}</small></span><span class="run-n">${name}${end ? '<em>ends here · drop-off only</em>' : x.req ? '<em>on request</em>' : timed(x.s, x.r) ? timedMark().s : ''}</span></a>`;
+    return `<a class="run-stop${x.leg ? ' later' : ''}" href="#/stop/${esc(stop(x.s).id)}" data-id="${esc(stop(x.s).id)}" data-si="${x.s}"><span class="run-t${x.est ? ' est' : ''}">${esc(clock(x.m).h)}<small>${esc(clock(x.m).ap)}</small></span><span class="run-n">${name}${end ? '<em>ends here · drop-off only</em>' : x.req ? '<em>on request</em>' : timed(x.s, x.r) ? timedMark(x.r).s : ''}</span></a>`;
   }).join('');
   // The map's labels: a time by each stop, a stop's once (the Transit Center between runs says in and out).
   const seen = new Set([si]);

@@ -1,9 +1,9 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason } from './data.js';
+import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason, keptOn } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing, stopsAway } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
-import { clock, clockText, relative, now, metres, minsTo, isDue, dayFrom, dayName, fmtDay } from './time.js';
+import { clock, clockText, relative, now, metres, minsTo, isDue, dayFrom, dayName, fmtDay, MON_SHORT } from './time.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
@@ -120,7 +120,7 @@ export const liveTag = t => liveMark(t.live && t.live.est ? 'Estimated' : 'Live'
 export function lively(t) {
   if (t.live || t.gone) return t;
   const p = predict(t);
-  return !p ? t : p.keeps ? (isLoop(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true, cancelled: !!p.cancelled, held: p.held } : { ...t, min: p.min, live: p };
+  return !p ? t : p.keeps ? (isLoop(t.r) || keptOn(t.r) ? t : { ...t, onTime: true }) : p.gone ? { ...t, gone: true, cancelled: !!p.cancelled, held: p.held } : { ...t, min: p.min, live: p };
 }
 /** The timetable's minute for a departure, live or not. The big time is always this one. */
 export const schedOf = t => t.live ? t.min - t.live.delay : t.min;
@@ -152,7 +152,7 @@ export function routeNames(ris) {
   return [num, lp].filter(Boolean).join(' and ');
 }
 /** 'Live · 3 min late'; 'Estimated · …' where the minute is worked out from the bus's place, not the feed's word. */
-export const liveWord = t => isLoop(t.r) ? (t.live.est ? 'Estimated' : 'Live') : (t.live.est ? 'Estimated · ' : 'Live · ') + lateWords(t.live.delay).replace(/^On/, 'on');   // 'Live · on time': a tag in plain case now
+export const liveWord = t => isLoop(t.r) || keptOn(t.r) ? (t.live.est ? 'Estimated' : 'Live') : (t.live.est ? 'Estimated · ' : 'Live · ') + lateWords(t.live.delay).replace(/^On/, 'on');   // 'Live · on time': a tag in plain case now
 /** A loop spacing its buses, away from the Transit Center: its timetable means nothing then, so its rows give
  *  only how long till the bus is there. */
 export const loopArrival = t => !!t.live && isLoop(t.r) && !D.stops[t.si]?.hub && loopSpacing(t.r);
@@ -255,7 +255,12 @@ export function stopRow(si, next0, clockNow, opts = {}) {
  *  stops), stopTitle and the address stay first. `heardName` gives the two as words; `heard` as markup, the address
  *  in `.addr` (muted, its own line), `town` (', Hyrum') after the address, or the name when there's no landmark. */
 /** A timed stop's mark in a list of a route's stops: the timetable is kept to here, an early bus waiting. */
-export const timedMark = () => raw(`<span class="tpmark" title="A timed stop: buses wait here until their scheduled time">${icon('clock', 12).s}Timed stop</span>`);
+export const timedMark = (ri = null) => raw(`<span class="tpmark" title="${ri !== null && keptOn(ri) ? `A timed stop, but these times are from an old timetable (${keptDay(ri)})` : 'A timed stop: buses wait here until their scheduled time'}">${icon('clock', 12).s}Timed stop</span>`);
+/** The day of the old timetable a route's on (data.js keptOn), as said: '21 Oct'; '' when it's on a current one. */
+export function keptDay(ri) {
+  const k = keptOn(ri);
+  return k ? +k.slice(8, 10) + ' ' + MON_SHORT[+k.slice(5, 7) - 1] : '';
+}
 /** Where a departure's bus is (rt.js stopsAway): at the stop it's at, else by the one it's heading for. */
 const busWhere = sa => { const s = stop(sa.where); return (sa.at ? 'at ' : 'by ') + (s.hub ? 'the ' + D.hub.name : heardName(sa.where).name); };
 export function heardName(si) {

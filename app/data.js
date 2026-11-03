@@ -36,6 +36,11 @@ export function load() {
 /** A timepoint of a route's: a stop its timetable is kept to, where an early bus waits for its time (the feed's
  *  own mark, stop_times' timepoint, the same stops on every trip of a route). */
 export const timed = (si, ri) => !!(D.routes[ri] && D.routes[ri].tpSet && D.routes[ri].tpSet.has(si));
+/** A route on an old timetable: the feed lists it with no trips, and the nightly put its last back (tools/keeproute.py,
+ *  the Blue Loop from 22 Oct 2026, on a detour). Its day, 'YYYY-MM-DD', or null. Against its minutes a bus can't be
+ *  called early or late, nor held to them: the user, who dispatches, 'our times are old, so we don't know actually
+ *  whether the bus is departing early on purpose or not', and not to be worded to blame the driver. */
+export const keptOn = ri => (D.routes[ri] && D.routes[ri].kept) || null;
 /** Whose a route is when it isn't the agency's: a route no feed has, kept by hand from its operator's timetable
  *  (tools/prt.json, Pocatello Regional Transit's Preston / Logan Commuter), as { name, short, url, phone, fare,
  *  timetable, checked }. No live feed has its buses: its times are always its timetable's. Null for the agency's own. */
