@@ -1495,14 +1495,19 @@ test('a bus the relay saw go by a timed stop early: its stops ahead early from o
 
 test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', async ({ page }, info) => {
   test.skip(!phone(info), 'a phone\'s card over the map');
+  // A closure of its own, every route of a stop: the day's notices come and go (520 West 100 North's, 2-6 Nov, taken
+  // down from Connect on the 2nd while the file still had it, and the card, by the relay's, showed none).
+  const relay = { T: Math.floor(Date.now() / 1000), feed: null, alerts: () => shut ? [shut] : [] };
+  let shut = null;
+  await stageRelay(page, relay);
   await open(page);
-  const id = await page.evaluate(async () => {
-    const d = await import('/app/data.js'), t = await import('/app/time.js');
-    await d.loadAlerts({ relay: false });
-    const c = t.now(), i = d.D.stops.findIndex((s, i) => d.closedThrough(i, c.ymd) !== null);
-    return i < 0 ? null : d.D.stops[i].id;
+  const [id, routes] = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), s = d.D.stops.find(s => !s.hub && s.routes.length && !s.out);
+    return [s.id, s.routes.map(ri => d.D.routes[ri].short)];
   });
-  test.skip(!id, 'no stop closed by a notice today');
+  shut = stopClosure(relay, 'a-test', routes, [id]);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
   await go(page, '#/map/' + id);
   const lead = page.locator('#mapcard .callout.alert b').first();
   await expect(lead).toBeVisible();
