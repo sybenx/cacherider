@@ -2343,7 +2343,7 @@ test('Transit Center: the rest of the day, a line a route with its last bus, a t
   await expect(sec.locator('.tcd-row:not(.tcd-none)', { hasText: ' from ' }).first()).toBeVisible();
 });
 
-test('Transit Center on a wide screen: the map left where it is, the bays on the tab again', async ({ page }, info) => {
+test('Transit Center on a wide screen: the map left where it is, the bays and streets by its buttons', async ({ page }, info) => {
   test.skip(phone(info), 'on a phone the Center is the map, flown to');
   await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
   // From the Stops page, its panel already beside the map: from the Map tab the panel comes in, and the map keeps the
@@ -2366,18 +2366,31 @@ test('Transit Center on a wide screen: the map left where it is, the bays on the
   // The route lines still drawn (every line went, 2026-10-27); the stops faint, back as drawn on the Map tab.
   expect(await page.evaluate(() => window.__map.getLayoutProperty('route-lines', 'visibility'))).not.toBe('none');
   expect(await faint()).not.toBe(asDrawn);
-  // The tab again: the ask to see the Center, its bays framed then, every route's badge at its stop; again, out to the
-  // streets about it, its label on it.
+  // The link again is only the link: the map still where it was. Its views are the map's own buttons, shown here.
   await page.locator('#topnav a[href="#/hub"]').click();
-  await expect(page.locator('.hbay').first()).toBeVisible();
   await page.waitForTimeout(1000);
-  await page.locator('#topnav a[href="#/hub"]').click();
+  expect(moved(before, await spots()), 'pixels the map moved').toBeLessThan(60);
+  const pair = page.locator('.hubviews');
+  await expect(pair).toBeVisible();
+  await expect(pair.locator('[data-view="bays"]')).toHaveAttribute('aria-pressed', 'false');
+  // Bays: every route's badge at its stop, the button lit; Streets: out to the streets about it, its label on it.
+  await pair.locator('[data-view="bays"]').click();
+  await expect(page.locator('.hbay').first()).toBeVisible();
+  await expect(pair.locator('[data-view="bays"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(1000);
+  await pair.locator('[data-view="streets"]').click();
   await expect(page.locator('.hubtag').filter({ visible: true })).toBeVisible();
   await expect(page.locator('.hbay')).toHaveCount(0);
+  await expect(pair.locator('[data-view="bays"]')).toHaveAttribute('aria-pressed', 'false');
+  // Whole town: Logan's stops in view, the board still beside it.
+  await page.locator('.townbtn').click();
+  await expect.poll(() => page.evaluate(() => window.__map.getZoom()), { timeout: 3000 }).toBeLessThanOrEqual(14.01);
+  await expect(page.locator('.tcl-head h1').filter({ visible: true })).toHaveText('Transit Center');
   // Left for the Map tab: the label gone with the board.
   await page.locator('#topnav a[href="#/map"]').click();
   await expect(page.locator('.hubtag')).toHaveCount(0);
   expect(await faint()).toBe(asDrawn);
+  await expect(pair).toBeHidden();
 });
 
 test('directions: each way in, a plan, no way, from only', async ({ page }) => {

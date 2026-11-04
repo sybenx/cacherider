@@ -1845,7 +1845,11 @@ function placeControls() {
   const credit = new maplibregl.AttributionControl({ compact: true });
   // Bottom corners stack upward in the order added, top corners downward. The map credit keeps its own corner:
   // bottom left on a phone, under the buttons' corner on a wide screen, so it never sits in a stack of buttons.
-  ctrls = coarse() ? [credit, near, sat, north] : WIDE.matches ? [credit, near, nav, sat, north] : [credit, nav, near, sat, north];
+  // A wide screen's views in buttons, where a phone has its tabs tapped again: the whole town, and at the Center its
+  // bays or the streets about it (the header's links only open their pages).
+  // The pair last, under the compass: shown only at the Center, nothing above it moves when it comes and goes.
+  const town = WIDE.matches ? [townControl()] : [], views = WIDE.matches ? [hubViewsControl()] : [];
+  ctrls = coarse() ? [credit, near, ...town, sat, north, ...views] : WIDE.matches ? [credit, near, ...town, nav, sat, north, ...views] : [credit, nav, near, sat, north];
   // A phone's compass under the search bar, top right: in the bottom corner the Center's board covered it, and there,
   // always shown, it's how the bays are turned round and back.
   for (const c of ctrls) map.addControl(c, c === credit ? (WIDE.matches ? 'bottom-right' : 'bottom-left') : WIDE.matches || c === north ? 'top-right' : c === nav ? 'bottom-left' : 'bottom-right');
@@ -1867,6 +1871,12 @@ function northControl() {
         if (!atHub()) { m.resetNorth({ duration: 400 }); return; }
         const a = ((m.getBearing() % 360) + 360) % 360, q = Math.abs(a - 180) < 90 ? 0 : 180;   // facing south-ish: north; else south
         pref('hub-bearing', String(q > 180 ? q - 360 : q));
+        // Beside a wide screen's board with the bays not in view, turned where it is, not flown to them (the Center's
+        // link leaves the map alone); noted as the Center's move, so leaving puts the map back north up.
+        if (wide() && !hubOn) {
+          if (!hubTurned) { beforeHub = { center: m.getCenter(), zoom: m.getZoom() }; hubTurned = true; northDue = false; }
+          m.rotateTo(q, { duration: 500 }); return;
+        }
         frame(hubBounds(), { ...hubFit(), duration: 500 });
       };
       const UP = { 0: 'North up', 90: 'East up', 180: 'South up, as the benches face', 270: 'West up' };
@@ -1900,12 +1910,58 @@ function nearControl() {
         if (!geo) return;
         placeMe(geo);
         // At the Center (the map too, its board up): leave it for the near view, as the Map tab leaves it for the map.
+        // Beside a wide screen's board the board stays: only the map moves, the rider's to keep on leaving.
+        if (/^#\/hub/.test(location.hash) && wide()) { hubTurned = false; northDue = false; toNear(geo, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700); return; }
         if (/^#\/hub/.test(location.hash)) { resetDue = true; location.hash = '#/map'; return; }
         toNear(geo, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700);
       }, true);   // the phone asked for its fix now, every tap
       el.appendChild(b); this.el = el; return el;
     },
     onRemove() { this.el.remove(); },
+  };
+}
+
+/** The whole town: Logan's stops in view, from any page beside a wide screen's map (the Map tab tapped again, on a
+ *  phone). The page beside it stays; at the Center the bays are left, the map kept where it's put. */
+function townControl() {
+  return {
+    onAdd() {
+      const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'townbtn'; b.title = 'Whole town'; b.setAttribute('aria-label', 'Whole town');
+      b.innerHTML = icon('town', 20).s;
+      b.onclick = () => {
+        if (!map) return;
+        hubTurned = false; northDue = false; townTap = true; homeRest = null;   // the rider's view now: not put back on leaving the Center
+        markNear();
+        frame(homeBounds(), { ...HOME_FIT, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 });
+      };
+      el.appendChild(b); this.el = el; return el;
+    },
+    onRemove() { this.el.remove(); },
+  };
+}
+
+/** At the Center beside a wide screen's board: the bays close up, or the streets about it with the buses on their way
+ *  in (a phone's Transit Center tab tapped again). Shown only there. Bays is lit while the bays are what's in view,
+ *  however the map got there (the Center's link leaves the map as it is); Streets is never lit, a view of no one edge.
+ *  The first press frames as an arrival does, so leaving the Center puts the map back as it was before. */
+function hubViewsControl() {
+  return {
+    onAdd(m) {
+      const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group hubviews';
+      const mk = (k, label, title) => {
+        const b = document.createElement('button'); b.type = 'button'; b.dataset.view = k; b.textContent = label; b.title = title;
+        b.onclick = () => { if (map) fitHub(!hubTurned, 700, !hubTurned, false, k === 'bays'); };
+        return b;
+      };
+      const bays = mk('bays', 'Bays', 'The bays close up');
+      el.append(bays, mk('streets', 'Streets', 'The streets about the Center, buses on their way in'));
+      const sync = () => { el.classList.toggle('on', /^#\/hub/.test(location.hash)); bays.setAttribute('aria-pressed', hubOn ? 'true' : 'false'); };
+      m.on('moveend', sync); addEventListener('hashchange', sync); sync();
+      this.off = () => { m.off('moveend', sync); removeEventListener('hashchange', sync); };
+      this.el = el; return el;
+    },
+    onRemove() { this.off(); this.el.remove(); },
   };
 }
 
@@ -3048,10 +3104,9 @@ export function leaveHub() { if (!wide() || hubTurned) backDue = true; }   // a 
  *  if it was put away. */
 export function hubAgain(app) {
   if (!map) return;
-  // Beside a wide screen's panel the first visit left the map alone (showPage); the tab again is the ask to see the
-  // bays: framed then, as an arrival, so leaving puts the map back where it was.
-  if (wide() && !hubTurned) fitHub(true, 700, true); else fitHub(false, 700, false, false, !hubOn);   // flown, as the Map tab flies a phone there (fitHub: not on a weak device, nor with less motion asked for)
-  if (!wide() && app.route.name === 'map' && !col.querySelector('#mapcard.open > .hubsheet')) hubCard(now());
+  // A phone's only: beside a wide screen's board the map's own Bays and Streets buttons do this (hubViewsControl).
+  fitHub(false, 700, false, false, !hubOn);   // flown (fitHub: not on a weak device, nor with less motion asked for)
+  if (app.route.name === 'map' && !col.querySelector('#mapcard.open > .hubsheet')) hubCard(now());
 }
 
 /** The Pumpkin Walk's tab tapped on its own page: as it opens again, the walk framed (lastFocused forgotten) and, on

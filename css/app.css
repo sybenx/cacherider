@@ -600,8 +600,12 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
   .bus-head { width: 14px; height: 10px; }
   #map .maplibregl-ctrl-group button { width: 46px; height: 46px; }
 }
-#map .maplibregl-ctrl-group button.satbtn, #map .maplibregl-ctrl-group button.nearbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-text); }
-.satbtn svg, .nearbtn svg { display: block; }
+#map .maplibregl-ctrl-group button.satbtn, #map .maplibregl-ctrl-group button.nearbtn, #map .maplibregl-ctrl-group button.townbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-text); }
+.satbtn svg, .nearbtn svg, .townbtn svg { display: block; }
+#map .hubviews { display: none; }
+#map .hubviews.on { display: block; }
+#map .hubviews button { width: auto; min-width: 46px; height: 34px; padding: 0 10px; font: inherit; font-size: 13px; color: var(--color-text); }
+#map .hubviews button[aria-pressed="true"] { color: var(--color-accent-700); background: var(--color-accent-100); }
 #map .northctl { display: none; }
 #map .northctl.on { display: block; }
 #map .maplibregl-ctrl-group button.northbtn { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--color-accent-700); }

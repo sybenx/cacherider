@@ -59,6 +59,8 @@ function renderTabs() {
       if (!a || !(h.startsWith('#/map') || h.startsWith('#/hub')) || !app.mapMod) return;
       e.preventDefault();
       if (h.startsWith('#/hub')) { app.mapMod.leaveHub(); location.hash = '#/map'; return; }   // once the Map tab is drawn
+      // A wide screen's Map link again is the link: the near view and the town are the map's own buttons there.
+      if (isDesktop()) { if (h !== '#/map') location.hash = '#/map'; return; }
       if (h !== '#/map') history.replaceState(history.state, '', '#/map');
       app.mapMod.resetView(app);
     };
@@ -68,7 +70,7 @@ function renderTabs() {
       if (!e.target.closest('a[href="#/hub"]') || !(location.hash || '').startsWith('#/hub') || !app.mapMod) return;
       e.preventDefault();
       if (location.hash !== '#/hub') location.hash = '#/hub';   // a route picked on the board: the whole board again
-      app.mapMod.hubAgain(app);
+      if (!isDesktop()) app.mapMod.hubAgain(app);   // a wide screen's bays and streets are the map's own buttons
     };
     for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', hubAgain);
     // The Pumpkin Walk's tab tapped on its page: the page as it opens, its map framed again (a phone's card raised to
