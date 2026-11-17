@@ -410,6 +410,18 @@ export function agencyRuns(ymd) {
   for (const sid of servicesOn(ymd)) if (!opServices.has(sid)) return true;
   return false;
 }
+/** The days ahead the agency's buses don't run though they do that day of the week: its holidays, and whatever else
+ *  its timetable takes off, from tomorrow for `within` days, each { ymd, name } (name
+ *  '' where the timetable gives the date alone). Not a Sunday, which never runs: that's no news. */
+export function daysOff(ymd, within) {
+  opServices ??= new Set(D.routes.filter(r => r.op).map(r => r.op.service));
+  const out = [];
+  for (let k = 1; k <= within; k++) {
+    const d = dayFrom(ymd, k).ymd, dow = (dayFrom(d).dow + 6) % 7;
+    if (D.services.some(s => !opServices.has(s.id) && s.days[dow] && s.start <= d && d <= s.end) && !agencyRuns(d)) out.push({ ymd: d, name: holidayOn(d) });
+  }
+  return out;
+}
 /** The agency's holiday on a day, by name ('Thanksgiving Day'), or '': its feed doesn't carry them, so the timetable
  *  takes them off by hand (tools/reduce.py, hints' holidays). */
 export const holidayOn = ymd => (D.holidays && D.holidays[ymd]) || '';

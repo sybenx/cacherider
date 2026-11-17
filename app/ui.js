@@ -1,5 +1,5 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason, keptOn } from './data.js';
+import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason, keptOn, daysOff } from './data.js';
 import { predict, lateWords, isLoop, loopSpacing, stopsAway } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
@@ -141,6 +141,15 @@ const nameOf = ri => isLoop(ri) || D.routes[ri].op ? D.routes[ri].long : D.route
 export function nthWords(ri, x) {
   const k = familyKey(ri), code = named(ri) ? '' : /^\d+$/.test(k) ? `${k}(${x.n})` : k + x.n;
   return `Bus ${x.n} of ${x.of}` + (code ? ' · ' + code : '');
+}
+/** A week's warning of the days without buses (data.js daysOff): 'No buses on Thanksgiving Day, Thu 26 Nov',
+ *  on a stop's page, a route's and the Center's. The user: 'it would be nice to answer the holiday question in
+ *  the app'; until now it was said on the day itself, when it's too late to plan round. '' with none in the week. */
+export function daysOffNote(clockNow) {
+  const off = daysOff(clockNow.ymd, 7);
+  if (!off.length) return '';
+  const say = off.map(d => d.name ? `on ${esc(d.name)}, <b>${esc(fmtDay(d.ymd))}</b>` : `<b>${esc(fmtDay(d.ymd))}</b>`);
+  return raw(`<div class="notice daysoff">${icon('calendar', 16).s}<span>No buses ${say.length > 1 ? say.slice(0, -1).join('; ') + ' or ' + say[say.length - 1] : say[0]}</span></div>`);
 }
 /** One of a route's buses by name, as the user and Connect's dispatch say it: 'Blue 2', '15(2)', '16(1)'; a route
  *  called by a name, 'Pumpkin Walk bus 2'. */

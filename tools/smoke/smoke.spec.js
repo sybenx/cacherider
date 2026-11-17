@@ -230,6 +230,44 @@ test('a Saturday route whose bus is another route\'s too says so at the top and 
   await expect(page.locator('a.rs-swap')).toHaveCount(0);
 });
 
+test('days without buses: a line on a stop\'s page, a route\'s and the Center\'s the week before, and the year\'s list in Settings', async ({ page }, info) => {
+  // The user: 'it would be nice to answer the holiday question in the app'. It was said on the day itself only. Staged:
+  // three running days before the timetable's next day off (a holiday, or a day it takes off unnamed), then well before.
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => r.abort());
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+    const off = d.daysOff(c.ymd, 365);
+    if (!off.length) return null;
+    let k = 3; while (k < 7 && !d.agencyRuns(t.dayFrom(off[0].ymd, -k).ymd)) k++;
+    // Well before one, on a day the timetable covers (today or later): the next day off may be nearer than that.
+    const later = off.find((o, i) => t.dayFrom(o.ymd, -12).ymd >= c.ymd && !(i && t.dayFrom(o.ymd, -12).ymd <= off[i - 1].ymd && t.dayFrom(o.ymd, -5).ymd <= off[i - 1].ymd));
+    const near = t.dayFrom(off[0].ymd, -k).ymd, far = later ? t.dayFrom(later.ymd, -12).ymd : null;
+    const s = d.D.stops.find(s => !s.hub && s.routes.length && d.timesOn(d.D.stopById[s.id], near).length);
+    return { day: t.fmtDay(off[0].ymd), name: off[0].name, near, far, stop: s.id, route: d.D.routes[s.routes[0]].short, count: d.daysOff(near, 365).length };
+  });
+  test.skip(!pick, 'the timetable has no day off in the year ahead');
+  const at = ymd => new Date(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8), 12, 0, 0);
+  await page.clock.setFixedTime(at(pick.near));
+  await page.reload();
+  const note = page.locator('.notice.daysoff').filter({ visible: true });
+  for (const where of ['#/stop/' + pick.stop, '#/map/route/' + encodeURIComponent(pick.route), '#/hub']) {
+    await go(page, where);
+    await expect(note.first(), where).toContainText(pick.name ? 'No buses on ' + pick.name + ', ' + pick.day : 'No buses ' + pick.day);
+  }
+  await go(page, '#/about');
+  const list = page.locator('.daysoff-list .row');
+  await expect(list).toHaveCount(pick.count);
+  await expect(list.first()).toContainText(pick.name || 'No buses');
+  // More than a week off: nothing said yet.
+  if (!pick.far) return;
+  await page.clock.setFixedTime(at(pick.far));
+  await page.reload();
+  await go(page, '#/stop/' + pick.stop);
+  await expect(page.locator('.row, .callout').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.notice.daysoff')).toHaveCount(0);
+});
+
 test('a route\'s page never says to stay on a bus that goes out of service for hours, as 16 AM\'s last run before 16 PM', async ({ page }) => {
   // The user: 'i noticed there's an option to "stay on bus 16 from the am and it will become the pm bus. this is
   // nonsense. there's hours gaps between. and the bus goes out of service'. Staged: a bus partway through a 16 AM run

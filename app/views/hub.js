@@ -3,7 +3,7 @@
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun, offDayWords, keptOn } from '../data.js';
 import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone, fmtDay, howOften, clockAnd } from '../time.js';
-import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, cancelledRow, routeNames, lively, moved } from '../ui.js';
+import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, daysOffNote, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
@@ -105,7 +105,7 @@ export function render({ bay }, clockNow) {
 
   const parts = pick
     ? [html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1>${getHere()}</div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`,
-      detourNotice(clockNow), picked(st[pick], clockNow), dayTimes(st[pick], clockNow), nextHour(st, pick, clockNow), footnote(st)]
+      detourNotice(clockNow), daysOffNote(clockNow), picked(st[pick], clockNow), dayTimes(st[pick], clockNow), nextHour(st, pick, clockNow), footnote(st)]
     : [html`<div class="tcl">${boardHead()}${boardBody(st, clockNow)}</div>`];
   return { html: parts.join(''), mount, title: H.name, keepScroll: true, key: 'hub' };
 }
@@ -342,7 +342,7 @@ function getHere() {
 export function hubSheet({ bay }, clockNow) {
   const { st, pick } = board(bay, clockNow);
   return pick
-    ? { pick, head: picked(st[pick], clockNow), body: html`${detourNotice(clockNow)}${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
+    ? { pick, head: picked(st[pick], clockNow), body: html`${detourNotice(clockNow)}${daysOffNote(clockNow)}${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
     : { pick, head: html`<div class="tcl">${boardHead()}</div>`, body: html`<div class="tcl">${boardBody(st, clockNow)}</div>` };
 }
 
@@ -424,7 +424,7 @@ function boardBody(st, clockNow) {
     : html`<div class="tcl-note"><b>${ranToday ? 'No more buses today' : 'No buses today'}</b>${ranToday ? '' : ' · ' + offDayWords(clockNow.ymd)}</div>`;
   // The rest of the day behind a tap; another day's (today's all gone), out, under its own heading.
   const day = restOfDay(st, clockNow), later = !!day && !/The rest of today/.test(day.s || day);
-  return html`${detourNotice(clockNow)}${title}${out.length ? out : html`<p class="tc-foot">Nothing scheduled in the next week.</p>`}
+  return html`${detourNotice(clockNow)}${title}${daysOffNote(clockNow)}${out.length ? out : html`<p class="tc-foot">Nothing scheduled in the next week.</p>`}
     ${!day ? '' : later ? html`<div class="tcl-rest later">${day}</div>` : html`<div class="tcl-rest${restShown ? ' open' : ''}"><button type="button" class="tcl-more">The rest of today</button>${day}</div>`}
     <p class="tc-foot">${rtDown() ? 'Live bus positions aren’t coming in right now, so every time here is the scheduled one.' : html`Bus positions from ${D.agency.brand}’s live feed.`}</p>`;
 }

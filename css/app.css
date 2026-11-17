@@ -1624,3 +1624,7 @@ a.side:active { background: var(--cr-hover); }
 .rs-swap span { flex: 1; min-width: 0; }
 .rs-swap svg { color: var(--cr-muted); }
 .rs-swap .badge { flex: none; }
+
+/* The days without buses (about.js): a name and its date, no taller than they need. */
+.daysoff-list .row { min-height: 0; grid-template-columns: minmax(0,1fr) auto; }
+.daysoff-list .row .end { font-size: 0.875rem; color: var(--cr-muted); }

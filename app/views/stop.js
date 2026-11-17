@@ -2,7 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopNo, stopIndex, stop, nextAt, timed, keptOn, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, offDayWords, dayShape, alertsUntil, poolAt, POOL, A, distance } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom, isGone, minsTo } from '../time.js';
-import { routeNames, routeName, html, icon, corners, depRow, cancelledRow, routeLinks, headsign, lively, sidesRow, travel, quarter, replaceTo, oneEach, keptDay } from '../ui.js';
+import { routeNames, routeName, html, icon, corners, depRow, cancelledRow, routeLinks, headsign, lively, sidesRow, travel, quarter, replaceTo, oneEach, keptDay, daysOffNote } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -99,6 +99,8 @@ export function render({ id, full, run, on }, clockNow) {
     parts.push(html`<div class="notice">${icon('calendar', 16)}<span>New timetable starts <b>${fmtDay(nt)}</b></span></div>`);
   }
 
+  // The days without buses in the week ahead (a holiday): said before they come.
+  if (!allClosed) parts.push(daysOffNote(clockNow));
   // A Saturday runs shorter and thinner than a weekday: say how, up front, for riders who know the weekday times.
   if (dayFrom(clockNow.ymd).dow === 6 && td.all.length) parts.push(html`<div class="notice">${icon('calendar', 16)}<span>Saturday service today: <b>${dayShape(si, clockNow.ymd)}</b></span></div>`);
   const prov = [...new Set(td.all.filter(t => t.prov).map(t => t.r))];

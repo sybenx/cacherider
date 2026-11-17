@@ -1,5 +1,5 @@
 // What this is, where the times come from, and the offline map switch.
-import { D, BASE, pref, A, activeAlerts, alertRoutes } from '../data.js';
+import { D, BASE, pref, A, activeAlerts, alertRoutes, daysOff } from '../data.js';
 import { fmtDay, is24, isKm, clockText, now, metres } from '../time.js';
 import { html, icon, corners, badges } from '../ui.js';
 import { shareBlock, siteLink, fillQRs } from '../share.js';
@@ -37,6 +37,7 @@ export function render({ section }, clockNow) {
   const others = D.routes.filter(r => r.op);   // another operator's routes, kept by hand (data.js opOf)
   const right = html`<div class="section" id="alerts">${icon('ban', 16)}Service alerts</div>
     ${alertsBlock(clockNow)}
+    ${daysOffBlock(clockNow)}
     <div class="section">${icon('info', 16)}About the data</div>
     <div class="pad muted" style="font-size:0.875rem;line-height:1.5">
       <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Once a bus is on the road, ${D.agency.brand}'s own tracker reports where it is and when it expects to reach each stop, and those rows say <b>Live</b> instead of Scheduled. A live time is still a prediction. A bus on a detour shows on the map but can't give stop times, so its route's rows stay Scheduled.</p>
@@ -148,6 +149,19 @@ async function mount(el) {
   };
 }
 
+/** The days without buses in the year ahead (data.js daysOff): the agency's holidays by name and whatever else its
+ *  timetable takes off, with the weekday it never runs. The user: 'it would be nice to answer the holiday question in
+ *  the app'. They're the agency's six holidays (tools/hints.json: its feed doesn't carry them) and anything its feed
+ *  does take off; another operator's own holidays (the Preston commuter's, the Friday after Thanksgiving) aren't the
+ *  agency's and aren't here. */
+function daysOffBlock(clockNow) {
+  const off = daysOff(clockNow.ymd, 365), year = clockNow.ymd.slice(0, 4);
+  const never = [0, 1, 2, 3, 4, 5, 6].filter(dow => !D.services.some(s => !D.routes.some(r => r.op && r.op.service === s.id) && s.days[(dow + 6) % 7])).map(dow => ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][dow]);
+  if (!off.length && !never.length) return '';
+  return html`<div class="section" id="daysoff">${icon('calendar', 16)}Days without buses</div>
+    ${off.length ? html`<div class="list daysoff-list">${off.map(d => html`<div class="row"><div class="mid"><span class="name">${d.name || 'No buses'}</span></div><div class="end">${fmtDay(d.ymd, true)}${d.ymd.slice(0, 4) !== year ? ' ' + d.ymd.slice(0, 4) : ''}</div></div>`)}</div>` : ''}
+    <div class="fine">${never.length ? `${D.agency.brand} doesn't run on ${never.join(' or ')}. ` : ''}Other days off go in its service alerts.</div>`;
+}
 function alertsBlock(clockNow) {
   // Newest first: the feed lists them oldest first, so a detour from March topped this week's closures. By when each
   // starts, the feed's own number (it counts up) between two that start together.
