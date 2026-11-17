@@ -690,28 +690,6 @@ export function runOf(ti, ymd) {
   for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 12 && linked(run[run.length - 1], n); n = nextTrip(n, ymd)) run.push(n);
   return run;
 }
-/** A bus's whole day (the user's block: 'the bus's entire day plan'): every trip of the timetable's block a trip is
- *  in, first to last, whatever routes it runs and however long it sits between (16's morning runs, then its
- *  afternoon ones). */
-export function blockOf(ti, ymd) {
-  const run = [ti];
-  for (let p = prevTrip(ti, ymd); p !== undefined && run.length < 120; p = prevTrip(p, ymd)) run.unshift(p);
-  for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 120; n = nextTrip(n, ymd)) run.push(n);
-  return run;
-}
-/** The whole day of one of a route's buses that day (its family's key and which of its buses, from 1: busOf's): its
- *  trips as blockOf; null where the route doesn't run that many. */
-export function busBlock(key, n, ymd) {
-  for (const sv of servicesOn(ymd)) { const bl = D.buses && D.buses[sv] && D.buses[sv][key]; if (bl && bl[n - 1] && bl[n - 1].length) return blockOf(bl[n - 1][0], ymd); }
-  // A route with the one bus that day (it isn't numbered: reduce.py's `buses` are a route's two or more): bus 1 is its
-  // block, whatever else it runs (a Saturday's 2, the 5's bus too).
-  if (n !== 1 || routeBuses(key, ymd)) return null;
-  for (const [ri, r] of D.routes.entries()) {
-    if (familyKey(ri) !== key || r.op) continue;
-    for (const si of new Set(Object.values(r.stops || {}).flat())) { const t = timesOn(si, ymd).find(x => x.r === ri); if (t) return blockOf(t.trip, ymd); }
-  }
-  return null;
-}
 /** The route a route's buses become that day, and the one they come in as: a Saturday's 2 leaves the Transit Center as
  *  the 5 every run, and comes in as it. { to, from }, each a route or null: only where every run of it that carries on
  *  (staysOn) carries on as the one other route, never as itself. */

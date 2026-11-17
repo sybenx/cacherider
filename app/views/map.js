@@ -2,13 +2,12 @@
 // route lines, and a card for the stop you tap. Loaded only when first shown.
 import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
-import { D, routeBuses, busBlock, swapsOn, BASE, nearest, stop, offSeason, route, nextAt, timed, POOL, servicesOn, nextServiceDay, holidayOn, offDayWords, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, pref, opOf, carriesOn, agencyRuns, keptOn } from '../data.js';
+import { D, swapsOn, staysOn, BASE, nearest, stop, offSeason, route, nextAt, timed, POOL, servicesOn, nextServiceDay, holidayOn, offDayWords, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, pref, opOf, carriesOn, agencyRuns, keptOn } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
-import { busName, routeNames, daysOffNote, routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, travel, keptDay } from '../ui.js';
+import { busName, daysOffNote, routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, travel, keptDay } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, walkWay, steepImage } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
-import { liveBus, busAt as busWhereNow, blockHours } from './busplan.js';
 import { rt, findBus, offDuty, busNth, busOn, busStops, busPlace, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, leftEarly, earlyToday, HUB_IN, AT_STOP } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
@@ -1178,27 +1177,35 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
   // Each way's first and last from its end, above the list (the morning's and evening's notes aren't again): one loop's
   // runs, whichever way the feed calls them, as one. An out-and-back's next run back is its far end's row on the line.
   const lastWays = line && line.same ? [{ k: undefined, si: seq[0], way: '' }] : (line ? line.ways : dirs).map(k => ({ k, si: routeOrder(ri, k)[0], way: apart ? ' ' + names[dirs.indexOf(k)] : '' }));
-  // Its buses today by name where it runs more than one (Blue 1, Blue 2, Blue 3; 15(1)…): where each is now and its
-  // hours, a tap its whole day (views/busplan.js). The user: 'a route shows all the info about that route, a bus plan
-  // page ... shows that bus's whole plan'.
-  const nb = opOf(ri) ? 0 : routeBuses(familyKey(ri), clockNow.ymd);
-  const busList = nb ? html`<div class="section">${icon('route', 16)}Buses today</div><div class="list rs-buses">${Array.from({ length: nb }, (_, k) => {
-    const b = liveBus(familyKey(ri), k + 1, clockNow), bl = busBlock(familyKey(ri), k + 1, clockNow.ymd), h = bl ? blockHours(bl) : null;
-    return html`<a class="row" href="#/bus/${encodeURIComponent(familyKey(ri))}/${k + 1}"><div class="mid"><span class="name">${busName(ri, k + 1)}</span><span class="sub">${b ? `Bus ${b.label}${busWhereNow(b) ? ' · ' + busWhereNow(b) : ''}` : 'Not on the map now'}</span></div><div class="end">${h ? clockText(h[0]) + ' to ' + clockText(h[1]) : ''}</div></a>`;
-  })}</div>` : '';
-  // (A day its one bus is another route's too, below: that bus by its routes, 'Routes 2 and 5', the one row.)
-  // A day its bus is another route's too (a Saturday's 2 and 5, one bus, swapping at the Transit Center every run):
-  // said from the timetable at the top and the foot of its line, a bus out or not. The user: 'saturday should uniquely
-  // show 2 becoming 5 at the top and bottom of the route page'. The foot's gives way to the bus's own word (follow's
-  // 'Stay on bus 1173: it becomes Route 5 at 11:30') when one is on the route.
   const sw = swapsOn(ri, clockNow.ymd);
-  const swapIn = sw.from !== null ? html`<a class="rs-swap" href="${routeHref(sw.from)}">${badge(sw.from, 24)}<span>This bus comes in to the ${D.hub.name} as ${routeName(sw.from)}</span>${icon('fwd', 16)}</a>` : '';
-  const pair = nb || opOf(ri) || (sw.to === null && sw.from === null) ? null : busBlock(familyKey(ri), 1, clockNow.ymd);
-  const pairBus = pair ? liveBus(familyKey(ri), 1, clockNow) : null, pairH = pair ? blockHours(pair) : null;
-  const pairList = pair ? html`<div class="section">${icon('route', 16)}This bus today</div><div class="list rs-buses"><a class="row" href="#/bus/${encodeURIComponent(familyKey(ri))}/1"><div class="mid"><span class="name">${routeNames([ri, sw.to ?? sw.from])}</span><span class="sub">${pairBus ? `Bus ${pairBus.label}${busWhereNow(pairBus) ? ' · ' + busWhereNow(pairBus) : ''}` : 'Not on the map now'}</span></div><div class="end">${pairH ? clockText(pairH[0]) + ' to ' + clockText(pairH[1]) : ''}</div></a></div>` : '';
-  const swapOut = sw.to !== null ? html`<a class="rs-swap" href="${routeHref(sw.to)}">${badge(sw.to, 24)}<span>Stay on at the ${D.hub.name}: it leaves as ${routeName(sw.to)}</span>${icon('fwd', 16)}</a>` : '';
-  const body = html`<div class="routesheet">${alerts}${opOf(ri) ? '' : daysOffNote(clockNow)}${yours}${opNote(ri, clockNow)}${keptOn(ri) ? html`<div class="rs-op"><span class="muted">These times are from an old timetable (${keptDay(ri)}) and may be off.</span></div>` : ''}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || ''}${swapIn}<div class="list rs-list line"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || swapOut}
-    ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}${wayPath}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}${busList}${pairList}</div>`;
+  // Said once, where it happens: at the foot of the line, the line carried on into the route its bus becomes, that
+  // route's stops and times after it, dimmed, in its colour. The user, of the swap said at the top, the foot, in a list
+  // under it and on a page of its own: 'we're saying the same thing twice in multiple places for no reason', and 'why
+  // not base it more on our route page, with like the continue into the next route at the bottom?'. From the
+  // timetable: this route's run under way or next today, and the trip its bus runs after it. A bus on the route says
+  // it itself (follow's 'Stay on bus 1173…', which this stands in for); with no more runs today, nothing.
+  let swapOut = '';
+  if (sw.to !== null) {
+    let run = null;
+    const seen = new Set();
+    for (const si of new Set(seq)) for (const t of timesOn(si, clockNow.ymd)) {
+      if (t.r !== ri || seen.has(t.trip)) continue;
+      seen.add(t.trip);
+      const te = tripEnd(t.trip), st = tripStops(t.trip), end = te ? te.min : st.length ? st[st.length - 1][0] : -1;
+      if (end >= clockNow.min && (!run || end < run.end)) run = { ti: t.trip, end };
+    }
+    const nti = run ? nextTrip(run.ti, clockNow.ymd) : undefined, ntr = nti !== undefined ? tripRoute(nti) : null, ns = ntr ? tripStops(nti) : [];
+    // Its stops as the line above has them: the key ones, the rest folded, on a rail in that route's colour; dimmed,
+    // being the run after this one.
+    const to = D.routes[sw.to], toInk = dark() ? lift('#' + to.color) : sinkLine('#' + to.color), nseq = ns.map(x => x[1]);
+    const carryRows = ntr ? foldRows(ns.map(([m, si]) => { const n = { min: m, r: sw.to, dir: ntr.dir, si, trip: nti, day: 0, ymd: clockNow.ymd, req: onRequest(si, sw.to, ntr.dir) }; return { si, k: ntr.dir, bus: [], n, row: routeRow(si, sw.to, n, clockNow, { ring: 0 }) }; }), sw.to, nseq) : [];
+    swapOut = ntr && ntr.r === sw.to && ns.length && staysOn(run.ti, nti)
+      ? html`<div class="section onward">${icon('swap', 16)}<span>This bus becomes ${routeName(sw.to)} at ${clockText(ns[0][0])}</span>${html.raw(routeBadgeLink(sw.to, ns[0][1], 24, ntr.dir))}</div>
+        <div class="list rs-list line rs-carry"${html.raw(` style="--rc:${toInk}"`)}>${carryRows}</div>`
+      : '';   // its last run today, or none left: nothing becomes anything
+  }
+  const body = html`<div class="routesheet">${alerts}${opOf(ri) ? '' : daysOffNote(clockNow)}${yours}${opNote(ri, clockNow)}${keptOn(ri) ? html`<div class="rs-op"><span class="muted">These times are from an old timetable (${keptDay(ri)}) and may be off.</span></div>` : ''}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || ''}<div class="list rs-list line"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || swapOut}
+    ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}${wayPath}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}</div>`;
   // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus; for a way
   // of a line (an old address, '/15/1'), on its half. Else at the top: the stops still to come start there.
   const anchor = here !== undefined ? 'here' : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : wayAt >= 0 ? 'rs-way' : null;
@@ -2019,9 +2026,7 @@ function wireChrome(app) {
     results.classList.remove('hidden');
     results.scrollTop = 0;
     results.querySelectorAll('[data-q]').forEach(a => a.onclick = e => { e.preventDefault(); input.value = a.dataset.q; mapSearch(a.dataset.q); });
-    // A route's bus tapped by its small tag (find.js busTags) keeps the search for the way back: the user, of a tap
-    // there by accident, 'it risks confusing people'. Back from the bus's page is the results as they were typed.
-    results.querySelectorAll('a:not([data-q])').forEach(a => a.onclick = a.closest('.bustags') ? () => { results.dataset.keep = '1'; } : clear);
+    results.querySelectorAll('a:not([data-q])').forEach(a => a.onclick = clear);
   }, 200); };
   input.oninput = () => mapSearch(input.value);
   // Before a word, the rider's saved places (the Stops tab's search has them the same): directions there in a tap.
@@ -3329,13 +3334,10 @@ function connectCard(b, app, bare = false) {
   const dl = busDelay(b) ?? (at ? at.min - (schedAt(at.si, b) ?? at.min) : null);
   const late = dl !== null && !isLoop(b.ri) && !keptOn(b.ri) ? lateWords(heldAt(nextStopOf(b) ?? (at && at.si), dl)) : '';
   // Which of its route's buses today it is, under the route it's of: 'Blue 2', '15(1)', as Connect's dispatch names
-  // them (the vehicle's own number is the line above's), a link to its whole day (views/busplan.js). It read 'Bus 2 of
-  // 3 · B2'; with the vehicle's number above that was three names for one bus, and the user took 'Blue 2' (17 Nov).
+  // them (the vehicle's own number is the line above's). It read 'Bus 2 of 3 · B2'; with the vehicle's number above
+  // that was three names for one bus, and the user took 'Blue 2' (17 Nov).
   // Only here: on a ring 'B2' would read as a route of that name.
   const nth = off ? null : busNth(b, clockNow);
-  // A bus that's another route's too today, with no number of its own (a Saturday's 2 and 5, one bus): its routes,
-  // the same link to its day.
-  const swOf = off || nth || b.h === null || routeBuses(familyKey(b.ri), clockNow.ymd) ? null : swapsOn(b.ri, clockNow.ymd), pairOf = swOf ? swOf.to ?? swOf.from : null;
   // Gone by a timed stop early (rt.js watchEarly): said once, in a rider's words, and why its times ahead are early.
   const ahead = off || rtStale() ? null : leftEarly(b.trip);
   // And how often today, by the relay's record: one quiet line, as 'Bus 2 of 3 · B2' is (the user, who dispatches:
@@ -3345,7 +3347,7 @@ function connectCard(b, app, bare = false) {
   const times = n => n === 1 ? 'once' : n === 2 ? 'twice' : n + ' times';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
-    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<a class="nth" href="#/bus/${encodeURIComponent(nth.key)}/${nth.n}">${busName(b.ri, nth.n)} · today's runs</a>` : ''}${pairOf ? html`<a class="nth" href="#/bus/${encodeURIComponent(familyKey(b.ri))}/1">${routeNames([b.ri, pairOf])} · today's runs</a>` : ''}${day.length ? html`<span class="nth">Left ${day.map((e, i) => heardName(e.si).name + (i ? ' ' : ' early ') + times(e.n) + (i ? '' : ' today')).join(', ')}</span>` : ''}</span></div>
+    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<span class="nth">${busName(b.ri, nth.n)}</span>` : ''}${day.length ? html`<span class="nth">Left ${day.map((e, i) => heardName(e.si).name + (i ? ' ' : ' early ') + times(e.n) + (i ? '' : ' today')).join(', ')}</span>` : ''}</span></div>
     ${ahead ? html`<div class="hours">${icon('clock', 15)}<span>Left ${heardName(ahead.si).name} at least ${ahead.by} min early, so it may be early at the stops ahead too.</span></div>` : ''}
     ${keptOn(b.ri) && !off ? html`<div class="hours">${icon('info', 15)}<span>Its times are from an old timetable (${keptDay(b.ri)}), so we can't tell if this bus is early or on time.</span></div>` : ''}
     ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may not be here any more' : b.free ? 'its last run was ' + routeName(b.ri) + '. Don’t wait for this one' : 'its last run is over. Don’t wait for this one'}.</span></div>` : ''}${alsoHere(b.id)}</div>
@@ -3785,11 +3787,6 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   // The search's list is the Map tab's, not the page's beside it; but not put away under the rider typing in the box
   // over a phone's stop (the minute and the feed redraw with the focus in it: main.js).
   if (app.route.name !== 'map' && !(tick && document.activeElement === col.querySelector('#mapsearch input'))) col.querySelector('#mapresults').classList.add('hidden');
-  // Back from a bus's page opened from the search (a tag's tap, above): its results again. Gone on to anywhere else,
-  // the search is over.
-  const kept = col.querySelector('#mapresults'), keptBox = col.querySelector('#mapsearch input');
-  if (kept.dataset.keep && app.route.name === 'map') { delete kept.dataset.keep; if (keptBox.value.trim()) kept.classList.remove('hidden'); }
-  else if (kept.dataset.keep && app.route.name !== 'bus') { delete kept.dataset.keep; keptBox.value = ''; }
   notice(clockNow);
   pickFor = from || goPick && goPick.for || null; pickTo = to || goPick && goPick.to || null; pickNow = !!goPick;
   pickMe = !!me; if (me && !tick) askMe();
