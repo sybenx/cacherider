@@ -142,6 +142,12 @@ export function nthWords(ri, x) {
   const k = familyKey(ri), code = named(ri) ? '' : /^\d+$/.test(k) ? `${k}(${x.n})` : k + x.n;
   return `Bus ${x.n} of ${x.of}` + (code ? ' · ' + code : '');
 }
+/** One of a route's buses by name, as the user and Connect's dispatch say it: 'Blue 2', '15(2)', '16(1)'; a route
+ *  called by a name, 'Pumpkin Walk bus 2'. */
+export function busName(ri, n) {
+  const k = familyKey(ri);
+  return /^\d+$/.test(k) ? `${k}(${n})` : isLoop(ri) ? D.routes[ri].long.replace(/ Loop$/, '') + ' ' + n : nameOf(ri) + ' bus ' + n;
+}
 /** Several: 'Routes 2, 3 and 5', 'Route 12 and the Blue Loop', 'the Blue and Green Loops'. A family once: 'Route 16'. */
 export function routeNames(ris) {
   const nums = [...new Set(oneEach(ris.filter(ri => !isLoop(ri) && !named(ri))))].sort((a, b) => parseInt(D.routes[a].short) - parseInt(D.routes[b].short) || D.routes[a].short.localeCompare(D.routes[b].short)).map(familyKey);

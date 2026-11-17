@@ -13,6 +13,7 @@ import * as testView from './views/test.js';
 import * as ustop from './views/ustop.js';
 import * as uroute from './views/uroute.js';
 import * as routesView from './views/routes.js';
+import * as busplan from './views/busplan.js';
 import * as go from './views/go.js';
 import * as pumpkin from './views/pumpkin.js';
 import { loadUSU, setWanted, onLive, U } from './usu.js';
@@ -266,6 +267,7 @@ export async function render(tick = false) {
     else if (name === 'about') view = about.render({ section: seg[1] }, clockNow);
     else if (name === 'test') view = testView.render();
     else if (name === 'routes') view = routesView.render({}, clockNow);
+    else if (name === 'bus') view = busplan.render({ key: dec(seg[1] || ''), n: +seg[2] || 0 }, clockNow);
     else if (name === 'pumpkin') view = pumpkin.render({}, clockNow);
     else if (name === 'usu' && seg[1] === 'route') view = uroute.render({ id: seg[2] }, clockNow);
     else if (name === 'usu') view = ustop.render({ id: seg[1] }, clockNow);

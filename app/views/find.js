@@ -2,13 +2,14 @@
 // its route's it is, B2), the same wherever it's asked
 // (the Stops tab's page, the Map tab's box, the header's box on a wide screen). Only where a result leads differs:
 // on the map it shows there (forMap), and while one end of a journey is being chosen it's that end (forPick).
-import { D, stopNo as stopNoOf, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets, opOf, roadOf, familyKey, familyOf, family, isHalf, corridorKey, dayPart, nextRunOf, routeBuses, routeRunsOn } from '../data.js';
+import { D, stopNo as stopNoOf, nextAt, search, searchRoutes, nearest, stop, searchPlaces, streetish, townish, sayStreets, opOf, roadOf, familyKey, familyOf, family, isHalf, corridorKey, dayPart, nextRunOf, routeBuses, routeRunsOn, busBlock } from '../data.js';
 import { metres, clockText, now, dayName } from '../time.js';
-import { routeName, html, icon, badge, badges, stopRow, esc, headsign, routeList, routeHref, isLoop, named, nthWords } from '../ui.js';
+import { routeName, html, icon, badge, badges, stopRow, esc, headsign, routeList, routeHref, isLoop, named, busName } from '../ui.js';
 import { parseAddress, geocode, townState, spotKey, spotOf, atPath, byWalk } from '../geo.js';
 import { U, searchUSU, stopRowU, chip, live, hasData, nearestUSU, isStale, lastSeen } from '../usu.js';
-import { rt, rtStale, rtHasData, rtSeen, offDuty, busNth } from '../rt.js';
+import { rt, rtStale, rtHasData, rtSeen, offDuty } from '../rt.js';
 import { myPlaces } from '../places.js';
+import { liveBus, busAt, blockHours } from './busplan.js';
 
 /** One end of a journey being asked for: `to`, a stop or spot being gone to (a result is the start), or `from`, a spot
  *  being set off from (a result is where to); each with its name. Null for a plain search. */
@@ -74,7 +75,7 @@ function resultsOf(q, clockNow, pick, later) {
   if (bus.guess && (hits.length || places.length || campusHtml || spots.length || ris.length)) bus = { html: '' };   // a number guessed a bus's, and found as something else: that alone
   const routeSub = ri => opOf(ri) && roadOf(ri) !== null ? runWords(ri, clockNow, ris.some(x => x !== ri && corridorKey(x) === corridorKey(ri)))
     : [half(ri) === ri && dayPart(ri) ? dayPart(ri).replace(/^./, c => c.toUpperCase()) + ' runs' : '', D.routes[ri].desc.replace(/^.*? - /, '').replace(/,\s*/g, ' · ')].filter(Boolean).join(' · ');
-  let routeHtml = ris.length ? html`<div class="list">${ris.map(ri => html`<a class="row" href="${half(ri) === ri ? '#/map/route/' + encodeURIComponent(D.routes[ri].short) : routeHref(ri)}">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span><span class="sub">${routeSub(ri)}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`)}</div>`.s : '';
+  let routeHtml = ris.length ? html`<div class="list">${ris.map(ri => html`<a class="row${busTags(ri, clockNow) ? ' hastags' : ''}" href="${half(ri) === ri ? '#/map/route/' + encodeURIComponent(D.routes[ri].short) : routeHref(ri)}">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span><span class="sub">${routeSub(ri)}</span></div><span class="muted">${icon('fwd', 20)}</span></a>${busTags(ri, clockNow)}`)}</div>`.s : '';
   // A bus asked for by its number: it first, as a route asked for is; buses its first figures start, after the stops.
   if (bus.first) routeHtml = bus.html + routeHtml;
   const busAfter = bus.first ? '' : bus.html;
@@ -192,10 +193,20 @@ function nthRows(q, clockNow) {
   const Who = who.replace(/^./, c => c.toUpperCase()), whose = Who + "'s";
   if (!of) return say(D.routes.some((r, ri) => familyKey(ri) === a.key && routeRunsOn(ri, clockNow.ymd)) ? `${Who} runs one bus today.` : `No ${who.replace(/^the /, '')} buses today.`);
   if (a.n > of || a.n < 1) return say(`${Who} runs ${of} buses today.`);
-  const hits = rtStale() ? [] : rt.buses.filter(b => familyKey(b.ri) === a.key && (busNth(b, clockNow) || {}).n === a.n);
-  if (!hits.length) return say(!rtHasData() ? 'Finding buses…' : rtStale() ? `No word from the buses since ${rtSeen()}: ${whose} bus ${a.n} of ${of} can't be found now.` : `${whose} bus ${a.n} of ${of} isn't on the map now.`);
-  const row = b => html`<a class="row busfound" href="#/map/bus/${encodeURIComponent(b.id)}?find=1">${badge(b.ri, 36)}<div class="mid"><span class="name">${nthWords(b.ri, busNth(b, clockNow))}</span><span class="sub">Bus ${b.label} · ${whither(b)}</span></div><span class="muted">${icon('fwd', 20)}</span></a>`;
-  return { html: html`<div class="list">${hits.map(row)}</div>`.s, first: true };
+  // The bus by its name, a tap its whole day (views/busplan.js): where it is now under it when it's on the map, its
+  // hours when it isn't (before its day, after it, the feed quiet). The user: 'if i specifically type b2 ... show b2'.
+  const b = liveBus(a.key, a.n, clockNow), block = busBlock(a.key, a.n, clockNow.ymd), h = block ? blockHours(block) : null;
+  const sub = b ? `Bus ${b.label}${busAt(b) ? ' · ' + busAt(b) : ''}` : [routeName(a.ri, false), h ? clockText(h[0]) + ' to ' + clockText(h[1]) : ''].filter(Boolean).join(' · ');
+  return { html: html`<div class="list"><a class="row busfound" href="#/bus/${encodeURIComponent(a.key)}/${a.n}">${badge(a.ri, 36)}<div class="mid"><span class="name">${busName(a.ri, a.n)}</span><span class="sub">${sub}</span></div><span class="muted">${icon('fwd', 20)}</span></a></div>`.s, first: true };
+}
+/** A route's buses today by name, small under its row ('Blue 1', 'Blue 2', 'Blue 3'), each a link to its whole day
+ *  (views/busplan.js). The user, who'd use them: 'it risks confusing people who accidentally tap it though'. So a
+ *  line of their own under the row, outside its link and a gap from it and from the next result, the row still the
+ *  big tap for the route; and the bus's page names its route at the top, a tap back to it. Nothing for a route with
+ *  one bus. */
+function busTags(ri, clockNow) {
+  const of = opOf(ri) ? 0 : routeBuses(familyKey(ri), clockNow.ymd);
+  return of ? html`<div class="bustags">${Array.from({ length: of }, (_, k) => html`<a href="#/bus/${encodeURIComponent(familyKey(ri))}/${k + 1}"><i>${busName(ri, k + 1)}</i></a>`)}</div>` : '';
 }
 
 /** The Transit Center as one row in a search, for its bays' one address: the Transit Center tab, every route. */

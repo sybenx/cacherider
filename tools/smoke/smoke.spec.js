@@ -190,6 +190,33 @@ test('a stop\'s row says where its bus is while it\'s still out as the route it 
   expect(n).toBeLessThanOrEqual(pick.ahead + 1);
 });
 
+test('a Saturday route whose bus is another route\'s too says so at the top and the foot of its line, from the timetable alone', async ({ page }) => {
+  // The user: 'saturday should uniquely show 2 becoming 5 at the top and bottom of the route page'. No bus out (the
+  // feed refused): the timetable's blocks say it. A weekday's route, its bus its own all day, says neither.
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => r.abort());
+  const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); sat.setHours(12, 0, 0, 0);
+  await page.clock.setFixedTime(sat);
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), u = await import('/app/ui.js'), t = await import('/app/time.js'), c = t.now();
+    for (const [ri, r] of d.D.routes.entries()) { const sw = d.swapsOn(ri, c.ymd); if (sw.to !== null && sw.from !== null) return { short: r.short, to: u.routeName(sw.to), from: u.routeName(sw.from), href: u.routeHref(sw.to) }; }
+    return null;
+  });
+  test.skip(!pick, 'no bus swaps routes that Saturday');
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  const swaps = page.locator('a.rs-swap').filter({ visible: true });
+  await expect(swaps).toHaveCount(2);
+  await expect(swaps.first()).toContainText('comes in to the Transit Center as ' + pick.from);
+  await expect(swaps.last()).toContainText('it leaves as ' + pick.to);
+  await expect(swaps.last()).toHaveAttribute('href', pick.href);
+  const mon = new Date(sat); mon.setDate(mon.getDate() + 2);
+  await page.clock.setFixedTime(mon);
+  await page.reload();
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  await expect(page.locator('.rs-list').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('a.rs-swap')).toHaveCount(0);
+});
+
 test('a route\'s page never says to stay on a bus that goes out of service for hours, as 16 AM\'s last run before 16 PM', async ({ page }) => {
   // The user: 'i noticed there's an option to "stay on bus 16 from the am and it will become the pm bus. this is
   // nonsense. there's hours gaps between. and the bus goes out of service'. Staged: a bus partway through a 16 AM run
@@ -684,21 +711,21 @@ test('search: a bus by its number, its card on the map, Back; an address with th
   await expect(page).toHaveURL(phone(info) ? /#\/map$/ : new RegExp('#/search\\?q=' + label + '$'));   // back to the map, or to the search
 });
 
-test('which of its route\'s buses a bus is: on its card (Bus 2 of 3 · B2), and found by it in the search (B2, Blue two, 12(1))', async ({ page }, info) => {
+test('which of its route\'s buses a bus is: on its card (Blue 2), found by it in the search (B2, Blue two, 12(1)), and its whole day', async ({ page }, info) => {
   // The relay's answer made up: a loop's second bus and a numbered route's first, each on a trip of its block today
   // with one after it (on duty, whatever the hour), and a bus on a trip the timetable doesn't know (no number).
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
   await open(page, '#/');
   const p = await page.evaluate(async () => {
-    const { D, servicesOn, tripStops, nextTrip } = await import('/app/data.js');
+    const { D, servicesOn, tripStops, nextTrip, blockOf } = await import('/app/data.js');
     const { now } = await import('/app/time.js');
     const ymd = now().ymd, out = {};
     for (const sv of servicesOn(ymd)) for (const [key, bl] of Object.entries(D.buses[sv] || {})) {
       const ri = D.routes.findIndex(r => r.short.replace(/\s+(AM|PM)$/i, '') === key), want = /^\d+$/.test(key) ? 0 : 1;
       if (ri < 0 || D.routes[ri].op || key.length > 2 || out[/^\d+$/.test(key) ? 'num' : 'loop']) continue;
       const ti = bl[want].find(t => nextTrip(t, ymd) !== undefined), si = tripStops(ti)[1][1];
-      out[/^\d+$/.test(key) ? 'num' : 'loop'] = { key, n: want + 1, of: bl.length, trip: D.trips[ti], lat: D.stops[si].lat, lon: D.stops[si].lon, spoken: D.routes[ri].long.replace(/ Loop$/, '') };
+      out[/^\d+$/.test(key) ? 'num' : 'loop'] = { key, n: want + 1, of: bl.length, trip: D.trips[ti], lat: D.stops[si].lat, lon: D.stops[si].lon, spoken: D.routes[ri].long.replace(/ Loop$/, ''), runs: blockOf(ti, ymd).length };
     }
     return out;
   });
@@ -706,42 +733,72 @@ test('which of its route\'s buses a bus is: on its card (Bus 2 of 3 · B2), and 
   const t = Math.floor(Date.now() / 1000), bus = (label, x, dlat = 0) => ({ id: label, label, trip: x.trip, lat: x.lat + dlat, lon: x.lon, bearing: 90, speed: 5, ts: t - 2 });
   const short = await page.evaluate(async () => (await import('/app/data.js')).D.routes.map(r => r.short).find(s => /^\d{1,2}$/.test(s)));
   feed = { t, trips: {}, buses: [bus('9101', p.loop), ...(p.num ? [bus('9102', p.num)] : []), bus('9103', { ...p.loop, trip: short + '_9999' }, 0.004)] };
-  const loopLabel = `Bus 2 of ${p.loop.of} · ${p.loop.key}2`;
   // Its card: the vehicle's number above, which of its route's buses it is under the route's name.
   await go(page, '#/map');
   await mapReady(page);
   await go(page, '#/map/bus/c%3A9101');
   const card = page.locator('#mapcard.open').filter({ visible: true });
   await expect(card.locator('.eyebrow').first()).toContainText('Bus 9101');
-  await expect(card.locator('.who .nth')).toHaveText(loopLabel);
-  if (p.num) { await go(page, '#/map/bus/c%3A9102'); await expect(card.locator('.who .nth')).toHaveText(`Bus 1 of ${p.num.of} · ${p.num.key}(1)`); }
+  await expect(card.locator('.who .nth')).toHaveText(p.loop.spoken + ' 2 · its day');
+  if (p.num) { await go(page, '#/map/bus/c%3A9102'); await expect(card.locator('.who .nth')).toHaveText(`${p.num.key}(1) · its day`); }
   await go(page, '#/map/bus/c%3A9103');
   await expect(card.locator('.eyebrow').first()).toContainText('Bus 9103');
   await expect(card.locator('.who .nth')).toHaveCount(0);   // a trip the timetable doesn't know: no number
   // Not on its ring: there 'B2' would read as a route of that name.
   expect(await page.locator('.maplibregl-marker.bus[title*="bus 9101"]').textContent()).not.toMatch(/2 of|\(\d\)|[A-Z]\d/);
-  // The search: as dispatch writes it and says it, first in the results; a bare number still the route.
+  // The search: as dispatch writes it and says it, first in the results, the bus by its name ('Blue 2', '12(1)') and
+  // where it is; a bare number still the route.
   await go(page, phone(info) ? '#/map' : '#/');
   const box = page.locator(phone(info) ? '#mapsearch input' : '#topsearch input');
   const first = page.locator(phone(info) ? '#mapresults a.row, #mapresults a.stoprow, #mapresults .notice' : '#side a.row, #side a.stoprow, #side .notice').first();
+  const results = page.locator(phone(info) ? '#mapresults' : '#side');
+  const loopName = p.loop.spoken + ' 2';
   for (const q of [p.loop.key + '2', p.loop.key.toLowerCase() + ' 2', p.loop.key + '-2', 'bus ' + p.loop.key + '2', p.loop.spoken + ' two', p.loop.spoken + ' Loop 2']) {
     await box.fill(q);
     await expect(first, q).toHaveClass(/busfound/);
-    await expect(first, q).toContainText(loopLabel);
+    await expect(first.locator('.name'), q).toHaveText(loopName);
     await expect(first, q).toContainText('Bus 9101');
   }
   await box.fill(p.loop.key + (p.loop.of + 1));
   await expect(first).toContainText(`runs ${p.loop.of} buses today`);
   if (p.num) {
-    for (const q of [p.num.key + '(1)', p.num.key + ' (1)']) { await box.fill(q); await expect(first, q).toContainText('Bus 9102'); }
+    for (const q of [p.num.key + '(1)', p.num.key + ' (1)']) { await box.fill(q); await expect(first, q).toContainText('Bus 9102'); await expect(first.locator('.name'), q).toHaveText(p.num.key + '(1)'); }
     await box.fill(p.num.key);
     await expect(first).toHaveAttribute('href', '#/map/route/' + p.num.key);
+    await expect(results.locator('.bustags a').first()).toHaveText(p.num.key + '(1)');   // its buses, small under the route
   }
+  // The route by its name: the route alone, its buses tiny under it, none a result of its own.
+  await box.fill(p.loop.spoken);
+  await expect(first).not.toHaveClass(/busfound/);
+  const tags = results.locator('.bustags a');
+  await expect(tags).toHaveText(Array.from({ length: p.loop.of }, (_, k) => p.loop.spoken + ' ' + (k + 1)));
+  // Each a link to its bus, thumb-size and outside the route's row; Back from a tap is the search as it was typed.
+  expect((await tags.nth(1).boundingBox()).height).toBeGreaterThanOrEqual(36);
+  await tags.nth(1).click();
+  await expect(page).toHaveURL(new RegExp('#/bus/' + p.loop.key + '/2$'));
+  await expect(page.locator('a.plan-route').filter({ visible: true })).toHaveAttribute('href', '#/map/route/' + p.loop.key);
+  await page.goBack();
+  await expect(box).toHaveValue(p.loop.spoken);
+  await expect(tags).toHaveCount(p.loop.of);
+  // A tap on the bus: its whole day, every run of its block, the one it's on marked, its bus a link to the map.
   await box.fill(p.loop.key + '2');
   await expect(first).toHaveClass(/busfound/);
   await first.click();
-  await expect(page).toHaveURL(/#\/map\/bus\/c%3A9101\?find=1$/);
-  await expect(card.locator('.who .nth')).toHaveText(loopLabel);
+  await expect(page).toHaveURL(new RegExp('#/bus/' + p.loop.key + '/2$'));
+  const plan = page.locator('.planlist').filter({ visible: true });
+  await expect(page.locator('.planhead .name').filter({ visible: true })).toHaveText(loopName);
+  expect(await plan.locator('.planrow').count()).toBe(p.loop.runs);
+  await expect(plan.locator('.planrow.on')).toHaveCount(1);
+  await expect(page.locator('a.plan-live:not(.plan-route)').filter({ visible: true })).toContainText('Bus 9101');
+  // Its route's page lists its buses, each a way to its day; the bus's card on the map has the same way in.
+  await go(page, '#/map/route/' + p.loop.key);
+  const listed = page.locator('.rs-buses a.row').filter({ visible: true });
+  await expect(listed).toHaveCount(p.loop.of);
+  await expect(listed.nth(1)).toHaveAttribute('href', '#/bus/' + p.loop.key + '/2');
+  await expect(listed.nth(1)).toContainText('Bus 9101');
+  await go(page, '#/map/bus/c%3A9101');
+  await card.locator('.who a.nth').click();
+  await expect(page).toHaveURL(new RegExp('#/bus/' + p.loop.key + '/2$'));
 });
 
 test('one clock rule: due from its minute\'s start, gone from the next', async ({ page }) => {
@@ -2029,7 +2086,7 @@ test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time
       const rows = d.timesOn(si, c.ymd).filter(x => x.r === ri);
       if (rows.length < 4 || !rows.some(x => d.busOf(x.trip, c.ymd))) continue;
       const all = d.timesOn(si, c.ymd).map(x => x.min);
-      return { id: s.id, first: Math.floor(Math.min(...all) / 60), letter: d.D.routes[ri].short };
+      return { id: s.id, first: Math.floor(Math.min(...all) / 60), letter: d.D.routes[ri].short, spoken: d.D.routes[ri].long.replace(/ Loop$/, '') };
     }
     return null;
   });
@@ -2043,7 +2100,7 @@ test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time
   await expect(page.getByRole('link', { name: 'The whole day' })).toHaveCount(0);
   await day.locator('button.hr-dep', { has: page.locator('.badge', { hasText: new RegExp('^' + pick.letter + '$') }) }).first().click();
   await expect(page).toHaveURL(/\?run=/);
-  await expect(page.locator('#runsheet .rs-bus').filter({ visible: true })).toHaveText(new RegExp('^Bus \\d of \\d · ' + pick.letter + '\\d'));
+  await expect(page.locator('#runsheet .rs-bus').filter({ visible: true })).toHaveText(new RegExp('^' + pick.spoken + ' \\d'));
 });
 
 test('stop: a run opens on the Transit Center it left and ends at the Transit Center it gets in to', async ({ page }) => {

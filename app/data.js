@@ -678,6 +678,36 @@ export function runOf(ti, ymd) {
   for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 12 && linked(run[run.length - 1], n); n = nextTrip(n, ymd)) run.push(n);
   return run;
 }
+/** A bus's whole day (the user's block: 'the bus's entire day plan'): every trip of the timetable's block a trip is
+ *  in, first to last, whatever routes it runs and however long it sits between (16's morning runs, then its
+ *  afternoon ones). */
+export function blockOf(ti, ymd) {
+  const run = [ti];
+  for (let p = prevTrip(ti, ymd); p !== undefined && run.length < 120; p = prevTrip(p, ymd)) run.unshift(p);
+  for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 120; n = nextTrip(n, ymd)) run.push(n);
+  return run;
+}
+/** The whole day of one of a route's buses that day (its family's key and which of its buses, from 1: busOf's): its
+ *  trips as blockOf; null where the route doesn't run that many. */
+export function busBlock(key, n, ymd) {
+  for (const sv of servicesOn(ymd)) { const bl = D.buses && D.buses[sv] && D.buses[sv][key]; if (bl && bl[n - 1] && bl[n - 1].length) return blockOf(bl[n - 1][0], ymd); }
+  return null;
+}
+/** The route a route's buses become that day, and the one they come in as: a Saturday's 2 leaves the Transit Center as
+ *  the 5 every run, and comes in as it. { to, from }, each a route or null: only where every run of it that carries on
+ *  (staysOn) carries on as the one other route, never as itself. */
+export function swapsOn(ri, ymd) {
+  const to = new Set(), from = new Set(), fam = familyKey(ri);
+  let own = false;
+  for (const sv of servicesOn(ymd)) for (const [a, b] of Object.entries((D.next && D.next[sv]) || {})) {
+    const ra = tripRoute(+a), rb = tripRoute(b);
+    if (!ra || !rb || (ra.r !== ri && rb.r !== ri) || !staysOn(+a, b)) continue;
+    if (familyKey(ra.r) === fam && familyKey(rb.r) === fam) own = true;
+    else if (ra.r === ri) to.add(rb.r); else from.add(ra.r);
+  }
+  const one = x => !own && x.size === 1 ? [...x][0] : null;
+  return { to: one(to), from: one(from) };
+}
 /** Whether every trip of a route's way carries on from one of its other way's, by the timetable's blocks: the way back
  *  of an out-and-back, the same bus come round (15's from Richmond; the Preston commuter's from the Transit Center, its
  *  bus Preston's). False where a run starts on the way. */

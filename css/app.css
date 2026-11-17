@@ -620,6 +620,7 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .buscard .who .mid { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
 .buscard .who .name { font-family: var(--font-heading); font-weight: 600; font-size: 1.75rem; line-height: 1.05; }
 .buscard .who .nth { font-size: 0.8438rem; color: var(--cr-muted); }
+.buscard .who a.nth { text-decoration: underline; text-underline-offset: 2px; }
 .buscard .load { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; color: var(--cr-muted); }
 .nextstops { border-top: 1px solid var(--cr-line); padding: 6px 0 10px; position: relative; }
 .nextstops .line { position: absolute; left: 24px; top: 28px; bottom: 32px; width: 2px; }
@@ -1600,3 +1601,24 @@ a.side:active { background: var(--cr-hover); }
 /* the way on the ground, however the map is turned */
 .sidelabel .arr { display: inline-block; font-size: 1rem; line-height: 1; transform: rotate(calc(var(--way, 0deg) - var(--map-bearing, 0deg))); }
 #map.sides-far .sidemark { display: none; }
+
+/* A bus's whole day (views/busplan.js): its runs as rows, those done muted, the one it's on marked; where it is now a
+   line under its name, a link to it on the map. And a route's buses by name: tiny under its row in a search, a list on
+   its page. */
+.plan-live { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--color-text); text-decoration: none; }
+.plan-live span { flex: 1; min-width: 0; }
+.plan-live svg, .plan-live.quiet { color: var(--cr-muted); }
+.planrow.gone { color: var(--cr-muted); }
+.planrow.gone .badge { opacity: .45; }
+.planrow.on { box-shadow: inset 3px 0 0 var(--color-accent); }
+.planrow.on .sub { color: var(--color-text); }
+.row.hastags { border-bottom: 0; min-height: 0; padding-bottom: 4px; }
+.bustags { display: flex; flex-wrap: wrap; gap: 0 6px; padding: 0 16px 6px 60px; border-bottom: 1px solid var(--cr-line); }
+.bustags a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 4px; text-decoration: none; }
+.bustags i { font-style: normal; font-size: 0.75rem; line-height: 1; padding: 5px 8px; border: 1px solid var(--cr-line); border-radius: 6px; color: var(--cr-muted); }
+.bustags a:hover i { background: var(--cr-hover); color: var(--color-text); }
+.rs-buses .row .end { font-size: 0.8125rem; color: var(--cr-muted); }
+.rs-swap { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 0.875rem; color: var(--color-text); text-decoration: none; }
+.rs-swap span { flex: 1; min-width: 0; }
+.rs-swap svg { color: var(--cr-muted); }
+.rs-swap .badge { flex: none; }

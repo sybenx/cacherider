@@ -3,7 +3,7 @@
 import { D, stop, tripStops, tripEnd, timesOn, nextTrip, prevTrip, tripRoute, closedRoutes, onRequest, timed, busOf, keptOn } from '../data.js';
 import { rt, busNth, callAt } from '../rt.js';
 import { clock, clockText, clockShort, fmtDay, isGone, now } from '../time.js';
-import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark, routeName, nthWords } from '../ui.js';
+import { html, raw, esc, badge, lively, headsign, isLoop, icon, heard, heardName, timedMark, routeName, busName } from '../ui.js';
 import { isWide } from '../wide.js';
 
 // The run last laid out, for its map.
@@ -17,7 +17,7 @@ function whichBus(t, ymd) {
   const x = t.trip !== undefined ? busOf(t.trip, ymd) : null;
   if (!x) return '';
   const c = now(), v = ymd === c.ymd && !t.gone && !isGone(t, c) ? rt.buses.find(b => { const y = busNth(b); return y && y.key === x.key && y.n === x.n; }) : null;
-  return `<span class="muted rs-bus">${esc(nthWords(t.r, x))}${v ? ' · bus ' + esc(v.label) : ''}</span>`;
+  return `<span class="muted rs-bus">${esc(busName(t.r, x.n))}${v ? ' · bus ' + esc(v.label) : ''}</span>`;
 }
 /** A trip's stops with its last, where it lets off, which the departures leave out. */
 function wholeTrip(ti) {
