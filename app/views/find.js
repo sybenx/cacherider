@@ -128,7 +128,7 @@ function busRows(q) {
   if (!hits.length) {
     const fleet = all.some(b => num(b).length === 4 && num(b).slice(0, 2) === n.slice(0, 2)) && !stopNo;
     if (n.length !== 4 || !(m[1] || fleet)) return { html: '' };
-    const say = !rtHasData() ? `Finding buses…` : rtStale() ? `No word from the buses since ${rtSeen()}: bus ${n} can't be found now.` : `Bus ${n} isn't on the map now.`;
+    const say = !rtHasData() ? `Finding buses…` : rtStale() ? `No live buses since ${rtSeen()}, so bus ${n} can't be found now.` : `Bus ${n} isn't on the map now.`;
     return { html: html`<div class="notice">${icon('info', 16)}<span>${say}</span></div>`.s, first: true, guess: !m[1] };
   }
   hits.sort((a, b) => !!a.u - !!b.u || num(a).localeCompare(num(b)));

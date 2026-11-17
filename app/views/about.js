@@ -15,7 +15,7 @@ export function render({ section }, clockNow) {
     <div class="pad" style="font-size:1rem;line-height:1.5">
       <p>A schedule app for ${D.agency.brand}, the ${D.agency.name} bus. Made by a rider, not by the agency.</p>
       <a class="btn btn-secondary" href="${feedbackHref()}">${icon('mail', 20)}Send feedback</a>
-      <p class="muted" style="font-size:0.8125rem;margin-top:8px">A wrong time, a stop that isn't where the map says, an idea: it goes to the person who makes this, not to ${D.agency.brand}.</p>
+      <p class="muted" style="font-size:0.8125rem;margin-top:8px">Found a wrong time or a stop in the wrong place? Feedback goes to the person who makes this app, not to ${D.agency.brand}.</p>
     </div>
     <div class="section">${icon('sliders', 16)}Settings</div>
     <div class="setrows">

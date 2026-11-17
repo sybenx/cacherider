@@ -342,7 +342,7 @@ function hubLine(clockNow) {
  *  to be had by typing 'routes'; a wide screen has them as chips. */
 function routesLine() {
   const dots = D.routes.filter(r => !/\s(AM|PM)$/.test(r.short) || /\sAM$/.test(r.short)).slice(0, 9).map(r => html`<i style="background:#${esc(r.color)}"></i>`);
-  return html`<a class="land-hub land-usu" href="#/routes"><span class="udots" aria-hidden="true">${dots}</span><span class="col"><span>Routes</span><span class="sub">Where each goes, its stops and times</span></span>${icon('fwd', 18)}</a>`;
+  return html`<a class="land-hub land-usu" href="#/routes"><span class="udots" aria-hidden="true">${dots}</span><span class="col"><span>Routes</span><span class="sub">Stops and times for every route</span></span>${icon('fwd', 18)}</a>`;
 }
 /** The Aggie Shuttle as a line under the Center's, so a rider knows it's here too: its loops' colours, and whether
  *  it's running. To the map, on campus with its loops drawn. */

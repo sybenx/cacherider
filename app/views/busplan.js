@@ -55,7 +55,7 @@ export function render({ key, n }, clockNow) {
     rows.push(html`<div class="row planrow${gone ? ' gone' : ''}${on ? ' on' : ''}">${badge(x.r, 28)}<div class="mid"><span class="name">${x.to && x.to.toLowerCase() !== routeName(x.r, false).toLowerCase() ? x.to : routeName(x.r, false)}</span><span class="sub">${on ? 'On this run · ' : ''}from ${where} · till ${clockText(x.end)}</span></div><div class="end">${time(x.from[0], 22)}</div></div>`);
   });
   return {
-    html: html`${back}<div class="head planhead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${name}</span><span class="sub">${routeName(ri, false)} · bus ${n} of ${of} today · ${clockText(hours[0])} to ${clockText(hours[1])}</span></div></div>${state}<a class="plan-live plan-route" href="${routeHref(ri)}">${icon('route', 16)}<span>One of ${routeName(ri)}'s buses · open the route</span>${icon('fwd', 16)}</a></div>
+    html: html`${back}<div class="head planhead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${name}</span><span class="sub">${routeName(ri, false)} · bus ${n} of ${of} today · ${clockText(hours[0])} to ${clockText(hours[1])}</span></div></div>${state}<a class="plan-live plan-route" href="${routeHref(ri)}">${icon('route', 16)}<span>Open ${routeName(ri)}</span>${icon('fwd', 16)}</a></div>
       <div class="list planlist">${rows}</div>
       <div class="endservice"><span>In at ${clockText(hours[1])}</span></div>`,
     title: name, live: true, keepScroll: true,

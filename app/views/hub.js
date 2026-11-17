@@ -461,10 +461,10 @@ function picked(s, clockNow) {
     : s.off ? (dep.day === 0 ? `${s.op ? '' : 'No bus out yet. '}The next leaves at ${clockText(dep.min)}.` : `No more buses today. The next leaves ${dayName(dep.ymd)} at ${clockText(dep.min)}.`)   // another operator's: where its bus is, nobody here knows
     : s.eta === 0 ? (s.loop ? 'The bus is here.' : 'The bus is at its bay.')
     : s.eta > 0 ? `The bus is ${s.eta} min from the Transit Center${s.loop ? '.' : s.late ? `, ${s.late} min late.` : ', on time.'}`
-    : s.doubt ? 'The bus is out, but Connect’s estimate for it doesn’t match where it is, so there’s none here.'
+    : s.doubt ? 'The bus is out, but Connect’s estimate doesn’t match where it is, so none is shown.'
     : s.loose ? 'The bus is out but off its scheduled trips, so there’s no estimate for it.'
     : s.away ? 'The bus is out on a run that doesn’t come back through here soon.'
-    : s.op ? `${opOf(s.ris[0]).name}’s bus: no live times for it, so these are its timetable’s.`
+    : s.op ? `${opOf(s.ris[0]).name}’s bus has no live times, so these are scheduled.`
     : 'This route isn’t reporting its position.';
   // Late, said first and large, under its name: 'is my bus on time, and if not when' is what a rider picks it for.
   // It was the end of a muted sentence ('…from the Transit Center, 11 min late.'), and 'late' under the first time.
@@ -515,7 +515,7 @@ function footnote(st) {
   const name = s => nameOfKey(s.k, s.ris[0]);
   const list = (xs, one, many) => xs.length ? ' ' + (xs.length === 1 ? xs[0] + one : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1] + many) : '';
   const live = Object.values(st).filter(s => !s.off && s.eta === null && !s.op);   // another operator's never reports here
-  const doubt = list(live.filter(s => s.doubt).map(name), ' is out, but Connect’s estimate for it doesn’t match where it is, so it has none here.', ' are out, but Connect’s estimates for them don’t match where they are, so they have none here.');
+  const doubt = list(live.filter(s => s.doubt).map(name), ' is out, but Connect’s estimate doesn’t match where it is, so none is shown.', ' are out, but Connect’s estimates don’t match where they are, so none are shown.');
   const loose = list(live.filter(s => s.loose && !s.doubt).map(name), ' is out but off its scheduled trips, so it has no estimate.', ' are out but off their scheduled trips, so they have no estimates.');
   const quiet = list(live.filter(s => !s.out).map(name), ' isn’t reporting.', ' aren’t reporting.');
   return html`<p class="tc-foot">Bus positions from ${D.agency.brand}’s live feed. A late bus leaves when it’s ready: a crossed-out time is the scheduled one, beside the estimate.${doubt}${loose}${quiet}</p>`;

@@ -2795,7 +2795,7 @@ export function selectPool(id, app) {
   // Its bus stop out of the timetable (tools/pool.py marks it gone each night it's missing, and not once it's back):
   // not served for now, as during construction.
   const shut = s.gone ? html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">Not served right now</b><div class="sub">The bus stop here is out of service right now.</div></div></div>`
-    : poolClosed(s) ? html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">Closed with the bus stop here</b><div class="sub">A notice closes the stop at this spot, and the pickup with it. Book from the nearest open pickup instead.</div></div></div>` : !poolRunning() ? html`<div class="callout">${icon('moon', 20)}<div><b>POOL isn't running right now</b><div class="sub">${POOL.hours}.</div></div></div>` : '';
+    : poolClosed(s) ? html`<div class="callout alert">${icon('ban', 20)}<div><b class="warnmark">Pickup closed</b><div class="sub">The bus stop here is closed, so the pickup is too. Book from the nearest open pickup instead.</div></div></div>` : !poolRunning() ? html`<div class="callout">${icon('moon', 20)}<div><b>POOL isn't running right now</b><div class="sub">${POOL.hours}.</div></div></div>` : '';
   card.innerHTML = html`<div class="grip"></div><div class="head"><span class="eyebrow">POOL pickup · on demand · zero fare</span><div class="name"><span>${s.name}</span></div>${shut}
       <div class="muted">${D.agency.brand}'s on-demand ride around ${POOL.towns.slice(0, 4).join(', ')}: book it and a van comes to this point. Same-day bookings twenty minutes ahead or more.</div>
       <div class="muted">${POOL.hours}.</div></div>
@@ -3338,10 +3338,10 @@ function connectCard(b, app, bare = false) {
   const times = n => n === 1 ? 'once' : n === 2 ? 'twice' : n + ' times';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
-    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<a class="nth" href="#/bus/${encodeURIComponent(nth.key)}/${nth.n}">${busName(b.ri, nth.n)} · its day</a>` : ''}${day.length ? html`<span class="nth">Left ${day.map((e, i) => heardName(e.si).name + (i ? ' ' : ' early ') + times(e.n) + (i ? '' : ' today')).join(', ')}</span>` : ''}</span></div>
+    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<a class="nth" href="#/bus/${encodeURIComponent(nth.key)}/${nth.n}">${busName(b.ri, nth.n)} · today's runs</a>` : ''}${day.length ? html`<span class="nth">Left ${day.map((e, i) => heardName(e.si).name + (i ? ' ' : ' early ') + times(e.n) + (i ? '' : ' today')).join(', ')}</span>` : ''}</span></div>
     ${ahead ? html`<div class="hours">${icon('clock', 15)}<span>Left ${heardName(ahead.si).name} at least ${ahead.by} min early, so it may be early at the stops ahead too.</span></div>` : ''}
     ${keptOn(b.ri) && !off ? html`<div class="hours">${icon('info', 15)}<span>Its times are from an old timetable (${keptDay(b.ri)}), so we can't tell if this bus is early or on time.</span></div>` : ''}
-    ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may have moved on' : b.free ? 'its last run was ' + routeName(b.ri) + '. Not one to wait for' : 'its last run is over. Not one to wait for'}.</span></div>` : ''}${alsoHere(b.id)}</div>
+    ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may not be here any more' : b.free ? 'its last run was ' + routeName(b.ri) + '. Don’t wait for this one' : 'its last run is over. Don’t wait for this one'}.</span></div>` : ''}${alsoHere(b.id)}</div>
     ${next.length ? html`<div class="nextstops"><i class="line" style="background:#${r.color}"></i>${next.map((n, i) => html`<a class="ns${i === 0 ? ' here' : ''}" href="#/stop/${D.stops[n.si].id}"><span class="dot"><i style="${i === 0 ? 'background:#' + r.color : ''}"></i></span><span class="nm">${heard(n.si)}</span><span class="when">${isDue(n, clockNow) ? 'now' : 'in ' + (n.min - clockNow.min) + ' min'}</span></a>`)}</div>` : ''}
     <div class="open"><a class="btn btn-secondary btn-lg btn-block" href="${busRouteHref(b.id)}">Open route</a></div>`;
   card.classList.remove('hidden');
@@ -3632,9 +3632,9 @@ function askSpot(toId, app, dest = false) {
   const card = col.querySelector('#mapcard');
   // Asked where to (a journey from a spot), or where from (to a stop or spot): the same ask, the other way round.
   card.innerHTML = dest ? html`<div class="grip"></div><div class="head"><span class="eyebrow">Directions from ${name}</span><div class="name"><span>Tap where you're going</span></div>
-    <div class="muted">A stop, or any spot: the stops you could walk to it from are the end.</div></div>`
+    <div class="muted">Tap a stop or any spot. The trip ends at a stop within a walk of it.</div></div>`
     : html`<div class="grip"></div><div class="head"><span class="eyebrow">Directions to ${name}</span><div class="name"><span>Tap where you'll start from</span></div>
-    <div class="muted">A stop, or any spot: the stops you could walk to from it are the start.</div></div>`;
+    <div class="muted">Tap a stop or any spot. The trip starts at a stop within a walk of it.</div></div>`;
   card.classList.remove('hidden', 'peek');
   requestAnimationFrame(() => card.classList.add('open'));
 }

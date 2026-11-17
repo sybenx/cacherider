@@ -361,7 +361,7 @@ function noWay(e, to, hubBay, also) {
   { const far = farOf(e, to); if (far) return [far.html]; }
   if (apart > 1000) return [noBus(d, name, apart)];
   const out = also ? [also] : [];
-  out.push(html`<div class="empty"><h2>No way there by bus</h2><p>Nothing in the timetable joins these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
+  out.push(html`<div class="empty"><h2>No way there by bus</h2><p>No bus connects these two in the next week${origin.si === undefined ? ', from the stops within a walk of you' : ''}.</p></div>`);
   if (hubBay && origin.si !== D.hub.bays[0].stop) out.push(html`<div class="chips"><a class="chip" href="#/go/${to}/${hubBay}">Try from the ${D.hub.name}</a></div>`);
   return out;
 }
@@ -406,7 +406,7 @@ function farStarts0(o, e, to) {
     if (rows.length === 3) break;
   }
   if (!rows.length) return null;
-  return { html: farList('No stop within a walk of you', 'The nearest a bus there leaves from:', rows, x => `#/go/${to}/${x.s.id}`, 'away'), ids: rows.map(r => r.x.s.id), side: 'start' };
+  return { html: farList('No stop within a walk of you', 'Closest stops with a bus going there:', rows, x => `#/go/${to}/${x.s.id}`, 'away'), ids: rows.map(r => r.x.s.id), side: 'start' };
 }
 /** A stop's row in either list: its route, where it is, the next way, and how much more runs today. */
 function farList(head, line, rows, href, rel) {
@@ -447,7 +447,7 @@ function farEnds0(e, to, from, at) {
   if (!rows.length) return null;
   // To that stop, from the same start: a stop named, a spot, or (neither) where the phone is.
   const fromPart = from ? '/' + from : at ? '/' + atPath(at) : '';
-  return { html: html`${farList(`No stop within a walk of ${e.name}`, 'The nearest a bus gets you:', rows, x => `#/go/${x.s.id}${fromPart}`, 'from there')}${poolCallout(d)}`, ids: rows.map(r => r.x.s.id), side: 'end' };
+  return { html: html`${farList(`No stop within a walk of ${e.name}`, 'Closest stops a bus can get you to:', rows, x => `#/go/${x.s.id}${fromPart}`, 'from there')}${poolCallout(d)}`, ids: rows.map(r => r.x.s.id), side: 'end' };
 }
 /** The map's side of it: just the two ends, framed, and the page as its card. */
 function noWayJourney(e, to, parts, hubBay, also) {
@@ -735,7 +735,7 @@ function wayBody(w, clockNow) {
   const { found, P } = w;
   if (w.failed) return html`<span class="sub">Tap for the ways there</span>`;
   if (found.walk !== undefined) return html`<span class="tw-none">${found.walk ? `It's a ${walked(found.walk)} walk` : "You're there"}</span><span class="sub">No bus to catch</span>`;
-  if (!P) return html`<span class="tw-none">No way there by bus</span><span class="sub">Nothing in the timetable joins these two in the next week</span>`;
+  if (!P) return html`<span class="tw-none">No way there by bus</span><span class="sub">No bus connects these two in the next week</span>`;
   const note = lastWords(w, clockNow);
   return html`${sumOf(P, clockNow, false, 26)}${note ? html`<span class="sub tw-last">${note}</span>` : ''}`;
 }

@@ -739,8 +739,8 @@ test('which of its route\'s buses a bus is: on its card (Blue 2), found by it in
   await go(page, '#/map/bus/c%3A9101');
   const card = page.locator('#mapcard.open').filter({ visible: true });
   await expect(card.locator('.eyebrow').first()).toContainText('Bus 9101');
-  await expect(card.locator('.who .nth')).toHaveText(p.loop.spoken + ' 2 · its day');
-  if (p.num) { await go(page, '#/map/bus/c%3A9102'); await expect(card.locator('.who .nth')).toHaveText(`${p.num.key}(1) · its day`); }
+  await expect(card.locator('.who .nth')).toHaveText(p.loop.spoken + ' 2 · today\'s runs');
+  if (p.num) { await go(page, '#/map/bus/c%3A9102'); await expect(card.locator('.who .nth')).toHaveText(`${p.num.key}(1) · today's runs`); }
   await go(page, '#/map/bus/c%3A9103');
   await expect(card.locator('.eyebrow').first()).toContainText('Bus 9103');
   await expect(card.locator('.who .nth')).toHaveCount(0);   // a trip the timetable doesn't know: no number

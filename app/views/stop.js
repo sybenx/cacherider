@@ -22,7 +22,7 @@ export function render({ id, full, run, on }, clockNow) {
   // Back to the page before when it's the app's own (each entry knows it, main.js), else home: opened from a search or
   // a link in a chat, the tab's history went on past the app, and Back left it.
   parts.push(html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a>
-    ${shareButton({ url: siteLink('stop/' + s.id), title: s.name, lines: [`Stop ${stopNo(s) || s.id}${s.town && s.town !== 'Logan' ? ' · ' + s.town : ''}`, 'Its next buses, live when they report'] })}
+    ${shareButton({ url: siteLink('stop/' + s.id), title: s.name, lines: [`Stop ${stopNo(s) || s.id}${s.town && s.town !== 'Logan' ? ' · ' + s.town : ''}`, 'Next buses, with live times'] })}
     <button class="btn btn-ghost save" id="save" aria-pressed="${sv ? 'true' : 'false'}" data-id="${s.id}">${icon('star', 22, 1.5, sv ? 'currentColor' : 'none')}${sv ? 'Saved' : 'Save'}</button></div>`);
   // Under the name, in plain words: the landmark the bus announces first, the town where it isn't Logan, and the
   // stop's number (what a rider quotes on the phone). Which side of the road is the two buttons' to say where there's
@@ -106,7 +106,7 @@ export function render({ id, full, run, on }, clockNow) {
     const sid = td.all.find(t => t.prov).prov;
     const from = D.services.find(x => x.id === sid);
     const names = routeNames(prov);
-    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${names} ${prov.length > 1 ? 'are' : 'is'} missing from this week's published timetable</b><div class="sub">Times shown are from the one starting ${from ? fmtDay(from.start) : 'soon'}. The bus is running; check a detour.</div></div></div>`);
+    parts.push(html`<div class="callout">${icon('info', 20)}<div><b>${names} ${prov.length > 1 ? 'are' : 'is'} missing from this week's published timetable</b><div class="sub">Times shown are from the one starting ${from ? fmtDay(from.start) : 'soon'}. The bus is still running. Check for a detour notice.</div></div></div>`);
   }
   if (!next.length) {
     parts.push(allClosed ? html`<div class="empty"><h2>Nothing scheduled</h2><p>Departures return when the detour ends.</p></div>` : html`<div class="empty"><h2>Nothing scheduled</h2><p>No departures from this stop in the next week.</p></div>`);
