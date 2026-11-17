@@ -169,7 +169,7 @@ test('a stop\'s row says where its bus is while it\'s still out as the route it 
       const a = d.D.stops[st[1][1]], b = d.D.stops[st[2][1]];
       if (d.distance(a.lat, a.lon, b.lat, b.lon) < 200) continue;
       return { id: d.D.trips[row.trip], nid: d.D.trips[nx], sn: sn.map(([m, x]) => [m, d.D.stops[x].id]), st: st.map(([m, x]) => [m, d.D.stops[x].id]), stop: mine.id, next: b.name, by: b.by || '', hub: !!b.hub,
-        on: u.routeName(row.r), head: d.bearing(a.lat, a.lon, b.lat, b.lon), mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], at: Date.now() + ((st[2][0] - 1 - c.min) * 60 + 30 - c.sec) * 1000, ahead: st.length - 2 + 5 };
+        on: u.routeName(row.r), short: d.D.routes[row.r].short, head: d.bearing(a.lat, a.lon, b.lat, b.lon), mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], at: Date.now() + ((st[2][0] - 1 - c.min) * 60 + 30 - c.sec) * 1000, ahead: st.length - 2 + 5 };
     }
     return null;
   });
@@ -188,6 +188,10 @@ test('a stop\'s row says where its bus is while it\'s still out as the route it 
   const n = +(await tag.textContent()).match(/(\d+) stops away/)[1];
   expect(n).toBeGreaterThan(pick.ahead - 4);
   expect(n).toBeLessThanOrEqual(pick.ahead + 1);
+  // That bus's whole day has the feed's word on the run it's on: how late it is.
+  await go(page, '#/bus/' + encodeURIComponent(pick.short) + '/1');
+  const on = page.locator('.planlist .planrow.on').filter({ visible: true });
+  await expect(on.locator('.sub')).toContainText('On this run · on time');
 });
 
 test('a Saturday route whose bus is another route\'s too says so at the top and the foot of its line, from the timetable alone', async ({ page }) => {
@@ -199,7 +203,7 @@ test('a Saturday route whose bus is another route\'s too says so at the top and 
   await open(page);
   const pick = await page.evaluate(async () => {
     const d = await import('/app/data.js'), u = await import('/app/ui.js'), t = await import('/app/time.js'), c = t.now();
-    for (const [ri, r] of d.D.routes.entries()) { const sw = d.swapsOn(ri, c.ymd); if (sw.to !== null && sw.from !== null) return { short: r.short, to: u.routeName(sw.to), from: u.routeName(sw.from), href: u.routeHref(sw.to) }; }
+    for (const [ri, r] of d.D.routes.entries()) { const sw = d.swapsOn(ri, c.ymd); if (sw.to !== null && sw.from !== null) { const bl = d.busBlock(d.familyKey(ri), 1, c.ymd), ris = [...new Set(bl.map(ti => d.tripRoute(ti).r))]; return { short: r.short, to: u.routeName(sw.to), from: u.routeName(sw.from), href: u.routeHref(sw.to), both: u.routeNames(ris), runs: bl.length }; } }
     return null;
   });
   test.skip(!pick, 'no bus swaps routes that Saturday');
@@ -209,6 +213,15 @@ test('a Saturday route whose bus is another route\'s too says so at the top and 
   await expect(swaps.first()).toContainText('comes in to the Transit Center as ' + pick.from);
   await expect(swaps.last()).toContainText('it leaves as ' + pick.to);
   await expect(swaps.last()).toHaveAttribute('href', pick.href);
+  // Its one bus, the other route's too, has its whole day: both routes' runs in turn, opened from the route's page.
+  const row = page.locator('.rs-buses a.row').filter({ visible: true });
+  await expect(row).toHaveCount(1);
+  await expect(row).toHaveAttribute('href', '#/bus/' + encodeURIComponent(pick.short) + '/1');
+  await row.click();
+  await expect(page.locator('.planhead .name').filter({ visible: true })).toHaveText(pick.both);
+  await expect(page.locator('.planhead .rs-name .badge').filter({ visible: true })).toHaveCount(2);
+  expect(await page.locator('.planlist .planrow').filter({ visible: true }).count()).toBe(pick.runs);
+  await expect(page.locator('a.plan-route').filter({ visible: true })).toHaveCount(2);
   const mon = new Date(sat); mon.setDate(mon.getDate() + 2);
   await page.clock.setFixedTime(mon);
   await page.reload();

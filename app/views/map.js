@@ -4,7 +4,7 @@ import * as maplibregl from '../../vendor/maplibre-gl.mjs';
 import { layers, namedFlavor } from '../../vendor/basemaps.mjs';
 import { D, routeBuses, busBlock, swapsOn, BASE, nearest, stop, offSeason, route, nextAt, timed, POOL, servicesOn, nextServiceDay, holidayOn, offDayWords, nextPulse, distance, stopAlerts, closedRoutes, activeAlerts, alertRoutes, timesOn, tripStops, tripEnd, nextTrip, tripRoute, onRequest, A, P as PLACES, O as OSM_PLACES, routeAlerts, routeOrder, runEnd, prevTrip, lastTripOn, runOf, dirName, family, familyKey, familyNow, isHalf, corridor, corridorKey, kinOf, roadOf, dayPart, nextRunOf, pref, opOf, carriesOn, agencyRuns, keptOn } from '../data.js';
 import { now, relative, fmtDay, dayName, clock, clockText, clockShort, metres, dayFrom, isGone, isDue, minsTo } from '../time.js';
-import { busName, routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, travel, keptDay } from '../ui.js';
+import { busName, routeNames, routeName, html, icon, timedMark, badge, badges, time, sched, corners, stopRow, isLoop, when, loopArrival, liveMark, headsign, lively, fillLater, routeBadgeLink, heard, heardName, closeTo, replaceTo, openTo, routeHref, travel, keptDay } from '../ui.js';
 import { nearMe, morph } from '../main.js';
 import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, walkWay, steepImage } from '../geo.js';
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
@@ -1186,15 +1186,19 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
     const b = liveBus(familyKey(ri), k + 1, clockNow), bl = busBlock(familyKey(ri), k + 1, clockNow.ymd), h = bl ? blockHours(bl) : null;
     return html`<a class="row" href="#/bus/${encodeURIComponent(familyKey(ri))}/${k + 1}"><div class="mid"><span class="name">${busName(ri, k + 1)}</span><span class="sub">${b ? `Bus ${b.label}${busWhereNow(b) ? ' · ' + busWhereNow(b) : ''}` : 'Not on the map now'}</span></div><div class="end">${h ? clockText(h[0]) + ' to ' + clockText(h[1]) : ''}</div></a>`;
   })}</div>` : '';
+  // (A day its one bus is another route's too, below: that bus by its routes, 'Routes 2 and 5', the one row.)
   // A day its bus is another route's too (a Saturday's 2 and 5, one bus, swapping at the Transit Center every run):
   // said from the timetable at the top and the foot of its line, a bus out or not. The user: 'saturday should uniquely
   // show 2 becoming 5 at the top and bottom of the route page'. The foot's gives way to the bus's own word (follow's
   // 'Stay on bus 1173: it becomes Route 5 at 11:30') when one is on the route.
   const sw = swapsOn(ri, clockNow.ymd);
   const swapIn = sw.from !== null ? html`<a class="rs-swap" href="${routeHref(sw.from)}">${badge(sw.from, 24)}<span>This bus comes in to the ${D.hub.name} as ${routeName(sw.from)}</span>${icon('fwd', 16)}</a>` : '';
+  const pair = nb || opOf(ri) || (sw.to === null && sw.from === null) ? null : busBlock(familyKey(ri), 1, clockNow.ymd);
+  const pairBus = pair ? liveBus(familyKey(ri), 1, clockNow) : null, pairH = pair ? blockHours(pair) : null;
+  const pairList = pair ? html`<div class="section">${icon('route', 16)}This bus today</div><div class="list rs-buses"><a class="row" href="#/bus/${encodeURIComponent(familyKey(ri))}/1"><div class="mid"><span class="name">${routeNames([ri, sw.to ?? sw.from])}</span><span class="sub">${pairBus ? `Bus ${pairBus.label}${busWhereNow(pairBus) ? ' · ' + busWhereNow(pairBus) : ''}` : 'Not on the map now'}</span></div><div class="end">${pairH ? clockText(pairH[0]) + ' to ' + clockText(pairH[1]) : ''}</div></a></div>` : '';
   const swapOut = sw.to !== null ? html`<a class="rs-swap" href="${routeHref(sw.to)}">${badge(sw.to, 24)}<span>Stay on at the ${D.hub.name}: it leaves as ${routeName(sw.to)}</span>${icon('fwd', 16)}</a>` : '';
   const body = html`<div class="routesheet">${alerts}${yours}${opNote(ri, clockNow)}${keptOn(ri) ? html`<div class="rs-op"><span class="muted">These times are from an old timetable (${keptDay(ri)}) and may be off.</span></div>` : ''}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || ''}${swapIn}<div class="list rs-list line"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || swapOut}
-    ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}${wayPath}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}${busList}</div>`;
+    ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}${wayPath}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}${busList}${pairList}</div>`;
   // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus; for a way
   // of a line (an old address, '/15/1'), on its half. Else at the top: the stops still to come start there.
   const anchor = here !== undefined ? 'here' : bus && buses.some(b => b.id === bus) ? busAnchor(bus) : wayAt >= 0 ? 'rs-way' : null;
@@ -3329,6 +3333,9 @@ function connectCard(b, app, bare = false) {
   // 3 · B2'; with the vehicle's number above that was three names for one bus, and the user took 'Blue 2' (17 Nov).
   // Only here: on a ring 'B2' would read as a route of that name.
   const nth = off ? null : busNth(b, clockNow);
+  // A bus that's another route's too today, with no number of its own (a Saturday's 2 and 5, one bus): its routes,
+  // the same link to its day.
+  const swOf = off || nth || b.h === null || routeBuses(familyKey(b.ri), clockNow.ymd) ? null : swapsOn(b.ri, clockNow.ymd), pairOf = swOf ? swOf.to ?? swOf.from : null;
   // Gone by a timed stop early (rt.js watchEarly): said once, in a rider's words, and why its times ahead are early.
   const ahead = off || rtStale() ? null : leftEarly(b.trip);
   // And how often today, by the relay's record: one quiet line, as 'Bus 2 of 3 · B2' is (the user, who dispatches:
@@ -3338,7 +3345,7 @@ function connectCard(b, app, bare = false) {
   const times = n => n === 1 ? 'once' : n === 2 ? 'twice' : n + ' times';
   card.innerHTML = html`<div class="grip"></div><div class="head buscard">
     <div class="top"><span class="eyebrow">Bus ${b.label} · heading ${heading(b.course)}</span>${rtStale() ? liveTag('Last seen ' + rtSeen()) : b.quiet ? liveTag('Last seen ' + clockText(now(new Date(b.quiet * 1000)).min)) : liveTag(late && !off ? 'Live · ' + late : 'Live')}</div>
-    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<a class="nth" href="#/bus/${encodeURIComponent(nth.key)}/${nth.n}">${busName(b.ri, nth.n)} · today's runs</a>` : ''}${day.length ? html`<span class="nth">Left ${day.map((e, i) => heardName(e.si).name + (i ? ' ' : ' early ') + times(e.n) + (i ? '' : ' today')).join(', ')}</span>` : ''}</span></div>
+    <div class="who">${badge(b.ri, 32)}<span class="mid"><span class="name">${b.h !== null && !off ? headsign({ h: b.h, r: b.ri, dir: b.dir === null ? undefined : b.dir }) : routeName(b.ri, false)}</span>${nth ? html`<a class="nth" href="#/bus/${encodeURIComponent(nth.key)}/${nth.n}">${busName(b.ri, nth.n)} · today's runs</a>` : ''}${pairOf ? html`<a class="nth" href="#/bus/${encodeURIComponent(familyKey(b.ri))}/1">${routeNames([b.ri, pairOf])} · today's runs</a>` : ''}${day.length ? html`<span class="nth">Left ${day.map((e, i) => heardName(e.si).name + (i ? ' ' : ' early ') + times(e.n) + (i ? '' : ' today')).join(', ')}</span>` : ''}</span></div>
     ${ahead ? html`<div class="hours">${icon('clock', 15)}<span>Left ${heardName(ahead.si).name} at least ${ahead.by} min early, so it may be early at the stops ahead too.</span></div>` : ''}
     ${keptOn(b.ri) && !off ? html`<div class="hours">${icon('info', 15)}<span>Its times are from an old timetable (${keptDay(b.ri)}), so we can't tell if this bus is early or on time.</span></div>` : ''}
     ${off ? html`<div class="hours">${icon('info', 15)}<span><b>${off}</b> · ${b.quiet ? 'last heard from at ' + clockText(now(new Date(b.quiet * 1000)).min) + ', here. It may not be here any more' : b.free ? 'its last run was ' + routeName(b.ri) + '. Don’t wait for this one' : 'its last run is over. Don’t wait for this one'}.</span></div>` : ''}${alsoHere(b.id)}</div>

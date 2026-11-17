@@ -1605,6 +1605,8 @@ a.side:active { background: var(--cr-hover); }
 /* A bus's whole day (views/busplan.js): its runs as rows, those done muted, the one it's on marked; where it is now a
    line under its name, a link to it on the map. And a route's buses by name: tiny under its row in a search, a list on
    its page. */
+.planhead .rs-name .sub { white-space: normal; }
+.planhead .rs-name .badge + .badge { margin-left: -4px; }
 .plan-live { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--color-text); text-decoration: none; }
 .plan-live span { flex: 1; min-width: 0; }
 .plan-live svg, .plan-live.quiet { color: var(--cr-muted); }

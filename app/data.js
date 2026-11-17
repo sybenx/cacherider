@@ -691,6 +691,13 @@ export function blockOf(ti, ymd) {
  *  trips as blockOf; null where the route doesn't run that many. */
 export function busBlock(key, n, ymd) {
   for (const sv of servicesOn(ymd)) { const bl = D.buses && D.buses[sv] && D.buses[sv][key]; if (bl && bl[n - 1] && bl[n - 1].length) return blockOf(bl[n - 1][0], ymd); }
+  // A route with the one bus that day (it isn't numbered: reduce.py's `buses` are a route's two or more): bus 1 is its
+  // block, whatever else it runs (a Saturday's 2, the 5's bus too).
+  if (n !== 1 || routeBuses(key, ymd)) return null;
+  for (const [ri, r] of D.routes.entries()) {
+    if (familyKey(ri) !== key || r.op) continue;
+    for (const si of new Set(Object.values(r.stops || {}).flat())) { const t = timesOn(si, ymd).find(x => x.r === ri); if (t) return blockOf(t.trip, ymd); }
+  }
   return null;
 }
 /** The route a route's buses become that day, and the one they come in as: a Saturday's 2 leaves the Transit Center as
