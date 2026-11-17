@@ -147,6 +147,49 @@ test('a stop\'s row for a loop\'s next lap says where its bus is now, still on t
   expect(n).toBeLessThanOrEqual(pick.ahead + 1);
 });
 
+test('a stop\'s row says where its bus is while it\'s still out as the route it runs just before (a Saturday\'s 3, then the 8)', async ({ page }) => {
+  // The user's block: 'the uninterrupted string of travel where a rider can remain on the bus'. On a Saturday a bus
+  // swaps routes at the Transit Center every run, and a stop's row lost its bus while it ran the other route. Staged:
+  // the next Saturday, a trip that carries on as another route, the clock a minute before its third call, its bus
+  // between its second and third stops; a stop five calls into the trip after.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); sat.setHours(12, 0, 0, 0);
+  await page.clock.setFixedTime(sat);
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), u = await import('/app/ui.js'), t = await import('/app/time.js'), c = t.now();
+    for (const [si] of d.D.stops.entries()) for (const row of d.timesOn(si, c.ymd)) {
+      const nx = d.nextTrip(row.trip, c.ymd), nr = nx !== undefined ? d.tripRoute(nx) : null;
+      if (!nr || nr.r === row.r || !d.staysOn(row.trip, nx)) continue;
+      const st = d.tripStops(row.trip), sn = d.tripStops(nx);
+      if (st.length < 8 || sn.length < 8 || st[0][0] < 360 || sn[sn.length - 1][0] > 1300) continue;
+      const k = sn[5][1], mine = d.D.stops[k];
+      if (mine.hub || sn.slice(0, 5).some(x => x[1] === k) || st.some(x => x[1] === k)) continue;
+      const a = d.D.stops[st[1][1]], b = d.D.stops[st[2][1]];
+      if (d.distance(a.lat, a.lon, b.lat, b.lon) < 200) continue;
+      return { id: d.D.trips[row.trip], nid: d.D.trips[nx], sn: sn.map(([m, x]) => [m, d.D.stops[x].id]), st: st.map(([m, x]) => [m, d.D.stops[x].id]), stop: mine.id, next: b.name, by: b.by || '', hub: !!b.hub,
+        on: u.routeName(row.r), head: d.bearing(a.lat, a.lon, b.lat, b.lon), mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], at: Date.now() + ((st[2][0] - 1 - c.min) * 60 + 30 - c.sec) * 1000, ahead: st.length - 2 + 5 };
+    }
+    return null;
+  });
+  test.skip(!pick, 'no bus swaps routes that Saturday');
+  await page.clock.setFixedTime(new Date(pick.at));
+  const T = Math.floor(pick.at / 1000), base = T - 30 - (pick.st[2][0] - 1) * 60;
+  feed = { t: T, trips: { [pick.id]: { v: '9003', ts: T, s: pick.st.slice(2).map(([m, sid], i) => [sid, i + 2, base + m * 60, 0]) },
+    [pick.nid]: { v: '9003', ts: T, s: pick.sn.map(([m, sid], i) => [sid, i, base + m * 60, 0]) } },
+    buses: [{ id: '9003', label: '9003', trip: pick.id, lat: pick.mid[0], lon: pick.mid[1], bearing: pick.head, speed: 5, ts: T }] };   // headed along its leg, or its place and the feed's word disagree (rt.js agrees)
+  await page.reload();
+  await go(page, '#/stop/' + pick.stop);
+  const tag = page.locator('.row .livetag, .row .sched').filter({ hasText: 'stops away' }).filter({ visible: true }).first();
+  await expect(tag).toBeVisible({ timeout: 20_000 });
+  const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await expect(tag).toContainText(new RegExp(' · still on ' + esc(pick.on) + ' · by ' + esc(pick.hub ? 'the Transit Center' : pick.by || pick.next) + ' · \\d+ stops away'));
+  const n = +(await tag.textContent()).match(/(\d+) stops away/)[1];
+  expect(n).toBeGreaterThan(pick.ahead - 4);
+  expect(n).toBeLessThanOrEqual(pick.ahead + 1);
+});
+
 test('a route\'s page never says to stay on a bus that goes out of service for hours, as 16 AM\'s last run before 16 PM', async ({ page }) => {
   // The user: 'i noticed there's an option to "stay on bus 16 from the am and it will become the pm bus. this is
   // nonsense. there's hours gaps between. and the bus goes out of service'. Staged: a bus partway through a 16 AM run

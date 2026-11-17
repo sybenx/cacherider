@@ -659,13 +659,20 @@ export function lastTripOn(ri, ymd, dir) {
   }
   return best;
 }
+/** Whether a rider on trip `a` can keep their seat into `b`, the trip its bus runs next: `b` leaves no more than 45
+ *  minutes after `a` gets in, whatever route it's on (a Saturday's 3 becomes the 8 at the Transit Center). The one join
+ *  longer is where the bus goes out of service: 16's morning runs, then its afternoon ones. */
+export function staysOn(a, b) {
+  const ea = tripEnd(a), sa = tripStops(a), sb = tripStops(b);
+  return sb.length > 0 && sa.length > 0 && sb[0][0] - (ea ? ea.min : sa[sa.length - 1][0]) <= 45;
+}
 /** The run a trip is part of: its block's trips on the same route with no more than 45 minutes between, as trip
  *  indices in order. An out-and-back (15's to Preston and back, 12's to Hyrum) is one run of two timetable trips: the
  *  bus turns round at the far end and comes back, and nothing should read as if it ended there. */
 export function runOf(ti, ymd) {
   const r = tripRoute(ti);
   if (!r) return [ti];
-  const linked = (a, b) => { const rb = tripRoute(b), ea = tripEnd(a), sa = tripStops(a), sb = tripStops(b); return !!rb && rb.r === r.r && sb.length > 0 && sa.length > 0 && sb[0][0] - (ea ? ea.min : sa[sa.length - 1][0]) <= 45; };
+  const linked = (a, b) => { const rb = tripRoute(b); return !!rb && rb.r === r.r && staysOn(a, b); };
   const run = [ti];
   for (let p = prevTrip(ti, ymd); p !== undefined && run.length < 12 && linked(p, run[0]); p = prevTrip(p, ymd)) run.unshift(p);
   for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 12 && linked(run[run.length - 1], n); n = nextTrip(n, ymd)) run.push(n);

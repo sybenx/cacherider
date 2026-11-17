@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes, timed, keptOn } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, staysOn, familyKey, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes, timed, keptOn } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -818,18 +818,21 @@ export function stopsAway(t, clockNow) {
     // The user, at 995 South Main: the Blue Loop's rows said nothing of their buses while the Green Loop's said '9 stops
     // away': 'my issue is also knowing which blue loop will get there at that time. so if the blue is sitting at ITC,
     // or if it's driving by north walmart'. The bus of a loop's next lap is still on this one.
+    // Or on another route, the one its bus runs just before this (a Saturday's 3, in at the Transit Center and out as
+    // the 8): the same seat all the way, so the same count, and `as` the route it's on for now.
     const pt = prevTrip(t.trip, clockNow.ymd);
-    if (pt === undefined || !runOf(t.trip, clockNow.ymd).includes(pt)) return null;
+    if (pt === undefined || !staysOn(pt, t.trip)) return null;
     const po = busOn(pt);
     if (!po || po.next === undefined) return null;
     const ps = tripStops(pt), j = callAt(ps, po.next, clockNow.min - (busDelay(po.bus) ?? 0));
     if (j < 0) return null;
     const at = distance(po.bus.lat, po.bus.lon, D.stops[po.next].lat, D.stops[po.next].lon) <= AT_STOP;
     const open = (x, ri) => !closedRoutes(x, clockNow.ymd).has(ri);
+    const pr = (tripRoute(pt) || {}).r ?? t.r;
     let ahead = 0;
-    for (let i = j; i < ps.length; i++) if ((i === j && at) || open(ps[i][1], t.r)) ahead++;
+    for (let i = j; i < ps.length; i++) if ((i === j && at) || open(ps[i][1], pr)) ahead++;
     for (let i = 0; i < k; i++) if (open(st[i][1], t.r)) ahead++;
-    return { bus: po.bus, away: ahead - (at ? 1 : 0) + 1, where: po.next, at, prev: true };
+    return { bus: po.bus, away: ahead - (at ? 1 : 0) + 1, where: po.next, at, prev: true, ...(familyKey(pr) !== familyKey(t.r) ? { as: pr } : {}) };
   }
   if (on.next === undefined) return null;
   const b = on.bus;

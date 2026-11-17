@@ -199,7 +199,9 @@ export function depRow(t0, clockNow, opts = {}) {
   // Live line ('Live · 7 min late · by North Walmart · 11 stops away', 'Estimated · at the Transit Center · 14 stops
   // away'), or the Scheduled one where the timetable's minute stands.
   const sa = opts.away && !t.gone ? stopsAway(t, clockNow) : null;   // a Scheduled row's too: its bus due in from the run before
-  const far = !sa ? '' : sa.away === 0 ? ' · at this stop' : ` · ${busWhere(sa)} · ${sa.away} ${sa.away === 1 ? 'stop' : 'stops'} away`;
+  // Its bus still out as another route (a Saturday's 8, its bus the 3 until the Transit Center): that route named first,
+  // or 'by North Walmart' reads as a place the 8 never goes.
+  const far = !sa ? '' : sa.away === 0 ? ' · at this stop' : `${sa.as !== undefined ? ' · still on ' + routeName(sa.as) : ''} · ${busWhere(sa)} · ${sa.away} ${sa.away === 1 ? 'stop' : 'stops'} away`;
   const sub = opts.sub ? `<span class="sub">${esc(opts.sub)}</span>` : t.live ? liveMark(liveWord(t) + far).s : sched(t, far).s;
   const b = t.si !== undefined ? routeBadgeLink(t.r, t.si, 36, t.dir) : badge(t.r, 36).s;
   // `noRel`: no 'how long' under the time, where the day's heading above already names its day ('tomorrow, Tue' on
