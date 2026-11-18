@@ -70,7 +70,7 @@ function renderTabs() {
       if (!e.target.closest('a[href="#/hub"]') || !(location.hash || '').startsWith('#/hub') || !app.mapMod) return;
       e.preventDefault();
       if (location.hash !== '#/hub') location.hash = '#/hub';   // a route picked on the board: the whole board again
-      if (!isDesktop()) app.mapMod.hubAgain(app);   // a wide screen's bays and streets are the map's own buttons
+      if (!isDesktop()) app.mapMod.hubAgain(app);   // a wide screen's link again is only the link
     };
     for (const id of ['tabs', 'topnav']) document.getElementById(id).addEventListener('click', hubAgain);
     // The Pumpkin Walk's tab tapped on its page: the page as it opens, its map framed again (a phone's card raised to

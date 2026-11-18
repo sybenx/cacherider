@@ -1872,11 +1872,10 @@ function placeControls() {
   const credit = new maplibregl.AttributionControl({ compact: true });
   // Bottom corners stack upward in the order added, top corners downward. The map credit keeps its own corner:
   // bottom left on a phone, under the buttons' corner on a wide screen, so it never sits in a stack of buttons.
-  // A wide screen's views in buttons, where a phone has its tabs tapped again: the whole town, and at the Center its
-  // bays or the streets about it (the header's links only open their pages).
-  // The pair last, under the compass: shown only at the Center, nothing above it moves when it comes and goes.
-  const town = WIDE.matches ? [townControl()] : [], views = WIDE.matches ? [hubViewsControl()] : [];
-  ctrls = coarse() ? [credit, near, ...town, sat, north, ...views] : WIDE.matches ? [credit, near, ...town, nav, sat, north, ...views] : [credit, nav, near, sat, north];
+  // A wide screen's whole town in a button, where a phone has its Map tab tapped again (the header's links only open
+  // their pages). At the Center the bays come by zooming in; the Bays and Streets pair went 2026-11-18.
+  const town = WIDE.matches ? [townControl()] : [];
+  ctrls = coarse() ? [credit, near, ...town, sat, north] : WIDE.matches ? [credit, near, ...town, nav, sat, north] : [credit, nav, near, sat, north];
   // A phone's compass under the search bar, top right: in the bottom corner the Center's board covered it, and there,
   // always shown, it's how the bays are turned round and back.
   for (const c of ctrls) map.addControl(c, c === credit ? (WIDE.matches ? 'bottom-right' : 'bottom-left') : WIDE.matches || c === north ? 'top-right' : c === nav ? 'bottom-left' : 'bottom-right');
@@ -1965,30 +1964,6 @@ function townControl() {
       el.appendChild(b); this.el = el; return el;
     },
     onRemove() { this.el.remove(); },
-  };
-}
-
-/** At the Center beside a wide screen's board: the bays close up, or the streets about it with the buses on their way
- *  in (a phone's Transit Center tab tapped again). Shown only there. Bays is lit while the bays are what's in view,
- *  however the map got there (the Center's link leaves the map as it is); Streets is never lit, a view of no one edge.
- *  The first press frames as an arrival does, so leaving the Center puts the map back as it was before. */
-function hubViewsControl() {
-  return {
-    onAdd(m) {
-      const el = document.createElement('div'); el.className = 'maplibregl-ctrl maplibregl-ctrl-group hubviews';
-      const mk = (k, label, title) => {
-        const b = document.createElement('button'); b.type = 'button'; b.dataset.view = k; b.textContent = label; b.title = title;
-        b.onclick = () => { if (map) fitHub(!hubTurned, 700, !hubTurned, false, k === 'bays'); };
-        return b;
-      };
-      const bays = mk('bays', 'Bays', 'The bays close up');
-      el.append(bays, mk('streets', 'Streets', 'The streets about the Center, buses on their way in'));
-      const sync = () => { el.classList.toggle('on', /^#\/hub/.test(location.hash)); bays.setAttribute('aria-pressed', hubOn ? 'true' : 'false'); };
-      m.on('moveend', sync); addEventListener('hashchange', sync); sync();
-      this.off = () => { m.off('moveend', sync); removeEventListener('hashchange', sync); };
-      this.el = el; return el;
-    },
-    onRemove() { this.off(); this.el.remove(); },
   };
 }
 
@@ -3131,7 +3106,7 @@ export function leaveHub() { if (!wide() || hubTurned) backDue = true; }   // a 
  *  if it was put away. */
 export function hubAgain(app) {
   if (!map) return;
-  // A phone's only: beside a wide screen's board the map's own Bays and Streets buttons do this (hubViewsControl).
+  // A phone's only: beside a wide screen's board the Center's link again is only the link.
   fitHub(false, 700, false, false, !hubOn);   // flown (fitHub: not on a weak device, nor with less motion asked for)
   if (app.route.name === 'map' && !col.querySelector('#mapcard.open > .hubsheet')) hubCard(now());
 }
