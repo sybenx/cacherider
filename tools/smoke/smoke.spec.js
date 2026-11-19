@@ -1928,6 +1928,107 @@ test('a season\'s route goes with its season: the Pumpkin Walk off the map, the 
   }
 });
 
+// ---- The holidays (app/holiday.js): their dressing by the date, every year, in the agency's local dates; the day's
+// card in place of 'No buses today' on the day itself. Staged by the clock alone: the timetable is the real one.
+/** The agency's noon on a day ('2026-11-25'), in its winter time. */
+const noon = ymd => new Date(ymd + 'T12:00:00-07:00');
+/** A stop with buses after today, and its first after today as a stop's card says it ('Back Saturday · first bus',
+ *  '10:15 AM'), by the timetable; and the Center's first pulse after today, as its card says it. */
+async function backTimes(page) {
+  return page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+    const say = (b, what) => ({ words: 'Back ' + t.dayName(b.ymd) + ' · ' + what, time: t.clockText(b.min) });
+    const si = d.D.stops.findIndex((s, i) => !s.hub && !s.out && s.routes.length && d.nextAt(i, 7, c).some(x => x.day > 0));
+    return { stop: d.D.stops[si].id, atStop: say(d.nextAt(si, 7, c).find(x => x.day > 0), 'first bus'), atHub: say(d.nextPulse(1, c)[0], 'first pulse') };
+  });
+}
+/** The season's dressing over the map: which one is up, and whether it's drawn. */
+const deco = page => page.evaluate(() => { const d = document.getElementById('hol-deco'), s = d && d.querySelector('.hol-swag'); return { season: document.documentElement.dataset.season || null, on: d ? d.dataset.s : null, shown: !!s && s.getBoundingClientRect().height > 0 }; });
+/** A tap anywhere along the dressing is the map's: what's under each point of it is never the dressing. */
+async function tapsThrough(page, swag) {
+  const box = await swag.boundingBox();
+  const hits = await page.evaluate(({ x, y, width: w, height: h }) => [0.1, 0.3, 0.5, 0.7, 0.9].flatMap(f => [0.3, 0.6, 0.9].map(g => { const e = document.elementFromPoint(x + w * f, y + h * g); return !!e && !!e.closest('#hol-deco'); })), box);
+  expect(hits.every(h => !h)).toBe(true);
+  expect(await swag.evaluate(e => getComputedStyle(e.closest('#hol-deco')).pointerEvents)).toBe('none');
+  expect(await page.evaluate(() => +getComputedStyle(document.getElementById('hol-deco')).zIndex)).toBeLessThan(450);   // under the map's buttons and search
+}
+/** The dressing hung where it goes: from the bottom of a phone's search box (its line `drop` down its box), along the
+ *  top of a wide screen's map, the map's width either way. */
+async function hungRight(page, swag, info, drop) {
+  const box = await swag.boundingBox(), map = await page.locator('#map').boundingBox();
+  if (phone(info)) {
+    const bar = await page.locator('.mapbar').filter({ visible: true }).first().boundingBox();
+    expect(Math.abs(box.y + drop - (bar.y + bar.height))).toBeLessThan(4);
+  } else expect(Math.abs(box.y + drop - map.y)).toBeLessThan(4);
+  expect(box.width).toBeGreaterThanOrEqual(map.width - (phone(info) ? 0 : 420) - 1);   // a wide screen's beside the page
+}
+
+test('Thanksgiving: the garland on the map from the Wednesday before, never in the way of a tap, and no card while the buses run', async ({ page }, info) => {
+  // Aaron's sketch: a twine swag of leaves, wheat and two gourds hung from the bottom of a phone's search box (along the
+  // top of a wide screen's map). Wednesday 25 Nov 2026, noon: up on the map, and still beside a stop and the Center;
+  // its taps go through to the map; a stop's page and the Center's board run as ever, no card.
+  await page.clock.setFixedTime(noon('2026-11-25'));
+  await open(page, '#/map');
+  await mapReady(page);
+  expect(await deco(page)).toEqual({ season: 'thanksgiving', on: 'thanksgiving', shown: true });
+  const swag = page.locator('#hol-deco .hol-garland');
+  await hungRight(page, swag, info, 16);   // its twine 16 down its stretch
+  await tapsThrough(page, swag);
+  const t = await backTimes(page);
+  await go(page, '#/stop/' + t.stop);
+  await expect(page.locator('.stop-page').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.holcard')).toHaveCount(0);
+  expect((await deco(page)).shown).toBe(true);
+  await go(page, '#/hub');
+  await expect(page.locator('.tcl, .tc-together').filter({ visible: true }).first()).toBeAttached();
+  await expect(page.locator('.holcard')).toHaveCount(0);
+});
+
+test('Thanksgiving Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse', async ({ page }) => {
+  // Thursday 26 Nov 2026: 'No buses today', 'Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!', and when
+  // they're back, from the timetable, never written in: at a stop its first bus after today, at the Center the first
+  // pulse (the feed takes this year's Friday off too, so that's Saturday's). In the plain callout's place.
+  await page.clock.setFixedTime(noon('2026-11-26'));
+  await open(page);
+  const t = await backTimes(page);
+  for (const [hash, back] of [['#/stop/' + t.stop, t.atStop], ['#/hub', t.atHub]]) {
+    await go(page, hash);
+    const card = page.locator('.holcard.hol-thanksgiving').first();
+    await expect(card).toBeAttached();
+    await expect(card.locator('svg.hol-art')).toHaveAttribute('role', 'img');
+    await expect(card.locator('svg.hol-art')).toHaveAttribute('aria-label', /^Golden hour over the Wellsvilles/);
+    await expect(card.locator('.holcard-h')).toHaveText('No buses today');
+    await expect(card.locator('p')).toHaveText("Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!");
+    await expect(card.locator('.holcard-back span')).toHaveText(back.words);
+    await expect(card.locator('.holcard-back b')).toHaveText(back.time);
+    await expect(page.locator('.holcard')).toHaveCount(1);
+    await expect(page.locator('.callout, .tcl-note').filter({ hasText: 'No buses today' })).toHaveCount(0);
+  }
+  expect((await deco(page)).season).toBe('thanksgiving');
+  expect(await page.evaluate(() => document.body.innerText.includes('—'))).toBe(false);   // no em dash
+});
+
+test('Thanksgiving goes by itself: the Friday after, the garland and no card; the Saturday, none of it', async ({ page }) => {
+  // Friday 27 Nov 2026 is the season's last day: the garland's up. Not Thanksgiving Day, so a day without buses (the
+  // feed's, this year) is the plain 'No buses today'. Saturday 28 Nov, noon: no garland, no season.
+  await page.clock.setFixedTime(noon('2026-11-27'));
+  await open(page, '#/map');
+  await mapReady(page);
+  expect(await deco(page)).toEqual({ season: 'thanksgiving', on: 'thanksgiving', shown: true });
+  const t = await backTimes(page);
+  await go(page, '#/stop/' + t.stop);
+  await expect(page.locator('.stop-page').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.holcard')).toHaveCount(0);
+  await page.clock.setFixedTime(noon('2026-11-28'));
+  await page.goto('about:blank');
+  await open(page, '#/map');
+  await mapReady(page);
+  expect(await deco(page)).toEqual({ season: null, on: null, shown: false });
+  await go(page, '#/stop/' + t.stop);
+  await expect(page.locator('.stop-page').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.holcard')).toHaveCount(0);
+});
+
 test('a route drawn as a line: its key stops, a fold kept open through a redraw, every stop', async ({ page }) => {
   // The Blue Loop: its stops on a rail, the stops between its key stops folded. A fold opened stays open as the feed
   // redraws the sheet; 'Every stop' unfolds the lot, 'Key stops' folds them again.
@@ -3017,6 +3118,7 @@ test('a holiday: no buses on Thanksgiving, said by its name; the evening before,
   // Connect's feed has no holidays (tools/hints.json does). The next Thanksgiving, the fourth Thursday of November. The
   // day after is the feed's to give or take off (the feed of 2026-11-19 took the Friday off): the next day with buses
   // is worked out from the timetable, and a day taken off unnamed is said by its date, not 'on Fridays'.
+  // On the day itself Thanksgiving's card says when they're back (holiday.js), where 'Service resumes …' was.
   const today = new Date();
   let tg = null;
   for (let y = today.getFullYear(); !tg; y++) { const d = new Date(y, 10, 1); d.setDate(1 + (4 - d.getDay() + 7) % 7 + 21); if (d > today) tg = d; }
@@ -3034,7 +3136,7 @@ test('a holiday: no buses on Thanksgiving, said by its name; the evening before,
   });
   expect(plan.k).toBeLessThan(10);
   await expect(page.getByText('Connect doesn\'t run on Thanksgiving Day.').filter({ visible: true }).first()).toBeVisible();
-  await expect(page.getByText(new RegExp('Service resumes ' + plan.day)).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.holcard-back span').filter({ visible: true }).first()).toHaveText(new RegExp('^Back ' + plan.day + ' · first bus'));
   await go(page, '#/hub');
   await expect(page.getByText(new RegExp('^(Tomorrow · )?' + plan.day, 'i')).filter({ visible: true }).first()).toBeVisible();
   await expect(page.getByText('The rest of today')).toHaveCount(0);

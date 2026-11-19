@@ -15,6 +15,7 @@ import * as uroute from './views/uroute.js';
 import * as routesView from './views/routes.js';
 import * as go from './views/go.js';
 import * as pumpkin from './views/pumpkin.js';
+import { dress } from './holiday.js';
 import { loadUSU, setWanted, onLive, U } from './usu.js';
 import { setRtWanted, onRt } from './rt.js';
 
@@ -289,6 +290,7 @@ export async function render(tick = false) {
   setRtWanted(mapOpen || isDesktop() || ['home', 'search', 'stop', 'hub', 'route', 'go', 'pumpkin'].includes(name));
   body.classList.toggle('map-open', mapOpen);
   body.classList.toggle('pk-on', name === 'pumpkin');   // the Pumpkin Walk's vine under the map's search (views/pumpkin.js), while it's up
+  dress(clockNow);   // the season's dressing: Thanksgiving's garland, Christmas's lights (holiday.js), by the date
   if (view && !stopMap) {
     // A page is the same page across its own picks (the Transit Center's routes): `view.key` says so, and the
     // rider's place is kept.
@@ -321,6 +323,7 @@ export async function render(tick = false) {
   if (mapOpen && !extrasReady && extras) await extras;
   if ((mapOpen || isDesktop()) && extrasReady) {
     const m = await ensureMap();
+    dress(clockNow);   // the map's, once it's there
     const at = name === 'map' && seg[1] === 'at' && seg[2] ? { lat: +seg[2].split(',')[0], lon: +seg[2].split(',')[1], label: dec(seg[3] || ''), road: q.road ? q.road.split(',').map(dec) : null } : null;
     const mapU = name === 'map' && seg[1] === 'usu', mapR = name === 'map' && seg[1] === 'route', mapUR = name === 'map' && seg[1] === 'uroute', mapA = name === 'map' && seg[1] === 'alert', mapB = name === 'map' && seg[1] === 'bus';
     const from = name === 'map' && seg[1] === 'from' ? seg[2] || null : null;   // the map asked where the rider will start from, for directions to this stop

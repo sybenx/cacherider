@@ -10,6 +10,7 @@ import { metres as m2 } from '../time.js';
 import { afterSave, app } from '../main.js';
 import { restOfDay, runSheet, wireSheet, sheetRun } from './stopwide.js';
 import { atPath } from '../geo.js';
+import { dayCard } from '../holiday.js';
 import { wirePointers, pointerDial } from '../pointer.js';
 
 export function render({ id, full, run, on }, clockNow) {
@@ -89,7 +90,10 @@ export function render({ id, full, run, on }, clockNow) {
     // Nothing to schedule here; the callout above has said why.
   } else if (!td.systemRuns) {
     const resume = nextServiceDay(clockNow);
-    parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${offDayWords(clockNow.ymd)} ${resume ? `Service resumes ${fmtDay(resume, true)}${nt && nt <= resume ? ', on the new timetable' : ''}.` : ''}</div></div></div>`);
+    // Thanksgiving Day and Christmas Day, its card (holiday.js): when the buses are back is this stop's first bus after.
+    const card = dayCard(clockNow, offDayWords(clockNow.ymd), next.find(t => t.day > 0), 'first bus', nt && resume && nt <= resume ? html`<div class="holcard-more">On the new timetable</div>` : '');
+    if (card) parts.push(card);
+    else parts.push(html`<div class="callout">${icon('moon', 20)}<div><b>No buses today</b><div class="sub">${offDayWords(clockNow.ymd)} ${resume ? `Service resumes ${fmtDay(resume, true)}${nt && nt <= resume ? ', on the new timetable' : ''}.` : ''}</div></div></div>`);
   } else if (!td.all.length) {
     const only = oneEach(s.routes).map(ri => D.routes[ri]);   // 16 AM and PM, one route
     parts.push(html`<div class="callout">${icon('info', 20)}<div><b>No ${dayName(clockNow.ymd)} service at this stop</b><div class="sub">${only.length === 1 ? `${routeName(D.routes.indexOf(only[0]), false)} ${describeDays(only[0])}.` : 'The routes here skip today.'} Other routes are running today.</div></div></div>`);

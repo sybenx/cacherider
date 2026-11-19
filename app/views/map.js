@@ -2944,7 +2944,7 @@ function keepIn(c, z) {
 function topCover() {
   const top = map.getContainer().getBoundingClientRect().top;
   let cover = 0;
-  for (const el of col.querySelectorAll('.mapbar, #mapnotice, #pk-deco .pk-swag')) { const r = el.getBoundingClientRect(); if (r.height && !el.classList.contains('hidden')) cover = Math.max(cover, r.bottom - top); }
+  for (const el of col.querySelectorAll('.mapbar, #mapnotice, #pk-deco .pk-swag, #hol-deco .hol-swag')) { const r = el.getBoundingClientRect(); if (r.height && !el.classList.contains('hidden')) cover = Math.max(cover, r.bottom - top); }
   return cover;
 }
 /** The part of the map left clear, as its margins: the search bar and any notice across the top; on a phone the sheet

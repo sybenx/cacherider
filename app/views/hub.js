@@ -4,6 +4,7 @@
 import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun, offDayWords, keptOn } from '../data.js';
 import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone, fmtDay, howOften, clockAnd } from '../time.js';
 import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, daysOffNote, cancelledRow, routeNames, lively, moved } from '../ui.js';
+import { dayCard } from '../holiday.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
@@ -264,6 +265,9 @@ const leavingAt = (ks, p) => ks.filter(k => routesOf(k).some(ri => D.hub.bays.so
 const runIn = (k, p) => routesOf(k).flatMap(ri => D.hub.bays.filter(b => b.routes.includes(ri)).flatMap(b => timesOn(b.stop, p.ymd).filter(t => t.r === ri && t.min === p.min))).map(t => lively({ ...t, day: 0, ymd: p.ymd }))[0];
 function together(st, clockNow) {
   let p = nextPulse(1, clockNow)[0];
+  // Thanksgiving Day and Christmas Day: the day's card (holiday.js) in the countdown's place, back at the first pulse.
+  const card = dayCard(clockNow, offDayWords(clockNow.ymd), p, 'first pulse');
+  if (card) return card;
   const ks = [...new Set((D.hub.pulseRoutes || []).map(keyOf))].filter(k => st[k]);
   // A group whose minute has gone by with half its runs or more still to leave (late, by the feed's word) is still the
   // group: its countdown follows them, and the next group's waits. Fewer, and the group has gone: one late route kept
@@ -421,7 +425,8 @@ function boardBody(st, clockNow) {
   // Nothing in the hour: why, when it's the day that's done (or never started: a Sunday, Thanksgiving, by its name).
   const ranToday = D.hub.bays.some(b => timesOn(b.stop, clockNow.ymd).length);
   const title = soon ? '' : rows[0] && rows[0].t.day === 0 ? html`<div class="tcl-note">Nothing leaves in the next hour.</div>`
-    : html`<div class="tcl-note"><b>${ranToday ? 'No more buses today' : 'No buses today'}</b>${ranToday ? '' : ' · ' + offDayWords(clockNow.ymd)}</div>`;
+    : !ranToday && dayCard(clockNow, offDayWords(clockNow.ymd), nextPulse(1, clockNow)[0], 'first pulse')   // Thanksgiving Day, Christmas Day (holiday.js)
+      || html`<div class="tcl-note"><b>${ranToday ? 'No more buses today' : 'No buses today'}</b>${ranToday ? '' : ' · ' + offDayWords(clockNow.ymd)}</div>`;
   // The rest of the day behind a tap; another day's (today's all gone), out, under its own heading.
   const day = restOfDay(st, clockNow), later = !!day && !/The rest of today/.test(day.s || day);
   return html`${detourNotice(clockNow)}${title}${daysOffNote(clockNow)}${out.length ? out : html`<p class="tc-foot">Nothing scheduled in the next week.</p>`}
