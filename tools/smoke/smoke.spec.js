@@ -2029,6 +2029,135 @@ test('Thanksgiving goes by itself: the Friday after, the garland and no card; th
   await expect(page.locator('.holcard')).toHaveCount(0);
 });
 
+/** A Connect bus staged on a trip running at the clock's time, between two of its stops (the feed's word on it as
+ *  well): its id, and the stop it's coming to. Null where nothing's running then. The feed route set before `open`. */
+async function stageBus(page, feed) {
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+    for (const [si] of d.D.stops.entries()) for (const row of d.timesOn(si, c.ymd)) {
+      const st = d.tripStops(row.trip), k = st.findIndex(x => x[0] > c.min);
+      if (k < 2 || st[0][0] > c.min || d.D.stops[st[k][1]].hub) continue;
+      const a = d.D.stops[st[k - 1][1]], b = d.D.stops[st[k][1]];
+      if (d.distance(a.lat, a.lon, b.lat, b.lon) < 150) continue;
+      return { id: d.D.trips[row.trip], st: st.map(([m, x]) => [m, d.D.stops[x].id]), k, next: b.id, mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], head: d.bearing(a.lat, a.lon, b.lat, b.lon), at: Date.now(), day: c.min * 60 + c.sec };
+    }
+    return null;
+  });
+  if (!pick) return null;
+  const T = Math.floor(pick.at / 1000), base = T - pick.day;
+  feed.t = T;
+  feed.trips = { [pick.id]: { v: '9005', ts: T, s: pick.st.slice(pick.k).map(([m, sid], j) => [sid, pick.k + j, base + m * 60, 0]) } };
+  feed.buses = [{ id: '9005', label: '9005', trip: pick.id, lat: pick.mid[0], lon: pick.mid[1], bearing: pick.head, speed: 5, ts: T }];
+  return pick;
+}
+
+test('Christmas: the lights from the 14th, a glow in the light theme and halos in the dark, a twinkle but not with reduced motion, never in the way of a tap', async ({ page }, info) => {
+  // Aaron's sketch: old C9 bulbs in red, gold, green and blue swagged where Thanksgiving's garland hung, each with a
+  // glow and a slow twinkle; 'is christmas dark mode only?': both, the light theme's glow soft. Sunday 13 Dec 2026:
+  // nothing. Monday 14 Dec, noon: the lights, hung where they go, the map's width, every point along them the map's.
+  await page.clock.setFixedTime(noon('2026-12-13'));
+  await open(page, '#/map');
+  await mapReady(page);
+  expect(await deco(page)).toEqual({ season: null, on: null, shown: false });
+  await page.clock.setFixedTime(noon('2026-12-14'));
+  await page.goto('about:blank');
+  await open(page, '#/map');
+  await mapReady(page);
+  expect(await deco(page)).toEqual({ season: 'christmas', on: 'christmas', shown: true });
+  const swag = page.locator('#hol-deco .hol-lights');
+  await hungRight(page, swag, info, 4);   // where it's hung 10 down its stretch, 6 under the box as sketched
+  await tapsThrough(page, swag);
+  expect(await swag.locator('.hol-bulb').count()).toBeGreaterThan(30);
+  // (Read again till it holds: just after a load the page is now and then still putting itself up.)
+  const look = () => page.evaluate(() => { const b = document.querySelector('#hol-deco .hol-bulb'); return b && { halo: +getComputedStyle(b.querySelector('.hol-halo')).opacity, twinkle: getComputedStyle(b).animationName }; });
+  await expect.poll(look).toEqual({ halo: 0.35, twinkle: 'holTwinkle' });
+  await page.evaluate(() => { localStorage.setItem('cr-theme', 'dark'); });
+  await page.reload();
+  await expect.poll(look).toEqual({ halo: 1, twinkle: 'holTwinkle' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => look().then(l => l && l.twinkle)).toBe('none');
+});
+
+test('Christmas at the Center and on the map: snow on the bays\' badges and roofs, drifts and a tree; a wreath on a bus, the dark theme\'s in the dark', async ({ page }, info) => {
+  // Monday 14 Dec 2026, a minute past noon. At the Center (a phone's: its bays are the map) each bay's badge wears a cap
+  // of snow, the hall and its canopies are whited over, drifts in the plan's corners, a tree by the doors. A Connect bus
+  // on the map, staged on its trip, wears a wreath at its top right, upright, the light theme's; in the dark theme,
+  // the dark one. Sunday 27 Dec: none of it.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed && feed.buses ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  await page.clock.setFixedTime(new Date('2026-12-14T12:01:00-07:00'));
+  await open(page);
+  const hook = () => page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
+  if (phone(info)) {
+    await hook();
+    await go(page, '#/hub');
+    await mapReady(page);
+    await expect(page.locator('.hbay').first()).toBeAttached();
+    const caps = page.locator('.hbay .hol-cap');
+    await expect.poll(() => caps.evaluateAll(cs => cs.filter(c => getComputedStyle(c).display === 'block').length)).toBe(await page.locator('.hbay').count());
+    await expect(page.locator('.hol-drifts')).toHaveCount(4);
+    await expect(page.locator('.hol-treemark')).toHaveCount(1);
+    await expect.poll(() => page.evaluate(() => { const m = window.__map; return !!m && !!m.getLayer('hol-roof') && m.getLayoutProperty('hol-roof', 'visibility') !== 'none' && m.getSource('hol-roof').serialize().data.features.length; }), { timeout: 20_000 }).toBeGreaterThan(0);
+    // Under the badges and never a tap's.
+    expect(await page.locator('.maplibregl-marker.hol-drifts').first().evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
+  }
+  feed = {};
+  const pick = await stageBus(page, feed);
+  test.skip(!pick, 'nothing running at noon that Monday');
+  await page.reload();
+  await go(page, '#/stop/' + pick.next);
+  const bus = page.locator('.maplibregl-marker.bus:not(.shuttle)').first();
+  await expect(bus).toBeAttached({ timeout: 40_000 });   // a staged bus is placed once the map and the feed have settled: on a busy machine, past twenty seconds
+  await expect.poll(() => bus.locator('.hol-wreath').evaluate(w => getComputedStyle(w).display), { timeout: 20_000 }).toBe('block');
+  await expect(bus.locator('.hol-wl')).toBeVisible();
+  await expect(bus.locator('.hol-wd')).toBeHidden();
+  const box = await bus.locator('.hol-wl').boundingBox(), ring = await bus.locator('.bus-marker').boundingBox();
+  expect(box.x + box.width / 2).toBeGreaterThan(ring.x + ring.width / 2 - 2);   // at its top right whichever way it's headed
+  expect(box.y + box.height / 2).toBeLessThan(ring.y + ring.height / 2 + 2);
+  await page.evaluate(() => { localStorage.setItem('cr-theme', 'dark'); });
+  await page.reload();
+  await go(page, '#/stop/' + pick.next);
+  await expect(page.locator('.maplibregl-marker.bus:not(.shuttle) .hol-wd').first()).toBeVisible({ timeout: 40_000 });
+  await expect(page.locator('.maplibregl-marker.bus:not(.shuttle) .hol-wl').first()).toBeHidden();
+  await page.clock.setFixedTime(new Date('2026-12-27T12:01:00-07:00'));
+  await page.goto('about:blank');
+  await open(page, '#/stop/' + pick.next);
+  expect((await deco(page)).season).toBe(null);
+  await expect(page.locator('.hol-wreath').filter({ visible: true })).toHaveCount(0);
+});
+
+test('Christmas Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse; the 26th the lights and no card, the 27th none', async ({ page }) => {
+  // Friday 25 Dec 2026: the sketch's snowy night and two buses asleep under the Center's roof, 'No buses today',
+  // 'Connect doesn't run on Christmas Day. Merry Christmas!', and when they're back from the timetable (Saturday's first
+  // pulse, this year). Saturday 26 Dec, the season's last day: the lights, the buses running, no card. Sunday 27: none.
+  await page.clock.setFixedTime(noon('2026-12-25'));
+  await open(page);
+  const t = await backTimes(page);
+  for (const [hash, back] of [['#/stop/' + t.stop, t.atStop], ['#/hub', t.atHub]]) {
+    await go(page, hash);
+    const card = page.locator('.holcard.hol-christmas').first();
+    await expect(card).toBeAttached();
+    await expect(card.locator('svg.hol-art')).toHaveAttribute('role', 'img');
+    await expect(card.locator('svg.hol-art')).toHaveAttribute('aria-label', /^A snowy night over the Wellsvilles, two buses asleep/);
+    await expect(card.locator('.holcard-h')).toHaveText('No buses today');
+    await expect(card.locator('p')).toHaveText("Connect doesn't run on Christmas Day. Merry Christmas!");
+    await expect(card.locator('.holcard-back span')).toHaveText(back.words);
+    await expect(card.locator('.holcard-back b')).toHaveText(back.time);
+    await expect(page.locator('.holcard')).toHaveCount(1);
+    await expect(page.locator('.callout, .tcl-note').filter({ hasText: 'No buses today' })).toHaveCount(0);
+  }
+  expect(t.atHub.words).toMatch(/^Back Saturday · first pulse$/);   // the 26th a Saturday that runs, this year's timetable
+  expect((await deco(page)).season).toBe('christmas');
+  for (const [ymd, season] of [['2026-12-26', 'christmas'], ['2026-12-27', null]]) {
+    await page.clock.setFixedTime(noon(ymd));
+    await page.goto('about:blank');
+    await open(page, '#/stop/' + t.stop);
+    await expect(page.locator('.stop-page').filter({ visible: true }).first()).toBeVisible();
+    await expect(page.locator('.holcard')).toHaveCount(0);
+    expect((await deco(page)).season).toBe(season);
+  }
+});
+
 test('a route drawn as a line: its key stops, a fold kept open through a redraw, every stop', async ({ page }) => {
   // The Blue Loop: its stops on a rail, the stops between its key stops folded. A fold opened stays open as the feed
   // redraws the sheet; 'Every stop' unfolds the lot, 'Key stops' folds them again.

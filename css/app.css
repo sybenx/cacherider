@@ -1449,19 +1449,54 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
   #pk-deco .pk-swag { top: 1px; }   /* under the map's buttons, top right */
 }
 
-/* The holidays' dressing on the map (holiday.js, views/holiday-art.js): Thanksgiving's garland where the Pumpkin
-   Walk's vine goes, on every map view in its season; never over the Pumpkin Walk's own. Over the
+/* The holidays' dressing on the map (holiday.js, views/holiday-art.js): Thanksgiving's garland and Christmas's lights
+   where the Pumpkin Walk's vine goes, on every map view in their seasons; never over the Pumpkin Walk's own. Over the
    map, under its buttons, search and card, never taking a tap; hung from the bottom of a phone's search box (.mapbar:
    10 px down, 50 high), at the top of a wide screen's map; repeated the width of the map, off both its edges. */
 #hol-deco { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
 #body.pk-on #hol-deco { display: none; }
 #hol-deco .hol-swag { position: absolute; left: 0; width: 100%; display: block; }
 #hol-deco .hol-garland { top: 44px; }   /* its twine (16 down its stretch) along the box's bottom edge */
+#hol-deco .hol-lights { top: 56px; }   /* where its wire's hung (10 down its stretch) 6 under the box, as sketched */
 @media (min-width: 840px) {
   #hol-deco { left: 420px; } :root[data-panel="right"] #hol-deco { left: 0; right: 420px; }
-  #hol-deco .hol-garland { top: -14px; }
+  #hol-deco .hol-garland { top: -14px; } #hol-deco .hol-lights { top: -4px; }
 }
-/* The day's card (holiday.js), in place of 'No buses today' on Thanksgiving Day: its drawing in its
+/* Christmas's bulbs: in the light theme only a soft glow, the dark theme's halos as sketched; each a slow twinkle on
+   one of three beats, none with reduced motion. */
+.hol-halo { opacity: .35; }
+:root[data-theme="dark"] .hol-halo { opacity: 1; }
+@keyframes holTwinkle { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.hol-a { animation: holTwinkle 2.6s ease-in-out infinite; }
+.hol-b { animation: holTwinkle 3.4s ease-in-out .8s infinite; }
+.hol-c { animation: holTwinkle 2.9s ease-in-out 1.6s infinite; }
+@keyframes holFall { from { transform: translateY(-12px); } to { transform: translateY(12px); } }
+.hol-snow { animation: holFall 6s linear infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .hol-a, .hol-b, .hol-c, .hol-snow { animation: none; } }
+
+/* Christmas's small things (views/holiday-art.js), in its season only. A Connect bus wears a wreath at its top right,
+   upright however the map's turned and the bus headed, the dark theme's brighter one there; not far off, where it's
+   the hollow arrow. Each bay's badge at the Center a cap of snow (map.js hubBadges); the plan's drifts and its tree
+   (map.js hubSnow) under the badges and buses. */
+.hol-wreath, .hol-cap { display: none; }
+:root[data-season="christmas"] #map .bus:not(.shuttle) .hol-wreath { display: block; position: absolute; left: 0; top: 0; width: 22px; height: 22px; pointer-events: none; transform: rotate(calc(var(--map-bearing, 0deg) - var(--course, 0deg))) scale(var(--bus-scale, 1)); }
+:root[data-season="christmas"] #map.bus-small .bus:not(.lit):not(.on) .hol-wreath { display: none; }
+.hol-wreath > span { position: absolute; right: -6px; top: -7px; width: 14px; height: 14px; }
+.hol-wreath svg { width: 14px; height: 14px; overflow: visible; }
+.hol-wreath .hol-wd, :root[data-theme="dark"] .hol-wreath .hol-wl { display: none; }
+:root[data-theme="dark"] .hol-wreath .hol-wd { display: block; }
+.hbay .b { position: relative; }
+:root[data-season="christmas"] .hbay .hol-cap { display: block; position: absolute; left: -1px; top: -4px; width: calc(100% + 2px); height: 7px; pointer-events: none; }
+.maplibregl-marker.hol-drifts, .maplibregl-marker.hol-treemark { z-index: 0; pointer-events: none; }
+.hol-drifts { width: 0; height: 0; }
+.hol-drift { display: none; position: absolute; width: 34px; height: auto; }
+/* each its corner's shape, nestled in toward the bays from its corner: up and right from the bottom left, and so on */
+.hol-drifts[data-k="bl"] .hol-drift.bl { display: block; left: 0; top: -46px; }
+.hol-drifts[data-k="tr"] .hol-drift.tr { display: block; left: -38px; top: 0; width: 38px; }
+.hol-drifts[data-k="br"] .hol-drift.br { display: block; left: -38px; top: -40px; width: 38px; }
+.hol-tree { width: 22px; height: 30px; }
+
+/* The day's card (holiday.js), in place of 'No buses today' on Thanksgiving Day and Christmas Day: its drawing in its
    own colours in either theme, the words under it on the app's raised surface and in its own ink. */
 .holcard { margin: 0 16px 12px; border-radius: 14px; overflow: hidden; background: var(--cr-card); box-shadow: 0 1px 2px rgba(0,0,0,.08), inset 0 0 0 1px var(--cr-line); }
 .holcard .hol-art { display: block; width: 100%; height: auto; }
