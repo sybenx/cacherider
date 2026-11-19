@@ -2,7 +2,7 @@
 // (the tracker refuses browser requests; see worker/). Bus positions for the map,
 // and predicted times for every stop a trip is yet to reach, so a row can say
 // "Live · 3 min late" instead of "Scheduled". Polled while a live screen is open.
-import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, runOf, staysOn, familyKey, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes, timed, keptOn } from './data.js';
+import { D, setLive, distance, bearing, LIVE_URL, tripStops, tripEnd, tripRoute, staysOn, familyKey, timesOn, serviceSpan, nextTrip, prevTrip, busOf, closedRoutes, timed, keptOn } from './data.js';
 import { now, dayDiff, clockText, dayFrom } from './time.js';
 
 export const RT_URL = LIVE_URL;
@@ -573,13 +573,15 @@ function dueBy(b, u) {
 }
 /** A trip the feed says nothing of yet, whose bus is out on the run's trip before it: when that trip's last stop is
  *  due, in minutes, or null (the first trip of a run has no bus to go by). */
-const runs = new Map();   // a trip's run, by day: the timetable's, so worked out once (it was, for every row, every redraw)
+// The trip before is the bus's, whatever its route: a Saturday's 9 at 1:00 leaves when its bus is in off the 12:30
+// Route 1 (runOf, a run of one route, had taken that trip in by mistake, and this went by it).
+const runs = new Map();   // a trip's bus's trip before, by day: the timetable's, so worked out once (it was, for every row, every redraw)
 function runArrives(t) {
   const ymd = now().ymd, key = ymd + ':' + t.trip;
-  if (!runs.has(key)) { if (runs.size > 4000) runs.clear(); runs.set(key, runOf(t.trip, ymd)); }
-  const run = runs.get(key), i = run.indexOf(t.trip);
-  if (i <= 0) return null;
-  const b = rt.buses.find(x => x.trip === D.trips[run[i - 1]]), prev = b && rt.trips[b.trip], first = tripStops(t.trip)[0];
+  if (!runs.has(key)) { if (runs.size > 4000) runs.clear(); const p = prevTrip(t.trip, ymd); runs.set(key, p !== undefined && staysOn(p, t.trip) ? p : null); }
+  const p = runs.get(key);
+  if (p === null) return null;
+  const b = rt.buses.find(x => x.trip === D.trips[p]), prev = b && rt.trips[b.trip], first = tripStops(t.trip)[0];
   const at = prev && endAt(b, prev);
   return at != null && first ? toMin(at) + (at % 60) / 60 : null;
 }

@@ -684,7 +684,9 @@ export function staysOn(a, b) {
 export function runOf(ti, ymd) {
   const r = tripRoute(ti);
   if (!r) return [ti];
-  const linked = (a, b) => { const rb = tripRoute(b); return !!rb && rb.r === r.r && staysOn(a, b); };
+  // Both ends on the route: walking back, `b` is the run's own first trip, so it's `a` that may be another route's (a
+  // Saturday's 1 at 12:30 had the 9 before it at noon taken in).
+  const linked = (a, b) => { const ra = tripRoute(a), rb = tripRoute(b); return !!ra && !!rb && ra.r === r.r && rb.r === r.r && staysOn(a, b); };
   const run = [ti];
   for (let p = prevTrip(ti, ymd); p !== undefined && run.length < 12 && linked(p, run[0]); p = prevTrip(p, ymd)) run.unshift(p);
   for (let n = nextTrip(ti, ymd); n !== undefined && run.length < 12 && linked(run[run.length - 1], n); n = nextTrip(n, ymd)) run.push(n);

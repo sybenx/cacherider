@@ -211,6 +211,17 @@ test('a Saturday route whose bus is another route\'s too carries its line on int
   await expect(on).toContainText('This bus becomes ' + pick.to + ' at ');
   const carry = page.locator('.rs-carry').filter({ visible: true });
   expect(await carry.locator('.croute').count()).toBeGreaterThan(3);   // the next route's stops, after this one's
+  // The seam drawn, not an icon: this route's rail on through the line that says it, a step over, the carry's rail
+  // a step to the right of this one's.
+  await expect(on).toHaveClass(/\bjog\b/);
+  await expect(on.locator('svg')).toHaveCount(0);
+  const rails = await page.evaluate(() => {
+    const on = [...document.querySelectorAll('.section.onward.jog')].find(e => e.offsetParent), up = on.previousElementSibling, down = on.nextElementSibling;
+    const rail = e => parseFloat(getComputedStyle(e).backgroundPositionX) + e.getBoundingClientRect().left;
+    return { into: up.classList.contains('into'), up: rail(up.lastElementChild), down: rail(down.firstElementChild) };
+  });
+  expect(rails.into).toBe(true);
+  expect(rails.down - rails.up).toBeCloseTo(12, 0);
   await expect(page.locator('a.rs-swap, .rs-buses')).toHaveCount(0);   // and nowhere else on the page
   const mon = new Date(sat); mon.setDate(mon.getDate() + 2);
   await page.clock.setFixedTime(mon);
@@ -218,6 +229,48 @@ test('a Saturday route whose bus is another route\'s too carries its line on int
   await go(page, '#/map/route/' + encodeURIComponent(pick.short));
   await expect(page.locator('.rs-list').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.section.onward, .rs-carry')).toHaveCount(0);
+});
+
+test('a route whose bus is out as another route between its runs says so from the timetable, and not while its own run is on', async ({ page }) => {
+  // The user's block-strip mockup: 'On Route 1 now ... Back on the 9 at 1:00 PM', the answer with no 9 on the map. No
+  // feed (refused), so the timetable's, said so; no stop named, the timetable's place not a sighting.
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => r.abort());
+  const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); sat.setHours(4, 0, 0, 0);
+  await page.clock.setFixedTime(sat);
+  await open(page);
+  const pick = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), u = await import('/app/ui.js'), t = await import('/app/time.js'), c = t.now();
+    const endOf = ti => { const e = d.tripEnd(ti), s = d.tripStops(ti); return e ? e.min : s[s.length - 1][0]; };
+    for (const [ri, r] of d.D.routes.entries()) {
+      if (d.swapsOn(ri, c.ymd).from === null) continue;
+      const own = new Set();
+      for (const si of new Set(Object.values(r.stops || {}).flat())) for (const x of d.timesOn(si, c.ymd)) if (x.r === ri) own.add(x.trip);
+      const runs = [...own].sort((a, b) => d.tripStops(a)[0][0] - d.tripStops(b)[0][0]);
+      for (const ti of runs.slice(1)) {
+        const p = d.prevTrip(ti, c.ymd), pr = p !== undefined && d.tripRoute(p);
+        if (!pr || pr.r === ri || !d.staysOn(p, ti)) continue;
+        const a = d.tripStops(p)[0][0] + 1;
+        if (a >= endOf(p) || runs.some(x => d.tripStops(x)[0][0] <= a && endOf(x) >= a)) continue;
+        const on = runs.find(x => d.tripStops(x)[0][0] + 1 < endOf(x));
+        return { short: r.short, other: u.routeName(pr.r), at: a, on: d.tripStops(on)[0][0] + 1 };
+      }
+    }
+    return null;
+  });
+  test.skip(!pick, 'no bus runs another route between its own runs that Saturday');
+  const at = min => { const x = new Date(sat); x.setHours(Math.floor(min / 60), min % 60, 0, 0); return x; };
+  await page.clock.setFixedTime(at(pick.at));
+  await page.reload();
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  const busy = page.locator('.rs-busy').filter({ visible: true });
+  await expect(busy).toHaveCount(1);
+  await expect(busy.locator(":scope > span")).toHaveText(`Its next bus is on ${pick.other} now, by the timetable.`);   // no 'back at': the list's first row says it
+  await expect(busy.locator('a.badgelink')).toHaveCount(1);
+  await page.clock.setFixedTime(at(pick.on));   // its own run under way: nothing to explain
+  await page.reload();
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  await expect(page.locator('.rs-list').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.rs-busy')).toHaveCount(0);
 });
 
 test('days without buses: a line on a stop\'s page, a route\'s and the Center\'s the week before, and the year\'s list in Settings', async ({ page }, info) => {

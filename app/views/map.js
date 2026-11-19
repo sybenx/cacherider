@@ -1199,12 +1199,14 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
     // being the run after this one.
     const to = D.routes[sw.to], toInk = dark() ? lift('#' + to.color) : sinkLine('#' + to.color), nseq = ns.map(x => x[1]);
     const carryRows = ntr ? foldRows(ns.map(([m, si]) => { const n = { min: m, r: sw.to, dir: ntr.dir, si, trip: nti, day: 0, ymd: clockNow.ymd, req: onRequest(si, sw.to, ntr.dir) }; return { si, k: ntr.dir, bus: [], n, row: routeRow(si, sw.to, n, clockNow, { ring: 0 }) }; }), sw.to, nseq) : [];
+    // The seam drawn as the bus runs it (the user's block-strip mockup): this route's rail carried on down through the
+    // line that says it, a step sideways, and on in the next route's colour; the step stands in for the swap icon.
     swapOut = ntr && ntr.r === sw.to && ns.length && staysOn(run.ti, nti)
-      ? html`<div class="section onward">${icon('swap', 16)}<span>This bus becomes ${routeName(sw.to)} at ${clockText(ns[0][0])}</span>${html.raw(routeBadgeLink(sw.to, ns[0][1], 24, ntr.dir))}</div>
+      ? html`<div class="section onward jog"${html.raw(` style="--rc:${ink};--rc2:${toInk}"`)}><span>This bus becomes ${routeName(sw.to)} at ${clockText(ns[0][0])}</span>${html.raw(routeBadgeLink(sw.to, ns[0][1], 24, ntr.dir))}</div>
         <div class="list rs-list line rs-carry"${html.raw(` style="--rc:${toInk}"`)}>${carryRows}</div>`
       : '';   // its last run today, or none left: nothing becomes anything
   }
-  const body = html`<div class="routesheet">${alerts}${opOf(ri) ? '' : daysOffNote(clockNow)}${yours}${opNote(ri, clockNow)}${keptOn(ri) ? html`<div class="rs-op"><span class="muted">These times are from an old timetable (${keptDay(ri)}) and may be off.</span></div>` : ''}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || ''}<div class="list rs-list line"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || swapOut}
+  const body = html`<div class="routesheet">${alerts}${opOf(ri) ? '' : daysOffNote(clockNow)}${yours}${opNote(ri, clockNow)}${keptOn(ri) ? html`<div class="rs-op"><span class="muted">These times are from an old timetable (${keptDay(ri)}) and may be off.</span></div>` : ''}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || (buses.length ? '' : busyNote(ri, clockNow))}<div class="list rs-list line${!onward.later && swapOut ? ' into' : ''}"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || swapOut}
     ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}${wayPath}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}</div>`;
   // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus; for a way
   // of a line (an old address, '/15/1'), on its half. Else at the top: the stops still to come start there.
@@ -1413,6 +1415,27 @@ function tripRows(ti, from, clockNow, dim) {
     const row = routeRow(si, tr.r, { min: m, r: tr.r, dir: tr.dir, si, trip: ti, day: 0, ymd: clockNow.ymd, req: onRequest(si, tr.r, tr.dir) }, clockNow);
     return dim ? html`<div class="later">${row}</div>` : row;
   });
+}
+
+/** Where this route's bus is while it runs another route between its own runs (a Saturday's 9 out as the 1), and when
+ *  it's back: the question with no 9 on the map. The user's block-strip mockup's line, 'On Route 1 now ... Back on the
+ *  9 at 1:00 PM'. From the timetable, said so, and only where nothing live says it: none of this route's runs under way,
+ *  and the run before its next one, its bus's, another route's (not its own other half, 16 AM's and PM's) and on now.
+ *  No 'by' a stop: the timetable's place isn't a sighting. No 'back at': the next run's time is the list's first row,
+ *  right under it (a second opinion). Not where the feed has that bus: a sighting isn't the timetable's. */
+function busyNote(ri, clockNow) {
+  if (opOf(ri)) return '';
+  const ymd = clockNow.ymd, at = min => ({ min, day: 0 });
+  const endOf = ti => { const te = tripEnd(ti), st = tripStops(ti); return te ? te.min : st.length ? st[st.length - 1][0] : -1; };
+  const runs = runsOn(ri, ymd);
+  if (runs.some(x => isDue(at(x.min), clockNow) && !isGone(at(endOf(x.trip)), clockNow))) return '';
+  const next = runs.find(x => !isDue(at(x.min), clockNow));
+  const p = next ? prevTrip(next.trip, ymd) : undefined, pr = p !== undefined ? tripRoute(p) : null;
+  if (!pr || familyKey(pr.r) === familyKey(ri) || !staysOn(p, next.trip)) return '';
+  const first = tripStops(runOf(p, ymd)[0])[0];
+  if (!first || !isDue(at(first[0]), clockNow) || isGone(at(endOf(p)), clockNow)) return '';
+  if (!rtStale() && rt.buses.some(b => b.trip === D.trips[p])) return '';
+  return html`<div class="re-last rs-busy"><span>Its next bus is on ${routeName(pr.r)} now, by the timetable.</span>${html.raw(routeBadgeLink(pr.r, first[1], 24, pr.dir))}</div>`;
 }
 
 /** `later`: the next trip of the bus furthest along this route, dimmed, under the list. `now`: a bus that ran this
