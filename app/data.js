@@ -1,5 +1,5 @@
 // The schedule, loaded once, and the questions the screens ask of it.
-import { now, dayFrom, dayDiff, setZone, dayName, clockText, isGone } from './time.js';
+import { now, dayFrom, dayDiff, setZone, dayName, fmtDay, clockText, isGone } from './time.js';
 
 export let D = null;           // the reduced feed
 export const BASE = new URL('..', import.meta.url).href;   // the app's root, wherever it is served from
@@ -426,8 +426,13 @@ export function daysOff(ymd, within) {
  *  takes them off by hand (tools/reduce.py, hints' holidays). */
 export const holidayOn = ymd => (D.holidays && D.holidays[ymd]) || '';
 /** Why the agency's buses aren't running on a day with none: 'Connect doesn't run on Sundays', or on its holiday
- *  ('… on Thanksgiving Day'), which falls on a weekday it otherwise runs. */
-export const offDayWords = ymd => `${D.agency.brand} doesn't run on ${holidayOn(ymd) || dayName(ymd) + 's'}.`;
+ *  ('… on Thanksgiving Day'), which falls on a weekday it otherwise runs; a day the feed takes off unnamed by its date
+ *  ('… on Fri 27 Nov', the day after Thanksgiving in the feed of 2026-11-19: it had said 'on Fridays'). */
+export function offDayWords(ymd) {
+  opServices ??= new Set(D.routes.filter(r => r.op).map(r => r.op.service));
+  const dow = (dayFrom(ymd).dow + 6) % 7, runsThatDay = D.services.some(s => !opServices.has(s.id) && s.days[dow] && s.start <= ymd && ymd <= s.end);
+  return `${D.agency.brand} doesn't run on ${holidayOn(ymd) || (runsThatDay ? fmtDay(ymd) : dayName(ymd) + 's')}.`;
+}
 export function servicesOn(ymd) {
   const d = dayFrom(ymd);
   const dow = (d.dow + 6) % 7;   // GTFS counts from Monday

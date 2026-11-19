@@ -3013,8 +3013,10 @@ const blueInRow = page => page.evaluate(ids => import('/app/data.js').then(m => 
 
 
 
-test('a holiday: no buses on Thanksgiving, said by its name; the evening before, the next bus is Friday\'s; Friday runs', async ({ page }) => {
-  // Connect's feed has no holidays (tools/hints.json does). The next Thanksgiving, the fourth Thursday of November.
+test('a holiday: no buses on Thanksgiving, said by its name; the evening before, the next bus is the next day with buses; that day runs', async ({ page }) => {
+  // Connect's feed has no holidays (tools/hints.json does). The next Thanksgiving, the fourth Thursday of November. The
+  // day after is the feed's to give or take off (the feed of 2026-11-19 took the Friday off): the next day with buses
+  // is worked out from the timetable, and a day taken off unnamed is said by its date, not 'on Fridays'.
   const today = new Date();
   let tg = null;
   for (let y = today.getFullYear(); !tg; y++) { const d = new Date(y, 10, 1); d.setDate(1 + (4 - d.getDay() + 7) % 7 + 21); if (d > today) tg = d; }
@@ -3022,15 +3024,25 @@ test('a holiday: no buses on Thanksgiving, said by its name; the evening before,
   await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
   await page.clock.setFixedTime(at(0, '12:00'));
   await open(page, '#/stop/7543017');   // Island Market: Route 3, every weekday
+  const plan = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+    let k = 1;
+    while (k < 10 && !d.agencyRuns(t.dayFrom(c.ymd, k).ymd)) k++;
+    const off = [];
+    for (let j = 1; j < k; j++) { const y = t.dayFrom(c.ymd, j).ymd; if (!d.holidayOn(y)) off.push({ k: j, words: d.offDayWords(y), date: t.fmtDay(y) }); }
+    return { k, day: t.dayName(t.dayFrom(c.ymd, k).ymd), off };
+  });
+  expect(plan.k).toBeLessThan(10);
   await expect(page.getByText('Connect doesn\'t run on Thanksgiving Day.').filter({ visible: true }).first()).toBeVisible();
-  await expect(page.getByText(/Service resumes Friday/).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText(new RegExp('Service resumes ' + plan.day)).filter({ visible: true }).first()).toBeVisible();
   await go(page, '#/hub');
-  await expect(page.getByText(/^Tomorrow · Friday/i).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText(new RegExp('^(Tomorrow · )?' + plan.day, 'i')).filter({ visible: true }).first()).toBeVisible();
   await expect(page.getByText('The rest of today')).toHaveCount(0);
+  for (const o of plan.off) expect(o.words).toBe(`Connect doesn't run on ${o.date}.`);   // never 'on Fridays'
   await page.clock.setFixedTime(at(-1, '21:30'));
   await go(page, '#/stop/7543017');
-  await expect(page.getByText(/The next one is Friday at/).filter({ visible: true }).first()).toBeVisible();
-  await page.clock.setFixedTime(at(1, '12:00'));
+  await expect(page.getByText(new RegExp('The next one is ' + plan.day + ' at')).filter({ visible: true }).first()).toBeVisible();
+  await page.clock.setFixedTime(at(plan.k, '12:00'));
   await open(page, '#/stop/7543017');
   await expect(page.getByText('No buses today')).toHaveCount(0);
   await go(page, '#/hub');
