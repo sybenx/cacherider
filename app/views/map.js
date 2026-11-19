@@ -12,7 +12,7 @@ import { rt, findBus, offDuty, busNth, busOn, busStops, busPlace, nextStopOf, la
 import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
-import { WREATH, SNOWCAP, DRIFTS, TREE } from './holiday-art.js';
+import { WREATH, SNOWCAP, TREE } from './holiday-art.js';
 import { lightInks, apartInks, hueless, faint, textOn } from '../ink.js';
 import { placeStar } from '../places.js';
 
@@ -2285,42 +2285,28 @@ function hubBadges() {
 }
 /** Christmas at the Center (holiday.js's season, the root's data-season), its plan dressed as Claude Design sketched it
  *  and the plan's own shapes and colours left as they are: snow on its roofs (the hall and the bays' canopies round it,
- *  as the map draws them, whited over), drifts in the plan's corners (the bays' box, as the map's turned: bottom left,
- *  top right and bottom right, as sketched), and a little tree by the doors, at the Center's own point on the hall's
- *  south side. The caps on the bays' badges are app.css's (SNOWCAP in each). Under the badges and buses, no taps. */
+ *  as the map draws them, whited over) and banked soft along their feet, and a little tree in its mound of snow by the
+ *  doors, at the Center's own point on the hall's south side. The sketch's drifts in its frame's corners are gone: the
+ *  map has no frame, and at the bays' corners they floated over the streets like clouds. The caps on the bays' badges
+ *  are app.css's (SNOWCAP in each). Under the badges and buses, no taps. */
 let snowMarks = null, roofAsked = false;
 function hubSnow() {
   const on = hubOn && document.documentElement.dataset.season === 'christmas';
   const roof = !!map.getLayer('hol-roof');
-  if (roof) for (const id of ['hol-roof', 'hol-roof-edge']) if ((map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  if (roof) for (const id of ['hol-bank', 'hol-roof', 'hol-roof-edge']) if ((map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   if (!on) { if (snowMarks) { for (const m of snowMarks) m.marker.remove(); snowMarks = null; } return; }
   if (!roof && !roofAsked) { roofAsked = true; map.once('idle', snowRoof); }
   if (!snowMarks) {
-    // The bays' box, a little out from it: its four corners, each a drift's place.
-    const lats = D.hub.bays.map(b => b.lat), lons = D.hub.bays.map(b => b.lon), pad = 0.00012;
-    const [s0, n0, w0, e0] = [Math.min(...lats) - pad, Math.max(...lats) + pad, Math.min(...lons) - pad * 1.4, Math.max(...lons) + pad * 1.4];
-    snowMarks = [[w0, s0], [e0, s0], [w0, n0], [e0, n0]].map(at => {
-      const el = document.createElement('div');
-      el.className = 'hol-drifts';
-      el.innerHTML = DRIFTS;
-      return { at, el, marker: new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(at).addTo(map) };
-    });
     const tree = document.createElement('div');
     tree.className = 'hol-treemark';
     tree.innerHTML = TREE;
-    snowMarks.push({ el: tree, marker: new maplibregl.Marker({ element: tree, anchor: 'bottom' }).setLngLat([D.hub.lon + 0.0001, D.hub.lat]).addTo(map) });
-  }
-  // Which corner of the screen each drift's in, the map turned as it is (south-up at the Center): its shape that
-  // corner's, the top left none.
-  const c = map.project([D.hub.lon, D.hub.lat]);
-  for (const m of snowMarks) if (m.at) {
-    const p = map.project(m.at), k = (p.y > c.y ? 'b' : 't') + (p.x > c.x ? 'r' : 'l');
-    if (m.el.dataset.k !== k) m.el.dataset.k = k;
+    snowMarks = [{ el: tree, marker: new maplibregl.Marker({ element: tree, anchor: 'bottom' }).setLngLat([D.hub.lon + 0.0001, D.hub.lat]).addTo(map) }];
   }
 }
 /** The Center's roofs whited over: its buildings within 45 m (the hall, the bays' canopies and shelters; not its
  *  neighbours), as the map has them once their tile's in, copied into a layer of their own just over the buildings,
- *  snow's white with a faint edge, as the sketch's island roof. */
+ *  snow's white with a faint edge, as the sketch's island roof; and under it a bank of snow round each one's foot, a
+ *  soft white edge a few metres out (wider as the map zooms in), as if it had drifted against the walls. */
 function snowRoof() {
   roofAsked = false;
   if (!hubOn || map.getLayer('hol-roof') || !map.getLayer('buildings')) return;
@@ -2334,6 +2320,7 @@ function snowRoof() {
   if (!fs.length) return;
   const layers = map.getStyle().layers, i = layers.findIndex(l => l.id === 'buildings'), before = layers[i + 1] ? layers[i + 1].id : undefined;
   map.addSource('hol-roof', { type: 'geojson', data: { type: 'FeatureCollection', features: fs.map(f => ({ type: 'Feature', properties: {}, geometry: f.geometry })) } });
+  map.addLayer({ id: 'hol-bank', type: 'line', source: 'hol-roof', layout: { 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['exponential', 2], ['zoom'], 16, 2, 18, 8, 20, 32], 'line-blur': ['interpolate', ['exponential', 2], ['zoom'], 16, 1, 18, 4, 20, 16] } }, before);
   map.addLayer({ id: 'hol-roof', type: 'fill', source: 'hol-roof', paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.95 } }, before);
   map.addLayer({ id: 'hol-roof-edge', type: 'line', source: 'hol-roof', paint: { 'line-color': '#e4e8ef', 'line-width': 1 } }, before);
   hubSnow();

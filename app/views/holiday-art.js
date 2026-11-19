@@ -142,12 +142,7 @@ export const WREATH = `<i class="hol-wreath" aria-hidden="true"><span class="hol
 // Snow on the Transit Center's bays (the real plan dressed, its badges' shapes and colours as they are): a cap of snow
 // along the top of each bay's badge, as sketched on the plan's (44 wide there, the badge's width here).
 export const SNOWCAP = '<svg class="hol-cap" viewBox="0 -4 44 7" preserveAspectRatio="none" aria-hidden="true"><path d="M0 2C4 -3 14 -2 22 -1C30 -3 40 -2 44 2V3H0Z" fill="#fff"/></svg>';
-// Drifts in the plan's corners, where the sketch has them (bottom left, top right, bottom right), each in its own
-// little box so it sits at a corner of the bays. The sketch's top right one hung from its frame's top edge, which the
-// map hasn't got (on its own it read as a crescent): that corner has the bottom right's mound, sitting on the ground.
-const MOUND = '<path d="M484 168C478 160 468 160 462 166C456 162 446 168 448 178C450 192 470 200 484 200Z" fill="#fff" opacity=".95"/>';
-export const DRIFTS = `<svg class="hol-drift bl" viewBox="0 154 34 46" aria-hidden="true"><path d="M0 170C0 160 8 154 18 156C26 152 34 160 34 170C34 186 28 200 0 200Z" fill="#fff" opacity=".95"/></svg>
-<svg class="hol-drift tr" viewBox="446 160 38 40" aria-hidden="true">${MOUND}</svg>
-<svg class="hol-drift br" viewBox="446 160 38 40" aria-hidden="true">${MOUND}</svg>`;
-// A little tree by the hall's doors, its foot at 0 0, lights on it.
-export const TREE = '<svg class="hol-tree" viewBox="-13 -34 26 35" aria-hidden="true"><path d="M0 0L-12 0 0 -30 12 0Z" fill="#2f6b43"/><path d="M-8 -10L8 -10 0 -30Z" fill="#3b8152"/><circle cx="0" cy="-31" r="2.2" fill="#ffd166"/><circle cx="-4" cy="-6" r="1.4" fill="#e2453c"/><circle cx="5" cy="-14" r="1.4" fill="#6cb8ff"/><circle cx="-2" cy="-19" r="1.3" fill="#ffd166"/></svg>';
+// A little tree by the hall's doors, its foot at 0 0, lights on it, standing in a mound of snow. (The sketch's drifts
+// sat in its frame's corners; the map has no frame, and pinned to the bays' corners they floated over the streets
+// like clouds: the snow on the ground is the banks along the roofs' feet now, map.js snowRoof.)
+export const TREE = '<svg class="hol-tree" viewBox="-17 -34 34 37" aria-hidden="true"><path d="M0 0L-12 0 0 -30 12 0Z" fill="#2f6b43"/><path d="M-8 -10L8 -10 0 -30Z" fill="#3b8152"/><circle cx="0" cy="-31" r="2.2" fill="#ffd166"/><circle cx="-4" cy="-6" r="1.4" fill="#e2453c"/><circle cx="5" cy="-14" r="1.4" fill="#6cb8ff"/><circle cx="-2" cy="-19" r="1.3" fill="#ffd166"/><path d="M-16 3C-15 -1 -10 -2 -6 -1C-3 -3 3 -3 6 -1C10 -2 15 -1 16 3Z" fill="#fff"/><path d="M-16 3C-15 -1 -10 -2 -6 -1C-3 -3 3 -3 6 -1C10 -2 15 -1 16 3" fill="none" stroke="#dfe5ee" stroke-width=".8"/></svg>';

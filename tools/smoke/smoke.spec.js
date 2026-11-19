@@ -2078,9 +2078,9 @@ test('Christmas: the lights from the 14th, a glow in the light theme and halos i
   await expect.poll(() => look().then(l => l && l.twinkle)).toBe('none');
 });
 
-test('Christmas at the Center and on the map: snow on the bays\' badges and roofs, drifts and a tree; a wreath on a bus, the dark theme\'s in the dark', async ({ page }, info) => {
+test('Christmas at the Center and on the map: snow on the bays\' badges and roofs, banked at their feet, a tree in its mound; a wreath on a bus, the dark theme\'s in the dark', async ({ page }, info) => {
   // Monday 14 Dec 2026, a minute past noon. At the Center (a phone's: its bays are the map) each bay's badge wears a cap
-  // of snow, the hall and its canopies are whited over, drifts in the plan's corners, a tree by the doors. A Connect bus
+  // of snow, the hall and its canopies are whited over and banked with snow at their feet, a tree in its mound by the doors. A Connect bus
   // on the map, staged on its trip, wears a wreath at its top right, upright, the light theme's; in the dark theme,
   // the dark one. Sunday 27 Dec: none of it.
   let feed = null;
@@ -2095,11 +2095,13 @@ test('Christmas at the Center and on the map: snow on the bays\' badges and roof
     await expect(page.locator('.hbay').first()).toBeAttached();
     const caps = page.locator('.hbay .hol-cap');
     await expect.poll(() => caps.evaluateAll(cs => cs.filter(c => getComputedStyle(c).display === 'block').length)).toBe(await page.locator('.hbay').count());
-    await expect(page.locator('.hol-drifts')).toHaveCount(4);
     await expect(page.locator('.hol-treemark')).toHaveCount(1);
     await expect.poll(() => page.evaluate(() => { const m = window.__map; return !!m && !!m.getLayer('hol-roof') && m.getLayoutProperty('hol-roof', 'visibility') !== 'none' && m.getSource('hol-roof').serialize().data.features.length; }), { timeout: 20_000 }).toBeGreaterThan(0);
+    // and the snow banked along the roofs' feet, under them: no drifts floating free in the plan's corners
+    expect(await page.evaluate(() => { const m = window.__map, ids = m.getStyle().layers.map(l => l.id); return m.getLayoutProperty('hol-bank', 'visibility') !== 'none' && ids.indexOf('hol-bank') < ids.indexOf('hol-roof'); })).toBe(true);
+    await expect(page.locator('.hol-drifts, .hol-drift')).toHaveCount(0);
     // Under the badges and never a tap's.
-    expect(await page.locator('.maplibregl-marker.hol-drifts').first().evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
+    expect(await page.locator('.maplibregl-marker.hol-treemark').first().evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
   }
   feed = {};
   const pick = await stageBus(page, feed);

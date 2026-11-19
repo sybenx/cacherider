@@ -1476,7 +1476,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 
 /* Christmas's small things (views/holiday-art.js), in its season only. A Connect bus wears a wreath at its top right,
    upright however the map's turned and the bus headed, the dark theme's brighter one there; not far off, where it's
-   the hollow arrow. Each bay's badge at the Center a cap of snow (map.js hubBadges); the plan's drifts and its tree
+   the hollow arrow. Each bay's badge at the Center a cap of snow (map.js hubBadges); its tree in its mound of snow
    (map.js hubSnow) under the badges and buses. */
 .hol-wreath, .hol-cap { display: none; }
 :root[data-season="christmas"] #map .bus:not(.shuttle) .hol-wreath { display: block; position: absolute; left: 0; top: 0; width: 22px; height: 22px; pointer-events: none; transform: rotate(calc(var(--map-bearing, 0deg) - var(--course, 0deg))) scale(var(--bus-scale, 1)); }
@@ -1487,14 +1487,8 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 :root[data-theme="dark"] .hol-wreath .hol-wd { display: block; }
 .hbay .b { position: relative; }
 :root[data-season="christmas"] .hbay .hol-cap { display: block; position: absolute; left: -1px; top: -4px; width: calc(100% + 2px); height: 7px; pointer-events: none; }
-.maplibregl-marker.hol-drifts, .maplibregl-marker.hol-treemark { z-index: 0; pointer-events: none; }
-.hol-drifts { width: 0; height: 0; }
-.hol-drift { display: none; position: absolute; width: 34px; height: auto; }
-/* each its corner's shape, nestled in toward the bays from its corner: up and right from the bottom left, and so on */
-.hol-drifts[data-k="bl"] .hol-drift.bl { display: block; left: 0; top: -46px; }
-.hol-drifts[data-k="tr"] .hol-drift.tr { display: block; left: -38px; top: 0; width: 38px; }
-.hol-drifts[data-k="br"] .hol-drift.br { display: block; left: -38px; top: -40px; width: 38px; }
-.hol-tree { width: 22px; height: 30px; }
+.maplibregl-marker.hol-treemark { z-index: 0; pointer-events: none; }
+.hol-tree { width: 27px; height: 29px; display: block; }
 
 /* The day's card (holiday.js), in place of 'No buses today' on Thanksgiving Day and Christmas Day: its drawing in its
    own colours in either theme, the words under it on the app's raised surface and in its own ink. */
