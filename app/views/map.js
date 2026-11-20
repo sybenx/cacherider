@@ -10,6 +10,7 @@ import { nearestTo, whereabouts, spotKey, spotOf, atPath, byWalk, walkWay, steep
 import { U, live, busNext, stopRowU, nearestUSU, chip, meter, liveTag, heading, loadWords, isStale, lastSeen, offNote, hours, untilWords } from '../usu.js';
 import { rt, findBus, offDuty, busNth, busOn, busStops, busPlace, nextStopOf, lateWords, heldAt, busDelay, rtStale, rtSeen, predict, leftEarly, earlyToday, HUB_IN, AT_STOP } from '../rt.js';
 import { bays, hubSheet, mount as hubMount } from './hub.js';
+import { routeDay, dayPick, dayRow, mountStrip } from './strip.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
 import { WREATH, SNOWCAP, TREE } from './holiday-art.js';
@@ -1030,9 +1031,10 @@ function pickRoute(ri, app) {
 /** The route's sheet: which way, its last run, its stops still to come today with its buses among them, and where
  *  the bus goes on. `short`/`dir`: the route and way; `at`: the stop it was opened from (a badge), its answer first
  *  and its row marked; `full`: the whole route, done parts and all. Markup, the row to land on, and the title. */
-function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
+function routeSheet({ short, dir, at, full, bus, every, day, on }, clockNow) {
   const ri = D.routeByShort[short];
   if (ri === undefined) return null;
+  if (day) return routeDaySheet(ri, short, on, clockNow);
   const r = route(ri);
   const dirs = Object.keys(r.stops || {});
   const d = dirs.includes(dir) ? dir : dirs[0];
@@ -1168,7 +1170,7 @@ function routeSheet({ short, dir, at, full, bus, every }, clockNow) {
     const when = n && n.now ? (opOf(x) ? ' · running now, by its timetable' : ' · on the road now') : next ? ` · next run ${clockText(next.min)} from ${endName(next.si)}` : ran ? ' · no more runs today' : ' · none today';
     return html`<a class="rs-also" href="#/map/route/${encodeURIComponent(D.routes[x].short)}">${badge(x, 22)}<span class="rs-also-t">Also ${who}${when}</span>${icon('fwd', 16)}</a>`;
   });
-  const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${routeSub(ri) ? html`<span class="sub">${routeSub(ri)}</span>` : ''}</div></div>${also}${chipsRow}</div>`;
+  const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${routeSub(ri) ? html`<span class="sub">${routeSub(ri)}</span>` : ''}</div>${routeViews(short, false)}</div>${also}${chipsRow}</div>`;
   // Alerts folded to their titles: the line on the map already shows where; the words are a tap away.
   const alerts = routeAlerts(ri, clockNow.ymd).map(a => html`<details class="callout alert rs-alert"><summary>${icon('ban', 20)}<b>${a.title}</b><span class="more">More</span></summary><div class="sub">${a.text}${a.url ? html` <a href="${a.url}" target="_blank" rel="noopener">More</a>` : ''}</div></details>`);
   // Come from a stop's badge: the answer for that stop first, so the list below is for those who want the route.
@@ -1418,6 +1420,17 @@ function tripRows(ti, from, clockNow, dim) {
   });
 }
 
+/** A route's two views, its stops and its day (strip.js routeDay), a pair of links by its name as the Center's are. */
+const routeViews = (short, day) => html`<div class="seg rs-views" role="group" aria-label="View"><a href="#/map/route/${encodeURIComponent(short)}"${html.raw(day ? '' : ' aria-current="page"')}>Stops</a><a href="#/map/route/${encodeURIComponent(short)}?day=1"${html.raw(day ? ' aria-current="page"' : '')}>All day</a></div>`;
+/** A route's page on its day view: its head as ever, which day, and its buses down the day (strip.js routeDay). */
+function routeDaySheet(ri, short, on, clockNow) {
+  const { days, pick, today, clk } = dayPick(clockNow, on);
+  const row = dayRow(days, pick, d => '#/map/route/' + encodeURIComponent(short) + '?day=1&on=' + d.k);
+  const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${routeSub(ri) ? html`<span class="sub">${routeSub(ri)}</span>` : ''}</div>${routeViews(short, true)}</div></div>`;
+  const s = pick.off ? '' : routeDay(ri, clk, today);
+  const none = pick.off ? html`<div class="tcl-note"><b>No buses</b> · ${offDayWords(pick.ymd)}</div>` : !s ? html`<div class="tcl-note"><b>No buses</b></div>` : '';
+  return { head, body: html`<div class="routesheet rs-dayview">${row}${pick.note && !pick.off ? html`<p class="ds-note">${pick.note}</p>` : ''}${s}${none}</div>`, anchor: null, title: routeTitle(ri), ri, day: true };
+}
 /** Where this route's bus is while it runs another route between its own runs (a Saturday's 9 out as the 1), and when
  *  it's back: the question with no 9 on the map. The user's block-strip mockup's line, 'On Route 1 now ... Back on the
  *  9 at 1:00 PM'. From the timetable, said so, and only where nothing live says it: none of this route's runs under way,
@@ -1602,7 +1615,7 @@ let sheetKey = null;
 function sheetCard(o, clockNow) {
   const s = routeSheet(o, clockNow), card = col.querySelector('#mapcard');
   if (!s) return;
-  const key = [o.short, o.dir, o.at, o.full].join('|'), again = sheetKey === key && !!card.querySelector(':scope > .routesheet');
+  const key = [o.short, o.dir, o.at, o.full, o.day, o.on].join('|'), again = sheetKey === key && !!card.querySelector(':scope > .routesheet');
   const markup = html`<div class="grip"></div>${s.head}${s.body}`.s;
   if (again) morph(card, markup);
   else { card.innerHTML = markup; card.scrollTop = 0; card.classList.remove('peek'); sheetKey = key; }
@@ -1610,6 +1623,7 @@ function sheetCard(o, clockNow) {
   card.classList.add('open');
   // As the Center's board and a stop's (sheetPlace): resting at its head and first stops, one scroll over the map.
   if (!again) { sheetFolded = false; sheetPlace(card); }
+  mountStrip(card);   // its day view: the box as tall as the room the card rests with, opened at now
   // Opened for a bus on it: its row brought up to the sheet's resting edge, the sheet rising over the map to show it.
   if (!again && s.anchor && s.anchor !== 'here') { const a = card.querySelector('#' + s.anchor); if (a) card.scrollTop = Math.max(0, a.getBoundingClientRect().top - (card.getBoundingClientRect().top + parseFloat(card.style.getPropertyValue('--hub-room') || 0)) - 60); }
 }
@@ -1620,7 +1634,7 @@ export function routePage(o, clockNow) {
   // Back by the history only to a page of the app's own (each entry knows the one before it, main.js): history.length
   // counts the pages before the app too, and a route opened from a link elsewhere went back out of the app.
   return { html: html`<div class="backbar"><a class="btn btn-ghost" href="#/" onclick="if(history.state&&history.state.prev){history.back();return false}">${icon('back', 22)}Back</a></div><div class="routepage">${s.head}${s.body}</div>`.s,
-    title: s.title, key: 'route' + o.short + '/' + (o.dir || '') + (o.at || '') + (o.full ? '*' : ''), keepScroll: true, anchor: s.anchor, anchorBlock: 'center' };
+    title: s.title, key: 'route' + o.short + '/' + (o.dir || '') + (o.at || '') + (o.full ? '*' : '') + (o.day ? '~' + (o.on || '') : ''), keepScroll: true, anchor: s.anchor, anchorBlock: 'center', mount: el => mountStrip(el) };
 }
 /** A bus from a route's list, ringed on the map and the map eased to it; the sheet stays. One not placed yet is
  *  ringed when it appears. */
@@ -2189,7 +2203,7 @@ function quiet() {
 // drawn on its badge). Badges that land on one another are eased apart on the screen, afresh at each zoom.
 const HUB_Z = 17.5;
 const HUB_HIDE = ['route-hover', 'usu-hover', 'stops-tp', 'route-lines', 'route-on', 'route-arrows', 'route-arrows-all', 'runs-arrows', 'route-closed', 'route-closed-halo', 'route-times', 'stops', 'stops-lit', 'stops-maybe', 'stop-labels', 'place-labels'];
-let hubOn = false, hubBay = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
+let hubOn = false, hubBay = null, dayLit = null, dayOn = null, hubMarks = new Map();   // the view's on; the route picked (#/hub/<k>); badges by route
 let faintAt = null;   // the style the stops were made faint in, while the Center's board is up; null when they're as drawn
 let hubTurned = false, northDue = false;   // the Center framed south-up by fitHub; north to come back once the move ends
 function hubCheck() {
@@ -2434,7 +2448,7 @@ function holdOffTag() {
  *  the feed. */
 let hubKey = null;
 function hubCard(clockNow) {
-  const s = hubSheet({ bay: hubBay }, clockNow), card = col.querySelector('#mapcard');
+  const s = hubSheet({ bay: hubBay, day: dayLit, on: dayOn }, clockNow), card = col.querySelector('#mapcard');
   const markup = html`<div class="grip"></div><div class="head hubhead">${s.head}</div><div class="hubsheet">${s.body}</div>`.s;
   // The same board redrawn in place only while it's up: closed (the Map tab, a swipe), it opens afresh, at the countdown.
   const again = hubKey === (s.pick || '') && !!card.querySelector(':scope > .hubsheet') && card.classList.contains('open');
@@ -2466,7 +2480,8 @@ function sheetPlace(card) {
     const h = card.querySelector(':scope > .head'), rows = routeList.querySelectorAll('.rs-list > *'), yours = routeList.querySelector('.yourstop');
     headH = Math.round((h ? to(h) : 120) + 2);
     const want = Math.max(rows.length ? to(rows[Math.min(2, rows.length - 1)]) : headH, yours ? to(yours) : 0);
-    open = H - Math.round(Math.min(want, 0.5 * H));
+    // its day view (strip.js routeDay), a drawing to read: over three quarters of the map, the route framed above
+    open = routeList.querySelector('.daystrip') ? Math.round(H * 0.25) : H - Math.round(Math.min(want, 0.5 * H));
   } else if (stopPage) {
     // a stop's: resting at its opening height (openingHeight: down to its next bus, or its closure), folded to its head
     const g0 = g ? g.getBoundingClientRect().top : card.getBoundingClientRect().top, h = stopPage.querySelector('.head');
@@ -2477,8 +2492,10 @@ function sheetPlace(card) {
     headH = (g ? g.offsetHeight : 24) + (h ? h.offsetHeight : 100) + 1;
     // The Center's board rests on 40% of the map and goes no higher than 60%, its list scrolling inside from there:
     // scrolled as one page over the map, it covered the buses (the user, 2026-10-27).
-    open = Math.round(H * 0.6);
-    top = Math.max(top, Math.round(H * 0.4));
+    // Its day (strip.js), a drawing to read: resting over three quarters of the map, the bays still in sight above.
+    const day = !!card.querySelector(':scope > .hubsheet .daystrip');
+    open = Math.round(H * (day ? 0.25 : 0.6));
+    top = Math.max(top, Math.round(H * (day ? 0.2 : 0.4)));
   }
   const rest = Math.max(top, Math.min(open, H - headH));
   sheetRest = sheetFolded ? Math.max(rest, H - headH) : rest;
@@ -3782,7 +3799,7 @@ function busIn(id, app) {
   b.extend([D.hub.lon, D.hub.lat]);
   requestAnimationFrame(() => frame(b, { maxZoom: 16, bearing: 0, duration: 700 }));
 }
-async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, alertTap, at, from, to, me, focus, hub, hubPick, tick, bus, journey, busId, busTap, goPick, page }, app, clockNow) {
+async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute, alertId, alertTap, at, from, to, me, focus, hub, hubPick, hubDay = null, hubOnDay = null, tick, bus, journey, busId, busTap, goPick, page }, app, clockNow) {
   // The address this was asked for, before the map's made: a page gone on from while it was (the home page's call
   // still waiting on init as a stop's came in) is the newer call's to show. The home page's, resumed after the stop's,
   // put the map back to the town and the stop down, the stop's page beside it (the smoke test's 'This side' missing,
@@ -3861,7 +3878,7 @@ async function showPage({ stopId, ustopId, campus, routeShort, routeArgs, uRoute
   if (to) { if (pinMarker) pinMarker.remove(); setSpot(null); return askSpot(to, app, true); }
   if (hub) {
     selected = null; uHilite = ''; hiLines = []; hiLoops = []; applySelection();
-    hubBay = hubPick || null;
+    hubBay = hubPick || null; dayLit = hubDay; dayOn = hubOnDay;
     // On a phone the board is the map's card; beside a wide screen's panel, the panel.
     if (app.route.name === 'map' && !wide()) hubCard(clockNow); else col.querySelector('#mapcard').classList.remove('open');
     // Framed whenever the tab opens; from one of its routes to another, or a route put away (a click on the map beside

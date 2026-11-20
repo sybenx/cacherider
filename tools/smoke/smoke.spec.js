@@ -277,6 +277,102 @@ test('a Saturday route whose bus is another route\'s too carries its line on int
   await expect(page.locator('.section.onward, .rs-carry')).toHaveCount(0);
 });
 
+test('the Transit Center\'s day: every bus a column, opened at now, a run a tap into its stops, a head a way to its route\'s day', async ({ page }) => {
+  // The user's block-strip mockup, 'my favorite part': the Center's second view, not a page of its own. A Saturday at
+  // 12:40, the feed refused: the timetable's alone.
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
+  const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); sat.setHours(12, 40, 0, 0);
+  await page.clock.setFixedTime(sat);
+  await open(page, '#/hub');
+  const n = await page.evaluate(async () => { const s = await import('/app/views/strip.js'), t = await import('/app/time.js'); return s.busesOn(t.now().ymd).length; });
+  test.skip(!n, 'no buses that Saturday');
+  const day = page.locator('.tcl-views a', { hasText: 'All day' }).filter({ visible: true }).first();
+  await day.click();
+  await expect(page).toHaveURL(/#\/hub\?day=1$/);
+  const strip = page.locator('.daystrip').filter({ visible: true });
+  await expect(strip).toHaveCount(1);
+  await expect(strip.locator('.ds-head')).toHaveCount(n);
+  await expect(strip.locator('.ds-now')).toHaveCount(1);
+  await expect(strip.locator('.ds-nowt')).toHaveText(/12:40/);
+  await expect(page.locator('.tcl-views a[aria-current="page"]').filter({ visible: true })).toHaveText('All day');
+  expect(await strip.locator('.ds-box').evaluate(b => b.scrollTop)).toBeGreaterThan(0);   // opened at now, not the morning
+  const hrefs = await strip.locator('svg a').evaluateAll(as => as.map(a => a.getAttribute('href')));
+  expect(hrefs.length).toBeGreaterThan(n);
+  expect(hrefs.every(h => /^#\/stop\/[^?]+\?run=\d+&on=\d{8}$/.test(h))).toBe(true);
+  // Ahead: a weekday as the timetable runs it, by the timetable alone (no now on it, nothing live), from its first bus.
+  await expect(page.locator('.ds-days a[aria-current="page"]').filter({ visible: true })).toHaveText('Saturday');
+  await page.locator('.ds-days a', { hasText: 'Weekday' }).filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/#\/hub\?day=1&on=wk$/);
+  const wk = page.locator('.daystrip').filter({ visible: true });
+  await expect(wk.locator('.ds-head').first()).toBeVisible();
+  await expect(wk.locator('.ds-now, .ds-bus')).toHaveCount(0);
+  expect(await wk.locator('.ds-box').evaluate(b => b.scrollTop)).toBe(0);
+  // Each column's route badge a way to that route's page (his mockup's 'tap a head').
+  await go(page, '#/hub?day=1');
+  const head = page.locator('.daystrip .ds-head a').filter({ visible: true }).first();
+  await expect(head).toHaveAttribute('href', /^#\/map\/route\/[^/?]+\?day=1&on=sat$/);   // that route's day, on the day picked
+  // The key: today's two dots drawn, once.
+  await expect(page.locator('.ds-key .ds-k').filter({ visible: true })).toHaveCount(2);
+  await expect(page.locator('.ds-key').filter({ visible: true })).toContainText('Tap a run for its stops.');
+  await page.locator('.tcl-views a', { hasText: 'Board' }).filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/#\/hub$/);
+  await expect(page.locator('.daystrip').filter({ visible: true })).toHaveCount(0);
+});
+
+test('a route\'s day: its buses down the day at 6 px a minute, its timed stops by name, opened at now; the 16 with the Preston commuter in its gap', async ({ page }) => {
+  // The user's by-route view: 'i want route 1 to show 3 runs in a view'. The route page's second view, Stops | All day.
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
+  const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); sat.setHours(12, 40, 0, 0);
+  await page.clock.setFixedTime(sat);
+  await open(page, '#/map/route/9');
+  await page.locator('.rs-views a', { hasText: 'All day' }).filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/#\/map\/route\/9\?day=1$/);
+  const day = page.locator('.routeday').filter({ visible: true });
+  await expect(day).toHaveCount(1);
+  await expect(page.locator('.rs-views a[aria-current="page"]').filter({ visible: true })).toHaveText('All day');
+  await expect(page.locator('.ds-days a[aria-current="page"]').filter({ visible: true })).toHaveText('Saturday');
+  await expect(day.locator('.ds-nowt')).toHaveText(/12:40/);
+  expect(await day.locator('.ds-box').evaluate(b => b.scrollTop)).toBeGreaterThan(0);   // opened at now
+  const hrefs = await day.locator('a.rd-run').evaluateAll(as => as.map(a => a.getAttribute('href')));
+  expect(hrefs.length).toBeGreaterThan(5);
+  expect(hrefs.every(h => /^#\/stop\/[^?]+\?run=\d+&on=\d{8}$/.test(h))).toBe(true);
+  const names = await day.locator('.rd-ks').evaluateAll(es => es.map(e => e.textContent));
+  expect(names.length).toBeGreaterThan(0);
+  expect(names.some(n => /[A-Za-z]{4,}/.test(n.replace(/\d+:\d+\s*[AP]M/, '').replace(/\b(North|South|East|West)\b/g, '')))).toBe(true);   // places, not only addresses
+  // Back to its stops.
+  await page.locator('.rs-views a', { hasText: 'Stops' }).filter({ visible: true }).first().click();
+  await expect(page).toHaveURL(/#\/map\/route\/9$/);
+  await expect(page.locator('.routeday').filter({ visible: true })).toHaveCount(0);
+  // A weekday's 16 at 12:20: no 16 out, the Preston commuter on its road, in its column; the gap without a bus is the
+  // road's (8 AM to noon, then 2 to 4:30), never the 16's own (8 AM to 4:30).
+  const mon = new Date(sat); mon.setDate(mon.getDate() + 2); mon.setHours(12, 20, 0, 0);
+  await page.clock.setFixedTime(mon);
+  await page.reload();
+  await go(page, '#/map/route/16?day=1');
+  const d16 = page.locator('.routeday').filter({ visible: true });
+  await expect(d16).toHaveCount(1);
+  const runs = await d16.locator('a.rd-run').evaluateAll(as => as.map(a => a.getAttribute('aria-label')));
+  test.skip(!runs.some(r => /Preston/.test(r)), 'no Preston commuter that Monday');
+  expect(runs.some(r => /16/.test(r))).toBe(true);
+  const brk = await d16.locator('.rd-brk').allTextContents();
+  expect(brk.every(t => !/AM to 4:\d\d PM/.test(t))).toBe(true);   // never the morning to 4:30: noon to 2 is the commuter's
+});
+
+test('a route\'s day marks the towns its bus is in, each named, the Center\'s town never', async ({ page }) => {
+  // The user's town highlighter (2026-11-20): towns from OpenStreetMap's limits (data/towns.json), fetched when a route's
+  // day first opens, then drawn. The 15 runs to Hyde Park, Smithfield and Richmond from Logan.
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
+  const mon = new Date(); mon.setDate(mon.getDate() + ((1 - mon.getDay() + 7) % 7 || 7)); mon.setHours(10, 15, 0, 0);
+  await page.clock.setFixedTime(mon);
+  await open(page, '#/map/route/15?day=1');
+  const day = page.locator('.routeday').filter({ visible: true });
+  await expect(day.locator('.rd-hl').first()).toBeAttached({ timeout: 15000 });
+  const towns = [...new Set(await day.locator('.rd-town').allTextContents())];
+  expect(towns.length).toBeGreaterThan(1);
+  expect(towns).not.toContain('Logan');
+  expect(await day.locator('.rd-hl').evaluateAll(es => es.every(e => /^#[0-9A-F]{6}$/i.test(e.style.getPropertyValue('--town').trim())))).toBe(true);
+});
+
 test('a route whose bus is out as another route between its runs says so from the timetable, and not while its own run is on', WIDE, async ({ page }) => {
   // The user's block-strip mockup: 'On Route 1 now ... Back on the 9 at 1:00 PM', the answer with no 9 on the map. No
   // feed (refused), so the timetable's, said so; no stop named, the timetable's place not a sighting.
@@ -2500,6 +2596,9 @@ test('stop: its page, a route badge, a run, saved and unsaved', PHONE, async ({ 
 test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time opens its run, saying which of its buses', WIDE, async ({ page }) => {
   // The user: 'i'd like to be able to see the previous times in the day. i think the rest of today maybe should be the
   // whole day all the time', and of a time tapped there: 'i'd like to be able to tell if its green 1,2, or 3'.
+  // Noon on a weekday, so 'Today' holds whenever it runs (at 11 PM the stop's day was already tomorrow's).
+  const wk = new Date(); wk.setDate(wk.getDate() + ([0, 6].includes(wk.getDay()) ? (8 - wk.getDay()) % 7 : 0)); wk.setHours(12, 0, 0, 0);
+  await page.clock.setFixedTime(wk);
   await open(page);
   const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), loops = d.D.hub.loops || [];
@@ -3397,6 +3496,13 @@ test('a holiday: no buses on Thanksgiving, said by its name; the evening before,
     await expect(page.getByText(new RegExp('^(Tomorrow · )?' + plan.day, 'i')).filter({ visible: true }).first()).toBeVisible();
     await expect(page.getByText('The rest of today')).toHaveCount(0);
   }
+  // Its day at the Center: the holiday picked, a case of its own beside a weekday and a Saturday, no buses said by name.
+  await go(page, '#/hub?day=1');
+  await expect(page.locator('.ds-days a[aria-current="page"]').filter({ visible: true })).toHaveText('Thanksgiving Day');
+  await expect(page.locator('.ds-days a', { hasText: 'Weekday' }).filter({ visible: true })).toHaveCount(1);
+  await expect(page.getByText('Connect doesn\'t run on Thanksgiving Day.').filter({ visible: true }).first()).toBeVisible();
+  if (!t.hubRuns) await expect(page.locator('.daystrip').filter({ visible: true })).toHaveCount(0);
+  await go(page, '#/hub');
   for (const o of plan.off) expect(o.words).toBe(`Connect doesn't run on ${o.date}.`);   // never 'on Fridays'
   await page.clock.setFixedTime(at(-1, '21:30'));
   await go(page, '#/stop/7543017');

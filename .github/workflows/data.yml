@@ -66,6 +66,8 @@ jobs:
         run: python3 tools/crossings.py || sh tools/kept.sh $? data/crossings.json ''
       - name: Places to search for, from OpenStreetMap (once a night, one query)
         run: python3 tools/upstream.py tools/osmplaces.py || sh tools/kept.sh $? data/osm-places.json 'Overpass unreachable; keeping the last places'
+      - name: The towns' outlines, for a route's day to mark where its bus is in a town, from OpenStreetMap
+        run: python3 tools/upstream.py tools/towns.py || sh tools/kept.sh $? data/towns.json 'Overpass unreachable; keeping the last towns'
       - name: Busy roads and their crossings, for walks, from OpenStreetMap
         run: python3 tools/upstream.py tools/walks.py || sh tools/kept.sh $? data/walks.json 'Overpass unreachable; keeping the last roads'
       - name: The ways a rider walks (footways, paths, steps, sidewalks, streets), from OpenStreetMap
@@ -93,7 +95,7 @@ jobs:
           shapes = subprocess.call(['git', 'diff', '--quiet', '--', 'data/cvtd-shapes.json', 'data/usu.json', 'data/crossings.json', 'data/pool.json']) != 0
           # The OpenStreetMap files carry the snapshot they were cut from (osm, tools/overpass.py), which moves every
           # night: a change only when something else in them did, and put back as it was when nothing did.
-          for f in ('data/osm-places.json', 'data/walks.json', 'data/walknet.json'):
+          for f in ('data/osm-places.json', 'data/walks.json', 'data/walknet.json', 'data/towns.json'):
               try:
                   a, b = json.load(open(f)), json.loads(subprocess.check_output(['git', 'show', 'HEAD:' + f]))
                   had = 'osm' in b
@@ -115,7 +117,7 @@ jobs:
           if [ "$changed" != yes ]; then echo 'no change'; if [ -n "$DATA_NOTE" ]; then echo "$DATA_NOTE"; fi; git checkout -- data; exit 0; fi
           git config user.name 'transit data'
           git config user.email 'actions@users.noreply.github.com'
-          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json data/gone-stops.json data/walks.json data/walknet.json data/timed.json
+          git add data/cvtd.json data/cvtd-shapes.json data/usu.json data/crossings.json data/osm-places.json data/pool.json data/gone-stops.json data/walks.json data/walknet.json data/towns.json data/timed.json
           if [ -n "$DATA_NOTE" ]; then git commit -m "Transit data: $(date -u +%Y-%m-%d)" -m "$DATA_NOTE"; else git commit -m "Transit data: $(date -u +%Y-%m-%d)"; fi
           # Onto whatever another run (alerts, the timetable, the map) pushed meanwhile, a few tries.
           for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done; exit 1

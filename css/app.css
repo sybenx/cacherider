@@ -1676,3 +1676,78 @@ a.side:active { background: var(--cr-hover); }
 .rs-carry .c-ring, .rs-carry .rs-fold > summary::before { left: 27.5px; }
 .rs-carry.line > .rs-fold { opacity: .6; }   /* its stretch of rail dimmed with the rows beside it, its own rows not twice */
 .rs-carry .rs-fold .croute, .rs-carry .rs-fold .rs-foldsum { opacity: 1; }
+
+/* The Transit Center's two views (hub.js): the board and the day's buses, a pair of links by its name. */
+.tcl-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.seg a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; background: var(--color-bg); color: var(--color-text); font: 500 0.875rem var(--font-body); text-decoration: none; }
+.seg a + a { border-left: 1px solid var(--color-divider); }
+.seg a[aria-current="page"] { background: var(--color-accent-100); color: var(--color-accent-700); font-weight: 600; }
+/* The day at the Transit Center (strip.js): one box the screen's height, scrolled both ways, its heads held at its top
+   and its hours at its left; a column a bus. */
+.daystrip { position: relative; margin: 4px 0 0; }
+.ds-box { overflow: auto; height: 60vh; border-top: 1px solid var(--cr-line); scrollbar-width: thin; }
+.ds-in { position: relative; }
+.ds-heads { position: sticky; top: 0; z-index: 3; display: flex; padding: 6px 0; background: var(--color-bg); border-bottom: 1px solid var(--cr-line); }
+.ds-corner { position: sticky; left: 0; z-index: 1; flex: none; width: 56px; background: var(--color-bg); }
+.ds-headrow { position: relative; flex: none; height: 22px; }
+.ds-head { position: absolute; top: 0; width: 46px; display: flex; justify-content: center; gap: 2px; }
+.ds-head .badge { min-width: 18px; padding: 0 2px; letter-spacing: -.02em; }
+.ds-head a { display: flex; text-decoration: none; }
+.ds-body { position: relative; display: flex; }
+.ds-axis { position: sticky; left: 0; z-index: 2; flex: none; width: 56px; background: var(--color-bg); pointer-events: none; }
+.ds-body svg { display: block; flex: none; }
+.ds-hr { position: absolute; left: 4px; transform: translateY(-50%); font-size: 0.6875rem; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
+.ds-nowt { left: 0; white-space: nowrap; z-index: 1; padding: 1px 4px; border-radius: 4px; background: var(--cr-now, #d93025); color: #fff; font-weight: 700; }
+.ds-grid { stroke: var(--cr-line); stroke-width: 1; }
+.ds-now { stroke: var(--cr-now, #d93025); stroke-width: 1.5; opacity: .7; pointer-events: none; }
+.ds-out { stroke: var(--cr-muted); stroke-width: 1.5; stroke-dasharray: 2 5; }
+.ds-step { fill: none; stroke: var(--cr-muted); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ds-bar { stroke: var(--color-text); stroke-width: 2; stroke-linecap: round; }
+.ds-ring { fill: var(--color-bg); stroke: var(--color-text); stroke-width: 2; }
+.ds-num { font: 800 10px/1 var(--font-heading); }
+.ds-bus { fill: var(--color-bg); stroke: var(--cr-now, #d93025); stroke-width: 2.5; pointer-events: none; }
+.ds-bus.live { fill: var(--cr-now, #d93025); stroke: var(--color-bg); }
+.ds-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; padding: 2px 16px 8px; font-size: 0.8125rem; color: var(--cr-muted); }
+.ds-k { display: inline-flex; align-items: center; gap: 5px; }
+.ds-k i { width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid var(--cr-now, #d93025); background: var(--color-bg); }
+.ds-k i.live { background: var(--cr-now, #d93025); }
+/* Which day the strip draws (hub.js dayKinds): a weekday, a Saturday, then each day ahead that runs otherwise. */
+.seg.ds-days { display: flex; max-width: calc(100% - 32px); margin: 0 16px 8px; overflow-x: auto; scrollbar-width: none; }
+.seg.ds-days a { flex: none; }
+.ds-note { margin: 0; padding: 0 16px 8px; font-size: 0.875rem; }
+/* A route's two views by its name, its stops and its day (map.js routeViews). */
+.rs-name .rs-views { margin-left: auto; flex: none; align-self: center; }
+.rs-dayview .ds-days { margin-top: 4px; }
+/* A route's day (strip.js routeDay): 6 px a minute, the hours held at the left by the box, its buses side by side. */
+.rd-grid { position: relative; }
+.rd-axis { position: sticky; left: 0; top: 0; height: 100%; width: 0; z-index: 2; pointer-events: none; }
+.rd-axis .ds-hr { z-index: 2; white-space: nowrap; }
+.rd-gl { position: absolute; left: 56px; width: 100vw; max-width: 600px; border-top: 1px solid var(--cr-line); }
+.rd-nl { position: absolute; left: 56px; width: 100vw; max-width: 600px; border-top: 1.5px solid var(--cr-now, #d93025); opacity: .7; z-index: 3; }
+.rd-brk { position: absolute; left: 56px; width: calc(100vw - 56px); max-width: 540px; text-align: center; z-index: 4; }
+.rd-brk b { display: inline-block; padding: 2px 8px; border-radius: 6px; background: var(--color-bg); font-size: 0.75rem; font-weight: 500; color: var(--cr-muted); }
+.rd-cols { position: absolute; left: 56px; right: 0; top: 0; bottom: 0; display: flex; gap: 8px; padding-right: 8px; }
+.rd-col { position: relative; flex: 1; min-width: 0; }
+.rd-col svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.rd-run { position: absolute; left: 0; right: 0; display: flex; align-items: flex-start; gap: 8px; padding-top: 6px; overflow: hidden; color: inherit; text-decoration: none; border-radius: 8px; }
+@media (hover: hover) { .rd-run:hover { background: var(--cr-hover); } }
+.rd-run b { font: 800 1.375rem/1 var(--font-heading); }
+.rd-run span { font-size: 0.8125rem; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
+.rd-run.done { opacity: .45; }
+.rd-run.other b { font-size: 0.9375rem; }
+.rd-cols.many .rd-run span { font-size: 0.75rem; color: var(--color-text); }
+.rd-ks { position: absolute; right: 0; font-size: 0.75rem; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.rd-ks span { display: inline-block; min-width: 46px; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
+.rd-ks.past { color: var(--cr-muted); }
+.rd-cap { position: absolute; right: 0; font-size: 0.6875rem; color: var(--cr-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.rd-dot { fill: var(--color-bg); }
+/* A crowded route's key stops (three buses or more): the name at an angle up from its dot, whole, past the column's
+   edge (the user, 2026-11-19: 32°). */
+.rd-cols.many .rd-ks { right: auto; overflow: visible; text-overflow: clip; transform: rotate(-32deg); transform-origin: 0 50%; margin-top: -2px; padding-left: 4px; color: var(--color-text); }
+.rd-cols.many .rd-ks.past { color: var(--cr-muted); }
+/* A route's day: its towns (towns.js), a soft stroke behind the line and the name written up beside it. Muted tints;
+   lighter ones in the dark. */
+.rd-col { z-index: 0; }
+.rd-hl { position: absolute; width: 16px; border-radius: 8px; background: color-mix(in srgb, var(--town) 38%, transparent); z-index: -1; pointer-events: none; }
+:root[data-theme="dark"] .rd-hl { background: color-mix(in srgb, color-mix(in srgb, var(--town) 65%, #fff) 34%, transparent); }
+.rd-town { position: absolute; width: 12px; display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; transform: rotate(180deg); background: var(--color-bg); font: 600 9px/1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--cr-muted); white-space: nowrap; pointer-events: none; }

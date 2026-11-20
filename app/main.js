@@ -246,7 +246,7 @@ export async function render(tick = false) {
   // A route by its number where the timetable splits it in halves ('#/map/route/16', a badge's or a tile's): the half on
   // the road now or next, at the stop it was opened from one that calls there. Each half's own address stays its own.
   const halfOf = (short, at) => { const fam = D.routeByShort[short] === undefined ? familyOf(short) : []; return fam.length ? D.routes[familyNow(fam[0], clockNow, D.stopById[at])].short : short; };
-  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: halfOf(dec(seg[2] || ''), seg[4]), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus, every: q.every === '1' } : null;
+  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: halfOf(dec(seg[2] || ''), seg[4]), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus, every: q.every === '1', day: q.day === '1', on: q.on || '' } : null;
   // The Transit Center on a phone is the map too, at the Center, the board its card; on a wide screen a page beside it.
   const hubMap = seg[0] === 'hub' && !isDesktop();
   // Directions: on a wide screen the page beside the map, the way drawn there.
@@ -262,7 +262,7 @@ export async function render(tick = false) {
     else if (name === 'search') view = home.render({ q: q.q || '', page: 'search', pick: q.for || '', from: q.from || '' }, clockNow);
     else if (name === 'go') view = go.render({ ...goArgs, plan: q.plan, t: q.t }, clockNow);
     else if (name === 'stop') view = stopView.render({ id: seg[1], full: seg[2] === 'all', run: q.run, on: q.on }, clockNow);
-    else if (name === 'hub') view = hub.render({ bay: seg[1] }, clockNow);
+    else if (name === 'hub') view = hub.render({ bay: seg[1], day: q.day === '1' ? '' : null, on: q.on }, clockNow);
     else if (name === 'route') view = (await ensureMap()).routePage(routeArgs, clockNow);
     else if (name === 'about') view = about.render({ section: seg[1] }, clockNow);
     else if (name === 'test') view = testView.render();
@@ -338,7 +338,7 @@ export async function render(tick = false) {
       ustopId: mapU ? seg[2] : name === 'usu' && seg[1] !== 'route' ? seg[1] : null,
       campus: mapU && !seg[2],   // the home page's shuttle line: campus, its loops drawn
       routeShort: routeArgs ? routeArgs.short : seasonRoute ? seasonRoute.short : null, routeArgs: routeArgs || seasonRoute,
-      alertId: mapA ? seg[2] : null, alertTap: mapA && q.tap === '1', run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route' || name === 'pumpkin', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, tick,
+      alertId: mapA ? seg[2] : null, alertTap: mapA && q.tap === '1', run: view && view.run, at, focus: name === 'map' || name === 'stop' || name === 'usu' || name === 'route' || name === 'pumpkin', hub: seg[0] === 'hub', hubPick: seg[0] === 'hub' ? seg[1] || null : null, hubDay: seg[0] === 'hub' && q.day === '1' ? '' : null, hubOnDay: q.on || null, tick,
       bus: routeArgs ? routeArgs.bus || null : null,   // a route's bus, from its row or a bus card: ringed on the map
       busId: mapB && seg[2] ? dec(seg[2]) : null,   // a bus from the Transit Center's board: it, on its way in
       busTap: mapB && q.tap === '1',   // or tapped on the map: its card, the map left where it is
@@ -626,7 +626,7 @@ function syncHeader(name, q) {
  *  Center are the map with a sheet, and search, directions and the shuttle need the rest to say anything. */
 function lightFirst() {
   const h = location.hash || '#/';
-  return ['#', '#/'].includes(h) || isDesktop() && /^#\/(stop\/|hub(\/|$))/.test(h);
+  return ['#', '#/'].includes(h) || isDesktop() && /^#\/(stop\/|hub(\/|\?|$))/.test(h);
 }
 
 /** On a desktop, the panel's badges and stop rows under the pointer lit on the map beside it: a route's badge its line, a
@@ -715,6 +715,7 @@ async function boot() {
   setInterval(() => { if (document.visibilityState === 'visible' && Date.now() - A.loadedAt > 600e3) loadAlerts().then(() => render()); }, 60e3);   // a notice posted while the app is open shows within minutes
   // Fresh bus positions redraw a live screen in place, a box with the focus in it too (as the minute's, above): the
   // page's words and the map's buses are the one feed's.
+  window.addEventListener('cr-towns', () => { if (app.route) render(true); });   // a route's day, its towns come (towns.js)
   onLive(() => { if (app.route) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   onRt(() => { if (app.route) render(true); if (app.mapMod) app.mapMod.liveUpdate(app); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register(BASE + 'sw.js').then(reg => {

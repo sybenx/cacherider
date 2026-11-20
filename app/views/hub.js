@@ -1,11 +1,12 @@
 // The Transit Center as a board: the next time the numbered routes leave together and which of their buses are
 // in, the two loops, and every departure in the next hour. The bays are the map's: at high zoom on the Center each
 // bay's stop wears its route's badge with where its bus is (bays() below), and a tap on one picks that route here.
-import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun, offDayWords, keptOn } from '../data.js';
+import { D, A, nextPulse, nextFromHub, servicesOn, distance, timesOn, lastTripOn, tripEnd, opOf, familyKey, closedRoutes, lastRun, offDayWords, keptOn, agencyRuns, holidayOn } from '../data.js';
 import { relative, dayName, clock, now, dayFrom, clockText, clockShort, minsTo, isGone, fmtDay, howOften, clockAnd } from '../time.js';
-import { html, esc, icon, badge, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, daysOffNote, cancelledRow, routeNames, lively, moved } from '../ui.js';
+import { html, esc, icon, badge, routeName, time, corners, schedOf, lastTag, routeBadgeLink, headsign, liveWord, wasLine, detourNotice, daysOffNote, cancelledRow, routeNames, lively, moved } from '../ui.js';
 import { dayCard } from '../holiday.js';
 import { rt, rtStale, isLoop, endAt, cancelledAt, standingAt, HUB_IN, HUB_STILL } from '../rt.js';
+import { strip, mountStrip, dayPick, dayRow } from './strip.js';
 /** The feed's gone quiet, or couldn't be had: not the moment on opening before its first word comes in, when the board
  *  said 'aren't coming in right now' on every open, a second before they were. */
 const rtDown = () => rtStale() && (rt.at > 0 || !!rt.error);
@@ -100,14 +101,16 @@ export function hubHero(clockNow) {
   return html`<div class="hubhero"><div class="eye"><span class="eyebrow">You're at the ${D.hub.name}</span></div>${together(st, clockNow)}<a class="btn btn-secondary btn-block hubhero-open" href="#/hub">${icon('hub', 18)}The whole board</a></div>`;
 }
 /** The board as a page, beside the map on a wide screen. */
-export function render({ bay }, clockNow) {
+export function render({ bay, day = null, on = null }, clockNow) {
   const H = D.hub;
   const { st, pick } = board(bay, clockNow);
+  // The day's buses, the Center's second view (strip.js).
+  if (!pick && day !== null) return { html: html`<div class="tcl">${boardHead(day)}${dayBody(clockNow, on)}</div>`, mount, title: H.name, keepScroll: true, key: 'hub-day' };
 
   const parts = pick
     ? [html`<div class="tc-head"><div class="col"><span class="eyebrow">${H.address} · ${H.town}</span><h1>${H.name}</h1>${getHere()}</div><span class="tc-clock">${dayName(clockNow.ymd, true)} ${clock(clockNow.min).h}</span></div>`,
       detourNotice(clockNow), daysOffNote(clockNow), picked(st[pick], clockNow), dayTimes(st[pick], clockNow), nextHour(st, pick, clockNow), footnote(st)]
-    : [html`<div class="tcl">${boardHead()}${boardBody(st, clockNow)}</div>`];
+    : [html`<div class="tcl">${boardHead(null)}${boardBody(st, clockNow)}</div>`];
   return { html: parts.join(''), mount, title: H.name, keepScroll: true, key: 'hub' };
 }
 
@@ -343,11 +346,12 @@ function getHere() {
   const b = D.hub.bays[0];
   return b ? html`<div class="golinks tc-go"><a class="golink" href="#/go/${D.stops[b.stop].id}">${icon('route', 16)}How to get here</a></div>` : '';
 }
-export function hubSheet({ bay }, clockNow) {
+export function hubSheet({ bay, day = null, on = null }, clockNow) {
   const { st, pick } = board(bay, clockNow);
+  if (!pick && day !== null) return { pick: 'day:' + day + ':' + (on || ''), head: html`<div class="tcl">${boardHead(day)}</div>`, body: html`<div class="tcl">${dayBody(clockNow, on)}</div>` };
   return pick
     ? { pick, head: picked(st[pick], clockNow), body: html`${detourNotice(clockNow)}${daysOffNote(clockNow)}${dayTimes(st[pick], clockNow)}${nextHour(st, pick, clockNow)}${footnote(st)}` }
-    : { pick, head: html`<div class="tcl">${boardHead()}</div>`, body: html`<div class="tcl">${boardBody(st, clockNow)}</div>` };
+    : { pick, head: html`<div class="tcl">${boardHead(null)}</div>`, body: html`<div class="tcl">${boardBody(st, clockNow)}</div>` };
 }
 
 // ---- The board: when the buses get here and when they leave (the user, 2026-10-21; mockup 2026-10-27, direction A).
@@ -358,9 +362,21 @@ export function hubSheet({ bay }, clockNow) {
 /** Groups opened by a tap (by day and minute), and the rest of the day shown: kept across the minute's redraws. */
 const openGroups = new Set();
 let restShown = false;
-function boardHead() {
+function boardHead(day) {
   const b = D.hub.bays[0];
-  return html`<div class="tcl-head"><h1>${D.hub.name}</h1><div class="tcl-sub"><span>${D.hub.address}</span>${b ? html`<span aria-hidden="true">·</span><a href="#/go/${D.stops[b.stop].id}">How to get here</a>` : ''}</div></div>`;
+  // Its two views: what leaves when (the board), and the day's buses (strip.js). Links, each its own address, so Back
+  // goes between them.
+  const views = html`<div class="seg tcl-views" role="group" aria-label="View"><a href="#/hub"${html.raw(day === null ? ' aria-current="page"' : '')}>Board</a><a href="#/hub?day=1"${html.raw(day !== null ? ' aria-current="page"' : '')}>All day</a></div>`;
+  return html`<div class="tcl-head"><div class="tcl-title"><h1>${D.hub.name}</h1>${views}</div><div class="tcl-sub"><span>${D.hub.address}</span>${b ? html`<span aria-hidden="true">·</span><a href="#/go/${D.stops[b.stop].id}">How to get here</a>` : ''}</div></div>`;
+}
+/** The day's buses at the Center, as strip.js draws them, on the day picked; a day without buses said so. */
+function dayBody(clockNow, on) {
+  const { days, pick, today, clk } = dayPick(clockNow, on);
+  const row = dayRow(days, pick, d => '#/hub?day=1&on=' + d.k);
+  if (pick.off) return html`${row}<div class="tcl-note"><b>No buses</b> · ${offDayWords(pick.ymd)}</div>`;
+  const s = strip(clk, today, pick.k);
+  // No detour notice here: the board says it (one place a fact), and on a phone it took the strip's room.
+  return html`${row}${pick.note ? html`<p class="ds-note">${pick.note}</p>` : ''}${s || html`<div class="tcl-note"><b>No buses</b></div>`}`;
 }
 /** Where a route's next bus is, in a few words: Here, N min away, or why there's no telling. A not-reporting route and
  *  one whose bus isn't out yet are both 'No live position': the feed can't be told apart on them yet (2026-10-27, to be
@@ -529,6 +545,7 @@ function footnote(st) {
 let shownPick = null;
 /** The countdown's ticker, and a picked route's card brought into view: for the page and the map's card alike. */
 export function mount(el) {
+  mountStrip(el);
   if (!el._tcl) {
     el._tcl = true;
     el.addEventListener('click', e => {
