@@ -11,6 +11,9 @@ const test = base.extend({
     // The ask to test the Android app atop home (an Android phone's browser, as the phone project's is) put away, so the
     // other tests' pages are as they were; its own test brings it back.
     await page.addInitScript(() => { try { localStorage.setItem('cr-test-shut', '1'); } catch { /* storage refused */ } });
+    // The map's own object as window.__map, taken at its first look at a source (the app keeps it to itself): what it
+    // shows, and whether it's still moving, for a test to read. MapLibre's the app's own copy, loaded early.
+    await page.addInitScript(() => { if (/^http/.test(location.protocol)) import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }).catch(() => {}); });
     const errs = [];
     page.on('pageerror', e => errs.push('pageerror: ' + e.message));
     page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|net::ERR_|status of [45]\d\d/.test(m.text())) errs.push('console: ' + m.text()); });
@@ -37,7 +40,22 @@ async function go(page, hash) { await page.evaluate(h => { location.hash = h; },
 async function mapReady(page) {
   await page.waitForSelector('#map canvas');
   await page.waitForFunction(() => document.querySelectorAll('.maplibregl-marker').length > 0 || document.querySelector('#mapcard.open'), null, { timeout: 20_000, polling: 500 }).catch(() => {});
-  await page.waitForTimeout(800);
+  await settled(page);
+}
+/** The map still: no flight, zoom or pan under way, four looks in a row a tenth of a second apart (a page that starts
+ *  a flight a moment after it draws, as the directions' frame does a third of a second on, has started it by then).
+ *  It was a flat 800 ms, too long on an idle machine and on a busy one now and then too short. */
+async function settled(page) {
+  await page.evaluate(() => { window.__still = 0; });
+  await page.waitForFunction(() => { const m = window.__map; window.__still = m && !m.isMoving() ? window.__still + 1 : 0; return window.__still >= 4; }, null, { polling: 100, timeout: 10_000 }).catch(() => {});
+}
+/** Once the feed's next `n` ticks have come (every five seconds, answered or not) and the page been drawn again with
+ *  each: rt.js's listeners, main.js's redraw the first of them and this one's after it, then a frame for it to show.
+ *  Waited for by the clock, a tick or two was seven seconds, or twelve. */
+async function nextTick(page, n = 1) {
+  const at = await page.evaluate(async () => { if (window.__ticks === undefined) { window.__ticks = 0; (await import('/app/rt.js')).onRt(() => { window.__ticks++; }); } return window.__ticks; });
+  await page.waitForFunction(k => window.__ticks >= k, at + n, { polling: 100, timeout: 20_000 });
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 /** Where an element on the map is once the map has stopped moving under it (a flight to it ended): its box, read
  *  again until two reads a quarter second apart agree. */
@@ -555,17 +573,25 @@ test('home: trips saved on the directions page, under the big stop: the one from
  *  the edge of the map that shows: clear of a wide screen's panel, the search bar, and a phone's card over the map's
  *  foot (a click there was on the card). */
 async function clickNothing(page, how = 'click') {
+  // the card measured once it's done sliding in (a third of a second), or a click meant beside it lands on it
+  await page.waitForFunction(() => { const c = document.querySelector('#mapcard'); return !c || c.getAnimations().every(a => a.playState !== 'running'); }, null, { polling: 100, timeout: 5000 }).catch(() => {});
   const map = await page.locator('#map').boundingBox(), side = await page.locator('#side').boundingBox();
   const open = page.locator('#mapcard.open'), card = (await open.count()) ? await open.boundingBox() : null;
   const left = side && side.width < map.width * 0.6 && side.x <= map.x + 1 ? side.x + side.width : map.x;   // beside the panel
   const top = map.y + 80, bottom = card && card.width > map.width * 0.6 ? card.y - 10 : map.y + map.height - 60;
   const mid = (top + bottom) / 2;
-  for (let i = 0; i < 6; i++) { await page.mouse.move((left + map.x + map.width) / 2, mid); await page.mouse.wheel(0, 600); await page.waitForTimeout(150); }
-  await page.waitForTimeout(900);
+  // Six turns of the wheel out, a beat apart, as the map's own wheel events (the browser's took a quarter second each,
+  // and the waits round them, three seconds a click), then the map still.
+  await page.evaluate(async ([x, y]) => { const c = window.__map.getCanvas(); for (let i = 0; i < 6; i++) { c.dispatchEvent(new WheelEvent('wheel', { deltaY: 600, clientX: x, clientY: y, bubbles: true, cancelable: true })); await new Promise(r => setTimeout(r, 60)); } }, [(left + map.x + map.width) / 2, mid]);
+  await settled(page);
+  // The click, and once the map has answered it: a finger's tap is picked 300 ms on (map.js, waiting out a double tap),
+  // and the map's own handlers run before this one's, set after them.
+  await page.evaluate(how => { window.__answered = new Promise(r => window.__map.once({ dblclick: 'dblclick', right: 'contextmenu' }[how] || 'click', () => setTimeout(r, 350))); }, how);
   if (how === 'dblclick') await page.mouse.dblclick(left + 30, mid);   // a mouse's double click, the map's zoom in
   else if (how === 'right') await page.mouse.click((left + map.x + map.width) / 2, mid, { button: 'right' });   // a long press's spot, mid-map
   else await page.mouse.click(left + 30, mid);
-  await page.waitForTimeout(900);
+  await page.evaluate(() => window.__answered);
+  await settled(page);   // (a double click's zoom in)
 }
 /** Where the tab is in its history, and whether a step was taken through it since this was first asked. */
 async function stepAt(page) {
@@ -626,7 +652,6 @@ test('a stop put down, then a bus clicked and clicked off: the stop stays down',
   // The user: 'i clicked on a stop, clicked on the map to deselect. clicked on a bus, clicked on the map again and the
   // stop highlighted'. Beside a wide screen's panel a click off a stop puts its dot down, its page staying; a bus's
   // route, clicked off, goes back to that page, and the dot came back lit.
-  await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
   const feed = {};
   await feedOn(page, feed);
   await open(page);
@@ -660,10 +685,9 @@ test('a tap off a card, a sheet, a route puts it away in place: never a step Bac
   const opened = ['#/map/route/' + short, ...(phone(info) ? ['#/stop/' + id] : []), '#/map/at/41.74000,-112.02000/Here'];
   for (const h of opened) {
     await go(page, '#/map');
-    await page.waitForTimeout(600);
+    await expect(page).toHaveURL(/#\/map$/);
     await go(page, h);
     await expect(page.locator('#mapcard.open, #side .routepage').filter({ visible: true }).first()).toBeVisible();
-    await page.waitForTimeout(900);
     const was = await stepAt(page);
     // (a phone's route: the first tap puts its card away, the route still lit; the next, the route)
     for (let k = phone(info) && /route/.test(h) ? 2 : 1; k > 0; k--) await clickNothing(page, phone(info) ? 'click' : 'dblclick');
@@ -1054,7 +1078,7 @@ test('the Center: a group NOW in its minute; gone by with one late route still i
   // at when it'll go, said as an estimate, its row Here and due at the group's minute; not folded, being one.
   await page.clock.setFixedTime(new Date(pick.at + 180_000));
   feed = await feedOf(1);
-  await page.waitForTimeout(6000);   // a poll with it
+  await polled(page, feed.t);   // a poll with it
   await page.clock.setFixedTime(new Date(pick.at + 250_000));
   feed = await feedOf(1);
   const lateRow = page.locator('.tcl-row').filter({ visible: true }).filter({ has: page.locator('.tcl-late', { hasText: 'Late · due ' + late.now }) });
@@ -1070,7 +1094,7 @@ test('the Center\'s compass: north up and south up, one to the other', PHONE, as
   const btn = page.locator('.northbtn').filter({ visible: true }).first();
   await expect(btn).toBeVisible();
   const said = [];
-  for (let i = 0; i < 3; i++) { await btn.click(); await page.waitForTimeout(900); said.push(await btn.getAttribute('aria-label')); }
+  for (let i = 0; i < 3; i++) { await btn.click(); await settled(page); said.push(await btn.getAttribute('aria-label')); }   // turned round before the next
   // from whichever it opened on, it goes to the other and back: never east or west
   expect(said.every(x => /^(North up|South up)/.test(x))).toBe(true);
   expect(said[0]).not.toBe(said[1]);
@@ -1094,14 +1118,16 @@ test('a spot picked on the map for where you are: from the home page, and kept a
   await expect(page).toHaveURL(/#\/$/);
   await expect(page.getByText('Near the spot you picked').filter({ visible: true }).first()).toBeVisible();
   await page.reload();
-  await page.waitForTimeout(3000);   // past the location check on opening
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  // past the location check on opening (main.js autoLocate, asked of the browser just after the first draw): this
+  // page's own question answered after it, and the redraw it would make
+  await page.evaluate(async () => { await navigator.permissions.query({ name: 'geolocation' }); await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0))); });
   await expect(page.getByText('Near the spot you picked').filter({ visible: true }).first()).toBeVisible();
 });
 
 test('the panel on the right, set in Settings and kept: the map\'s buttons across from it, a stop, directions and a route each framed in the map left of it, their pages in it; and back', WIDE, async ({ page }) => {
   // The user: 'we need a smoke test for those with right panel preferences set on'. The map frames what's picked in the
   // room the panel leaves (map.js room, the panel the map's padding): on the right, that room is left of it.
-  await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
   await open(page, '#/about');
   await page.locator('button[data-side="right"]').click();
   await expect(page.locator('button[data-side="right"]')).toHaveAttribute('aria-pressed', 'true');
@@ -1922,7 +1948,6 @@ test('a season\'s route goes with its season: the Pumpkin Walk off the home page
     return { ri, href: '#/map/route/' + encodeURIComponent(d.D.routes[ri].short), stops: [...new Set(Object.values(d.D.routes[ri].stops).flat())].map(si => d.D.stops[si].id),
       evening: ms(day, 19), after: ms(t.dayFrom(day, 1).ymd, 12) };
   }, day);
-  const hook = () => page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
   /** On the map: its lines, its stops drawn, and Route 1's lines. */
   const drawn = () => page.evaluate(s => import('/app/data.js').then(d => { const m = window.__map, l = m && m.getSource('lines'), st = m && m.getSource('stops');
     if (!l || !st || !l.serialize().data.features.length) return null;
@@ -1942,7 +1967,6 @@ test('a season\'s route goes with its season: the Pumpkin Walk off the home page
     await expect(page.locator(`a.row[href="${s.href}"]`)).toHaveCount(on ? 1 : 0);
     if (!out) await expect(tab).toHaveCount(on ? 1 : 0);   // (a run-out timetable's has no night to come: no tab)
     expect(await found() > 0).toBe(on);
-    await hook();
     await go(page, '#/map');
     await mapReady(page);
     await expect.poll(drawn, { timeout: 20_000 }).toEqual(on ? [true, s.stops.length, true] : [false, 0, true]);
@@ -2146,8 +2170,6 @@ test('Christmas at the Center and on the map: snow on the bays\' badges and roof
   expect(pick, 'a bus out at noon in the season').not.toBeNull();
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
-  const hook = () => page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
-  await hook();
   await go(page, '#/hub');
   await mapReady(page);
   await expect(page.locator('.hbay').first()).toBeAttached();
@@ -2452,11 +2474,15 @@ test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time
       const rows = d.timesOn(si, c.ymd).filter(x => x.r === ri);
       if (rows.length < 4 || !rows.some(x => d.busOf(x.trip, c.ymd))) continue;
       const all = d.timesOn(si, c.ymd).map(x => x.min);
-      return { id: s.id, first: Math.floor(Math.min(...all) / 60), letter: d.D.routes[ri].short, spoken: d.D.routes[ri].long.replace(/ Loop$/, '') };
+      return { id: s.id, first: Math.floor(Math.min(...all) / 60), letter: d.D.routes[ri].short, spoken: d.D.routes[ri].long.replace(/ Loop$/, ''), noon: Date.now() + ((720 - c.min) * 60 - c.sec) * 1000 };
     }
     return null;
   }));
   test.skip(!pick, 'no loop with numbered buses this week');
+  // at noon that day: after a stop's last bus its page has the next day's, and at night this failed
+  await page.clock.setFixedTime(new Date(pick.noon));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
   await go(page, '#/stop/' + pick.id);
   const day = page.locator('.ws-day').filter({ visible: true }).first();
   await expect(day.locator('.ws-eye span').first()).toHaveText(/^Today$/i);
@@ -2798,7 +2824,6 @@ test('Transit Center: the rest of the day, a line a route with its last bus, a t
 });
 
 test('Transit Center on a wide screen: the map left where it is, no view buttons', WIDE, async ({ page }) => {
-  await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
   // From the Stops page, its panel already beside the map: from the Map tab the panel comes in, and the map keeps the
   // place looked at in the middle of what's left, half the panel over, whichever page it is.
   await open(page, '#/');
@@ -2869,7 +2894,7 @@ test('directions up: a tap on the map changes nothing, a long press or right cli
   await expect(page.locator('#mapcard.open .eyebrow', { hasText: 'Change directions' })).toBeVisible();
   const start = page.locator('#mapcard a', { hasText: 'Start from here' });
   await expect(start).toBeVisible();
-  await page.waitForTimeout(7000);   // a feed tick or two: on a phone the directions' redraw took the card back
+  await nextTick(page);   // the feed's redraw: on a phone the directions' took the card back
   await expect(start).toBeVisible();
   await expect(page.locator('#mapcard a', { hasText: 'Go here instead' })).toHaveAttribute('href', /^#\/go\/@[-\d.,]+.*\/at\/41\.75484,-111\.81505\/Aztec$/);
   await start.click();
@@ -2939,7 +2964,7 @@ test('directions, no stop a walk off: the nearest starts in view, one picked, an
   // Opened out, the feed's ticks leave it so (each shut it to its head: 66 px).
   await card.evaluate(c => c.classList.remove('peek'));
   const h = (await card.boundingBox()).height;
-  await page.waitForTimeout(12_000);
+  await nextTick(page, 2);
   expect(Math.round((await card.boundingBox()).height), 'the card\'s height after the feed\'s ticks').toBe(Math.round(h));
   // No stop a walk off: the nearest stops a bus there leaves from, one picked giving the way from it.
   const start = card.locator('.farstarts a.row').first();
@@ -2965,7 +2990,7 @@ test('directions with no way by bus, on a phone: a long press\'s card stays thro
   await expect(asked).toBeVisible();
   // A tick, as the feed's word makes one, then the feed's own: the card stays, the address as it was
   await page.evaluate(async () => (await import('/app/main.js')).render(true));
-  await page.waitForTimeout(7000);
+  await nextTick(page);
   await expect(asked).toBeVisible();
   await expect(card.locator('.gonone')).toHaveCount(0);
   await expect(page).toHaveURL(/#\/go\/@41\.74321,-111\.81488:Logan\/at\/41\.90000,-112\.00000\/Far%20away$/);
@@ -3012,7 +3037,6 @@ test('directions arriving by a time: the shuttle among the ways, said as the shu
 test('walks by the one rule, the same before and after the paths load; steep ground red on the directions map only', PHONE, async ({ page }) => {
   // The user: 'map routing. we should do it the stupid way, lots of options, fast and stupid', and 'show where there are
   // steep areas somehow. a red overlay on land showing on particularly steep slopes that's only visible in routing view'.
-  await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
   await open(page);
   // A walk's minutes: the crow's line and a third again, at 75 m a minute; the paths' file in or not.
   const rule = () => page.evaluate(async () => { const g = await import('/app/geo.js'), d = await import('/app/data.js'); const p = [41.73999, -111.83690, 41.74061, -111.83124];
@@ -3260,8 +3284,6 @@ async function busOnTrip(page, relay, p, K, [lat, lon, bearing]) {
     trips: { [p.id]: { v: '9001', ts: T, s: p.pts.slice(K).map(([m, sid], i) => [sid, K + i, base + m * 60 + 60, 0]) } } };
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
-  // The map's own, taken at its next look at a source: the strand drawn is its 'runs' source's.
-  await page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
   await go(page, '#/map');
   await mapReady(page);
   await expect.poll(() => page.evaluate(async () => !!(await import('/app/rt.js')).findBus('c:9001')), { timeout: 20_000 }).toBe(true);

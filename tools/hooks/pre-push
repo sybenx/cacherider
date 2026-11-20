@@ -30,7 +30,10 @@ cd "$root/tools/smoke" || exit 1
 npx --no-install playwright install chromium >/dev/null 2>&1
 echo "Smoke test before the push…"
 # With the turn, a server left on the port by a run cut short is stopped; one serving a run still going, waited for.
-if ! sh "$hooks/../smoke/wait-turn.sh" npx --no-install playwright test --reporter=dot; then
+# Kept awake while it runs (caffeinate -i, where there is one): a Mac left idle slept mid-run, its browsers frozen and
+# their tests timed out, the run 15 minutes longer. A lid closed on battery still sleeps it: push with the lid open.
+awake=; command -v caffeinate >/dev/null 2>&1 && awake='caffeinate -i'
+if ! $awake sh "$hooks/../smoke/wait-turn.sh" npx --no-install playwright test --reporter=dot; then
   echo
   echo "Smoke test failed: the push is stopped. See above; tools/smoke/test-results has a trace of each failure."
   exit 1
