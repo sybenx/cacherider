@@ -1,4 +1,4 @@
-// The smoke test: every flow, at a phone's size and a desktop's, against the app served as the hosts serve it
+// The smoke test: every flow, at a phone's size and a desktop's (or one, where they're the same), against the app served as the hosts serve it
 // (tools/serve.py: byte ranges for the tiles, nothing cached). Run here, before a push (tools/hooks/pre-push); not on GitHub. Live data is the real feed's, so the checks are the
 // ones that hold at any hour: each screen comes up, nothing says 'Something went wrong', nothing throws.
 const { defineConfig, devices } = require('@playwright/test');
@@ -18,9 +18,10 @@ module.exports = defineConfig({
     timezoneId: 'America/Denver',
     trace: 'retain-on-failure',
   },
+  // A test tagged for one size (smoke.spec.js PHONE, WIDE) runs at that one only: left out here, not launched to skip.
   projects: [
-    { name: 'phone', use: { ...devices['Pixel 7'] } },
-    { name: 'desktop', use: { viewport: { width: 1280, height: 800 } } },
+    { name: 'phone', grepInvert: /@desktop\b/, use: { ...devices['Pixel 7'] } },
+    { name: 'desktop', grepInvert: /@phone\b/, use: { viewport: { width: 1280, height: 800 } } },
   ],
   webServer: {
     command: `python3 ../serve.py ${PORT}`,

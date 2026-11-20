@@ -1,6 +1,7 @@
-// Every flow in the app, one test a flow, at a phone's size and a desktop's (playwright.config.js). Each checks that
-// its screens come up and that nothing on the way said 'Something went wrong' or threw. The data is the real feed's,
-// whatever the hour, so a check that needs a bus out (a bus's card) is skipped when none is.
+// Every flow in the app, one test a flow, at a phone's size and a desktop's, or at the one size where the two draw it
+// the same (PHONE, WIDE; playwright.config.js). Each checks that its screens come up and that nothing on the way said
+// 'Something went wrong' or threw. The data is the real feed's, whatever the hour, so a check that needs a bus out (a
+// bus's card) is skipped when none is.
 // Run: npm test (here), or tools/hooks/pre-push before every push. On this machine only, never on GitHub.
 const { test: base, expect } = require('@playwright/test');
 
@@ -21,6 +22,10 @@ const test = base.extend({
 });
 
 const phone = info => info.project.name === 'phone';
+// A test whose screens are the same at either size runs at one (playwright.config.js: each project leaves out the
+// other's tag): a phone's, where riders are, or a desktop's, where a page beside the map draws quicker; or where only
+// one size has what it checks (a phone's card over the map, a wide screen's panel). Untagged, both.
+const PHONE = { tag: '@phone' }, WIDE = { tag: '@desktop' };
 /** The app opened at an address, its data in. */
 async function open(page, hash = '#/') {
   await page.goto('/' + hash);
@@ -69,7 +74,7 @@ test('home: the Center line, the shuttle line, the routes', async ({ page }, inf
   await expect(page.getByRole('link', { name: /Settings & about/ })).toBeVisible();
 });
 
-test('home: a detour at one of your stops, at the top', async ({ page }) => {
+test('home: a detour at one of your stops, at the top', PHONE, async ({ page }) => {
   await open(page);
   // A stop a notice in force names today, saved: whichever the agency has up (none, and there's nothing to show).
   const id = await page.evaluate(async () => {
@@ -88,7 +93,7 @@ test('home: a detour at one of your stops, at the top', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp('#/stop/' + id));
 });
 
-test('a stop out of the timetable: its page, saved, at the top of home', async ({ page }) => {
+test('a stop out of the timetable: its page, saved, at the top of home', PHONE, async ({ page }) => {
   await open(page);
   // One kept out (tools/gone.py: a detour's, while a notice names it and a week after), if any are.
   const id = await page.evaluate(async () => { const d = await import('/app/data.js'); const s = d.D.stops.find(s => s.out); return s ? s.id : null; });
@@ -105,7 +110,7 @@ test('a stop out of the timetable: its page, saved, at the top of home', async (
   await expect(page.locator('.mine-row').filter({ visible: true }).first()).toContainText(/No buses stop at .+ one of your stops/);
 });
 
-test('a stop\'s row for a loop\'s next lap says where its bus is now, still on the lap before, and how many stops away', async ({ page }) => {
+test('a stop\'s row for a loop\'s next lap says where its bus is now, still on the lap before, and how many stops away', WIDE, async ({ page }) => {
   // The user, at 995 South Main: 'my issue is also knowing which blue loop will get there at that time. so if the blue
   // is sitting at ITC, or if it's driving by north walmart'. Staged: a loop's lap today and the lap after it in the same
   // run, the clock a minute before the lap's third call, its bus between its second and third stops; a stop five calls
@@ -147,7 +152,7 @@ test('a stop\'s row for a loop\'s next lap says where its bus is now, still on t
   expect(n).toBeLessThanOrEqual(pick.ahead + 1);
 });
 
-test('a stop\'s row says where its bus is while it\'s still out as the route it runs just before (a Saturday\'s 3, then the 8)', async ({ page }) => {
+test('a stop\'s row says where its bus is while it\'s still out as the route it runs just before (a Saturday\'s 3, then the 8)', WIDE, async ({ page }) => {
   // The user's block: 'the uninterrupted string of travel where a rider can remain on the bus'. On a Saturday a bus
   // swaps routes at the Transit Center every run, and a stop's row lost its bus while it ran the other route. Staged:
   // the next Saturday, a trip that carries on as another route, the clock a minute before its third call, its bus
@@ -190,7 +195,7 @@ test('a stop\'s row says where its bus is while it\'s still out as the route it 
   expect(n).toBeLessThanOrEqual(pick.ahead + 1);
 });
 
-test('a Saturday route whose bus is another route\'s too carries its line on into that route at the foot, from the timetable alone', async ({ page }) => {
+test('a Saturday route whose bus is another route\'s too carries its line on into that route at the foot, from the timetable alone', WIDE, async ({ page }) => {
   // The user: 'why not base it more on our route page, with like the continue into the next route at the bottom?'. Said
   // once, there (it was at the top, the foot, a list under it and a page of its own: 'saying the same thing twice in
   // multiple places for no reason'). No bus out (the feed refused): the timetable's blocks say it. A weekday's route,
@@ -231,7 +236,7 @@ test('a Saturday route whose bus is another route\'s too carries its line on int
   await expect(page.locator('.section.onward, .rs-carry')).toHaveCount(0);
 });
 
-test('a route whose bus is out as another route between its runs says so from the timetable, and not while its own run is on', async ({ page }) => {
+test('a route whose bus is out as another route between its runs says so from the timetable, and not while its own run is on', WIDE, async ({ page }) => {
   // The user's block-strip mockup: 'On Route 1 now ... Back on the 9 at 1:00 PM', the answer with no 9 on the map. No
   // feed (refused), so the timetable's, said so; no stop named, the timetable's place not a sighting.
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => r.abort());
@@ -273,7 +278,7 @@ test('a route whose bus is out as another route between its runs says so from th
   await expect(page.locator('.rs-busy')).toHaveCount(0);
 });
 
-test('days without buses: a line on a stop\'s page, a route\'s and the Center\'s the week before, and the year\'s list in Settings', async ({ page }, info) => {
+test('days without buses: a line on a stop\'s page, a route\'s and the Center\'s the week before, and the year\'s list in Settings', WIDE, async ({ page }) => {
   // The user: 'it would be nice to answer the holiday question in the app'. It was said on the day itself only. Staged:
   // three running days before the timetable's next day off (a holiday, or a day it takes off unnamed), then well before.
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => r.abort());
@@ -311,7 +316,7 @@ test('days without buses: a line on a stop\'s page, a route\'s and the Center\'s
   await expect(page.locator('.notice.daysoff')).toHaveCount(0);
 });
 
-test('a route\'s page never says to stay on a bus that goes out of service for hours, as 16 AM\'s last run before 16 PM', async ({ page }) => {
+test('a route\'s page never says to stay on a bus that goes out of service for hours, as 16 AM\'s last run before 16 PM', WIDE, async ({ page }) => {
   // The user: 'i noticed there's an option to "stay on bus 16 from the am and it will become the pm bus. this is
   // nonsense. there's hours gaps between. and the bus goes out of service'. Staged: a bus partway through a 16 AM run
   // whose next run in the timetable is a 16 PM one hours on, the feed listing both for the same bus, as it does.
@@ -355,7 +360,7 @@ test('a route\'s page never says to stay on a bus that goes out of service for h
   await expect(page.getByText(/Stay on bus 9003/)).toHaveCount(0);
 });
 
-test('home: the big stop\'s bus on its way as a line, here at its stop, gone with the feed; the Save hint till a stop is saved', async ({ page }) => {
+test('home: the big stop\'s bus on its way as a line, here at its stop, gone with the feed; the Save hint till a stop is saved', PHONE, async ({ page }) => {
   // The relay's answer made up, as the timetable has a trip run: the clock half a minute into the minute before its
   // second call, its bus between its first two stops, and the rider at its fifth. Its line: the bus, its next stop, the
   // two between folded, the rider's at the foot. Then the bus at its next stop (that ring filled, a stop fewer), the
@@ -424,7 +429,7 @@ test('home: the big stop\'s bus on its way as a line, here at its stop, gone wit
   await expect(page.locator('.land-hint')).toHaveCount(0);
 });
 
-test('home: trips saved on the directions page, under the big stop: the one from the end you\'re at whole, the rest a row each; tomorrow\'s after the last bus; three at most; one saved before kept', async ({ page }) => {
+test('home: trips saved on the directions page, under the big stop: the one from the end you\'re at whole, the rest a row each; tomorrow\'s after the last bus; three at most; one saved before kept', PHONE, async ({ page }) => {
   // The timetable's alone (the feed off), the clock at 4:10 PM on the next weekday followed by another (a holiday
   // neither), the rider at 1011 East 700 North (Richard's Hall). The trips: to 430 East Center St (Island Market: Route
   // 3); from Island Market to 2041 North 1200 East (North Logan's fire station); to 465 East 1400 North (the hospital);
@@ -537,8 +542,7 @@ test('home: trips saved on the directions page, under the big stop: the one from
   await expect(rows.locator('.name')).toHaveText('To 45 West 1200 South');
 });
 
-test('home: the Routes line opens every route', async ({ page }, info) => {
-  test.skip(!phone(info), 'a phone\'s line; a wide screen has the chips');
+test('home: the Routes line opens every route', PHONE, async ({ page }) => {
   await open(page);
   await page.locator('a[href="#/routes"]').filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/#\/routes$/);
@@ -598,11 +602,10 @@ test('bus click-off: back where the rider was', async ({ page }, info) => {
   expect(await stepAt(page)).toEqual(was);   // in place, not a step Back
 });
 
-test('a stop put down, then a bus clicked and clicked off: the stop stays down', async ({ page }, info) => {
+test('a stop put down, then a bus clicked and clicked off: the stop stays down', WIDE, async ({ page }) => {
   // The user: 'i clicked on a stop, clicked on the map to deselect. clicked on a bus, clicked on the map again and the
   // stop highlighted'. Beside a wide screen's panel a click off a stop puts its dot down, its page staying; a bus's
   // route, clicked off, goes back to that page, and the dot came back lit.
-  test.skip(phone(info), 'a phone\'s click off a stop puts its page away too');
   await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
   await open(page);
   const id = await someStop(page);
@@ -660,7 +663,7 @@ test('a tap off a card, a sheet, a route puts it away in place: never a step Bac
   expect(await steps()).toBe(n);
 });
 
-test('a bus gone quiet: grey after three minutes without a report, off the map after ten', async ({ page }) => {
+test('a bus gone quiet: grey after three minutes without a report, off the map after ten', WIDE, async ({ page }) => {
   // The relay's answer made up: three buses on one trip, heard from now, five minutes ago, twenty minutes ago.
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
@@ -726,7 +729,7 @@ test('map: a tap on a +1 zooms in till its buses part, no card', async ({ page }
   await expect(page.locator('#mapcard.open')).toHaveCount(0);
 });
 
-test('search: a route, every route, a street, a place, an address', async ({ page }) => {
+test('search: a route, every route, a street, a place, an address', PHONE, async ({ page }) => {
   await open(page);
   await go(page, '#/search?q=12');
   await expect(page.locator('a[href="#/map/route/12"]').filter({ visible: true }).first()).toBeVisible();
@@ -760,7 +763,7 @@ test('search: a route, every route, a street, a place, an address', async ({ pag
   await expect(page.getByText(/Show on map/).filter({ visible: true }).first()).toBeVisible();
 });
 
-test('a stop by its number, as Connect writes it (0115) or as its feed has it (115): found either way, said with its zero', async ({ page }) => {
+test('a stop by its number, as Connect writes it (0115) or as its feed has it (115): found either way, said with its zero', PHONE, async ({ page }) => {
   await open(page);
   for (const q of ['0115', '115', 'stop 0115']) {
     await go(page, '#/search?q=' + encodeURIComponent(q));
@@ -865,7 +868,7 @@ test('which of its route\'s buses a bus is: on its card (Blue 2), and found by i
   await expect(card.locator('.who .nth')).toHaveText(loopLabel);
 });
 
-test('one clock rule: due from its minute\'s start, gone from the next', async ({ page }) => {
+test('one clock rule: due from its minute\'s start, gone from the next', PHONE, async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
     const t = await import('/app/time.js'), c = { min: 600, sec: 59, ymd: '20261007' };
@@ -875,7 +878,7 @@ test('one clock rule: due from its minute\'s start, gone from the next', async (
   expect(r).toEqual([true, false, true, false, true, 'now', 'in 1 min', 850]);
 });
 
-test('the map\'s lines: faded behind the last buses, every one in colour ten minutes after the night\'s last call', async ({ page }) => {
+test('the map\'s lines: faded behind the last buses, every one in colour ten minutes after the night\'s last call', PHONE, async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), m = await import('/app/views/map.js'), u = await import('/app/usu.js');
@@ -890,7 +893,7 @@ test('the map\'s lines: faded behind the last buses, every one in colour ten min
   if (r) { expect(r.during[0]).toBeGreaterThan(0); expect(r.during[1]).toBeGreaterThan(0); expect(r.after).toEqual([0, 0, 0, false]); }
 });
 
-test('search: where people live, an apartment complex and a dorm by name', async ({ page }) => {
+test('search: where people live, an apartment complex and a dorm by name', WIDE, async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
     const d = await import('/app/data.js');
@@ -902,7 +905,7 @@ test('search: where people live, an apartment complex and a dorm by name', async
   expect(r[3]).not.toBe('');   // by its kind
 });
 
-test('the Center: a bus back in at the end of its trip isn\'t its departure still leaving', async ({ page }) => {
+test('the Center: a bus back in at the end of its trip isn\'t its departure still leaving', PHONE, async ({ page }) => {
   // A fresh start at 8:51: a route's 8:30 bus back at the Center finishing its trip read as the 8:30 leaving now, 21 min
   // late, until it took up its next trip. Made up from the timetable: a run whose next is an hour on or more (21 min down
   // isn't held for it: rt.js holdOf), the clock 21 minutes after it.
@@ -938,7 +941,7 @@ test('the Center: a bus back in at the end of its trip isn\'t its departure stil
   expect(r).toBe('gone');
 });
 
-test('the Center: a departure still listed past its minute, its bus on its trip before, by where the bus is', async ({ page }) => {
+test('the Center: a departure still listed past its minute, its bus on its trip before, by where the bus is', PHONE, async ({ page }) => {
   // 3:06 PM, every 3:00 'leaving now, 6 min late': the feed still listed the Center on each 3:00 and had its bus on the
   // trip before, out on its run. Made up from the timetable: a route's half-hourly departure, the clock 6 minutes on.
   await open(page);
@@ -970,7 +973,7 @@ test('the Center: a departure still listed past its minute, its bus on its trip 
   expect(r).toEqual(['gone', 'leaving', 'gone']);
 });
 
-test('the Center: a group NOW in its minute; gone by with one late route still in, the next group\'s; most of it still in, up and counting how late', async ({ page }) => {
+test('the Center: a group NOW in its minute; gone by with one late route still in, the next group\'s; most of it still in, up and counting how late', WIDE, async ({ page }) => {
   // 8:03 AM, 16 Oct: Route 12's bus in late for the 8:00, the other nine gone at 8:00 and out on their runs. The board
   // stayed at 8:00, 0:00, every other bay's bus 20 min out (coming in for the 8:30), until 12 pulled out at 8:06; and a
   // group's clock sat at 0:00 for minutes. Made up from the timetable: a group with a group 30 min after it, the clock
@@ -1045,7 +1048,7 @@ test('the Center: a group NOW in its minute; gone by with one late route still i
   await expect(grp(late.now)).toHaveCount(0);   // the group's minute gone by: none left at it
 });
 
-test('the Center\'s compass: north up and south up, one to the other', async ({ page }) => {
+test('the Center\'s compass: north up and south up, one to the other', PHONE, async ({ page }) => {
   await open(page, '#/hub');
   await mapReady(page);
   const btn = page.locator('.northbtn').filter({ visible: true }).first();
@@ -1079,8 +1082,7 @@ test('a spot picked on the map for where you are: from the home page, and kept a
   await expect(page.getByText('Near the spot you picked').filter({ visible: true }).first()).toBeVisible();
 });
 
-test('the panel on the right, set in Settings: the map\'s buttons across from it', async ({ page }, info) => {
-  test.skip(phone(info), 'a wide screen\'s panel');
+test('the panel on the right, set in Settings: the map\'s buttons across from it', WIDE, async ({ page }) => {
   await open(page, '#/about');
   await page.locator('button[data-side="right"]').click();
   await expect(page.locator('button[data-side="right"]')).toHaveAttribute('aria-pressed', 'true');
@@ -1098,10 +1100,9 @@ test('the panel on the right, set in Settings: the map\'s buttons across from it
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.panel || 'left')).toBe('left');
 });
 
-test('the panel on the right: a stop, directions and a route each framed in the map left of it, their pages in it', async ({ page }, info) => {
+test('the panel on the right: a stop, directions and a route each framed in the map left of it, their pages in it', WIDE, async ({ page }) => {
   // The user: 'we need a smoke test for those with right panel preferences set on'. The map frames what's picked in the
   // room the panel leaves (map.js room, the panel the map's padding): on the right, that room is left of it.
-  test.skip(phone(info), 'a wide screen\'s panel');
   await page.addInitScript(() => {
     try { localStorage.setItem('cr-panel', 'right'); } catch { /* none */ }
     import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
@@ -1147,7 +1148,7 @@ test('the panel on the right: a stop, directions and a route each framed in the 
   await clear(r.pts);
 });
 
-test('the Center: a bus two-thirds of a run down is held for its next run, which leaves on time', async ({ page }) => {
+test('the Center: a bus two-thirds of a run down is held for its next run, which leaves on time', PHONE, async ({ page }) => {
   // Route 8's 2:00, its bus in at 2:27: 'leaving any second', when it went out on the 2:30 (2026-10-09). Made up from
   // the timetable: a route's half-hourly departure from the Center, the clock set to 22 minutes after it.
   await open(page);
@@ -1195,7 +1196,7 @@ const polled = (page, T) => expect.poll(() => page.evaluate(async () => (await i
 /** A trip's stops with its end, each [minute, id, lat, lon]. */
 const stopsOf = (d, ti) => { const te = d.tripEnd(ti); return [...d.tripStops(ti), ...(te ? [[te.min, te.si]] : [])].map(([m, x]) => [m, d.D.stops[x].id, d.D.stops[x].lat, d.D.stops[x].lon]); };
 
-test('an empty trip feed beside the buses: the last word stands for a minute and a half, then the buses\' places', async ({ page }) => {
+test('an empty trip feed beside the buses: the last word stands for a minute and a half, then the buses\' places', WIDE, async ({ page }) => {
   // 2:42:00 PM, 19 Oct: the agency's trip feed came back its header alone, 15 bytes, beside all 20 buses, and the relay
   // passed it on as no trips: for that poll some 600 rows went from Live to the timetable or to a guess from the bus's
   // place. A route's trip under way, its bus 5 min late at its third stop, the rider at its sixth; then the same bus
@@ -1240,7 +1241,7 @@ test('an empty trip feed beside the buses: the last word stands for a minute and
   expect((await rowSays(page, pick.id, stop, m5))[0]).toMatch(/^Estimated · /);
 });
 
-test('the Center: a late bus\'s next run leaves when its bus is in, at the stops past it too, whatever the feed has for the run', async ({ page }) => {
+test('the Center: a late bus\'s next run leaves when its bus is in, at the stops past it too, whatever the feed has for the run', WIDE, async ({ page }) => {
   // 19 Oct: the feed's word on a bus's next run is the timetable's (Route 1's 3:00 at 3:00:00, its bus not yet in). The
   // bay waited for the bus; the stops past it didn't: a run 8 min late out of the Center was 'Live · On time' a minute
   // out and the timetable's further on, and past its minute gone a minute out. A route's run from the Center, its bus
@@ -1284,7 +1285,7 @@ test('the Center: a late bus\'s next run leaves when its bus is in, at the stops
   expect(await rowSays(page, pick.id, stop, m)).toEqual(['Estimated · 8 min late', m + 8]);
 });
 
-test('the Center: a bus\'s next run timed by the feed from the run before is Estimated, at its bay and past it', async ({ page }) => {
+test('the Center: a bus\'s next run timed by the feed from the run before is Estimated, at its bay and past it', WIDE, async ({ page }) => {
   // 3:36 PM, 20 Oct: Route 7's 4:00 'Live · 2 min late', its bus 4004 still out on its 3:30. Connect's feed times a bus's
   // next run from the run before (its bay at the minute that run gets in, every stop on as late): a minute carried on,
   // not word from a bus on it. A route's run from the Center, its bus out on the run before and due in 2 min after the
@@ -1385,7 +1386,7 @@ test('the Center\'s board follows the feed with the search box focused, its focu
   expect(await box.evaluate(b => document.activeElement === b)).toBe(true);   // and the rider still in the box
 });
 
-test('the Center back from the background: a bus that left while the app was away has left, not \'leaving now\'', async ({ page }) => {
+test('the Center back from the background: a bus that left while the app was away has left, not \'leaving now\'', WIDE, async ({ page }) => {
   // 3:36 PM, 20 Oct, back in the app: the 3:30s of five routes 'Live · 6 min late', leaving now, their buses gone while
   // it was away (hidden, it asks the feed nothing). Each bay gone from the feed since its last word was taken to have
   // just gone, and said 'now' for a minute more (rt.js LEFT_GRACE). A route's run, its bus in its bay 2½ min past its
@@ -1422,7 +1423,7 @@ test('the Center back from the background: a bus that left while the app was awa
   }, [run.id, run.pts[0][1], run.start])).toBe(true);
 });
 
-test('a loop bus in early at the Center: the stops past it on the timetable from its minute, not the feed\'s long wait there', async ({ page }) => {
+test('a loop bus in early at the Center: the stops past it on the timetable from its minute, not the feed\'s long wait there', WIDE, async ({ page }) => {
   // 19 Oct, every loop trip of the day: the feed had the Blue Loop 13 minutes from its Center stop to 750 North Main, 2
   // by the timetable, and the Green 8 to the stop after its own, 1, every stop on as late. Bus 1174, in at 2:38 for its
   // 2:41, was 'Live 2:54' at 750 North Main; it left at 2:41 and was there at 2:45. A loop's trip, its bus in at its
@@ -1454,7 +1455,7 @@ test('a loop bus in early at the Center: the stops past it on the timetable from
   expect(await rowSays(page, pick.id, stop, m)).toEqual(['Scheduled', m]);
 });
 
-test('a loop\'s next run with no word on it from the feed: as late at the Center as its bus is into the run\'s start', async ({ page }) => {
+test('a loop\'s next run with no word on it from the feed: as late at the Center as its bus is into the run\'s start', WIDE, async ({ page }) => {
   // 2:42 PM, 19 Oct: the feed lost a Green Loop bus's trip and the one after it for a minute, the bus a minute late; the
   // Center's 3:35 was said to leave at 3:14, when the bus was due at the run's start, 750 North Main, 22 minutes before
   // the Center. A loop's run into its next, its bus 4 min late near the end of the first, the feed with nothing on the next.
@@ -1488,7 +1489,7 @@ test('a loop\'s next run with no word on it from the feed: as late at the Center
   expect(await rowSays(page, pick.next, stop, m)).toEqual(['Estimated', m + 4]);
 });
 
-test('a timed stop on the way: a bus ahead waits there, and it and the stops after it are on time, not the feed\'s minutes early', async ({ page }) => {
+test('a timed stop on the way: a bus ahead waits there, and it and the stops after it are on time, not the feed\'s minutes early', WIDE, async ({ page }) => {
   // 2:41 PM, 19 Oct (the user: 'look into the route 15 3 min early thing'): Route 15's bus out of Richmond 30 s early,
   // the feed running it on faster than the timetable, had Richard's Hall 'Live · 3 min early' for its 3:14, with five
   // timed stops between where it would wait. A route's trip (Route 15's where there's one), its bus 3 min early at the
@@ -1581,14 +1582,14 @@ async function goneEarly(page, kept) {
   await go(page, '#/map/bus/c:9001?tap=1');
   await expect(page.locator('#mapcard .buscard')).toContainText(/Left .+ at least 2 min early, so it may be early at the stops ahead/);
 }
-test('a bus gone by a timed stop early: the stops after it the feed\'s, early, not held to their minutes, and its card says so', ({ page }) => goneEarly(page, false));
-test('a bus gone by a timed stop early, the feed still listing it as on the Blue Loop: the same', ({ page }) => {
+test('a bus gone by a timed stop early: the stops after it the feed\'s, early, not held to their minutes, and its card says so', WIDE, ({ page }) => goneEarly(page, false));
+test('a bus gone by a timed stop early, the feed still listing it as on the Blue Loop: the same', WIDE, ({ page }) => {
   // 4:28 PM, 2 Nov: bus 1171 went by 50 North Main for its 4:41; the feed stamped it 4:28:31 and kept it listed, stepping
   // on by the timetable, and nothing was said (the relay's rule and the app's waited for the feed to drop the stop).
   return goneEarly(page, true);
 });
 
-test('a route on an old timetable: no bus called early by it, and its card, route and timed stop say its times are old', async ({ page }) => {
+test('a route on an old timetable: no bus called early by it, and its card, route and timed stop say its times are old', PHONE, async ({ page }) => {
   // 2 Nov: CVTD's feed listed the Blue Loop with no trips (on a detour), and the nightly put its 21 Oct timetable back
   // (tools/keeproute.py, the route's 'kept'). Its buses went by 50 North Main 12 min before that timetable's minute. The
   // user, who dispatches: 'our times are old, so we don't know actually whether the bus is departing early on purpose
@@ -1630,7 +1631,7 @@ test('a route on an old timetable: no bus called early by it, and its card, rout
   await expect(page.locator('.tpline').first()).toContainText('but its times here are from an old timetable (21 Oct) and may be off.');
 });
 
-test('a bus the relay saw go by a timed stop early: its stops ahead early from one look, and its card says how often today', async ({ page }) => {
+test('a bus the relay saw go by a timed stop early: its stops ahead early from one look, and its card says how often today', WIDE, async ({ page }) => {
   // The relay keeps what it sees all day (worker/src/early.js): a phone opened after the bus went by knows, and the
   // card says how often today, as the user, who dispatches, asked: 'this bus missed this timepoint N times today'.
   const relay = { T: 0, feed: null, early: [], alerts: () => [] };
@@ -1657,8 +1658,7 @@ test('a bus the relay saw go by a timed stop early: its stops ahead early from o
   await expect(card).toContainText(/Left .+ early twice today/);
 });
 
-test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', async ({ page }, info) => {
-  test.skip(!phone(info), 'a phone\'s card over the map');
+test('a closed stop tapped on a phone: its closure in the card as it opens, not a swipe up away', PHONE, async ({ page }) => {
   // A closure of its own, every route of a stop: the day's notices come and go (520 West 100 North's, 2-6 Nov, taken
   // down from Connect on the 2nd while the file still had it, and the card, by the relay's, showed none).
   const relay = { T: Math.floor(Date.now() / 1000), feed: null, alerts: () => shut ? [shut] : [] };
@@ -1681,8 +1681,7 @@ test('a closed stop tapped on a phone: its closure in the card as it opens, not 
   expect(hit).toBe(true);
 });
 
-test('a stop\'s card on a phone, as the Center\'s board: rests at its next bus, folds to its head, and goes', async ({ page }, info) => {
-  test.skip(!phone(info), 'a phone\'s card over the map');
+test('a stop\'s card on a phone, as the Center\'s board: rests at its next bus, folds to its head, and goes', PHONE, async ({ page }) => {
   await open(page);
   const id = await page.evaluate(async () => { const d = await import('/app/data.js'); return d.D.stops.find(s => !s.hub && s.routes.length && !s.out).id; });
   await go(page, '#/map/' + id);
@@ -1715,8 +1714,7 @@ test('a stop\'s card on a phone, as the Center\'s board: rests at its next bus, 
   await expect(page).toHaveURL(/#\/map$/);
 });
 
-test('a route\'s card on a phone, as the board: rests at its first stops, folds to its head, and goes; a POOL pickup\'s swipe up goes nowhere', async ({ page }, info) => {
-  test.skip(!phone(info), 'a phone\'s card over the map');
+test('a route\'s card on a phone, as the board: rests at its first stops, folds to its head, and goes; a POOL pickup\'s swipe up goes nowhere', PHONE, async ({ page }) => {
   await open(page, '#/map/route/2');
   await mapReady(page);
   const card = page.locator('#mapcard');
@@ -1786,7 +1784,7 @@ test('the map\'s search over its card: the Center\'s board raised on a phone, a 
   await expect(page).toHaveURL(new RegExp(id));
 });
 
-test('a stop every route of it skips by notice says Closed in its row, not the first bus after', async ({ page }) => {
+test('a stop every route of it skips by notice says Closed in its row, not the first bus after', PHONE, async ({ page }) => {
   await open(page);
   const r = await page.evaluate(async () => {
     const d = await import('/app/data.js'), ui = await import('/app/ui.js'), t = await import('/app/time.js');
@@ -1798,7 +1796,7 @@ test('a stop every route of it skips by notice says Closed in its row, not the f
   expect(r.live.every(Boolean)).toBe(true);   // each one closed today says so (none closed: nothing to say)
 });
 
-test('routes list: every route, one opened', async ({ page }) => {
+test('routes list: every route, one opened', PHONE, async ({ page }) => {
   await open(page, '#/routes');
   await expect(page.locator('a.row[href^="#/map/route/"]')).not.toHaveCount(0);
   await expect(page.locator('a.row[href^="#/usu/route/"]').filter({ visible: true }).first()).toBeVisible();
@@ -1807,10 +1805,9 @@ test('routes list: every route, one opened', async ({ page }) => {
   await expect(page.getByText('Route 5').filter({ visible: true }).first()).toBeVisible();
 });
 
-test('directions from out of a walk of any stop, on a phone: swiped down, the card goes down to its head and stays, then leaves', async ({ page }, info) => {
+test('directions from out of a walk of any stop, on a phone: swiped down, the card goes down to its head and stays, then leaves', PHONE, async ({ page }) => {
   // From north of Franklin, Idaho, to the Transit Center: the card lists the stops to drive to. A swipe down hid it,
   // and the next redraw (the feed's tick, the minute) put it back up; there was no way to see the map under it.
-  test.skip(!phone(info), 'a phone\'s card over the map');
   await open(page, '#/');
   await go(page, '#/go/10628498/at/42.03000,-111.87400/North%20of%20Franklin');
   await mapReady(page);
@@ -1870,7 +1867,7 @@ test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts
   }
 });
 
-test('a season\'s route goes with its season: the Pumpkin Walk off the map, the routes and search after its last night', async ({ page }) => {
+test('a season\'s route goes with its season: the Pumpkin Walk off the map, the routes and search after its last night', WIDE, async ({ page }) => {
   // Its nights staged as one, a week from now, whatever the feed's are: that evening it's on the routes list, in search,
   // on the map and has its tab; the next noon none of them, its two stops gone from the map and search too. And a
   // timetable run out (every one of Connect's calendars ended that night, the next not in) isn't every route's season
@@ -1984,7 +1981,7 @@ test('Thanksgiving: the garland on the map from the Wednesday before, never in t
   await expect(page.locator('.holcard')).toHaveCount(0);
 });
 
-test('Thanksgiving Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse', async ({ page }) => {
+test('Thanksgiving Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse', PHONE, async ({ page }) => {
   // Thursday 26 Nov 2026: 'No buses today', 'Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!', and when
   // they're back, from the timetable, never written in: at a stop its first bus after today, at the Center the first
   // pulse (the feed takes this year's Friday off too, so that's Saturday's). In the plain callout's place.
@@ -2008,7 +2005,7 @@ test('Thanksgiving Day: its card at a stop and at the Center, back at the timeta
   expect(await page.evaluate(() => document.body.innerText.includes('—'))).toBe(false);   // no em dash
 });
 
-test('Thanksgiving goes by itself: the Friday after, the garland and no card; the Saturday, none of it', async ({ page }) => {
+test('Thanksgiving goes by itself: the Friday after, the garland and no card; the Saturday, none of it', PHONE, async ({ page }) => {
   // Friday 27 Nov 2026 is the season's last day: the garland's up. Not Thanksgiving Day, so a day without buses (the
   // feed's, this year) is the plain 'No buses today'. Saturday 28 Nov, noon: no garland, no season.
   await page.clock.setFixedTime(noon('2026-11-27'));
@@ -2078,7 +2075,7 @@ test('Christmas: the lights from the 14th, a glow in the light theme and halos i
   await expect.poll(() => look().then(l => l && l.twinkle)).toBe('none');
 });
 
-test('Christmas at the Center and on the map: snow on the bays\' badges and roofs, banked at their feet, a tree in its mound; a wreath on a bus, the dark theme\'s in the dark', async ({ page }, info) => {
+test('Christmas at the Center and on the map: snow on the bays\' badges and roofs, banked at their feet, a tree in its mound; a wreath on a bus, the dark theme\'s in the dark', PHONE, async ({ page }) => {
   // Monday 14 Dec 2026, a minute past noon. At the Center (a phone's: its bays are the map) each bay's badge wears a cap
   // of snow, the hall and its canopies are whited over and banked with snow at their feet, a tree in its mound by the doors. A Connect bus
   // on the map, staged on its trip, wears a wreath at its top right, upright, the light theme's; in the dark theme,
@@ -2088,21 +2085,19 @@ test('Christmas at the Center and on the map: snow on the bays\' badges and roof
   await page.clock.setFixedTime(new Date('2026-12-14T12:01:00-07:00'));
   await open(page);
   const hook = () => page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
-  if (phone(info)) {
-    await hook();
-    await go(page, '#/hub');
-    await mapReady(page);
-    await expect(page.locator('.hbay').first()).toBeAttached();
-    const caps = page.locator('.hbay .hol-cap');
-    await expect.poll(() => caps.evaluateAll(cs => cs.filter(c => getComputedStyle(c).display === 'block').length)).toBe(await page.locator('.hbay').count());
-    await expect(page.locator('.hol-treemark')).toHaveCount(1);
-    await expect.poll(() => page.evaluate(() => { const m = window.__map; return !!m && !!m.getLayer('hol-roof') && m.getLayoutProperty('hol-roof', 'visibility') !== 'none' && m.getSource('hol-roof').serialize().data.features.length; }), { timeout: 20_000 }).toBeGreaterThan(0);
-    // and the snow banked along the roofs' feet, under them: no drifts floating free in the plan's corners
-    expect(await page.evaluate(() => { const m = window.__map, ids = m.getStyle().layers.map(l => l.id); return m.getLayoutProperty('hol-bank', 'visibility') !== 'none' && ids.indexOf('hol-bank') < ids.indexOf('hol-roof'); })).toBe(true);
-    await expect(page.locator('.hol-drifts, .hol-drift')).toHaveCount(0);
-    // Under the badges and never a tap's.
-    expect(await page.locator('.maplibregl-marker.hol-treemark').first().evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
-  }
+  await hook();
+  await go(page, '#/hub');
+  await mapReady(page);
+  await expect(page.locator('.hbay').first()).toBeAttached();
+  const caps = page.locator('.hbay .hol-cap');
+  await expect.poll(() => caps.evaluateAll(cs => cs.filter(c => getComputedStyle(c).display === 'block').length)).toBe(await page.locator('.hbay').count());
+  await expect(page.locator('.hol-treemark')).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => { const m = window.__map; return !!m && !!m.getLayer('hol-roof') && m.getLayoutProperty('hol-roof', 'visibility') !== 'none' && m.getSource('hol-roof').serialize().data.features.length; }), { timeout: 20_000 }).toBeGreaterThan(0);
+  // and the snow banked along the roofs' feet, under them: no drifts floating free in the plan's corners
+  expect(await page.evaluate(() => { const m = window.__map, ids = m.getStyle().layers.map(l => l.id); return m.getLayoutProperty('hol-bank', 'visibility') !== 'none' && ids.indexOf('hol-bank') < ids.indexOf('hol-roof'); })).toBe(true);
+  await expect(page.locator('.hol-drifts, .hol-drift')).toHaveCount(0);
+  // Under the badges and never a tap's.
+  expect(await page.locator('.maplibregl-marker.hol-treemark').first().evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
   feed = {};
   const pick = await stageBus(page, feed);
   test.skip(!pick, 'nothing running at noon that Monday');
@@ -2128,7 +2123,7 @@ test('Christmas at the Center and on the map: snow on the bays\' badges and roof
   await expect(page.locator('.hol-wreath').filter({ visible: true })).toHaveCount(0);
 });
 
-test('Christmas Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse; the 26th the lights and no card, the 27th none', async ({ page }) => {
+test('Christmas Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse; the 26th the lights and no card, the 27th none', PHONE, async ({ page }) => {
   // Friday 25 Dec 2026: the sketch's snowy night and two buses asleep under the Center's roof, 'No buses today',
   // 'Connect doesn't run on Christmas Day. Merry Christmas!', and when they're back from the timetable (Saturday's first
   // pulse, this year). Saturday 26 Dec, the season's last day: the lights, the buses running, no card. Sunday 27: none.
@@ -2160,7 +2155,7 @@ test('Christmas Day: its card at a stop and at the Center, back at the timetable
   }
 });
 
-test('a route drawn as a line: its key stops, a fold kept open through a redraw, every stop', async ({ page }) => {
+test('a route drawn as a line: its key stops, a fold kept open through a redraw, every stop', PHONE, async ({ page }) => {
   // The Blue Loop: its stops on a rail, the stops between its key stops folded. A fold opened stays open as the feed
   // redraws the sheet; 'Every stop' unfolds the lot, 'Key stops' folds them again.
   await open(page, '#/map/route/B');
@@ -2235,7 +2230,7 @@ test('a two-way route as one line: out to its far end and back, both ways\' buse
   await expect(page.locator('.yourstop').filter({ visible: true }).first()).toBeVisible();
 });
 
-test('another operator\'s route, kept by hand (the Preston commuter): at its stops, its page, the planner; never live', async ({ page }) => {
+test('another operator\'s route, kept by hand (the Preston commuter): at its stops, its page, the planner; never live', WIDE, async ({ page }) => {
   // The clock half an hour before its next run, and the relay's answer made up as if the feed had its bus out on that
   // run, 3 minutes late: no feed has it, so every screen still says Scheduled, at the timetable's minute.
   let feed = null;
@@ -2283,7 +2278,7 @@ test('another operator\'s route, kept by hand (the Preston commuter): at its sto
   await expect(page.locator(`.jrow .badge[data-r="${pick.ri}"]`).filter({ visible: true }).first()).toBeVisible({ timeout: 20_000 });
 });
 
-test('Route 16 is one route: one badge at 2281 N Main with PRT\'s, the last full run the road\'s, search "16"', async ({ page }) => {
+test('Route 16 is one route: one badge at 2281 N Main with PRT\'s, the last full run the road\'s, search "16"', PHONE, async ({ page }) => {
   // 16 AM and 16 PM (GTFS's halves of Route 16) are one route to a rider; PRT's Preston commuter is its midday run. At
   // 2281 N Main all three call: the header had three badges, and 16 AM's 7:43 was marked the last full run with PRT's
   // 12:38 and 16 PM's 7:23 PM still to come.
@@ -2344,7 +2339,7 @@ test('Route 16 is one route: one badge at 2281 N Main with PRT\'s, the last full
   }
 });
 
-test('route: both ways, its sibling, a stop on it', async ({ page }) => {
+test('route: both ways, its sibling, a stop on it', PHONE, async ({ page }) => {
   await open(page, '#/map/route/2');
   await mapReady(page);
   await expect(page.getByText(/stops, in order|stops left/i).filter({ visible: true }).first()).toBeVisible();
@@ -2357,7 +2352,7 @@ test('route: both ways, its sibling, a stop on it', async ({ page }) => {
   await expect(page).toHaveURL(/#\/stop\//);
 });
 
-test('stop: its page, a route badge, a run, the whole day, saved and unsaved', async ({ page }) => {
+test('stop: its page, a route badge, a run, the whole day, saved and unsaved', PHONE, async ({ page }) => {
   await open(page);
   const id = await someStop(page);
   await go(page, '#/stop/' + id);
@@ -2371,7 +2366,7 @@ test('stop: its page, a route badge, a run, the whole day, saved and unsaved', a
   await expect(page).toHaveURL(/#\/map\/route\//);
 });
 
-test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time opens its run, saying which of its buses', async ({ page }) => {
+test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time opens its run, saying which of its buses', WIDE, async ({ page }) => {
   // The user: 'i'd like to be able to see the previous times in the day. i think the rest of today maybe should be the
   // whole day all the time', and of a time tapped there: 'i'd like to be able to tell if its green 1,2, or 3'.
   await open(page);
@@ -2399,7 +2394,7 @@ test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time
   await expect(page.locator('#runsheet .rs-bus').filter({ visible: true })).toHaveText(new RegExp('^' + pick.spoken + ' \\d'));
 });
 
-test('stop: a run opens on the Transit Center it left and ends at the Transit Center it gets in to', async ({ page }) => {
+test('stop: a run opens on the Transit Center it left and ends at the Transit Center it gets in to', PHONE, async ({ page }) => {
   // The user: 'next clicking on any bus, the top of the list should have the transit center, and so should teh bottom.
   // so i can see when it will get to the transit center'. 55 North Main at midday on a day with buses: a loop's run
   // (the feed cuts the Blue Loop's there, the Center mid-trip) and a numbered route's (12, out and back as two trips).
@@ -2475,7 +2470,7 @@ test('map: town view, a bus and its route', async ({ page }) => {
   await expect(page).toHaveURL(/#\/map\/route\/.+\?bus=/);
 });
 
-test('map: a picked bus is where it is, its card from the stop it reaches next and its way on from it', async ({ page }) => {
+test('map: a picked bus is where it is, its card from the stop it reaches next and its way on from it', PHONE, async ({ page }) => {
   // Bus 4014 on the Blue Loop's 6:05 (2026-10-16): the feed had 55 North Main, the stop the loop's trips end at, first
   // in its list, with the end's time, and the two stops just behind the bus still there, its word lagging. Its card led
   // with 55 North Main, its way on drawn from far ahead. Made up from the timetable: a loop's trip, the bus halfway
@@ -2559,10 +2554,9 @@ test('map: a spot and its card, a road and its routes, a right click', async ({ 
   await expect(page.getByRole('link', { name: 'Directions to here' })).toBeVisible();
 });
 
-test('Back on a phone\'s map: a long press\'s card, a stop\'s sheet swiped away, the Map tab lit for a stop of the map', async ({ page }, info) => {
+test('Back on a phone\'s map: a long press\'s card, a stop\'s sheet swiped away, the Map tab lit for a stop of the map', PHONE, async ({ page }) => {
   // A friend on the map: a card opened with no entry of its own, so Back left the map (twice, and the app was gone);
   // a stop's sheet swiped away added the map again, so Back opened it again; a stop off the map lit Stops.
-  test.skip(!phone(info), 'a phone\'s map and its Back');
   const id = await (async () => { await open(page); return someStop(page); })();
   await go(page, '#/map');
   await mapReady(page);
@@ -2605,7 +2599,7 @@ test('Back on a phone\'s map: a long press\'s card, a stop\'s sheet swiped away,
   await expect(page).not.toHaveURL(/#\/stop\//);
 });
 
-test('Transit Center: directions there from its board, to any of its bays', async ({ page }) => {
+test('Transit Center: directions there from its board, to any of its bays', PHONE, async ({ page }) => {
   await open(page, '#/hub');
   await mapReady(page);
   const link = page.getByRole('link', { name: 'How to get here' }).filter({ visible: true }).first();
@@ -2679,7 +2673,7 @@ test('Transit Center: a bus standing in it is a badge in its label, its own mark
   await expect(page.locator('.maplibregl-marker.bus.athub')).toHaveCount(0);
 });
 
-test('Transit Center: the rest of the day, a line a route with its last bus, a tap to its every time; after the last, the next day\'s', async ({ page }) => {
+test('Transit Center: the rest of the day, a line a route with its last bus, a tap to its every time; after the last, the next day\'s', PHONE, async ({ page }) => {
   // A rider at the Center coming back later: when's the last 3, is there a 16 this afternoon. Under the next hour, each
   // route's line says its last departure today, the day's last bus beside the heading; a line opens its route's card,
   // with every time it leaves today. After the day's last bus, the next day with buses, from its first. The clock set
@@ -2739,8 +2733,7 @@ test('Transit Center: the rest of the day, a line a route with its last bus, a t
   await expect(sec.locator('.tcd-row:not(.tcd-none)', { hasText: ' from ' }).first()).toBeVisible();
 });
 
-test('Transit Center on a wide screen: the map left where it is, no view buttons', async ({ page }, info) => {
-  test.skip(phone(info), 'on a phone the Center is the map, flown to');
+test('Transit Center on a wide screen: the map left where it is, no view buttons', WIDE, async ({ page }) => {
   await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
   // From the Stops page, its panel already beside the map: from the Map tab the panel comes in, and the map keeps the
   // place looked at in the middle of what's left, half the panel over, whichever page it is.
@@ -2777,7 +2770,7 @@ test('Transit Center on a wide screen: the map left where it is, no view buttons
   expect(await faint()).toBe(asDrawn);
 });
 
-test('directions: each way in, a plan, no way, from only', async ({ page }) => {
+test('directions: each way in, a plan, no way, from only', PHONE, async ({ page }) => {
   await open(page);
   const id = await someStop(page);
   await go(page, '#/go/' + id);
@@ -2860,8 +2853,7 @@ test('directions from where you are: a right click asks which end, the destinati
   await expect(page).toHaveURL(/#\/go\/@41\.75484,-111\.81505:Aztec\/at\/[-\d.]+,[-\d.]+\//);
 });
 
-test('a tablet turned: the phone\'s card goes as the page comes in beside the map', async ({ page }, info) => {
-  test.skip(phone(info), 'a window that crosses into the wide layout');
+test('a tablet turned: the phone\'s card goes as the page comes in beside the map', WIDE, async ({ page }) => {
   // Upright (under 840 px) the directions are the map with the ways as its card; turned, the page beside the map. The
   // same address, so the card was put away only by the layout's change counting as a page arrived at.
   await page.setViewportSize({ width: 800, height: 1000 });
@@ -2872,8 +2864,7 @@ test('a tablet turned: the phone\'s card goes as the page comes in beside the ma
   await expect(page.locator('#mapcard')).not.toHaveClass(/\bopen\b/);
 });
 
-test('directions, no stop a walk off: the nearest starts in view, one picked, and it stays put', async ({ page }, info) => {
-  test.skip(!phone(info), 'a phone\'s card over the map');
+test('directions, no stop a walk off: the nearest starts in view, one picked, and it stays put', PHONE, async ({ page }) => {
   // From far out of the valley's routes: no way by bus.
   await open(page, '#/go/@41.74321,-111.81488:Logan/at/41.90000,-112.00000/Far%20away');
   const card = page.locator('#mapcard');
@@ -2896,11 +2887,10 @@ test('directions, no stop a walk off: the nearest starts in view, one picked, an
   }
 });
 
-test('directions with no way by bus, on a phone: a long press\'s card stays through the feed\'s ticks', async ({ page }, info) => {
+test('directions with no way by bus, on a phone: a long press\'s card stays through the feed\'s ticks', PHONE, async ({ page }) => {
   // From far out of the valley's routes, a long press (a right click) on the map: 'Change directions' over the 'no bus
   // goes there' card. The feed's next tick drew the directions' card back over it: the guard compared the address the
   // press was made at with the no-way card's own key ('none:' and where to), never the same.
-  test.skip(!phone(info), 'a phone\'s one card');
   await open(page, '#/go/@41.74321,-111.81488:Logan/at/41.90000,-112.00000/Far%20away');
   await mapReady(page);
   const card = page.locator('#mapcard');
@@ -2919,7 +2909,7 @@ test('directions with no way by bus, on a phone: a long press\'s card stays thro
   await expect(page).toHaveURL(/#\/go\/@41\.74321,-111\.81488:Logan\/at\/[-\d.]+,[-\d.]+\//);
 });
 
-test('directions, no stop a walk off the place: the nearest a bus gets you, one picked', async ({ page }) => {
+test('directions, no stop a walk off the place: the nearest a bus gets you, one picked', PHONE, async ({ page }) => {
   // From a stop downtown to the fields west of Logan, out of a walk of any stop.
   await open(page);
   const id = await someStop(page);
@@ -2933,7 +2923,7 @@ test('directions, no stop a walk off the place: the nearest a bus gets you, one 
   await expect(page).toHaveURL(new RegExp(href + '$'));
 });
 
-test('directions arriving by a time: the shuttle among the ways, said as the shuttle is', async ({ page }) => {
+test('directions arriving by a time: the shuttle among the ways, said as the shuttle is', PHONE, async ({ page }) => {
   // The Aztec Building's chapel to the Institute of Religion, by 7 PM on a weekday to come: the Evening Express (to
   // 10 PM), its longest wait counted, one of the ways (walks timed flat, the Blue Loop and a walk up the bench leaves
   // later, first); the Stadium Express (to 5 PM) no way.
@@ -2955,7 +2945,7 @@ test('directions arriving by a time: the shuttle among the ways, said as the shu
   await expect(page.locator('a.walkall').filter({ visible: true }).first()).toContainText(/\d+ min · [\d.,]+ (ft|mi|m|km)\b/);
 });
 
-test('walks by the one rule, the same before and after the paths load; steep ground red on the directions map only', async ({ page }) => {
+test('walks by the one rule, the same before and after the paths load; steep ground red on the directions map only', PHONE, async ({ page }) => {
   // The user: 'map routing. we should do it the stupid way, lots of options, fast and stupid', and 'show where there are
   // steep areas somehow. a red overlay on land showing on particularly steep slopes that's only visible in routing view'.
   await page.addInitScript(() => import('/vendor/maplibre-gl.mjs').then(m => { const g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; }));
@@ -2977,7 +2967,7 @@ test('walks by the one rule, the same before and after the paths load; steep gro
   await expect.poll(vis, { timeout: 10_000 }).toBe('none');
 });
 
-test('directions: a ride no quicker than walking, sparing little of it, isn\'t offered (Logan\'s court to the Center)', async ({ page }) => {
+test('directions: a ride no quicker than walking, sparing little of it, isn\'t offered (Logan\'s court to the Center)', PHONE, async ({ page }) => {
   // From the Municipal Court, just after the 9 and the 6 had gone at 6:18, the Green Loop came first: on at 355 North
   // Main, south round its loop and back up to Zions, 22 minutes with 11 on foot, where the walk is 10. The 9 and the 6
   // from across the road are the ways; walking beats the Green on every count. At 6:21 since CVTD's feed of 2 Nov 2026
@@ -2992,7 +2982,7 @@ test('directions: a ride no quicker than walking, sparing little of it, isn\'t o
   await expect(page.locator('a.walkall').filter({ visible: true }).first()).toContainText('Quicker on foot');
 });
 
-test('directions arriving by a time on a later day: that day said, no bus missed', async ({ page }) => {
+test('directions arriving by a time on a later day: that day said, no bus missed', PHONE, async ({ page }) => {
   // Richmond to Utah Podiatry, by 8 AM on a weekday to come: the 15 at 6:40 was 'Today' and 'Missed it? The next 15
   // leaves at 8:10' (gone by the time picked, 8:00, not by the clock), as if the 15 ran hourly.
   await open(page);
@@ -3005,7 +2995,7 @@ test('directions arriving by a time on a later day: that day said, no bus missed
   await expect(page.locator('.tl .missed')).toHaveCount(0);
 });
 
-test('a route\'s first run the other way, turned round from this way, doesn\'t start there (15 south from Richmond)', async ({ page }) => {
+test('a route\'s first run the other way, turned round from this way, doesn\'t start there (15 south from Richmond)', PHONE, async ({ page }) => {
   // The map's 'starts here' marks a way's first run where it starts partway along. 15 south's first leaves Richmond,
   // but its bus is 15 north's first turned round there: one run, started at the Center, so nothing starts in Richmond.
   await open(page);
@@ -3027,8 +3017,7 @@ test('a route\'s first run the other way, turned round from this way, doesn\'t s
   for (const x of partway) { expect(x.own, 'its run began before it').toBe(false); expect(x.startHub, 'at the Center').toBe(true); }
 });
 
-test('directions: the planner over random trips throws on none', async ({ page }, info) => {
-  test.skip(phone(info), 'the planner is the same at any size');
+test('directions: the planner over random trips throws on none', WIDE, async ({ page }) => {
   test.setTimeout(240_000);   // 160 trips planned and drawn in the page, with the hub's own way worked out for each start picker: minutes on a loaded machine
   await open(page);
   const out = await page.evaluate(async () => {
@@ -3057,7 +3046,7 @@ test('directions: the planner over random trips throws on none', async ({ page }
   if (out.shuttleOut) expect(out.withShuttle, 'trips with a shuttle ride').toBeGreaterThan(0);
 });
 
-test('Aggie Shuttle: campus, a loop, a stop on it', async ({ page }) => {
+test('Aggie Shuttle: campus, a loop, a stop on it', PHONE, async ({ page }) => {
   await open(page, '#/map/usu');
   await mapReady(page);
   await go(page, '#/routes');
@@ -3069,7 +3058,7 @@ test('Aggie Shuttle: campus, a loop, a stop on it', async ({ page }) => {
   if (await stopRow.count()) { await stopRow.click(); await expect(page).toHaveURL(/#\/usu\/(?!route)/); }
 });
 
-test('alerts and detours: the list, one on the map', async ({ page }) => {
+test('alerts and detours: the list, one on the map', PHONE, async ({ page }) => {
   await open(page, '#/about/alerts');
   await expect(page.getByText(/Nothing from|alert|detour|Detour/).filter({ visible: true }).first()).toBeVisible();
   const onMap = page.locator('a[href^="#/map/alert/"]').filter({ visible: true }).first();
@@ -3212,7 +3201,7 @@ function offLine(line, [lat, lon]) {
 const stopAt = (page, id) => page.evaluate(id => import('/app/data.js').then(m => { const s = m.D.stops[m.D.stopById[id]]; return [s.lat, s.lon]; }), id);
 
 
-test('a picked bus\'s way on through a stop closed with no way round known: left to the dots', async ({ page }) => {
+test('a picked bus\'s way on through a stop closed with no way round known: left to the dots', PHONE, async ({ page }) => {
   // Route 11's 760 South Gateway Drive closed by a notice alone, where only the 11 runs, and no way round seen: its
   // line dotted there (from the corner after 358 North Gateway Dr), and its bus's strand clear along the dots.
   const GW358 = '7565913', GW760 = '7565914', E690 = '7565915';
@@ -3245,7 +3234,7 @@ const blueInRow = page => page.evaluate(ids => import('/app/data.js').then(m => 
 
 
 
-test('a holiday: no buses on Thanksgiving, said by its name; the evening before, the next bus is the next day with buses; that day runs', async ({ page }) => {
+test('a holiday: no buses on Thanksgiving, said by its name; the evening before, the next bus is the next day with buses; that day runs', PHONE, async ({ page }) => {
   // Connect's feed has no holidays (tools/hints.json does). The next Thanksgiving, the fourth Thursday of November. The
   // day after is the feed's to give or take off (the feed of 2026-11-19 took the Friday off): the next day with buses
   // is worked out from the timetable, and a day taken off unnamed is said by its date, not 'on Fridays'.
@@ -3303,7 +3292,7 @@ test('the ask to test the Android app: in an Android phone\'s browser, a line at
   await expect(line).toHaveCount(0);
 });
 
-test('settings and about: the clock and units turned and back', async ({ page }) => {
+test('settings and about: the clock and units turned and back', PHONE, async ({ page }) => {
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();
   for (const name of [/12|24/, /miles|km/i]) {
