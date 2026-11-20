@@ -876,15 +876,22 @@ test('the map\'s lines: faded behind the last buses, every one in colour ten min
   await open(page);
   const r = await page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), m = await import('/app/views/map.js'), u = await import('/app/usu.js');
-    const c = t.now(), ends = d.D.routes.map((_, ri) => d.lastTripOn(ri, c.ymd)).filter(Boolean).map(l => l.end[0]);
-    if (!ends.length) return null;   // no buses today: nothing to fade
+    // today, or the next day with buses (a Sunday or a holiday has nothing to fade, and was checked as nothing)
+    const lasts = ymd => d.D.routes.map((_, ri) => d.lastTripOn(ri, ymd)).filter(Boolean).map(l => l.end[0]);
+    let c = t.now();
+    for (let k = 1; k < 14 && !lasts(c.ymd).length; k++) c = t.dayFrom(t.now().ymd, k);
+    const ends = lasts(c.ymd);
+    if (!ends.length) return null;
     // the shuttle's last loop and POOL's end too, on a day they run (their listed hours): one reset for the whole map
     const svc = u.U && u.U.service, runs = svc && svc.days[(t.dayFrom(c.ymd).dow + 6) % 7], pool = d.POOL && d.POOL.week && d.POOL.week[(t.dayFrom(c.ymd).dow + 6) % 7];
     const E = Math.max(...ends, ...(runs ? [svc.end, ...Object.values(svc.late || {})] : []), ...(pool ? [pool[1]] : []));
     const at = min => m.doneToday({ ymd: c.ymd, min, sec: 0 }), during = at(E - 20), after = at(Math.min(1439, E + 30));
     return { during: [during.stretches.length, during.stops.size], after: [after.stretches.length, after.stops.size, after.loops.size, after.pool] };
   });
-  if (r) { expect(r.during[0]).toBeGreaterThan(0); expect(r.during[1]).toBeGreaterThan(0); expect(r.after).toEqual([0, 0, 0, false]); }
+  expect(r, 'a day with buses in the next two weeks').not.toBeNull();
+  expect(r.during[0]).toBeGreaterThan(0);
+  expect(r.during[1]).toBeGreaterThan(0);
+  expect(r.after).toEqual([0, 0, 0, false]);
 });
 
 test('search: where people live, an apartment complex and a dorm by name', WIDE, async ({ page }) => {
@@ -1762,15 +1769,18 @@ test('the map\'s search over its card: the Center\'s board raised on a phone, a 
 });
 
 test('a stop every route of it skips by notice says Closed in its row, not the first bus after', PHONE, async ({ page }) => {
-  await open(page);
-  const r = await page.evaluate(async () => {
+  // One made so, whatever Connect has up: every route of a stop named by a notice in force through the day after
+  // tomorrow (with none of Connect's up, it checked nothing). Its row, and any other closed today, says so.
+  const id = await stageClosure(page);
+  const r = await page.evaluate(async id => {
     const d = await import('/app/data.js'), ui = await import('/app/ui.js'), t = await import('/app/time.js');
     await d.loadAlerts({ relay: false });
     const c = t.now(), shut = d.D.stops.map((s, i) => i).filter(i => d.closedThrough(i, c.ymd) !== null);
-    // and one made so, whatever today's notices: every route of a stop named by a notice in force through Saturday next
-    return { live: shut.map(i => ui.stopRow(i, d.nextAt(i, 1, c)[0], c).s.includes('Closed')), any: shut.length };
-  });
-  expect(r.live.every(Boolean)).toBe(true);   // each one closed today says so (none closed: nothing to say)
+    return { staged: ui.stopRow(d.D.stopById[id], d.nextAt(d.D.stopById[id], 1, c)[0], c).s, all: shut.map(i => ui.stopRow(i, d.nextAt(i, 1, c)[0], c).s.includes('Closed')) };
+  }, id);
+  expect(r.staged).toMatch(/class="end closedend"><span class="t t-22">Closed<\/span><span class="rel">through \w+<\/span><\/div>/);   // in the time's place, none after it
+  expect(r.all.length).toBeGreaterThan(0);
+  expect(r.all.every(Boolean)).toBe(true);
 });
 
 test('routes list: from the home page\'s Routes line, every route, one opened', PHONE, async ({ page }) => {
@@ -1846,20 +1856,38 @@ test('the Pumpkin Walk: its page, its nights, and its tab while the season lasts
   }
 });
 
-test('a season\'s route goes with its season: the Pumpkin Walk off the map, the routes and search after its last night', WIDE, async ({ page }) => {
-  // Its nights staged as one, a week from now, whatever the feed's are: that evening it's on the routes list, in search,
-  // on the map and has its tab; the next noon none of them, its two stops gone from the map and search too. And a
-  // timetable run out (every one of Connect's calendars ended that night, the next not in) isn't every route's season
-  // over: the next noon the routes are all still there.
+test('a season\'s route goes with its season: the Pumpkin Walk off the home page\'s routes, the map, the routes list and search after its last night', WIDE, async ({ page }) => {
+  // The routes at the foot of a wide screen's home page kept the Walk after its season (the bug this was written for).
+  // Its nights staged as one, a week from now, whatever the feed's are: that evening it's on the home page's routes, the
+  // routes list, in search, on the map and has its tab; the next noon none of them, its two stops gone from the map and
+  // search too. And a timetable run out (every one of Connect's calendars ended that night, the next not in) isn't every
+  // route's season over: the next noon the routes are all still there. Out of its season the feed hasn't the Walk at
+  // all: a weeknight of it as Connect's feed had it (pumpkin-walk.json) is put in, so this runs all year.
   const day = new Date(Date.now() + 7 * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Denver' }).replace(/-/g, '');
-  let runOut = false, staged = false;
+  const pk = require('./pumpkin-walk.json'), real = await (await page.request.get('/data/cvtd.json')).json();
+  const walkIn = real.routes.some(x => /^pumpkin/i.test(x.short)) ? null : real.routes.length;   // where it's put in, when it is
+  let runOut = false;
+  await page.route(/\/data\/cvtd-shapes\.json/, async r => {
+    const j = await (await r.fetch()).json();
+    if (walkIn !== null) j.lines.push({ ...pk.line, route: walkIn });
+    await r.fulfill({ json: j });
+  });
   await page.route(/\/data\/cvtd\.json/, async r => {
-    const j = await (await r.fetch()).json(), ri = j.routes.findIndex(x => /^pumpkin/i.test(x.short));
+    const j = await (await r.fetch()).json();
+    if (walkIn !== null) {   // its route, its two stops, its runs (on a calendar of its own, the night), their ends
+      const si = Object.fromEntries(pk.stops.map((x, k) => [x.id, j.stops.length + k])), h = j.headsigns.length;
+      j.routes.push({ ...pk.route, stops: Object.fromEntries(Object.entries(pk.route.stops).map(([dir, ids]) => [dir, ids.map(id => si[id])])) });
+      j.stops.push(...pk.stops.map(x => ({ ...x, routes: [walkIn] })));
+      j.headsigns.push(pk.rows[pk.stops[0].id][0][1]);
+      const ti = {};
+      for (const [id, [sid, min]] of Object.entries(pk.ends)) { ti[id] = j.trips.length; j.trips.push(id); j.ends.push(si[sid], min); }
+      for (const [sid, rows] of Object.entries(pk.rows)) j.times[si[sid]] = { WALK: rows.map(([min, , dir, id]) => [min, walkIn, h, dir, ti[id]]) };
+    }
+    const ri = j.routes.findIndex(x => /^pumpkin/i.test(x.short));
     const n = {};   // its rows by calendar: the fullest one's are its night
     for (const per of Object.values(j.times)) for (const [sid, rows] of Object.entries(per)) n[sid] = (n[sid] || 0) + rows.filter(t => t[1] === ri).length;
     const from = Object.keys(n).sort((x, y) => n[y] - n[x])[0];
-    staged = ri >= 0 && n[from] > 0;
-    if (staged) {
+    if (ri >= 0 && n[from] > 0) {
       j.services.push({ id: 'SEASON', days: [1, 1, 1, 1, 1, 1, 1], start: day, end: day, desc: 'Season' });
       for (const per of Object.values(j.times)) {
         const night = (per[from] || []).filter(t => t[1] === ri);
@@ -1873,7 +1901,6 @@ test('a season\'s route goes with its season: the Pumpkin Walk off the map, the 
   });
   await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
   await open(page);
-  test.skip(!staged, 'no Pumpkin Walk in the timetable');
   const s = await page.evaluate(async day => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), ri = d.D.routes.findIndex(r => /^pumpkin/i.test(r.short));
     const ms = (ymd, h) => new Date(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6), h).getTime();   // the agency's clock (the browser's zone)
@@ -1892,9 +1919,12 @@ test('a season\'s route goes with its season: the Pumpkin Walk off the map, the 
     runOut = out;
     await page.clock.setFixedTime(new Date(when));
     await page.goto('about:blank');   // a load of its own, the timetable fetched again (a hash alone keeps the page)
-    await open(page, '#/routes');
-    await expect(page.locator(`a.row[href="${s.href}"]`)).toHaveCount(on ? 1 : 0);
+    await open(page, '#/');
+    await expect(page.locator('#side .routes a[href="#/map/route/1"]')).toHaveCount(1);   // the home page's routes
+    await expect(page.locator('#side .routes a[href="#/pumpkin"]')).toHaveCount(on ? 1 : 0);   // the Walk's opens its page
+    await go(page, '#/routes');
     await expect(page.locator('a.row[href="#/map/route/1"]')).toHaveCount(1);
+    await expect(page.locator(`a.row[href="${s.href}"]`)).toHaveCount(on ? 1 : 0);
     if (!out) await expect(tab).toHaveCount(on ? 1 : 0);   // (a run-out timetable's has no night to come: no tab)
     expect(await found() > 0).toBe(on);
     await hook();
@@ -2331,7 +2361,7 @@ test('route: both ways, its sibling, a stop on it', PHONE, async ({ page }) => {
   await expect(page).toHaveURL(/#\/stop\//);
 });
 
-test('stop: its page, a route badge, a run, the whole day, saved and unsaved', PHONE, async ({ page }) => {
+test('stop: its page, a route badge, a run, saved and unsaved', PHONE, async ({ page }) => {
   await open(page);
   const id = await someStop(page);
   await go(page, '#/stop/' + id);
@@ -2339,8 +2369,20 @@ test('stop: its page, a route badge, a run, the whole day, saved and unsaved', P
   await expect(page.getByRole('link', { name: 'From here' })).toBeVisible();
   const time = page.locator('button.hr-dep').filter({ visible: true }).first();
   if (await time.count()) { await time.click(); await expect(page).toHaveURL(/\?run=/); await go(page, '#/stop/' + id); }
-  const day = page.getByRole('link', { name: 'The whole day' });
-  if (await day.count()) { await day.click(); await expect(page.getByText(/departures/).filter({ visible: true }).first()).toBeVisible(); await go(page, '#/stop/' + id); }
+  // Saved: the button says so, the stop kept, and home leads with it (no location: the first saved stop is the big
+  // one); its page again still Saved. Unsaved: none of it, home's hint to save one back.
+  const save = page.locator('#save').filter({ visible: true }), kept = () => page.evaluate(() => JSON.parse(localStorage.getItem('cr-saved') || '[]'));
+  for (const on of [true, false]) {
+    await expect(save).toHaveAttribute('aria-pressed', String(!on));
+    await save.click();
+    await expect(save).toHaveAttribute('aria-pressed', String(on));
+    await expect(save).toHaveText(on ? 'Saved' : 'Save');
+    expect(await kept()).toEqual(on ? [id] : []);
+    await go(page, '#/');
+    await expect(page.locator(on ? '.hero .savedmark' : '.land-hint').filter({ visible: true })).toBeVisible();
+    await expect(page.locator('.hero .savedmark')).toHaveCount(on ? 1 : 0);
+    await go(page, '#/stop/' + id);
+  }
   await page.locator('a.badgelink').filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/#\/map\/route\//);
 });
@@ -3272,11 +3314,25 @@ test('the ask to test the Android app: in an Android phone\'s browser, a line at
   await expect(line).toHaveCount(0);
 });
 
-test('settings and about: the clock and units turned and back', PHONE, async ({ page }) => {
+test('settings and about: the clock to 24-hour and the distances to kilometres, every time and distance on screen with them, and back', PHONE, async ({ page }) => {
+  // It clicked a button and clicked it again, the one already pressed, and checked nothing. Now each is turned, and a
+  // page of times (a stop's, Island Market's) and one of distances (the walk beside a way, the Aztec Building to the
+  // Institute) say it the new way; then back.
   await open(page, '#/about');
   await expect(page.getByText(/Send feedback/)).toBeVisible();
-  for (const name of [/12|24/, /miles|km/i]) {
-    const b = page.getByRole('button', { name }).filter({ visible: true }).first();
-    if (await b.count()) { await b.click(); await b.click(); }
-  }
+  const set = async sel => { await go(page, '#/about'); const b = page.locator(sel); await b.click(); await expect(b).toHaveAttribute('aria-pressed', 'true'); };
+  // (read till it says so: a stop's next buses are put in once its page is up)
+  const said = (hash, sel) => async () => { await go(page, hash); const el = page.locator(sel).filter({ visible: true }).first(); await expect(el).toBeVisible(); return el.innerText(); };
+  const times = said('#/stop/7543017', '.stop-page'), walk = said('#/go/@41.74335,-111.81510:Institute/at/41.75484,-111.81505/Aztec', 'a.walkall');
+  const ampm = /\d:\d\d\s*(AM|PM)\b/, h24 = /\b([01]\d|2[0-3]):[0-5]\d\b/, miles = / · [\d.,]+ (ft|mi)\b/, km = / · [\d.,]+ (m|km)\b/;
+  await expect.poll(times).toMatch(ampm);   // as it opens, in this browser: 12-hour, miles
+  await expect.poll(walk).toMatch(miles);
+  await set('button[data-clock="24"]');
+  await expect.poll(async () => { const x = await times(); return h24.test(x) && !ampm.test(x); }).toBe(true);
+  await set('button[data-units="km"]');
+  await expect.poll(walk).toMatch(km);
+  await set('button[data-clock="12"]');
+  await set('button[data-units="mi"]');
+  await expect.poll(times).toMatch(ampm);
+  await expect.poll(walk).toMatch(miles);
 });
