@@ -52,6 +52,20 @@ async function settled(page) {
 /** Once the feed's next `n` ticks have come (every five seconds, answered or not) and the page been drawn again with
  *  each: rt.js's listeners, main.js's redraw the first of them and this one's after it, then a frame for it to show.
  *  Waited for by the clock, a tick or two was seven seconds, or twelve. */
+/** The clock staged at noon on the next day the agency's buses run (today's, if they do), the app opened again on it:
+ *  for a test that waits on the feed's ticks. Out of hours the feed's asked every two minutes, not every five seconds
+ *  (rt.js busesDue), and a push after midnight timed out waiting for two. */
+async function inBusHours(page) {
+  const at = await page.evaluate(async () => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+    for (let k = 0; k < 8; k++) if (d.agencyRuns(t.dayFrom(c.ymd, k).ymd)) return Date.now() + ((k * 1440 + 720 - c.min) * 60 - c.sec) * 1000;
+    return null;
+  });
+  if (!at) return;
+  await page.clock.setFixedTime(new Date(at));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+}
 async function nextTick(page, n = 1) {
   const at = await page.evaluate(async () => { if (window.__ticks === undefined) { window.__ticks = 0; (await import('/app/rt.js')).onRt(() => { window.__ticks++; }); } return window.__ticks; });
   await page.waitForFunction(k => window.__ticks >= k, at + n, { polling: 100, timeout: 20_000 });
@@ -2899,6 +2913,7 @@ test('directions: each way in, a plan, no way, from only', PHONE, async ({ page 
 
 test('directions up: a tap on the map changes nothing, a long press or right click asks which end', async ({ page }) => {
   await open(page);
+  await inBusHours(page);   // the feed's tick waited for below
   const h = '#/go/@41.74335,-111.81510:Institute/at/41.75484,-111.81505/Aztec';
   await go(page, h);
   await mapReady(page);
@@ -2976,6 +2991,7 @@ test('a tablet turned: the phone\'s card goes as the page comes in beside the ma
 test('directions, no stop a walk off: the nearest starts in view, one picked, and it stays put', PHONE, async ({ page }) => {
   // From far out of the valley's routes: no way by bus.
   await open(page, '#/go/@41.74321,-111.81488:Logan/at/41.90000,-112.00000/Far%20away');
+  await inBusHours(page);   // the feed's ticks waited for below
   const card = page.locator('#mapcard');
   const answer = card.locator('.gonone .empty h2');
   await expect(answer).toBeVisible();
@@ -3001,6 +3017,7 @@ test('directions with no way by bus, on a phone: a long press\'s card stays thro
   // goes there' card. The feed's next tick drew the directions' card back over it: the guard compared the address the
   // press was made at with the no-way card's own key ('none:' and where to), never the same.
   await open(page, '#/go/@41.74321,-111.81488:Logan/at/41.90000,-112.00000/Far%20away');
+  await inBusHours(page);   // the feed's tick waited for below
   await mapReady(page);
   const card = page.locator('#mapcard');
   await expect(card.locator('.gonone .empty h2')).toBeVisible();
