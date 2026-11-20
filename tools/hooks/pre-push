@@ -21,6 +21,19 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   case "$remote_sha" in 0000000000000000000000000000000000000000) range="$local_sha" ;; *) range="$remote_sha..$local_sha" ;; esac
   hits="$(git -C "$root" diff --name-only $range 2>/dev/null | grep -E '^(app/|css/|data/|vendor/|tiles/|index\.html$|sw\.js$|manifest\.webmanifest$)' | head -5 | tr '\n' ' ')"
   [ -n "$hits" ] && { touched=1; echo "Smoke test: this push touches $hits"; }
+  # The worker's VERSION is what tells an installed app there's a new one: a push changing the app's own files without
+  # it reached no installed phone (Aaron: "never actually bumped the version in sw.js", cr-v534 to 542 went up at
+  # cr-v533's). And every module of the app in its list (SHELL), or offline it can't load (holiday.js wasn't).
+  if [ "$remote_sha" != 0000000000000000000000000000000000000000 ]; then
+    app="$(git -C "$root" diff --name-only $range 2>/dev/null | grep -E '^(app/|css/|index\.html$|manifest\.webmanifest$)' | head -3 | tr '\n' ' ')"
+    if [ -n "$app" ] && ! git -C "$root" diff $range -- sw.js | grep -q "^+const VERSION"; then
+      echo "Push stopped: it changes $app but not VERSION in sw.js, so installed apps would never update. Bump it (the commit's cr-v number)."; exit 1
+    fi
+  fi
+  shell="$(git -C "$root" show "$local_sha:sw.js" 2>/dev/null)"
+  for f in $(git -C "$root" ls-tree -r --name-only "$local_sha" app | grep '\.js$'); do
+    case "$shell" in *"'./$f'"*) ;; *) echo "Push stopped: $f isn't in sw.js SHELL, so the installed app can't load it offline. Add it."; exit 1 ;; esac
+  done
 done
 # No ref lines at all (a push once went up untested with the app changed, the hook having read nothing): tested, not waved through.
 [ "$lines" = 0 ] && { touched=1; echo "Smoke test: no refs read from git; testing the lot."; }
