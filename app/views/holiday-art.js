@@ -146,3 +146,22 @@ export const SNOWCAP = '<svg class="hol-cap" viewBox="0 -4 44 7" preserveAspectR
 // sat in its frame's corners; the map has no frame, and pinned to the bays' corners they floated over the streets
 // like clouds: the snow on the ground is the banks along the roofs' feet now, map.js snowRoof.)
 export const TREE = '<svg class="hol-tree" viewBox="-17 -34 34 37" aria-hidden="true"><path d="M0 0L-12 0 0 -30 12 0Z" fill="#2f6b43"/><path d="M-8 -10L8 -10 0 -30Z" fill="#3b8152"/><circle cx="0" cy="-31" r="2.2" fill="#ffd166"/><circle cx="-4" cy="-6" r="1.4" fill="#e2453c"/><circle cx="5" cy="-14" r="1.4" fill="#6cb8ff"/><circle cx="-2" cy="-19" r="1.3" fill="#ffd166"/><path d="M-16 3C-15 -1 -10 -2 -6 -1C-3 -3 3 -3 6 -1C10 -2 15 -1 16 3Z" fill="#fff"/><path d="M-16 3C-15 -1 -10 -2 -6 -1C-3 -3 3 -3 6 -1C10 -2 15 -1 16 3" fill="none" stroke="#dfe5ee" stroke-width=".8"/></svg>';
+// The week before Christmas (from the 22nd), the same tree with three presents at its foot, sunk in its mound: a red
+// one on its left, a gold one at its foot, a blue one on its right, each tied with a white ribbon and a bow, big enough to tell for presents at the map's size. Drawn
+// wider than the tree alone (the mound's wider to hold them), its foot at 0 0 as the tree's, so the marker sits where
+// the tree did; app.css .hol-gifts its size, at the tree's scale.
+const gift = (x, y, w, h, fill) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx=".6" fill="${fill}"/><rect x="${x + w / 2 - .7}" y="${y}" width="1.4" height="${h}" fill="#fff"/><rect x="${x}" y="${y + h / 2 - .7}" width="${w}" height="1.4" fill="#fff"/><path d="M${x + w / 2} ${y}c-1.6-2.4-3.6-1.6-2.4 0ZM${x + w / 2} ${y}c1.6-2.4 3.6-1.6 2.4 0Z" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>`;
+export const TREE_GIFTS = '<svg class="hol-tree hol-gifts" viewBox="-29 -34 58 37" aria-hidden="true"><path d="M0 0L-12 0 0 -30 12 0Z" fill="#2f6b43"/><path d="M-8 -10L8 -10 0 -30Z" fill="#3b8152"/><circle cx="0" cy="-31" r="2.2" fill="#ffd166"/><circle cx="-4" cy="-6" r="1.4" fill="#e2453c"/><circle cx="5" cy="-14" r="1.4" fill="#6cb8ff"/><circle cx="-2" cy="-19" r="1.3" fill="#ffd166"/>'
+  + gift(-27, -13, 14, 13, '#e2453c') + gift(14, -11, 13, 11, '#6cb8ff') + gift(1, -10, 11, 10, '#ffd166')
+  + '<path d="M-29 3C-28 -1 -19 -2 -11 -1C-4 -3 4 -3 11 -1C19 -2 28 -1 29 3Z" fill="#fff"/><path d="M-29 3C-28 -1 -19 -2 -11 -1C-4 -3 4 -3 11 -1C19 -2 28 -1 29 3" fill="none" stroke="#dfe5ee" stroke-width=".8"/></svg>';
+
+// ---- Snow falling over the map, when it's snowing in Logan, any day of the year (holiday.js asks the weather). 44
+// flakes, each its own size, speed, drift and start, laid out the same every time (a fixed seed, not Math.random: the
+// markup's the same on every draw); app.css falls and sways them, under the map's buttons in the holidays' box, none
+// with reduced motion.
+const seeded = s => () => (s = (s * 16807) % 2147483647) / 2147483647;
+const r = seeded(1225);
+export const FLAKES = '<div class="hol-flakes">' + Array.from({ length: 44 }, () => {
+  const size = (3 + r() * 3.5).toFixed(1), fall = (6 + r() * 7).toFixed(1), x = (r() * 100).toFixed(1), drift = Math.round(-30 + r() * 60), sway = (2.5 + r() * 3).toFixed(1);
+  return `<i class="hol-flake" style="left:${x}%;--s:${size}px;--f:${fall}s;--w:-${(r() * +fall).toFixed(1)}s;--dx:${drift}px;--sw:${sway}s;--o:${(.6 + r() * .4).toFixed(2)}"><b></b></i>`;
+}).join('') + '</div>';

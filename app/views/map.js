@@ -13,7 +13,7 @@ import { bays, hubSheet, mount as hubMount } from './hub.js';
 import { routeDay, dayPick, dayRow, mountStrip } from './strip.js';
 import { results as searchResults, forMap, placeRows } from './find.js';
 import { WIDE_MQ, isWide } from '../wide.js';
-import { WREATH, SNOWCAP, TREE } from './holiday-art.js';
+import { WREATH, SNOWCAP, TREE, TREE_GIFTS } from './holiday-art.js';
 import { lightInks, apartInks, hueless, faint, textOn } from '../ink.js';
 import { placeStar } from '../places.js';
 
@@ -2300,26 +2300,32 @@ function hubBadges() {
   }
   easeBays();
 }
-/** Christmas at the Center (holiday.js's season, the root's data-season), its plan dressed as Claude Design sketched it
- *  and the plan's own shapes and colours left as they are: snow on its roofs (the hall and the bays' canopies round it,
- *  as the map draws them, whited over) and banked soft along their feet, and a little tree in its mound of snow by the
- *  doors, at the Center's own point on the hall's south side. The sketch's drifts in its frame's corners are gone: the
- *  map has no frame, and at the bays' corners they floated over the streets like clouds. The caps on the bays' badges
- *  are app.css's (SNOWCAP in each). Under the badges and buses, no taps. */
-let snowMarks = null, roofAsked = false;
+/** Christmas at the Center (holiday.js's week of it, the root's data-xmas), its plan dressed as Claude Design sketched
+ *  it and the plan's own shapes and colours left as they are. From the 8th, snow on its roofs (the hall and the bays'
+ *  canopies round it, as the map draws them, whited over) and banked soft along their feet; from the 15th a little
+ *  tree in its mound of snow on the hall's south side, between the 7's and 9's badges (on the 9's, at the Center's own
+ *  point, its snow ran into the badge's cap), with presents under it from the 22nd. The sketch's drifts in its frame's
+ *  corners are gone: the map has no frame, and at the bays' corners they floated over the streets like clouds. The
+ *  caps on the bays' badges are app.css's (SNOWCAP in each). Under the badges and buses, no taps. Asked again when
+ *  the week changes (holiday.js's 'seasonchange': a page left open over midnight). */
+const TREE_AT = [-111.83100, 41.74059];
+let treeMark = null, roofAsked = false;
 function hubSnow() {
-  const on = hubOn && document.documentElement.dataset.season === 'christmas';
+  const x = (document.documentElement.dataset.xmas || '').split(' ');
+  const snow = hubOn && x.includes('snow'), tree = hubOn && x.includes('tree');
   const roof = !!map.getLayer('hol-roof');
-  if (roof) for (const id of ['hol-bank', 'hol-roof', 'hol-roof-edge']) if ((map.getLayoutProperty(id, 'visibility') !== 'none') !== on) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
-  if (!on) { if (snowMarks) { for (const m of snowMarks) m.marker.remove(); snowMarks = null; } return; }
-  if (!roof && !roofAsked) { roofAsked = true; map.once('idle', snowRoof); }
-  if (!snowMarks) {
-    const tree = document.createElement('div');
-    tree.className = 'hol-treemark';
-    tree.innerHTML = TREE;
-    snowMarks = [{ el: tree, marker: new maplibregl.Marker({ element: tree, anchor: 'bottom' }).setLngLat([D.hub.lon + 0.0001, D.hub.lat]).addTo(map) }];
+  if (roof) for (const id of ['hol-bank', 'hol-roof', 'hol-roof-edge']) if ((map.getLayoutProperty(id, 'visibility') !== 'none') !== snow) map.setLayoutProperty(id, 'visibility', snow ? 'visible' : 'none');
+  if (snow && !roof && !roofAsked) { roofAsked = true; map.once('idle', snowRoof); }
+  if (!tree) { if (treeMark) { treeMark.remove(); treeMark = null; } return; }
+  if (!treeMark) {
+    const el = document.createElement('div');
+    el.className = 'hol-treemark';
+    treeMark = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat(TREE_AT).addTo(map);
   }
+  const el = treeMark.getElement(), art = x.includes('gifts') ? 'gifts' : 'tree';
+  if (el.dataset.art !== art) { el.dataset.art = art; el.innerHTML = art === 'gifts' ? TREE_GIFTS : TREE; }
 }
+window.addEventListener('seasonchange', () => { if (map && ready) hubSnow(); });
 /** The Center's roofs whited over: its buildings within 45 m (the hall, the bays' canopies and shelters; not its
  *  neighbours), as the map has them once their tile's in, copied into a layer of their own just over the buildings,
  *  snow's white with a faint edge, as the sketch's island roof; and under it a bank of snow round each one's foot, a

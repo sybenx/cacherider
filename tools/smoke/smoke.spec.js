@@ -18,6 +18,9 @@ const test = base.extend({
     page.on('pageerror', e => errs.push('pageerror: ' + e.message));
     page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|net::ERR_|status of [45]\d\d/.test(m.text())) errs.push('console: ' + m.text()); });
     page.errs = errs;
+    // The real snow (holiday.js) asks the weather service, and where it can't say, the relay: never the real
+    // ones from a test. Turned away unless a test answers them itself (its own route, made later, is asked first).
+    await page.route(/^https:\/\/(api\.weather\.gov|om\.aarobh\.net)\//, r => r.abort());
     await use(page);
     expect(errs, 'errors on the page').toEqual([]);
     await expect(page.getByText('Something went wrong')).toHaveCount(0);
@@ -2132,9 +2135,10 @@ const noon = ymd => new Date(ymd + 'T12:00:00-07:00');
 /** A day k days on from another, each 'yyyy-mm-dd'. */
 const dayOn = (ymd, k) => new Date(Date.parse(ymd + 'T12:00:00Z') + k * 864e5).toISOString().slice(0, 10);
 /** The holidays to stage, worked out from today, so the tests hold every year: the next Thanksgiving (the fourth
- *  Thursday of November, 'yyyy-mm-dd') and the next Christmas season (14 to 26 December: its year) whose first day
- *  staged (the Monday of its week; the 13th) is after today and one the timetable covers (Connect now and then publishes
- *  a timetable ahead, starting after today: a day staged before it has no buses to be back by). */
+ *  Thursday of November, 'yyyy-mm-dd') and the next Christmas season (1 to 26 December: its year) whose first day
+ *  staged (the Monday of its week; 30 November) is after today and one the timetable covers (Connect now and then
+ *  publishes a timetable ahead, starting after today: a day staged before it has no buses to be back by). `xmas1`:
+ *  Christmas's first day that year, the 1st, or the day after Thanksgiving's week where that runs into December. */
 async function holidays(page) {
   const j = await (await page.request.get('/data/cvtd.json')).json(), ops = new Set(j.routes.filter(r => r.op).map(r => r.op.service));
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
@@ -2143,8 +2147,9 @@ async function holidays(page) {
   const tg = y => { const nov = new Date(Date.UTC(y, 10, 1)).getUTCDay(); return dayOn(y + '-11-01', (4 - nov + 7) % 7 + 21); };
   let y = +today.slice(0, 4), x = y;
   while (dayOn(tg(y), -3) < from) y++;
-  while (x + '-12-13' < from) x++;
-  return { thanksgiving: tg(y), christmas: x };
+  while (x + '-11-30' < from) x++;
+  const xmas1 = [x + '-12-01', dayOn(tg(x), 4)].sort()[1];
+  return { thanksgiving: tg(y), christmas: x, xmas1 };
 }
 /** A stop with buses after today, and its first after today as a stop's card says it ('Back Saturday · first bus',
  *  '10:15 AM'), by the timetable; and the Center's first pulse after today, as its card says it. `hubRuns`: a bus leaves
@@ -2301,16 +2306,18 @@ async function stageBus(page, feed, { route = null, late = 0 } = {}) {
   return pick;
 }
 
-test('Christmas: the lights from the 14th, a glow in the light theme and halos in the dark, a twinkle but not with reduced motion, never in the way of a tap', async ({ page }, info) => {
+test('Christmas: the lights from the 1st, a glow in the light theme and halos in the dark, a twinkle but not with reduced motion, never in the way of a tap', async ({ page }, info) => {
   // Aaron's sketch: old C9 bulbs in red, gold, green and blue swagged where Thanksgiving's garland hung, each with a
-  // glow and a slow twinkle; 'is christmas dark mode only?': both, the light theme's glow soft. 13 December: nothing.
-  // The 14th, noon: the lights, hung where they go, the map's width, every point along them the map's.
-  const { christmas: y } = await holidays(page);
-  await page.clock.setFixedTime(noon(y + '-12-13'));
+  // glow and a slow twinkle; 'is christmas dark mode only?': both, the light theme's glow soft. 30 November: not
+  // Christmas (nothing, or Thanksgiving's week's garland). The 1st, noon (Aaron: 'gradually add more and more
+  // christmas stuff throughout the month', the lights first): the lights, hung where they go, the map's width, every
+  // point along them the map's.
+  const { xmas1 } = await holidays(page);
+  await page.clock.setFixedTime(noon(dayOn(xmas1, -1)));
   await open(page, '#/map');
   await mapReady(page);
-  expect(await deco(page)).toEqual({ season: null, on: null, shown: false });
-  await page.clock.setFixedTime(noon(y + '-12-14'));
+  expect((await deco(page)).season).not.toBe('christmas');
+  await page.clock.setFixedTime(noon(xmas1));
   await page.goto('about:blank');
   await open(page, '#/map');
   await mapReady(page);
@@ -2330,13 +2337,13 @@ test('Christmas: the lights from the 14th, a glow in the light theme and halos i
 });
 
 test('Christmas at the Center and on the map: snow on the bays\' badges and roofs, banked at their feet, a tree in its mound; a wreath on a bus, the dark theme\'s in the dark', PHONE, async ({ page }) => {
-  // The season's first day with buses (the 14th, or the 15th after a Sunday), a minute past noon. At the Center (a
+  // The tree's week's first day with buses (the 15th, or the 16th after a Sunday), a minute past noon. At the Center (a
   // phone's: its bays are the map) each bay's badge wears a cap of snow, the hall and its canopies are whited over and
   // banked with snow at their feet, a tree in its mound by the doors. A Connect bus on the map, staged on its trip,
   // wears a wreath at its top right, upright, the light theme's; in the dark theme, the dark one. The 27th: none of it.
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed && feed.buses ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
-  const { christmas: y } = await holidays(page), at = k => new Date(dayOn(y + '-12-14', k) + 'T12:01:00-07:00');
+  const { christmas: y } = await holidays(page), at = k => new Date(dayOn(y + '-12-15', k) + 'T12:01:00-07:00');
   await page.clock.setFixedTime(at(0));
   await open(page);
   feed = {};
@@ -2376,6 +2383,171 @@ test('Christmas at the Center and on the map: snow on the bays\' badges and roof
   await open(page, '#/stop/' + pick.next);
   expect((await deco(page)).season).toBe(null);
   await expect(page.locator('.hol-wreath').filter({ visible: true })).toHaveCount(0);
+});
+
+/** What Christmas has up at the Center on the page as it is: the root's week (data-xmas), the bays' caps shown, the
+ *  roofs' snow shown, the tree and whether it has its presents, and whether a Connect bus would wear its wreath (a
+ *  bus's wreath as app.css shows it, on a stand-in bus put on the map for the look and taken off). */
+const xmasLook = page => page.evaluate(() => {
+  const m = window.__map, t = document.querySelector('.hol-treemark'), caps = [...document.querySelectorAll('.hbay .hol-cap')];
+  const bus = document.createElement('div');
+  bus.className = 'bus'; bus.innerHTML = '<i class="hol-wreath"></i>';
+  document.getElementById('map').append(bus);
+  const wreath = getComputedStyle(bus.firstChild).display === 'block';
+  bus.remove();
+  return { xmas: document.documentElement.dataset.xmas || '', caps: caps.length > 0 && caps.every(c => getComputedStyle(c).display === 'block'),
+    roof: !!m && !!m.getLayer('hol-roof') && m.getLayoutProperty('hol-roof', 'visibility') !== 'none' && m.getLayoutProperty('hol-bank', 'visibility') !== 'none',
+    tree: !!t, gifts: !!t && !!t.querySelector('svg.hol-gifts'), wreath };
+});
+/** The bays' badges the tree's box is on: none, as it stands. */
+const treeOn = page => page.evaluate(() => {
+  const t = document.querySelector('.hol-treemark').getBoundingClientRect();
+  return [...document.querySelectorAll('.hbay')].map(e => [e.textContent, e.getBoundingClientRect()]).filter(([, b]) => b.width && !(b.right <= t.left || b.left >= t.right || b.bottom <= t.top || b.top >= t.bottom)).map(([k]) => k);
+});
+
+test('Christmas builds up through December, a week at a time: the lights, then snow at the Center, then its tree and the buses\' wreaths, then presents under the tree', PHONE, async ({ page }) => {
+  // Aaron: 'gradually add more and more christmas stuff throughout the month'. The 1st, the lights alone (no snow on
+  // the Center's roofs or bays, no tree, no wreath); the 8th, snow on its roofs and bays' badges; the 15th, its tree
+  // and a wreath on a bus; the 22nd, presents under the tree. A page left open from the 21st into the 22nd puts them
+  // there by itself (holiday.js's 'seasonchange').
+  const { christmas: y, xmas1 } = await holidays(page);
+  const at = async (ymd, fresh = true) => {
+    await page.clock.setFixedTime(noon(ymd));
+    if (fresh) { await page.goto('about:blank'); await open(page, '#/hub'); }
+    else { await go(page, '#/'); await go(page, '#/hub'); }
+    await mapReady(page);
+    await expect(page.locator('.hbay').first()).toBeAttached();
+  };
+  await at(xmas1);
+  await page.waitForTimeout(1500);   // time for the roofs' snow to go on, were it to
+  expect(await xmasLook(page)).toEqual({ xmas: 'lights', caps: false, roof: false, tree: false, gifts: false, wreath: false });
+  expect((await deco(page)).shown).toBe(true);
+  await at(y + '-12-08');
+  await expect.poll(() => xmasLook(page), { timeout: 20_000 }).toEqual({ xmas: 'lights snow', caps: true, roof: true, tree: false, gifts: false, wreath: false });
+  await at(y + '-12-15');
+  await expect.poll(() => xmasLook(page), { timeout: 20_000 }).toEqual({ xmas: 'lights snow tree', caps: true, roof: true, tree: true, gifts: false, wreath: true });
+  await at(y + '-12-21');
+  await expect.poll(() => xmasLook(page).then(l => l.gifts), { timeout: 20_000 }).toBe(false);
+  await at(y + '-12-22', false);   // the same page, the next day
+  await expect.poll(() => xmasLook(page), { timeout: 20_000 }).toEqual({ xmas: 'lights snow tree gifts', caps: true, roof: true, tree: true, gifts: true, wreath: true });
+  await expect(page.locator('.hol-treemark')).toHaveCount(1);
+  expect(await page.locator('.maplibregl-marker.hol-treemark').evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
+});
+
+test('Christmas\'s tree at the Center stands clear of every bay\'s badge, between the 7\'s and the 9\'s', async ({ page }, info) => {
+  // It stood on the 9's badge, its snow run into the badge's cap. At the Center on a phone, and on a wide screen at
+  // the Center's zooms, its box is on no badge's, west of the 9's and east of the 7's.
+  const { christmas: y } = await holidays(page);
+  await page.clock.setFixedTime(noon(y + '-12-22'));
+  await open(page, '#/hub');
+  await mapReady(page);
+  for (const z of phone(info) ? [null] : [17.5, 18, 19]) {
+    if (z) { await page.evaluate(([z, c]) => window.__map.jumpTo({ center: c, zoom: z }), [z, [-111.8309, 41.7406]]); await settled(page); }
+    await expect(page.locator('.hol-treemark')).toHaveCount(1);
+    await expect(page.locator('.hbay').first()).toBeAttached();
+    await expect.poll(() => treeOn(page)).toEqual([]);
+    const [t, b7, b9] = await page.evaluate(() => [document.querySelector('.hol-treemark'), ...['7', '9'].map(k => [...document.querySelectorAll('.hbay')].find(e => e.querySelector('.b').textContent === k))].map(e => { const r = e.getBoundingClientRect(); return r.x + r.width / 2; }));
+    expect(t).toBeGreaterThan(b7);
+    expect(t).toBeLessThan(b9);
+  }
+});
+
+/** Real snow staged (holiday.js): the weather service's answer (`nws`: its observation's `properties`, or 'fail') and
+ *  the relay's (`relay`: its `current`, or 'fail'), each ask of either counted. */
+async function stageWeather(page, nws, relay) {
+  const asked = { nws: 0, relay: 0 };
+  const answer = (r, body) => body === 'fail' ? r.fulfill({ status: 503, body: '' }) : r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  await page.route('https://api.weather.gov/stations/KLGU/observations/latest', r => { asked.nws++; return answer(r, nws === 'fail' ? 'fail' : { properties: nws }); });
+  await page.route(/^https:\/\/om\.aarobh\.net\/v1\/forecast\?/, r => { asked.relay++; return answer(r, relay === 'fail' ? 'fail' : { current: relay }); });
+  return asked;
+}
+/** An observation at the airport `ago` minutes before a time: its weather (the service's words, 'snow', 'unknown') and
+ *  temperature (°C). */
+const obs = (at, ago, weather, temp) => ({ timestamp: new Date(at.getTime() - ago * 60e3).toISOString(), temperature: { unitCode: 'wmoUnit:degC', value: temp }, presentWeather: weather ? [{ intensity: null, modifier: null, weather, rawString: weather === 'unknown' ? 'UP' : 'SN' }] : [] });
+/** The snow on the page: snowing said on the root, and its flakes shown. */
+const snowing = page => page.evaluate(() => { const f = document.getElementById('snow-deco'); return { on: 'snowing' in document.documentElement.dataset, shown: !!f && getComputedStyle(f).display === 'block' }; });
+/** A day's noon staged, the weather as given, the map opened and its asks waited for. */
+async function snowDay(page, at, nws, relay) {
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await page.route(/^https:\/\/(api\.weather\.gov|om\.aarobh\.net)\//, r => r.abort());
+  const asked = await stageWeather(page, nws, relay);
+  await page.clock.setFixedTime(at);
+  await page.goto('about:blank');
+  await open(page, '#/map');
+  await page.waitForSelector('#snow-deco', { state: 'attached' });
+  await expect.poll(() => asked.nws).toBe(1);
+  return asked;
+}
+
+test('Real snow: flakes fall over the map while it snows in Logan, by the weather service, by the relay where it can\'t say, else none', PHONE, async ({ page }) => {
+  // Aaron: 'track real snow weather all of december just for fun', 'use my relay, or we could use nws'; then any day
+  // it snows. The airport's latest observation, under 90 minutes old: snow is snow; 'UP' (precipitation it can't
+  // name) at 0 °C or colder is snow, above 3 °C none; clear is none. Only where it can't say (down, old, 'UP' between
+  // 0 and 3 °C) the relay; neither answering, none.
+  const { christmas: y } = await holidays(page), at = noon(y + '-12-10');
+  const cases = [
+    ['fresh snow', obs(at, 20, 'snow', -3), null, true, 0],
+    ['UP at -1 °C', obs(at, 20, 'unknown', -1), null, true, 0],
+    ['clear', obs(at, 20, null, -2), { snowfall: 0.5, weather_code: 73 }, false, 0],   // the relay never asked, whatever it'd say
+    ['UP at 4 °C', obs(at, 20, 'unknown', 4), { snowfall: 0.5, weather_code: 73 }, false, 0],
+    ['UP at 1.5 °C, the relay snowing', obs(at, 20, 'unknown', 1.5), { snowfall: 0, weather_code: 73 }, true, 1],
+    ['UP at 1.5 °C, the relay clear', obs(at, 20, 'unknown', 1.5), { snowfall: 0, weather_code: 3 }, false, 1],
+    ['an old observation, the relay clear', obs(at, 120, 'snow', -3), { snowfall: 0, weather_code: 3 }, false, 1],
+    ['the service down, the relay snowing', 'fail', { snowfall: 0.2, weather_code: 3 }, true, 1],
+    ['both down', 'fail', 'fail', false, 1],
+  ];
+  for (const [what, nws, relay, snows, relayAsks] of cases) {
+    const asked = await snowDay(page, at, nws, relay);
+    if (relayAsks) await expect.poll(() => asked.relay, what).toBe(1);
+    if (snows) await expect.poll(() => snowing(page), what).toEqual({ on: true, shown: true });
+    else { await page.waitForTimeout(500); expect(await snowing(page), what).toEqual({ on: false, shown: false }); }
+    expect(asked.relay, what + ': the relay asked').toBe(relayAsks);
+  }
+});
+
+test('Real snow any day of the year: a plain November day, over Thanksgiving\'s garland; a July day clear, the relay never asked', PHONE, async ({ page }) => {
+  // The user, it snowing in Logan as it shipped: not Christmas's alone. A November day with no season, snowing: the
+  // flakes, no holiday's dressing. Thanksgiving's Monday, snowing: the flakes over the garland. A July day, the service
+  // saying clear: none, and the relay never asked.
+  const { thanksgiving: tg } = await holidays(page);
+  const plain = noon(dayOn(tg, -10));
+  await snowDay(page, plain, obs(plain, 15, 'snow', -2), 'fail');
+  await expect.poll(() => snowing(page)).toEqual({ on: true, shown: true });
+  expect(await deco(page)).toEqual({ season: null, on: null, shown: false });
+  const mon = noon(dayOn(tg, -3));
+  await snowDay(page, mon, obs(mon, 15, 'snow_showers', -1), 'fail');
+  await mapReady(page);
+  await expect.poll(() => snowing(page)).toEqual({ on: true, shown: true });
+  expect(await deco(page)).toEqual({ season: 'thanksgiving', on: 'thanksgiving', shown: true });
+  expect(await page.evaluate(() => { const s = document.getElementById('snow-deco'), h = document.getElementById('hol-deco'); return !!(h.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING) && getComputedStyle(s).zIndex === getComputedStyle(h).zIndex; })).toBe(true);   // over the garland
+  const july = noon((+tg.slice(0, 4) + 1) + '-07-15');
+  const asked = await snowDay(page, july, obs(july, 15, null, 31), { snowfall: 1, weather_code: 75 });
+  await page.waitForTimeout(500);
+  expect(await snowing(page)).toEqual({ on: false, shown: false });
+  expect(asked.relay).toBe(0);
+});
+
+test('Real snow: under the map\'s buttons, never a tap\'s, falling, and none with reduced motion', PHONE, async ({ page }) => {
+  // Snowing, the flakes fall over the map, under its buttons, search and card: every point of the map under them still
+  // the map's. With reduced motion they're not there.
+  const { christmas: y } = await holidays(page), at = noon(y + '-12-10');
+  await snowDay(page, at, obs(at, 10, 'snow', -4), 'fail');
+  await mapReady(page);
+  await expect.poll(() => snowing(page)).toEqual({ on: true, shown: true });
+  const flakes = page.locator('#snow-deco .hol-flake');
+  expect(await flakes.count()).toBeGreaterThanOrEqual(30);
+  expect(await flakes.first().evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
+  expect(await flakes.first().evaluate(e => getComputedStyle(e).animationName)).toBe('holFlake');
+  const box = page.locator('#snow-deco');
+  const b = await box.boundingBox();
+  const hits = await page.evaluate(({ x, y, width: w, height: h }) => [0.1, 0.3, 0.5, 0.7, 0.9].flatMap(f => [0.1, 0.3, 0.5, 0.7].map(g => { const e = document.elementFromPoint(x + w * f, y + h * g); return !!e && !!e.closest('#snow-deco'); })), b);
+  expect(hits.every(h => !h)).toBe(true);
+  expect(await box.evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
+  expect(await box.evaluate(e => +getComputedStyle(e).zIndex)).toBeLessThan(450);   // under the map's buttons and search
+  // flakes in sight on the map
+  expect(await page.evaluate(() => { const m = document.getElementById('map').getBoundingClientRect(); return [...document.querySelectorAll('#snow-deco .hol-flake')].filter(f => { const r = f.getBoundingClientRect(); return r.width > 0 && r.top > m.top && r.bottom < m.bottom; }).length; })).toBeGreaterThan(5);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => snowing(page)).toEqual({ on: true, shown: false });
 });
 
 test('Christmas Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse; the 26th the lights and no card, the 27th none', PHONE, async ({ page }) => {

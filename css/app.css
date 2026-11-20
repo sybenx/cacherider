@@ -1476,22 +1476,40 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 @keyframes holFall { from { transform: translateY(-12px); } to { transform: translateY(12px); } }
 .hol-snow { animation: holFall 6s linear infinite alternate; }
 @media (prefers-reduced-motion: reduce) { .hol-a, .hol-b, .hol-c, .hol-snow { animation: none; } }
+/* Snow falling over the map while it's snowing in Logan, any day (holiday.js, the root's data-snowing), in the
+   holidays' box (#snow-deco, its own, over the garland or the lights or neither): each flake falls the map's height
+   at its own pace, drifting aside, and sways as it goes (two boxes, one moving each way: transform alone, nothing
+   laid out again). White, soft at its edge; in the light theme a faint grey rim, or
+   it's lost on the light map. None with reduced motion. */
+#snow-deco { display: none; position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+:root[data-snowing] #snow-deco { display: block; }
+#body.pk-on #snow-deco { display: none; }
+@media (min-width: 840px) { #snow-deco { left: 420px; } :root[data-panel="right"] #snow-deco { left: 0; right: 420px; } }
+#snow-deco .hol-flakes { position: absolute; inset: 0; }
+.hol-flake { position: absolute; top: -8px; width: var(--s); height: var(--s); opacity: var(--o); animation: holFlake var(--f) linear var(--w) infinite; will-change: transform; }
+.hol-flake b { display: block; width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle, #fff 45%, rgba(255,255,255,.85) 70%, rgba(255,255,255,.4)); box-shadow: 0 0 1.5px .6px rgba(70,80,96,.5); animation: holSway var(--sw) ease-in-out infinite alternate; }
+:root[data-theme="dark"] .hol-flake b { box-shadow: 0 0 3px rgba(255,255,255,.5); }
+@keyframes holFlake { from { transform: translate(0, 0); } to { transform: translate(var(--dx), 100vh); } }
+@keyframes holSway { from { transform: translateX(-6px); } to { transform: translateX(6px); } }
+@media (prefers-reduced-motion: reduce) { :root[data-snowing] #snow-deco { display: none; } }
 
-/* Christmas's small things (views/holiday-art.js), in its season only. A Connect bus wears a wreath at its top right,
-   upright however the map's turned and the bus headed, the dark theme's brighter one there; not far off, where it's
-   the hollow arrow. Each bay's badge at the Center a cap of snow (map.js hubBadges); its tree in its mound of snow
-   (map.js hubSnow) under the badges and buses. */
+/* Christmas's small things (views/holiday-art.js), each from its week (holiday.js xmasStage, the root's data-xmas).
+   From the 15th a Connect bus wears a wreath at its top right, upright however the map's turned and the bus headed,
+   the dark theme's brighter one there; not far off, where it's the hollow arrow. From the 8th each bay's badge at the
+   Center a cap of snow (map.js hubBadges); from the 15th its tree in its mound of snow (map.js hubSnow) under the
+   badges and buses, presents under it from the 22nd. */
 .hol-wreath, .hol-cap { display: none; }
-:root[data-season="christmas"] #map .bus:not(.shuttle) .hol-wreath { display: block; position: absolute; left: 0; top: 0; width: 22px; height: 22px; pointer-events: none; transform: rotate(calc(var(--map-bearing, 0deg) - var(--course, 0deg))) scale(var(--bus-scale, 1)); }
-:root[data-season="christmas"] #map.bus-small .bus:not(.lit):not(.on) .hol-wreath { display: none; }
+:root[data-xmas~="tree"] #map .bus:not(.shuttle) .hol-wreath { display: block; position: absolute; left: 0; top: 0; width: 22px; height: 22px; pointer-events: none; transform: rotate(calc(var(--map-bearing, 0deg) - var(--course, 0deg))) scale(var(--bus-scale, 1)); }
+:root[data-xmas~="tree"] #map.bus-small .bus:not(.lit):not(.on) .hol-wreath { display: none; }
 .hol-wreath > span { position: absolute; right: -6px; top: -7px; width: 14px; height: 14px; }
 .hol-wreath svg { width: 14px; height: 14px; overflow: visible; }
 .hol-wreath .hol-wd, :root[data-theme="dark"] .hol-wreath .hol-wl { display: none; }
 :root[data-theme="dark"] .hol-wreath .hol-wd { display: block; }
 .hbay .b { position: relative; }
-:root[data-season="christmas"] .hbay .hol-cap { display: block; position: absolute; left: -1px; top: -4px; width: calc(100% + 2px); height: 7px; pointer-events: none; }
+:root[data-xmas~="snow"] .hbay .hol-cap { display: block; position: absolute; left: -1px; top: -4px; width: calc(100% + 2px); height: 7px; pointer-events: none; }
 .maplibregl-marker.hol-treemark { z-index: 0; pointer-events: none; }
 .hol-tree { width: 27px; height: 29px; display: block; }
+.hol-tree.hol-gifts { width: 46px; }   /* drawn wider, at the tree's scale */
 
 /* The day's card (holiday.js), in place of 'No buses today' on Thanksgiving Day and Christmas Day: its drawing in its
    own colours in either theme, the words under it on the app's raised surface and in its own ink. */
