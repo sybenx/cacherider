@@ -185,7 +185,8 @@ export function strip(clockNow, today = true, dayK = '') {
       const d = nowDot(b, live, clockNow.min, y, lx, on, past, 6);
       g += d.svg;
       if (d.bus) feet[c] = d.bus;
-      if (d.dl !== null) g += `<text x="${d.X + 9}" y="${d.ly + 3}" class="ds-late">${d.dl > 0 ? '+' : '−'}${Math.abs(d.dl)}</text>`;
+      // Behind its timetable minus, ahead of it plus, as dispatch counts it (the user: 'a bus behind shows + minutes ... that's backwards').
+      if (d.dl !== null) g += `<text x="${d.X + 9}" y="${d.ly + 3}" class="ds-late">${d.dl > 0 ? '−' : '+'}${Math.abs(d.dl)}</text>`;
     }
     svg += `<g>${g}</g>`;
   });
