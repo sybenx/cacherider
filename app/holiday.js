@@ -2,7 +2,7 @@
 // map in their seasons, and on the day itself, the buses off, a card in place of the plain 'No buses today'. A rule
 // on the date, every year, in the agency's own local dates and by the app's own clock (time.js now(), which a test's
 // staged clock moves): nothing to take down after. Not the Pumpkin Walk's rule, which is its route's in the feed.
-import { holidayOn, agencyRuns } from './data.js';
+import { D, holidayOn, agencyRuns } from './data.js';
 import { now, dayFrom, dayDiff, dayName, fmtDay, clockText } from './time.js';
 import { html } from './ui.js';
 import { DECO, DAY_ART } from './views/holiday-art.js';
@@ -12,22 +12,24 @@ function thanksgiving(year) {
   const first = dayFrom(year + '1101').dow, thu = 1 + (4 - first + 7) % 7 + 21;
   return year + '11' + String(thu).padStart(2, '0');
 }
-/** The season on a day: 'thanksgiving' from the Wednesday before Thanksgiving to the Friday after, 'christmas' from
- *  14 to 26 December, both ends kept; else null. */
+/** The season on a day: 'thanksgiving' the week of Thanksgiving, its Monday to the Sunday after (Aaron: 'should we do
+ *  the full week?'), 'christmas' from 14 to 26 December, both ends kept; else null. */
 export function holidaySeason(clockNow = now()) {
   const ymd = clockNow.ymd, y = ymd.slice(0, 4), md = ymd.slice(4);
   const tg = thanksgiving(y);
-  if (ymd >= dayFrom(tg, -1).ymd && ymd <= dayFrom(tg, 1).ymd) return 'thanksgiving';
+  if (ymd >= dayFrom(tg, -3).ymd && ymd <= dayFrom(tg, 3).ymd) return 'thanksgiving';
   if (md >= '1214' && md <= '1226') return 'christmas';
   return null;
 }
 
-/** The day itself, the agency's buses off and its timetable naming the day: 'thanksgiving' or 'christmas', else null. */
+/** The day itself, the agency's buses off and its timetable naming the day: 'thanksgiving' or 'christmas', else null.
+ *  The day after Thanksgiving too, when the buses are off that day as well (the feed of 2026 took it off). */
 export function holidayDay(ymd) {
   if (agencyRuns(ymd)) return null;
   const name = holidayOn(ymd);
-  return name === 'Thanksgiving Day' ? 'thanksgiving' : name === 'Christmas Day' ? 'christmas' : null;
+  return name === 'Thanksgiving Day' || dayAfter(ymd) ? 'thanksgiving' : name === 'Christmas Day' ? 'christmas' : null;
 }
+const dayAfter = ymd => holidayOn(dayFrom(ymd, -1).ymd) === 'Thanksgiving Day';
 const GREETING = { thanksgiving: 'Happy Thanksgiving!', christmas: 'Merry Christmas!' };
 
 /** The day's card, or '' on any other day: its drawing, 'No buses today', why ('Connect doesn't run on Thanksgiving
@@ -37,6 +39,7 @@ const GREETING = { thanksgiving: 'Happy Thanksgiving!', christmas: 'Merry Christ
 export function dayCard(clockNow, why, back, what, more = '') {
   const k = holidayDay(clockNow.ymd);
   if (!k) return '';
+  if (dayAfter(clockNow.ymd)) why = `${D.agency.brand} doesn't run on the day after Thanksgiving.`;   // not 'on Friday, November 27'
   const day = back ? (dayDiff(clockNow.ymd, back.ymd) < 7 ? dayName(back.ymd) : fmtDay(back.ymd, true)) : '';   // 'Back Friday'; a week or more off, its date
   return html`<div class="holcard hol-${k}">${html.raw(DAY_ART[k])}<div class="holcard-text"><b class="holcard-h">No buses today</b><p>${why} ${GREETING[k]}</p>${back ? html`<div class="holcard-back"><span>Back ${day} · ${what}</span><b>${clockText(back.min)}</b></div>` : ''}${more}</div></div>`;
 }

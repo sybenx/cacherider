@@ -1981,7 +1981,7 @@ const noon = ymd => new Date(ymd + 'T12:00:00-07:00');
 const dayOn = (ymd, k) => new Date(Date.parse(ymd + 'T12:00:00Z') + k * 864e5).toISOString().slice(0, 10);
 /** The holidays to stage, worked out from today, so the tests hold every year: the next Thanksgiving (the fourth
  *  Thursday of November, 'yyyy-mm-dd') and the next Christmas season (14 to 26 December: its year) whose first day
- *  staged (the Wednesday before; the 13th) is after today and one the timetable covers (Connect now and then publishes
+ *  staged (the Monday of its week; the 13th) is after today and one the timetable covers (Connect now and then publishes
  *  a timetable ahead, starting after today: a day staged before it has no buses to be back by). */
 async function holidays(page) {
   const j = await (await page.request.get('/data/cvtd.json')).json(), ops = new Set(j.routes.filter(r => r.op).map(r => r.op.service));
@@ -1990,7 +1990,7 @@ async function holidays(page) {
   const from = [dayOn(today, 1), first].sort()[1];
   const tg = y => { const nov = new Date(Date.UTC(y, 10, 1)).getUTCDay(); return dayOn(y + '-11-01', (4 - nov + 7) % 7 + 21); };
   let y = +today.slice(0, 4), x = y;
-  while (dayOn(tg(y), -1) < from) y++;
+  while (dayOn(tg(y), -3) < from) y++;
   while (x + '-12-13' < from) x++;
   return { thanksgiving: tg(y), christmas: x };
 }
@@ -2034,12 +2034,13 @@ async function hungRight(page, swag, info, drop) {
   expect(box.width).toBeGreaterThanOrEqual(map.width - (phone(info) ? 0 : 420) - 1);   // a wide screen's beside the page
 }
 
-test('Thanksgiving: the garland on the map from the Wednesday before, never in the way of a tap, and no card while the buses run', async ({ page }, info) => {
+test('Thanksgiving: the garland on the map from the Monday of its week, never in the way of a tap, and no card while the buses run', async ({ page }, info) => {
   // Aaron's sketch: a twine swag of leaves, wheat and two gourds hung from the bottom of a phone's search box (along the
-  // top of a wide screen's map). The Wednesday before Thanksgiving, noon: up on the map, and still beside a stop and the
-  // Center; its taps go through to the map; a stop's page and the Center's board run as ever, no card.
+  // top of a wide screen's map). The Monday of Thanksgiving week ('should we do the full week?'), noon: up on the map,
+  // and still beside a stop and the Center; its taps go through to the map; a stop's page and the Center's board run
+  // as ever, no card.
   const { thanksgiving: tg } = await holidays(page);
-  await page.clock.setFixedTime(noon(dayOn(tg, -1)));
+  await page.clock.setFixedTime(noon(dayOn(tg, -3)));
   await open(page, '#/map');
   await mapReady(page);
   expect(await deco(page)).toEqual({ season: 'thanksgiving', on: 'thanksgiving', shown: true });
@@ -2056,14 +2057,9 @@ test('Thanksgiving: the garland on the map from the Wednesday before, never in t
   await expect(page.locator('.holcard')).toHaveCount(0);
 });
 
-test('Thanksgiving Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse', PHONE, async ({ page }) => {
-  // Thanksgiving Day: 'No buses today', 'Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!', and when
-  // they're back, from the timetable, never written in: at a stop its first bus after today, at the Center the first
-  // pulse (the feed of 2026 took that Friday off too, so it was Saturday's). In the plain callout's place.
-  const { thanksgiving: tg } = await holidays(page);
-  await page.clock.setFixedTime(noon(tg));
-  await open(page);
-  const t = await backTimes(page);
+/** Thanksgiving's card at a stop and at the Center (or, where another operator's bus leaves the Center that day, its
+ *  board): 'No buses today', why and the greeting (`said`), and when they're back, from the timetable. */
+async function tgCard(page, t, said) {
   for (const [hash, back] of [['#/stop/' + t.stop, t.atStop], ['#/hub', t.atHub]]) {
     await go(page, hash);
     if (hash === '#/hub' && t.hubRuns) { await hubOthers(page); continue; }
@@ -2072,29 +2068,53 @@ test('Thanksgiving Day: its card at a stop and at the Center, back at the timeta
     await expect(card.locator('svg.hol-art')).toHaveAttribute('role', 'img');
     await expect(card.locator('svg.hol-art')).toHaveAttribute('aria-label', /^Golden hour over the Wellsvilles/);
     await expect(card.locator('.holcard-h')).toHaveText('No buses today');
-    await expect(card.locator('p')).toHaveText("Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!");
+    await expect(card.locator('p')).toHaveText(said);
     await expect(card.locator('.holcard-back span')).toHaveText(back.words);
     await expect(card.locator('.holcard-back b')).toHaveText(back.time);
     await expect(page.locator('.holcard')).toHaveCount(1);
     await expect(page.locator('.callout, .tcl-note').filter({ hasText: 'No buses today' })).toHaveCount(0);
   }
+}
+
+test('Thanksgiving Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse', PHONE, async ({ page }) => {
+  // Thanksgiving Day: 'No buses today', 'Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!', and when
+  // they're back, from the timetable, never written in: at a stop its first bus after today, at the Center the first
+  // pulse (the feed of 2026 took that Friday off too, so it was Saturday's). In the plain callout's place.
+  const { thanksgiving: tg } = await holidays(page);
+  await page.clock.setFixedTime(noon(tg));
+  await open(page);
+  await tgCard(page, await backTimes(page), "Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!");
   expect((await deco(page)).season).toBe('thanksgiving');
   expect(await page.evaluate(() => document.body.innerText.includes('—'))).toBe(false);   // no em dash
 });
 
-test('Thanksgiving goes by itself: the Friday after, the garland and no card; the Saturday, none of it', PHONE, async ({ page }) => {
-  // The Friday after is the season's last day: the garland's up. Not Thanksgiving Day, so a day without buses (the
-  // feed of 2026 took that Friday off) is the plain 'No buses today'. The Saturday, noon: no garland, no season.
+test('Thanksgiving goes by itself: the Friday after, its card where the buses are off; the Sunday, the garland; the Monday, none of it', PHONE, async ({ page }) => {
+  // Aaron: 'yes do it' (the day after's card) 'and should we do the full week?'. The season is Thanksgiving's week, its
+  // Monday to the Sunday after. The Friday after, the buses off (the feed of 2026 took it off), is Thanksgiving's card,
+  // said as the day after; a Friday they run, no card. The Sunday, the season's last day: the garland's up. The Monday
+  // after, noon: no garland, no season.
   const { thanksgiving: tg } = await holidays(page);
   await page.clock.setFixedTime(noon(dayOn(tg, 1)));
   await open(page, '#/map');
   await mapReady(page);
   expect(await deco(page)).toEqual({ season: 'thanksgiving', on: 'thanksgiving', shown: true });
+  // the season's edges, by the rule: the Sunday before and the Monday after out, the Monday and the Sunday in
+  expect(await page.evaluate(async ds => { const h = await import('/app/holiday.js'); return ds.map(ymd => h.holidaySeason({ ymd: ymd.replace(/-/g, '') })); },
+    [-4, -3, 3, 4].map(k => dayOn(tg, k)))).toEqual([null, 'thanksgiving', 'thanksgiving', null]);
   const t = await backTimes(page);
-  await go(page, '#/stop/' + t.stop);
-  await expect(page.locator('.stop-page').filter({ visible: true }).first()).toBeVisible();
-  await expect(page.locator('.holcard')).toHaveCount(0);
-  await page.clock.setFixedTime(noon(dayOn(tg, 2)));
+  const off = await page.evaluate(async () => !(await import('/app/data.js')).agencyRuns((await import('/app/time.js')).now().ymd));
+  if (off) await tgCard(page, t, "Connect doesn't run on the day after Thanksgiving. Happy Thanksgiving!");
+  else {
+    await go(page, '#/stop/' + t.stop);
+    await expect(page.locator('.stop-page').filter({ visible: true }).first()).toBeVisible();
+    await expect(page.locator('.holcard')).toHaveCount(0);
+  }
+  await page.clock.setFixedTime(noon(dayOn(tg, 3)));
+  await page.goto('about:blank');
+  await open(page, '#/map');
+  await mapReady(page);
+  expect(await deco(page)).toEqual({ season: 'thanksgiving', on: 'thanksgiving', shown: true });
+  await page.clock.setFixedTime(noon(dayOn(tg, 4)));
   await page.goto('about:blank');
   await open(page, '#/map');
   await mapReady(page);
