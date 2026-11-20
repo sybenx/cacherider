@@ -6,7 +6,7 @@
 // where its day starts or ends somewhere else (the 16's, the Preston commuter's: the user's own notes on the mockup).
 // No key for the drawing itself: the hours, the route badges at the heads and the now line say it; only today's
 // dots, Live or Scheduled, drawn once above it (a second opinion: 'ring' in words was his end caps too).
-import { D, keptOn, servicesOn, tripStops, tripEnd, tripRoute, staysOn, familyKey, opOf, stop, liftHex, corridor, timed, agencyRuns, holidayOn } from '../data.js';
+import { D, keptOn, servicesOn, tripStops, tripEnd, tripRoute, staysOn, familyKey, opOf, stop, liftHex, corridor, corridorKey, timed, agencyRuns, holidayOn } from '../data.js';
 import { html, esc, badge, routeName, heardName } from '../ui.js';
 import { clockShort, clockText, isDue, isGone, dayFrom, dayName, fmtDay } from '../time.js';
 import { lightInks } from '../ink.js';
@@ -98,8 +98,10 @@ export function busesOn(ymd) {
     const keys = [...new Set(runs.map(x => familyKey(x.r)))];
     return runs.length ? { runs, keys, ris: [...new Set(runs.map(x => x.r))], trips: new Set(c), a: runs[0].a, b: runs[runs.length - 1].b } : null;
   }).filter(Boolean);
-  // The numbered routes in order, then the loops, then another operator's; a route's buses by when they start.
-  const rank = b => { const ri = b.runs[0].r; return (opOf(ri) ? 2000 : isLoopR(ri) ? 1000 : 0) + (parseInt(b.keys[0]) || 999); };
+  // The numbered routes in order, then the loops; another operator's beside the route whose road it runs (the Preston
+  // commuter after the 16s: the user, 'prt on the all day board isn't next to the 16s and it should be'), else last.
+  // A route's buses by when they start.
+  const rank = b => { const ri = b.runs[0].r, road = parseInt(corridorKey(ri)); return opOf(ri) ? (road ? road + 0.5 : 2999) : (isLoopR(ri) ? 1000 : 0) + (parseInt(b.keys[0]) || 999); };
   buses.sort((p, q) => rank(p) - rank(q) || p.keys[0].localeCompare(q.keys[0]) || p.a - q.a);
   daysOf.set(ymd, buses);
   return buses;
@@ -245,7 +247,15 @@ export function dayPick(clockNow, on) {
   const today = pick.ymd === clockNow.ymd;
   return { days, pick, today, clk: today ? clockNow : { ...clockNow, ymd: pick.ymd, min: -1440 } };
 }
-export const dayRow = (days, pick, href) => html`<nav class="seg ds-days" aria-label="Day">${days.map(d => html`<a href="${href(d)}"${html.raw(d === pick ? ' aria-current="page"' : '')}>${d.label}</a>`)}</nav>`;
+/** The buttons: a weekday, a Saturday and each day that runs short or otherwise (a day before a holiday, Christmas Eve).
+ *  A day with no buses isn't one to pick (the user: 'a day with no service doesn't have to be clickable'): it's a line
+ *  under them, 'No buses Thanksgiving Day (Thu 26 Nov) or Fri 27 Nov', unless it's the day open (today, or a link to it). */
+export const dayRow = (days, pick, href) => {
+  const btn = days.filter(d => !d.off || d === pick), off = days.filter(d => d.off && d !== pick);
+  const name = d => d.label === fmtDay(d.ymd) ? d.label : `${d.label} (${fmtDay(d.ymd)})`;
+  const words = off.map(name).reduce((a, w, i, all) => !i ? w : a + (i === all.length - 1 ? ' or ' : ', ') + w, '');
+  return html`<nav class="seg ds-days" aria-label="Day">${btn.map(d => html`<a href="${href(d)}"${html.raw(d === pick ? ' aria-current="page"' : '')}>${d.label}</a>`)}</nav>${off.length ? html`<p class="ds-offdays">No buses ${words}</p>` : ''}`;
+};
 const keyLine = today => `<p class="ds-key">${today ? '<span class="ds-k"><i class="live"></i>Live</span><span class="ds-k"><i></i>Scheduled</span><span aria-hidden="true">·</span>' : ''}<span>Tap a run for its stops.</span></p>`;
 
 // ---- A route's day: its buses down the day at 6 px a minute, the user's own scale ('i want route 1 to show 3 runs

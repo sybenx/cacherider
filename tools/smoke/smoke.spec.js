@@ -3502,6 +3502,32 @@ test('a picked bus\'s way on through a stop closed with no way round known: left
   await expect.poll(clear, { timeout: 20_000 }).toBe(true);
 });
 
+test('the Center\'s All day on a wide screen: the panel shows every bus, PRT beside the 16s, a day with no buses a line not a button', WIDE, async ({ page }) => {
+  // The user: 'make the all day board for transit center wide enough on desktop to see the whole thing', 'prt on the
+  // all day board isn't next to the 16s and it should be', and of the day buttons: 'a day with no service doesn't have
+  // to be clickable'. Noon on the Monday of Thanksgiving week: Thanksgiving inside the next two weeks, the feed refused.
+  const { thanksgiving: tg } = await holidays(page);
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
+  await page.clock.setFixedTime(new Date(`${dayOn(tg, -3)}T12:00:00-07:00`));
+  await open(page, '#/hub?day=1');
+  const strip = page.locator('.daystrip').filter({ visible: true });
+  await expect(strip).toHaveCount(1);
+  // Wide enough for every column, the box not scrolling sideways (1280 px: 23 buses fit with room for the map).
+  const box = strip.locator('.ds-box');
+  expect(await box.evaluate(b => b.scrollWidth - b.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await page.locator('#side').evaluate(e => e.offsetWidth)).toBeGreaterThan(420);
+  // PRT's column straight after the last 16's.
+  const heads = await strip.locator('.ds-head').evaluateAll(hs => hs.map(h => h.textContent.trim()));
+  const prt = heads.findIndex(h => h.includes('PRT'));
+  if (prt >= 0) expect(heads[prt - 1]).toContain('16');
+  // Thanksgiving: not a button, a line under them.
+  await expect(page.locator('.ds-days a', { hasText: 'Thanksgiving' })).toHaveCount(0);
+  await expect(page.locator('.ds-offdays').filter({ visible: true })).toContainText('No buses Thanksgiving Day');
+  // The Board view: the panel back to its own width.
+  await go(page, '#/hub');
+  await expect.poll(() => page.locator('#side').evaluate(e => e.offsetWidth)).toBe(420);
+});
+
 test('a holiday: no buses on Thanksgiving, said by its name; the evening before, the next bus is the next day with buses; that day runs', PHONE, async ({ page }) => {
   // Connect's feed has no holidays (tools/hints.json does). The next Thanksgiving, the fourth Thursday of November. The
   // day after is the feed's to give or take off (the feed of 2026-11-19 took the Friday off): the next day with buses

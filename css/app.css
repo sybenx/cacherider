@@ -128,6 +128,9 @@ svg { display: block; flex: none; }
   #body.map-open #side { display: block; transform: translateX(-100%); visibility: hidden; }
   #body.map-open #mapcol { flex: none; }
   #body:not(.map-open) .mapnotice { left: 432px; }
+  /* The Center's All day: the panel as wide as its buses, so the whole day's columns show at once (the user: 'wide enough
+     on desktop to see the whole thing'); over the map, never all of it. */
+  #side:has(> .tcl .daystrip) { width: fit-content; min-width: 420px; max-width: calc(100% - 96px); }
   .m-only { display: none !important; }
   /* the panel on the right (Settings, this computer): the map's card, notice and buttons across from it */
   [data-panel="right"] #side { left: auto; right: 0; border-right: 0; border-left: 1px solid var(--cr-line); }
@@ -1715,9 +1718,10 @@ a.side:active { background: var(--cr-hover); }
 .ds-k i { width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid var(--cr-now, #d93025); background: var(--color-bg); }
 .ds-k i.live { background: var(--cr-now, #d93025); }
 /* Which day the strip draws (hub.js dayKinds): a weekday, a Saturday, then each day ahead that runs otherwise. */
-.seg.ds-days { display: flex; max-width: calc(100% - 32px); margin: 0 16px 8px; overflow-x: auto; scrollbar-width: none; }
+.seg.ds-days { display: flex; width: fit-content; max-width: calc(100% - 32px); margin: 0 16px 8px; overflow-x: auto; scrollbar-width: none; }
 .seg.ds-days a { flex: none; }
 .ds-note { margin: 0; padding: 0 16px 8px; font-size: 0.875rem; }
+.ds-offdays { margin: -2px 0 0; padding: 0 16px 8px; font-size: 0.8125rem; color: var(--cr-muted); }
 /* A route's two views by its name, its stops and its day (map.js routeViews). */
 .rs-name .rs-views { margin-left: auto; flex: none; align-self: center; }
 .rs-dayview .ds-days { margin-top: 4px; }
