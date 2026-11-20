@@ -10,7 +10,7 @@ import { D, keptOn, servicesOn, tripStops, tripEnd, tripRoute, staysOn, familyKe
 import { html, esc, badge, routeName, heardName } from '../ui.js';
 import { clockShort, clockText, isDue, isGone, dayFrom, dayName, fmtDay } from '../time.js';
 import { lightInks } from '../ink.js';
-import { rt, rtStale, busDelay, lateWords, isLoop } from '../rt.js';
+import { rt, rtStale, busDelay, lateWords } from '../rt.js';
 import { townsReady, loadTowns, stopTown, tripTowns, routeTownInks } from '../towns.js';
 
 const PPM = 1.6;   // pixels a minute: an hour is 96, a day of buses a long scroll, a 30-minute run a stroke to tap
@@ -110,7 +110,9 @@ export function busesOn(ymd) {
 /** Today's buses in the feed, by the timetable trip each is on. None on another day, or with the feed gone quiet. */
 const liveOn = today => !today || rtStale() ? new Map() : new Map(rt.buses.map(b => [D.trips.indexOf(b.trip), b]).filter(([ti]) => ti >= 0));
 /** A column's bus now. Where the feed has it on time, or with no minute to be late by (a loop spaces its buses; a route
- *  on an old timetable can't say), one red dot at now. Off its schedule by 2 minutes or more (lateWords' line), the red
+ *  on an old timetable can't say), one red dot at now. The loops too, here and only here: the rest of the app gives
+ *  them no late or early word (rt.js), but the user, of this view: 'it doesn't look like the loops have + or - minutes
+ *  down or up', and 'Yes, All day only'. Off its schedule by 2 minutes or more (lateWords' line), the red
  *  dot is where the bus really is, at the minute its timetable has it there (6 min late: 6 minutes back up the line),
  *  and an empty dot at now is where it should be, a dotted red stroke between them (the user: 'red dots that show live
  *  position and the empty dots on the line show the scheduled time'). Where the feed hasn't it, the empty dot alone.
@@ -123,7 +125,7 @@ function nowDot(b, live, nowMin, y, lx, on, past, r) {
   const X = lx(x), ny = y(nowMin), dot = (cy, cls) => `<circle cx="${X}" cy="${cy}" r="${r}" class="ds-bus${cls}"/>`;
   const bus = seenOn ? live.get(x.trips.find(ti => live.has(ti))) : null;
   if (!bus) return { svg: dot(ny, ''), dl: null, bus: null, X, ly: ny };
-  const d = !isLoop(bus.ri) && !keptOn(bus.ri) ? busDelay(bus) : null, dl = d !== null && Math.abs(d) >= 2 ? d : null;
+  const d = !keptOn(bus.ri) ? busDelay(bus) : null, dl = d !== null && Math.abs(d) >= 2 ? d : null;
   const say = esc('Bus ' + bus.label + (dl !== null ? ' · ' + lateWords(dl) : ''));
   const ly = dl === null ? ny : y(nowMin - dl);
   const red = `<a href="#/map/bus/${encodeURIComponent(bus.id)}" class="ds-busl" aria-label="${say}"><title>${say}</title>${dot(ly, ' live')}</a>`;

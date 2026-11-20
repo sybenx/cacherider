@@ -353,6 +353,12 @@ test('a bus off its timetable: the day view\'s red dot where it is and an empty 
   await expect(vn).toHaveText(['9005']);
   await expect(vn).toHaveAttribute('href', '#/map/bus/c%3A9005');
   await expect(page.locator('.daystrip:not(.routeday) .ds-busl title')).toHaveText(['Bus 9005 · 6 min late']);
+  // A loop too, on the All day views only ('Yes, All day only'): a Blue Loop bus 4 minutes early at the Center's.
+  expect(await stageBus(page, feed, { route: 'B', late: -4 }), 'a Blue Loop bus out at noon').not.toBeNull();
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  await go(page, '#/hub?day=1');
+  await expect(page.locator('.daystrip:not(.routeday) .ds-late').filter({ visible: true })).toHaveText(['−4']);
 });
 
 test('a route\'s day: its buses down the day at 6 px a minute, its timed stops by name, opened at now; the 16 with the Preston commuter in its gap', async ({ page }) => {
