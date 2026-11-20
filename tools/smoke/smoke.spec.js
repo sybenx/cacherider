@@ -2463,7 +2463,7 @@ async function stageWeather(page, nws, relay) {
 }
 /** An observation at the airport `ago` minutes before a time: its weather (the service's words, 'snow', 'unknown') and
  *  temperature (°C). */
-const obs = (at, ago, weather, temp) => ({ timestamp: new Date(at.getTime() - ago * 60e3).toISOString(), temperature: { unitCode: 'wmoUnit:degC', value: temp }, presentWeather: weather ? [{ intensity: null, modifier: null, weather, rawString: weather === 'unknown' ? 'UP' : 'SN' }] : [] });
+const obs = (at, ago, weather, temp, intensity = null) => ({ timestamp: new Date(at.getTime() - ago * 60e3).toISOString(), temperature: { unitCode: 'wmoUnit:degC', value: temp }, presentWeather: weather ? [{ intensity, modifier: null, weather, rawString: weather === 'unknown' ? 'UP' : 'SN' }] : [] });
 /** The snow on the page: snowing said on the root, and its flakes shown. */
 const snowing = page => page.evaluate(() => { const f = document.getElementById('snow-deco'); return { on: 'snowing' in document.documentElement.dataset, shown: !!f && getComputedStyle(f).display === 'block' }; });
 /** A day's noon staged, the weather as given, the map opened and its asks waited for. */
@@ -2486,23 +2486,46 @@ test('Real snow: flakes fall over the map while it snows in Logan, by the weathe
   // 0 and 3 °C) the relay; neither answering, none.
   const { christmas: y } = await holidays(page), at = noon(y + '-12-10');
   const cases = [
-    ['fresh snow', obs(at, 20, 'snow', -3), null, true, 0],
-    ['UP at -1 °C', obs(at, 20, 'unknown', -1), null, true, 0],
+    ['fresh snow, no intensity given', obs(at, 20, 'snow', -3), null, 'moderate', 0],
+    ['light snow', obs(at, 20, 'snow', -3, 'light'), null, 'light', 0],
+    ['heavy snow', obs(at, 20, 'snow', -3, 'heavy'), null, 'heavy', 0],
+    ['UP at -1 °C', obs(at, 20, 'unknown', -1), null, 'light', 0],
     ['clear', obs(at, 20, null, -2), { snowfall: 0.5, weather_code: 73 }, false, 0],   // the relay never asked, whatever it'd say
     ['UP at 4 °C', obs(at, 20, 'unknown', 4), { snowfall: 0.5, weather_code: 73 }, false, 0],
-    ['UP at 1.5 °C, the relay snowing', obs(at, 20, 'unknown', 1.5), { snowfall: 0, weather_code: 73 }, true, 1],
+    ['UP at 1.5 °C, the relay snowing moderately', obs(at, 20, 'unknown', 1.5), { snowfall: 0, weather_code: 73 }, 'moderate', 1],
+    ['UP at 1.5 °C, the relay snowing heavily', obs(at, 20, 'unknown', 1.5), { snowfall: 1, weather_code: 75 }, 'heavy', 1],
     ['UP at 1.5 °C, the relay clear', obs(at, 20, 'unknown', 1.5), { snowfall: 0, weather_code: 3 }, false, 1],
     ['an old observation, the relay clear', obs(at, 120, 'snow', -3), { snowfall: 0, weather_code: 3 }, false, 1],
-    ['the service down, the relay snowing', 'fail', { snowfall: 0.2, weather_code: 3 }, true, 1],
+    ['the service down, snow falling at the relay under another code', 'fail', { snowfall: 0.2, weather_code: 3 }, 'light', 1],
     ['both down', 'fail', 'fail', false, 1],
   ];
   for (const [what, nws, relay, snows, relayAsks] of cases) {
     const asked = await snowDay(page, at, nws, relay);
     if (relayAsks) await expect.poll(() => asked.relay, what).toBe(1);
-    if (snows) await expect.poll(() => snowing(page), what).toEqual({ on: true, shown: true });
+    if (snows) { await expect.poll(() => snowing(page), what).toEqual({ on: true, shown: true }); expect(await page.evaluate(() => document.documentElement.dataset.snowing), what).toBe(snows); }
     else { await page.waitForTimeout(500); expect(await snowing(page), what).toEqual({ on: false, shown: false }); }
     expect(asked.relay, what + ': the relay asked').toBe(relayAsks);
   }
+});
+
+test('Real snow by how hard it snows: light a few flakes, moderate more, heavy all of them, each over the map\'s top and faded alike', PHONE, async ({ page }) => {
+  // Aaron: 'is the snow too much? it is top to bottom', then of light, moderate and heavy: 'try it'. The flakes shown
+  // and how far down the map they fall before fading out, by the weather service's intensity.
+  const { christmas: y } = await holidays(page), at = noon(y + '-12-10');
+  const look = () => page.evaluate(() => { const f = document.getElementById('snow-deco'), b = f.querySelector('.hol-flakes'), cs = getComputedStyle(b); return { shown: [...f.querySelectorAll('.hol-flake')].filter(e => getComputedStyle(e).display !== 'none').length, mask: cs.maskImage || cs.webkitMaskImage, reach: Math.round(100 * b.getBoundingClientRect().height / f.getBoundingClientRect().height) }; });
+  const seen = {};
+  for (const level of ['light', 'moderate', 'heavy']) {
+    await snowDay(page, at, obs(at, 10, 'snow', -4, level === 'moderate' ? null : level), 'fail');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.snowing)).toBe(level);
+    seen[level] = await look();
+    expect(seen[level].mask, level + ': faded, not cut').toMatch(/linear-gradient/);
+  }
+  expect(seen.light.shown).toBe(14);
+  expect(seen.moderate.shown).toBe(26);
+  expect(seen.heavy.shown).toBe(44);
+  // and the same way down the map whatever the snow: its top 40%, faded alike ('the fading is about visibility and usability')
+  expect([seen.light.reach, seen.moderate.reach, seen.heavy.reach]).toEqual([40, 40, 40]);
+  expect(new Set([seen.light.mask, seen.moderate.mask, seen.heavy.mask]).size).toBe(1);
 });
 
 test('Real snow any day of the year: a plain November day, over Thanksgiving\'s garland; a July day clear, the relay never asked', PHONE, async ({ page }) => {

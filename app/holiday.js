@@ -92,17 +92,32 @@ export const RELAY_URL = 'https://om.aarobh.net/v1/forecast?latitude=41.737&long
 const SNOWS = new Set(['snow', 'snow_showers', 'snow_grains', 'blowing_snow', 'ice_pellets']);
 const SNOW_CODES = new Set([71, 72, 73, 74, 75, 76, 77, 85, 86]);
 const EVERY = 15 * 60e3;
-/** The weather service's word on an observation (its `properties`) at a time (ms): true snowing, false not, null
- *  it can't say (none, over 90 minutes old, or 'UP' between 0 and 3 °C), for the relay to say. */
+/** How hard it's snowing, in the weather service's words or the relay's: 'light', 'moderate' or 'heavy'. The app
+ *  shows more flakes, falling further down the map, the harder it snows (Aaron: 'light moderate and heavy would be
+ *  interesting'). */
+const LEVELS = ['light', 'moderate', 'heavy'];
+/** The weather service's word on an observation (its `properties`) at a time (ms): how hard it's snowing ('light',
+ *  'moderate', 'heavy': the observation's intensity, none given being moderate; 'UP' at 0 °C or colder light, as it
+ *  can't say), false not snowing, null it can't say (none, over 90 minutes old, or 'UP' between 0 and 3 °C), for the
+ *  relay to say. */
 export function nwsSnowing(p, at = Date.now()) {
   if (!p || !(at - Date.parse(p.timestamp) < 90 * 60e3)) return null;
-  const w = (p.presentWeather || []).map(x => x && x.weather), t = p.temperature && p.temperature.value;
-  if (w.some(x => SNOWS.has(x))) return true;
-  if (!w.includes('unknown')) return false;
-  return t == null ? null : t <= 0 ? true : t > 3 ? false : null;
+  const ws = (p.presentWeather || []).filter(Boolean), t = p.temperature && p.temperature.value;
+  const snow = ws.filter(x => SNOWS.has(x.weather));
+  if (snow.length) return LEVELS[Math.max(...snow.map(x => x.intensity === 'light' ? 0 : x.intensity === 'heavy' ? 2 : 1))];
+  if (!ws.some(x => x.weather === 'unknown')) return false;
+  return t == null ? null : t <= 0 ? 'light' : t > 3 ? false : null;
 }
-/** The relay's word (Open-Meteo's answer, its `current`): snow falling, or a snow code (71 to 77, 85, 86). */
-export const relaySnowing = c => !!c && (c.snowfall > 0 || SNOW_CODES.has(c.weather_code));
+/** The relay's word (Open-Meteo's answer, its `current`): how hard by its snow code (71, 77 and 85 light, 73
+ *  moderate, 75 and 86 heavy), or light where snow is falling under some other code; else false. */
+export function relaySnowing(c) {
+  if (!c) return false;
+  const k = c.weather_code;
+  if (k === 75 || k === 86) return 'heavy';
+  if (k === 73) return 'moderate';
+  if (SNOW_CODES.has(k) || c.snowfall > 0) return 'light';
+  return false;
+}
 const ask = async url => {
   const r = await fetch(url, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined });
   if (!r.ok) throw new Error(r.status);
@@ -115,7 +130,7 @@ async function askSnow() {
   try { on = nwsSnowing((await ask(NWS_URL)).properties); } catch { /* the relay, then */ }
   if (on === null) try { on = relaySnowing((await ask(RELAY_URL)).current); } catch { /* no snow, then */ }
   const root = document.documentElement;
-  if (on === true) root.dataset.snowing = ''; else delete root.dataset.snowing;
+  if (LEVELS.includes(on)) root.dataset.snowing = on; else delete root.dataset.snowing;
 }
 const looked = () => { if (!document.hidden && Date.now() - askedAt >= EVERY) askSnow(); };
 /** The asking started once, at the first draw: asked then and every 15 minutes after, out of sight nothing asked, and
