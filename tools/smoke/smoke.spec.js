@@ -64,6 +64,21 @@ async function someStop(page) {
   await expect(a).toBeVisible();
   return (await a.getAttribute('href')).replace('#/stop/', '').split('?')[0];
 }
+/** A test's pick of a trip today (`pick()`, by the app's clock, time.js now()), or where today has none to make it of
+ *  (a Sunday, a holiday, a Saturday without that route), of the next day that has, in the week ahead: the clock staged
+ *  then, this time of day, and the app opened again on it. A push on a Sunday checked none of them. Null when no day
+ *  in the week has one. */
+async function onBusDay(page, pick) {
+  const at = await page.evaluate(() => Date.now());
+  for (let k = 0; k < 8; k++) {
+    if (k) await page.clock.setFixedTime(new Date(at + k * 864e5));
+    const p = await pick();
+    if (!p) continue;
+    if (k) { await page.reload(); await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 }); }
+    return p;
+  }
+  return null;
+}
 
 test('home: the Center line, the shuttle line, the routes', async ({ page }, info) => {
   await open(page);
@@ -112,7 +127,7 @@ test('a stop\'s row for a loop\'s next lap says where its bus is now, still on t
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
   await open(page);
-  const pick = await page.evaluate(async () => {
+  const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), loops = d.D.hub.loops || [];
     for (const ri of loops) for (const [si] of d.D.stops.entries()) for (const row of d.timesOn(si, c.ymd).filter(x => x.r === ri)) {
       const nx = d.nextTrip(row.trip, c.ymd);
@@ -127,8 +142,8 @@ test('a stop\'s row for a loop\'s next lap says where its bus is now, still on t
         mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], at: Date.now() + ((st[2][0] - 1 - c.min) * 60 + 30 - c.sec) * 1000, ahead: st.length - 2 + 5 };
     }
     return null;
-  });
-  test.skip(!pick, 'no loop running two laps in a row today');
+  }));
+  test.skip(!pick, 'no loop running two laps in a row this week');
   await page.clock.setFixedTime(new Date(pick.at));
   const T = Math.floor(pick.at / 1000), base = T - 30 - (pick.st[2][0] - 1) * 60;
   // the feed's word on the lap after too, its bus still on this one (as Connect's feed has it)
@@ -363,7 +378,7 @@ test('home: the big stop\'s bus on its way as a line, here at its stop, gone wit
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
   await open(page);
   await expect(page.locator('.land-hint').filter({ visible: true })).toContainText('Tap Save on a stop\'s page to keep it here');   // a first visit, nothing saved
-  const pick = await page.evaluate(async () => {
+  const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), loops = d.D.hub.loops || [], seen = new Set();
     for (const [si, s] of d.D.stops.entries()) for (const row of d.timesOn(si, c.ymd)) {
       if (seen.has(row.trip) || loops.includes(row.r)) continue;
@@ -382,8 +397,8 @@ test('home: the big stop\'s bus on its way as a line, here at its stop, gone wit
         mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], at: Date.now() + ((min - c.min) * 60 + 30 - c.sec) * 1000, short: d.D.routes[row.r].short };
     }
     return null;
-  });
-  test.skip(!pick, 'no trip today to make the feed of');
+  }));
+  test.skip(!pick, 'no trip this week to make the feed of');
   await page.clock.setFixedTime(new Date(pick.at));
   const T = Math.floor(pick.at / 1000), base = T - 30 - (pick.st[1][0] - 1) * 60;   // the epoch second of the day's minute 0
   const feedOf = (lat, lon) => ({ t: T, trips: { [pick.id]: { v: '9001', ts: T, s: pick.st.slice(1).map(([m, sid], i) => [sid, i + 2, base + m * 60, 0]) } },
@@ -798,7 +813,7 @@ test('which of its route\'s buses a bus is: on its card (Blue 2), and found by i
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
   await open(page, '#/');
-  const p = await page.evaluate(async () => {
+  const p = await onBusDay(page, () => page.evaluate(async () => {
     const { D, servicesOn, tripStops, nextTrip } = await import('/app/data.js');
     const { now } = await import('/app/time.js');
     const ymd = now().ymd, out = {};
@@ -809,8 +824,8 @@ test('which of its route\'s buses a bus is: on its card (Blue 2), and found by i
       out[/^\d+$/.test(key) ? 'num' : 'loop'] = { key, n: want + 1, of: bl.length, trip: D.trips[ti], lat: D.stops[si].lat, lon: D.stops[si].lon, spoken: D.routes[ri].long.replace(/ Loop$/, '') };
     }
     return out;
-  });
-  test.skip(!p.loop, 'no loop runs two buses today');
+  }).then(p => p.loop ? p : null));
+  test.skip(!p, 'no loop runs two buses this week');
   const t = Math.floor(Date.now() / 1000), bus = (label, x, dlat = 0) => ({ id: label, label, trip: x.trip, lat: x.lat + dlat, lon: x.lon, bearing: 90, speed: 5, ts: t - 2 });
   const short = await page.evaluate(async () => (await import('/app/data.js')).D.routes.map(r => r.short).find(s => /^\d{1,2}$/.test(s)));
   feed = { t, trips: {}, buses: [bus('9101', p.loop), ...(p.num ? [bus('9102', p.num)] : []), bus('9103', { ...p.loop, trip: short + '_9999' }, 0.004)] };
@@ -911,7 +926,7 @@ test('the Center: a bus back in at the end of its trip isn\'t its departure stil
   // late, until it took up its next trip. Made up from the timetable: a run whose next is an hour on or more (21 min down
   // isn't held for it: rt.js holdOf), the clock 21 minutes after it.
   await open(page);
-  const pick = await page.evaluate(async () => {
+  const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js');
     const c = t.now(), loops = d.D.hub.loops || [];
     for (const [si, s] of d.D.stops.entries()) {
@@ -925,8 +940,8 @@ test('the Center: a bus back in at the end of its trip isn\'t its departure stil
       }
     }
     return null;
-  });
-  test.skip(!pick, 'no hourly run from the Center today');
+  }));
+  test.skip(!pick, 'no hourly run from the Center this week');
   await page.clock.setFixedTime(new Date(pick.at));
   const r = await page.evaluate(async ({ ti, f, ri, dir, seq }) => {
     const d = await import('/app/data.js'), rtm = await import('/app/rt.js');
@@ -946,7 +961,7 @@ test('the Center: a departure still listed past its minute, its bus on its trip 
   // 3:06 PM, every 3:00 'leaving now, 6 min late': the feed still listed the Center on each 3:00 and had its bus on the
   // trip before, out on its run. Made up from the timetable: a route's half-hourly departure, the clock 6 minutes on.
   await open(page);
-  const pick = await page.evaluate(async () => {
+  const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js');
     const c = t.now(), loops = d.D.hub.loops || [];
     for (const [si, s] of d.D.stops.entries()) {
@@ -959,8 +974,8 @@ test('the Center: a departure still listed past its minute, its bus on its trip 
       }
     }
     return null;
-  });
-  test.skip(!pick, 'no half-hourly run from the Center today');
+  }));
+  test.skip(!pick, 'no half-hourly run from the Center this week');
   await page.clock.setFixedTime(new Date(pick.at));
   const r = await page.evaluate(async ({ ti, f, ri, dir }) => {
     const d = await import('/app/data.js'), rtm = await import('/app/rt.js');
@@ -982,7 +997,7 @@ test('the Center: a group NOW in its minute; gone by with one late route still i
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
   await open(page);
-  const pick = await page.evaluate(async () => {
+  const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
     const ps = d.nextPulse(80, c);
     for (const q of ps) {
@@ -998,7 +1013,7 @@ test('the Center: a group NOW in its minute; gone by with one late route still i
       return { q, runs, at: Date.now() + ((day * 1440 + q.min - c.min) * 60 + 30 - c.sec) * 1000 };
     }
     return null;
-  });
+  }));
   test.skip(!pick, 'no group of four routes or more with one 30 min after it this week');
   await page.clock.setFixedTime(new Date(pick.at));
   // `inbay` of the group's routes standing in their bays, late, the Center listed at their minute; the rest out on their
@@ -1144,7 +1159,7 @@ test('the Center: a bus two-thirds of a run down is held for its next run, which
   // Route 8's 2:00, its bus in at 2:27: 'leaving any second', when it went out on the 2:30 (2026-10-09). Made up from
   // the timetable: a route's half-hourly departure from the Center, the clock set to 22 minutes after it.
   await open(page);
-  const pick = await page.evaluate(async () => {
+  const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js');
     const c = t.now(), loops = d.D.hub.loops || [];
     for (const [si, s] of d.D.stops.entries()) {
@@ -1157,8 +1172,8 @@ test('the Center: a bus two-thirds of a run down is held for its next run, which
       }
     }
     return null;
-  });
-  test.skip(!pick, 'no half-hourly run from the Center today');
+  }));
+  test.skip(!pick, 'no half-hourly run from the Center this week');
   await page.clock.setFixedTime(new Date(pick.at));
   const r = await page.evaluate(async ({ ti, nx, f, ns, ri, dir }) => {
     const d = await import('/app/data.js'), rtm = await import('/app/rt.js');
@@ -1196,7 +1211,7 @@ test('an empty trip feed beside the buses: the last word stands for a minute and
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const pick = await page.evaluate(async src => {
+  const pick = await onBusDay(page, () => page.evaluate(async src => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [], seen = new Set();
     const stopsOf = new Function('return ' + src)();
     for (const [si] of D.stops.entries()) for (const row of d.timesOn(si, c.ymd)) {
@@ -1208,8 +1223,8 @@ test('an empty trip feed beside the buses: the last word stands for a minute and
       return { id: D.trips[row.trip], pts: stopsOf(d, row.trip), at: Date.now() + ((st[2][0] + 5 - c.min) * 60 + 30 - c.sec) * 1000 };
     }
     return null;
-  }, stopsOf.toString());
-  test.skip(!pick, 'no trip today to make the feed of');
+  }, stopsOf.toString()));
+  test.skip(!pick, 'no trip this week to make the feed of');
   const [m2, , lat, lon] = pick.pts[2], [m5, stop] = pick.pts[5], base = Math.floor(pick.at / 1000) - 30 - (m2 + 5) * 60;   // the day's minute 0
   const at = async (s, said) => {
     const T = relay.T = Math.floor(pick.at / 1000) + s;
@@ -1241,7 +1256,7 @@ test('the Center: a late bus\'s next run leaves when its bus is in, at the stops
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const pick = await page.evaluate(async src => {
+  const pick = await onBusDay(page, () => page.evaluate(async src => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [];
     const stopsOf = new Function('return ' + src)();
     for (const [si, s] of D.stops.entries()) {
@@ -1258,8 +1273,8 @@ test('the Center: a late bus\'s next run leaves when its bus is in, at the stops
       }
     }
     return null;
-  }, stopsOf.toString());
-  test.skip(!pick, 'no run from the Center today with its bus\'s run before it');
+  }, stopsOf.toString()));
+  test.skip(!pick, 'no run from the Center this week with its bus\'s run before it');
   const T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (pick.start + 2) * 60, late = pick.start + 8 - pick.was[pick.was.length - 1][0];
   // its bus on the run before, as late as that has it in 8 min after the run's minute, at the last stop it's been by
   const by = pick.was.filter(([m]) => base + (m + late) * 60 <= T), [, , lat, lon] = by[by.length - 1] || pick.was[0];
@@ -1285,7 +1300,7 @@ test('the Center: a bus\'s next run timed by the feed from the run before is Est
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const pick = await page.evaluate(async src => {
+  const pick = await onBusDay(page, () => page.evaluate(async src => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [];
     const stopsOf = new Function('return ' + src)();
     for (const [si, s] of D.stops.entries()) {
@@ -1305,8 +1320,8 @@ test('the Center: a bus\'s next run timed by the feed from the run before is Est
       }
     }
     return null;
-  }, stopsOf.toString());
-  test.skip(!pick, 'no run from the Center today with its bus\'s run before it');
+  }, stopsOf.toString()));
+  test.skip(!pick, 'no run from the Center this week with its bus\'s run before it');
   const T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (pick.start - 10) * 60, [, , lat, lon] = pick.by;
   relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.prev, lat, lon, bearing: 0, speed: 0, ts: T }], trips: {
     [pick.prev]: { v: '9001', ts: T, s: pick.was.map(([m, sid], i) => [sid, i, base + (m + pick.late) * 60, 0]).filter(x => x[2] > T) },
@@ -1356,8 +1371,8 @@ test('the Center\'s board follows the feed with the search box focused, its focu
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const run = await centreRun(page, 150);
-  test.skip(!run, 'no run from the Center today');
+  const run = await onBusDay(page, () => centreRun(page, 150));
+  test.skip(!run, 'no run from the Center this week');
   relay.feed = bayFeed(run, 0); relay.T = relay.feed.t;
   await page.clock.setFixedTime(new Date(run.at));
   await page.reload();
@@ -1386,8 +1401,8 @@ test('the Center back from the background: a bus that left while the app was awa
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const run = await centreRun(page, 150);
-  test.skip(!run, 'no run from the Center today');
+  const run = await onBusDay(page, () => centreRun(page, 150));
+  test.skip(!run, 'no run from the Center this week');
   relay.feed = bayFeed(run, 0); relay.T = relay.feed.t;
   await page.clock.setFixedTime(new Date(run.at));
   await page.reload();
@@ -1423,7 +1438,7 @@ test('a loop bus in early at the Center: the stops past it on the timetable from
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const pick = await page.evaluate(async src => {
+  const pick = await onBusDay(page, () => page.evaluate(async src => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, seen = new Set();
     const stopsOf = new Function('return ' + src)();
     for (const ri of D.hub.loops || []) for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const row of d.timesOn(si, c.ymd)) {
@@ -1434,8 +1449,8 @@ test('a loop bus in early at the Center: the stops past it on the timetable from
       return { id: D.trips[row.trip], pts: stopsOf(d, row.trip), k, at: Date.now() + ((st[k][0] - 3 - c.min) * 60 + 30 - c.sec) * 1000 };
     }
     return null;
-  }, stopsOf.toString());
-  test.skip(!pick, 'no loop trip today');
+  }, stopsOf.toString()));
+  test.skip(!pick, 'no loop trip this week');
   const T = relay.T = Math.floor(pick.at / 1000), [mk, , lat, lon] = pick.pts[pick.k];
   relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: 0, speed: 0, ts: T }], trips: {
     [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, i === pick.k ? T - 10 : T - 10 + 680 + (m - mk) * 60, 0]).slice(pick.k) } } };
@@ -1454,7 +1469,7 @@ test('a loop\'s next run with no word on it from the feed: as late at the Center
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const pick = await page.evaluate(async src => {
+  const pick = await onBusDay(page, () => page.evaluate(async src => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, seen = new Set();
     const stopsOf = new Function('return ' + src)();
     for (const ri of D.hub.loops || []) for (const si of new Set(Object.values(D.routes[ri].stops || {}).flat())) for (const row of d.timesOn(si, c.ymd)) {
@@ -1468,8 +1483,8 @@ test('a loop\'s next run with no word on it from the feed: as late at the Center
       return { id: D.trips[row.trip], next: D.trips[nx], pts: stopsOf(d, row.trip), j, hub: [ns[k][0], D.stops[ns[k][1]].id], at: Date.now() + ((st[j][0] + 4 - c.min) * 60 + 30 - c.sec) * 1000 };
     }
     return null;
-  }, stopsOf.toString());
-  test.skip(!pick, 'no loop trip today with one after it');
+  }, stopsOf.toString()));
+  test.skip(!pick, 'no loop trip this week with one after it');
   const T = relay.T = Math.floor(pick.at / 1000), [mj, , lat, lon] = pick.pts[pick.j], base = T - 30 - (mj + 4) * 60;
   relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: 0, speed: 0, ts: T }], trips: {
     [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m + 4) * 60, 0]).slice(pick.j + 1) } } };
@@ -1489,7 +1504,7 @@ test('a timed stop on the way: a bus ahead waits there, and it and the stops aft
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const pick = await page.evaluate(async src => {
+  const pick = await onBusDay(page, () => page.evaluate(async src => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), D = d.D, loops = D.hub.loops || [], seen = new Set();
     const stopsOf = new Function('return ' + src)();
     const routes = D.routes.map((r, ri) => ri).filter(ri => !loops.includes(ri) && !D.routes[ri].op).sort((a, b) => (D.routes[b].short === '15') - (D.routes[a].short === '15'));
@@ -1501,8 +1516,8 @@ test('a timed stop on the way: a bus ahead waits there, and it and the stops aft
       return { id: D.trips[row.trip], pts: stopsOf(d, row.trip), k, at: Date.now() + ((st[k - 1][0] - 3 - c.min) * 60 + 30 - c.sec) * 1000 };
     }
     return null;
-  }, stopsOf.toString());
-  test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
+  }, stopsOf.toString()));
+  test.skip(!pick, 'no route\'s trip this week with a timed stop on the way');
   const [mj, , lat, lon] = pick.pts[pick.k - 1], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mj - 3) * 60;   // the day's minute 0
   relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: 0, speed: 0, ts: T }], trips: {
     [pick.id]: { v: '9001', ts: T, s: pick.pts.map(([m, sid], i) => [sid, i, base + (m - 3) * 60, 0]).slice(pick.k) } } };
@@ -1546,8 +1561,8 @@ async function goneEarly(page, kept) {
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const pick = await earlyPick(page);
-  test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
+  const pick = await onBusDay(page, () => earlyPick(page));
+  test.skip(!pick, 'no route\'s trip this week with a timed stop on the way');
   const [mk] = pick.pts[pick.k], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mk - 3) * 60;   // the day's minute 0
   const [lat, lon, bearing] = pick.spot;
   relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: Math.round(bearing), speed: 9, ts: T }], trips: {
@@ -1591,8 +1606,8 @@ test('a route on an old timetable: no bus called early by it, and its card, rout
   await stageRelay(page, relay);
   await page.route(/\/data\/cvtd\.json/, async r => { const res = await r.fetch(), j = await res.json(); for (const x of j.routes) x.kept = '2026-10-21'; await r.fulfill({ response: res, json: j }); });
   await open(page);
-  const pick = await earlyPick(page);
-  test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
+  const pick = await onBusDay(page, () => earlyPick(page));
+  test.skip(!pick, 'no route\'s trip this week with a timed stop on the way');
   const [mk, sk] = pick.pts[pick.k], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mk - 3) * 60;
   const [lat, lon, bearing] = pick.spot;
   relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: Math.round(bearing), speed: 9, ts: T }], trips: {
@@ -1629,8 +1644,8 @@ test('a bus the relay saw go by a timed stop early: its stops ahead early from o
   const relay = { T: 0, feed: null, early: [], alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const pick = await earlyPick(page);
-  test.skip(!pick, 'no route\'s trip today with a timed stop on the way');
+  const pick = await onBusDay(page, () => earlyPick(page));
+  test.skip(!pick, 'no route\'s trip this week with a timed stop on the way');
   const [mk, sk] = pick.pts[pick.k], T = relay.T = Math.floor(pick.at / 1000), base = T - 30 - (mk - 3) * 60;
   const [lat, lon, bearing] = pick.spot;
   relay.feed = { t: T, now: T, buses: [{ id: '9001', label: '9001', trip: pick.id, lat, lon, bearing: Math.round(bearing), speed: 9, ts: T }], trips: {
@@ -1938,15 +1953,41 @@ test('a season\'s route goes with its season: the Pumpkin Walk off the home page
 // card in place of 'No buses today' on the day itself. Staged by the clock alone: the timetable is the real one.
 /** The agency's noon on a day ('2026-11-25'), in its winter time. */
 const noon = ymd => new Date(ymd + 'T12:00:00-07:00');
+/** A day k days on from another, each 'yyyy-mm-dd'. */
+const dayOn = (ymd, k) => new Date(Date.parse(ymd + 'T12:00:00Z') + k * 864e5).toISOString().slice(0, 10);
+/** The holidays to stage, worked out from today, so the tests hold every year: the next Thanksgiving (the fourth
+ *  Thursday of November, 'yyyy-mm-dd') and the next Christmas season (14 to 26 December: its year) whose first day
+ *  staged (the Wednesday before; the 13th) is after today and one the timetable covers (Connect now and then publishes
+ *  a timetable ahead, starting after today: a day staged before it has no buses to be back by). */
+async function holidays(page) {
+  const j = await (await page.request.get('/data/cvtd.json')).json(), ops = new Set(j.routes.filter(r => r.op).map(r => r.op.service));
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
+  const first = j.services.filter(x => !ops.has(x.id)).map(x => x.start.replace(/(\d{4})(\d\d)(\d\d)/, '$1-$2-$3')).sort()[0];
+  const from = [dayOn(today, 1), first].sort()[1];
+  const tg = y => { const nov = new Date(Date.UTC(y, 10, 1)).getUTCDay(); return dayOn(y + '-11-01', (4 - nov + 7) % 7 + 21); };
+  let y = +today.slice(0, 4), x = y;
+  while (dayOn(tg(y), -1) < from) y++;
+  while (x + '-12-13' < from) x++;
+  return { thanksgiving: tg(y), christmas: x };
+}
 /** A stop with buses after today, and its first after today as a stop's card says it ('Back Saturday · first bus',
- *  '10:15 AM'), by the timetable; and the Center's first pulse after today, as its card says it. */
+ *  '10:15 AM'), by the timetable; and the Center's first pulse after today, as its card says it. `hubRuns`: a bus leaves
+ *  the Center today all the same, another operator's (tools/prt.json keeps PRT's holidays by hand, a year at a time:
+ *  its 2027 ones weren't posted yet in November 2026), so its board has that bus, not the card. */
 async function backTimes(page) {
   return page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
     const say = (b, what) => ({ words: 'Back ' + t.dayName(b.ymd) + ' · ' + what, time: t.clockText(b.min) });
     const si = d.D.stops.findIndex((s, i) => !s.hub && !s.out && s.routes.length && d.nextAt(i, 7, c).some(x => x.day > 0));
-    return { stop: d.D.stops[si].id, atStop: say(d.nextAt(si, 7, c).find(x => x.day > 0), 'first bus'), atHub: say(d.nextPulse(1, c)[0], 'first pulse') };
+    return { stop: d.D.stops[si].id, atStop: say(d.nextAt(si, 7, c).find(x => x.day > 0), 'first bus'), atHub: say(d.nextPulse(1, c)[0], 'first pulse'),
+      hubRuns: d.D.hub.bays.some(b => d.timesOn(b.stop, c.ymd).length > 0) };
   });
+}
+/** The Center's board on a day without the agency's buses where another operator's still leaves it (backTimes hubRuns):
+ *  that bus's line, no day's card. */
+async function hubOthers(page) {
+  await expect(page.locator('a.tcl-row').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.holcard')).toHaveCount(0);
 }
 /** The season's dressing over the map: which one is up, and whether it's drawn. */
 const deco = page => page.evaluate(() => { const d = document.getElementById('hol-deco'), s = d && d.querySelector('.hol-swag'); return { season: document.documentElement.dataset.season || null, on: d ? d.dataset.s : null, shown: !!s && s.getBoundingClientRect().height > 0 }; });
@@ -1971,9 +2012,10 @@ async function hungRight(page, swag, info, drop) {
 
 test('Thanksgiving: the garland on the map from the Wednesday before, never in the way of a tap, and no card while the buses run', async ({ page }, info) => {
   // Aaron's sketch: a twine swag of leaves, wheat and two gourds hung from the bottom of a phone's search box (along the
-  // top of a wide screen's map). Wednesday 25 Nov 2026, noon: up on the map, and still beside a stop and the Center;
-  // its taps go through to the map; a stop's page and the Center's board run as ever, no card.
-  await page.clock.setFixedTime(noon('2026-11-25'));
+  // top of a wide screen's map). The Wednesday before Thanksgiving, noon: up on the map, and still beside a stop and the
+  // Center; its taps go through to the map; a stop's page and the Center's board run as ever, no card.
+  const { thanksgiving: tg } = await holidays(page);
+  await page.clock.setFixedTime(noon(dayOn(tg, -1)));
   await open(page, '#/map');
   await mapReady(page);
   expect(await deco(page)).toEqual({ season: 'thanksgiving', on: 'thanksgiving', shown: true });
@@ -1991,14 +2033,16 @@ test('Thanksgiving: the garland on the map from the Wednesday before, never in t
 });
 
 test('Thanksgiving Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse', PHONE, async ({ page }) => {
-  // Thursday 26 Nov 2026: 'No buses today', 'Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!', and when
+  // Thanksgiving Day: 'No buses today', 'Connect doesn't run on Thanksgiving Day. Happy Thanksgiving!', and when
   // they're back, from the timetable, never written in: at a stop its first bus after today, at the Center the first
-  // pulse (the feed takes this year's Friday off too, so that's Saturday's). In the plain callout's place.
-  await page.clock.setFixedTime(noon('2026-11-26'));
+  // pulse (the feed of 2026 took that Friday off too, so it was Saturday's). In the plain callout's place.
+  const { thanksgiving: tg } = await holidays(page);
+  await page.clock.setFixedTime(noon(tg));
   await open(page);
   const t = await backTimes(page);
   for (const [hash, back] of [['#/stop/' + t.stop, t.atStop], ['#/hub', t.atHub]]) {
     await go(page, hash);
+    if (hash === '#/hub' && t.hubRuns) { await hubOthers(page); continue; }
     const card = page.locator('.holcard.hol-thanksgiving').first();
     await expect(card).toBeAttached();
     await expect(card.locator('svg.hol-art')).toHaveAttribute('role', 'img');
@@ -2015,9 +2059,10 @@ test('Thanksgiving Day: its card at a stop and at the Center, back at the timeta
 });
 
 test('Thanksgiving goes by itself: the Friday after, the garland and no card; the Saturday, none of it', PHONE, async ({ page }) => {
-  // Friday 27 Nov 2026 is the season's last day: the garland's up. Not Thanksgiving Day, so a day without buses (the
-  // feed's, this year) is the plain 'No buses today'. Saturday 28 Nov, noon: no garland, no season.
-  await page.clock.setFixedTime(noon('2026-11-27'));
+  // The Friday after is the season's last day: the garland's up. Not Thanksgiving Day, so a day without buses (the
+  // feed of 2026 took that Friday off) is the plain 'No buses today'. The Saturday, noon: no garland, no season.
+  const { thanksgiving: tg } = await holidays(page);
+  await page.clock.setFixedTime(noon(dayOn(tg, 1)));
   await open(page, '#/map');
   await mapReady(page);
   expect(await deco(page)).toEqual({ season: 'thanksgiving', on: 'thanksgiving', shown: true });
@@ -2025,7 +2070,7 @@ test('Thanksgiving goes by itself: the Friday after, the garland and no card; th
   await go(page, '#/stop/' + t.stop);
   await expect(page.locator('.stop-page').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.holcard')).toHaveCount(0);
-  await page.clock.setFixedTime(noon('2026-11-28'));
+  await page.clock.setFixedTime(noon(dayOn(tg, 2)));
   await page.goto('about:blank');
   await open(page, '#/map');
   await mapReady(page);
@@ -2059,13 +2104,14 @@ async function stageBus(page, feed) {
 
 test('Christmas: the lights from the 14th, a glow in the light theme and halos in the dark, a twinkle but not with reduced motion, never in the way of a tap', async ({ page }, info) => {
   // Aaron's sketch: old C9 bulbs in red, gold, green and blue swagged where Thanksgiving's garland hung, each with a
-  // glow and a slow twinkle; 'is christmas dark mode only?': both, the light theme's glow soft. Sunday 13 Dec 2026:
-  // nothing. Monday 14 Dec, noon: the lights, hung where they go, the map's width, every point along them the map's.
-  await page.clock.setFixedTime(noon('2026-12-13'));
+  // glow and a slow twinkle; 'is christmas dark mode only?': both, the light theme's glow soft. 13 December: nothing.
+  // The 14th, noon: the lights, hung where they go, the map's width, every point along them the map's.
+  const { christmas: y } = await holidays(page);
+  await page.clock.setFixedTime(noon(y + '-12-13'));
   await open(page, '#/map');
   await mapReady(page);
   expect(await deco(page)).toEqual({ season: null, on: null, shown: false });
-  await page.clock.setFixedTime(noon('2026-12-14'));
+  await page.clock.setFixedTime(noon(y + '-12-14'));
   await page.goto('about:blank');
   await open(page, '#/map');
   await mapReady(page);
@@ -2085,14 +2131,21 @@ test('Christmas: the lights from the 14th, a glow in the light theme and halos i
 });
 
 test('Christmas at the Center and on the map: snow on the bays\' badges and roofs, banked at their feet, a tree in its mound; a wreath on a bus, the dark theme\'s in the dark', PHONE, async ({ page }) => {
-  // Monday 14 Dec 2026, a minute past noon. At the Center (a phone's: its bays are the map) each bay's badge wears a cap
-  // of snow, the hall and its canopies are whited over and banked with snow at their feet, a tree in its mound by the doors. A Connect bus
-  // on the map, staged on its trip, wears a wreath at its top right, upright, the light theme's; in the dark theme,
-  // the dark one. Sunday 27 Dec: none of it.
+  // The season's first day with buses (the 14th, or the 15th after a Sunday), a minute past noon. At the Center (a
+  // phone's: its bays are the map) each bay's badge wears a cap of snow, the hall and its canopies are whited over and
+  // banked with snow at their feet, a tree in its mound by the doors. A Connect bus on the map, staged on its trip,
+  // wears a wreath at its top right, upright, the light theme's; in the dark theme, the dark one. The 27th: none of it.
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed && feed.buses ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
-  await page.clock.setFixedTime(new Date('2026-12-14T12:01:00-07:00'));
+  const { christmas: y } = await holidays(page), at = k => new Date(dayOn(y + '-12-14', k) + 'T12:01:00-07:00');
+  await page.clock.setFixedTime(at(0));
   await open(page);
+  feed = {};
+  let pick = null;
+  for (let k = 0; k < 10 && !pick; k++) { await page.clock.setFixedTime(at(k)); pick = await stageBus(page, feed); }
+  expect(pick, 'a bus out at noon in the season').not.toBeNull();
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
   const hook = () => page.evaluate(async () => { const m = await import('/vendor/maplibre-gl.mjs'), g = m.Map.prototype.getSource; m.Map.prototype.getSource = function (id) { window.__map = this; return g.call(this, id); }; });
   await hook();
   await go(page, '#/hub');
@@ -2107,10 +2160,6 @@ test('Christmas at the Center and on the map: snow on the bays\' badges and roof
   await expect(page.locator('.hol-drifts, .hol-drift')).toHaveCount(0);
   // Under the badges and never a tap's.
   expect(await page.locator('.maplibregl-marker.hol-treemark').first().evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
-  feed = {};
-  const pick = await stageBus(page, feed);
-  test.skip(!pick, 'nothing running at noon that Monday');
-  await page.reload();
   await go(page, '#/stop/' + pick.next);
   const bus = page.locator('.maplibregl-marker.bus:not(.shuttle)').first();
   await expect(bus).toBeAttached({ timeout: 40_000 });   // a staged bus is placed once the map and the feed have settled: on a busy machine, past twenty seconds
@@ -2125,7 +2174,7 @@ test('Christmas at the Center and on the map: snow on the bays\' badges and roof
   await go(page, '#/stop/' + pick.next);
   await expect(page.locator('.maplibregl-marker.bus:not(.shuttle) .hol-wd').first()).toBeVisible({ timeout: 40_000 });
   await expect(page.locator('.maplibregl-marker.bus:not(.shuttle) .hol-wl').first()).toBeHidden();
-  await page.clock.setFixedTime(new Date('2026-12-27T12:01:00-07:00'));
+  await page.clock.setFixedTime(new Date(y + '-12-27T12:01:00-07:00'));
   await page.goto('about:blank');
   await open(page, '#/stop/' + pick.next);
   expect((await deco(page)).season).toBe(null);
@@ -2133,14 +2182,17 @@ test('Christmas at the Center and on the map: snow on the bays\' badges and roof
 });
 
 test('Christmas Day: its card at a stop and at the Center, back at the timetable\'s first bus and first pulse; the 26th the lights and no card, the 27th none', PHONE, async ({ page }) => {
-  // Friday 25 Dec 2026: the sketch's snowy night and two buses asleep under the Center's roof, 'No buses today',
-  // 'Connect doesn't run on Christmas Day. Merry Christmas!', and when they're back from the timetable (Saturday's first
-  // pulse, this year). Saturday 26 Dec, the season's last day: the lights, the buses running, no card. Sunday 27: none.
-  await page.clock.setFixedTime(noon('2026-12-25'));
+  // Christmas Day: the sketch's snowy night and two buses asleep under the Center's roof, 'No buses today', 'Connect
+  // doesn't run on Christmas Day. Merry Christmas!', and when they're back from the timetable (in 2026, Saturday's
+  // first pulse). The 26th, the season's last day: the lights, no card (the buses running, or the plain 'No buses
+  // today' on a Sunday). The 27th: none.
+  const { christmas: y } = await holidays(page);
+  await page.clock.setFixedTime(noon(y + '-12-25'));
   await open(page);
   const t = await backTimes(page);
   for (const [hash, back] of [['#/stop/' + t.stop, t.atStop], ['#/hub', t.atHub]]) {
     await go(page, hash);
+    if (hash === '#/hub' && t.hubRuns) { await hubOthers(page); continue; }
     const card = page.locator('.holcard.hol-christmas').first();
     await expect(card).toBeAttached();
     await expect(card.locator('svg.hol-art')).toHaveAttribute('role', 'img');
@@ -2152,9 +2204,11 @@ test('Christmas Day: its card at a stop and at the Center, back at the timetable
     await expect(page.locator('.holcard')).toHaveCount(1);
     await expect(page.locator('.callout, .tcl-note').filter({ hasText: 'No buses today' })).toHaveCount(0);
   }
-  expect(t.atHub.words).toMatch(/^Back Saturday · first pulse$/);   // the 26th a Saturday that runs, this year's timetable
+  // the day it's back the timetable's next day with buses, by its calendars (as the Center's first pulse is found)
+  const back = await page.evaluate(async () => { const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(); let k = 1; while (k < 14 && !d.agencyRuns(t.dayFrom(c.ymd, k).ymd)) k++; return t.dayName(t.dayFrom(c.ymd, k).ymd); });
+  if (!t.hubRuns) expect(t.atHub.words).toBe('Back ' + back + ' · first pulse');
   expect((await deco(page)).season).toBe('christmas');
-  for (const [ymd, season] of [['2026-12-26', 'christmas'], ['2026-12-27', null]]) {
+  for (const [ymd, season] of [[y + '-12-26', 'christmas'], [y + '-12-27', null]]) {
     await page.clock.setFixedTime(noon(ymd));
     await page.goto('about:blank');
     await open(page, '#/stop/' + t.stop);
@@ -2391,7 +2445,7 @@ test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time
   // The user: 'i'd like to be able to see the previous times in the day. i think the rest of today maybe should be the
   // whole day all the time', and of a time tapped there: 'i'd like to be able to tell if its green 1,2, or 3'.
   await open(page);
-  const pick = await page.evaluate(async () => {
+  const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), loops = d.D.hub.loops || [];
     for (const ri of loops) for (const [si, s] of d.D.stops.entries()) {
       if (s.hub) continue;
@@ -2401,8 +2455,8 @@ test('stop: the whole day an hour to a column, the gone ones too; a loop\'s time
       return { id: s.id, first: Math.floor(Math.min(...all) / 60), letter: d.D.routes[ri].short, spoken: d.D.routes[ri].long.replace(/ Loop$/, '') };
     }
     return null;
-  });
-  test.skip(!pick, 'no loop with numbered buses today');
+  }));
+  test.skip(!pick, 'no loop with numbered buses this week');
   await go(page, '#/stop/' + pick.id);
   const day = page.locator('.ws-day').filter({ visible: true }).first();
   await expect(day.locator('.ws-eye span').first()).toHaveText(/^Today$/i);
@@ -2489,7 +2543,7 @@ test('map: a picked bus is where it is, its card from the stop it reaches next a
   let feed = null;
   await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
   await open(page);
-  const pick = await page.evaluate(async () => {
+  const pick = await onBusDay(page, () => page.evaluate(async () => {
     const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), seen = new Set();
     for (const ri of d.D.hub.loops || []) for (const si of new Set(Object.values(d.D.routes[ri].stops || {}).flat())) for (const row of d.timesOn(si, c.ymd)) {
       if (row.r !== ri || seen.has(row.trip)) continue;
@@ -2506,8 +2560,8 @@ test('map: a picked bus is where it is, its card from the stop it reaches next a
         last: [(y.lat + z.lat) / 2, (y.lon + z.lon) / 2], lastCourse: d.bearing(y.lat, y.lon, z.lat, z.lon) };
     }
     return null;
-  });
-  test.skip(!pick, 'no loop trip today to make the feed of');
+  }));
+  test.skip(!pick, 'no loop trip this week to make the feed of');
   await page.clock.setFixedTime(new Date(pick.at));
   const T = Math.floor(pick.at / 1000), base = T - 30 - pick.min * 60, L = pick.pts.length - 1, end = pick.pts[L];
   const bus = { id: '9001', label: '9001', trip: pick.id, lat: pick.lat, lon: pick.lon, bearing: pick.course, speed: 8, ts: T };
@@ -2662,8 +2716,8 @@ test('Transit Center: a bus standing in it is a badge in its label, its own mark
   const relay = { T: 0, feed: null, alerts: () => [] };
   await stageRelay(page, relay);
   await open(page);
-  const run = await centreRun(page, 30);
-  test.skip(!run, 'no run from the Center today');
+  const run = await onBusDay(page, () => centreRun(page, 30));
+  test.skip(!run, 'no run from the Center this week');
   relay.feed = bayFeed(run, 0); relay.T = relay.feed.t;
   await page.clock.setFixedTime(new Date(run.at));
   await page.reload();
@@ -3238,8 +3292,8 @@ test('a picked bus\'s way on through a stop closed with no way round known: left
   relay.alerts = () => [stopClosure(relay, 'a990105', ['11'], [GW760])];
   await stageRelay(page, relay);
   await open(page);
-  const p11 = await tripThrough(page, '11', [GW358, GW760, E690]);
-  test.skip(!p11, 'no Route 11 trip today by 358 North, 760 South Gateway Drive and 690 South 100 East in a row');
+  const p11 = await onBusDay(page, () => tripThrough(page, '11', [GW358, GW760, E690]));
+  test.skip(!p11, 'no Route 11 trip this week by 358 North, 760 South Gateway Drive and 690 South 100 East in a row');
   await busOnTrip(page, relay, p11, p11.k, p11.short);
   const gw760 = await stopAt(page, GW760), [KX, KY] = KXY;
   const clear = async () => {
@@ -3261,10 +3315,8 @@ test('a holiday: no buses on Thanksgiving, said by its name; the evening before,
   // day after is the feed's to give or take off (the feed of 2026-11-19 took the Friday off): the next day with buses
   // is worked out from the timetable, and a day taken off unnamed is said by its date, not 'on Fridays'.
   // On the day itself Thanksgiving's card says when they're back (holiday.js), where 'Service resumes …' was.
-  const today = new Date();
-  let tg = null;
-  for (let y = today.getFullYear(); !tg; y++) { const d = new Date(y, 10, 1); d.setDate(1 + (4 - d.getDay() + 7) % 7 + 21); if (d > today) tg = d; }
-  const at = (k, hm) => { const d = new Date(tg); d.setDate(d.getDate() + k); return new Date(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}:00-07:00`); };
+  const { thanksgiving: tg } = await holidays(page);
+  const at = (k, hm) => new Date(`${dayOn(tg, k)}T${hm}:00-07:00`);
   await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
   await page.clock.setFixedTime(at(0, '12:00'));
   await open(page, '#/stop/7543017');   // Island Market: Route 3, every weekday
@@ -3280,8 +3332,12 @@ test('a holiday: no buses on Thanksgiving, said by its name; the evening before,
   await expect(page.getByText('Connect doesn\'t run on Thanksgiving Day.').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.holcard-back span').filter({ visible: true }).first()).toHaveText(new RegExp('^Back ' + plan.day + ' · first bus'));
   await go(page, '#/hub');
-  await expect(page.getByText(new RegExp('^(Tomorrow · )?' + plan.day, 'i')).filter({ visible: true }).first()).toBeVisible();
-  await expect(page.getByText('The rest of today')).toHaveCount(0);
+  const t = await backTimes(page);
+  if (t.hubRuns) await hubOthers(page);
+  else {
+    await expect(page.getByText(new RegExp('^(Tomorrow · )?' + plan.day, 'i')).filter({ visible: true }).first()).toBeVisible();
+    await expect(page.getByText('The rest of today')).toHaveCount(0);
+  }
   for (const o of plan.off) expect(o.words).toBe(`Connect doesn't run on ${o.date}.`);   // never 'on Fridays'
   await page.clock.setFixedTime(at(-1, '21:30'));
   await go(page, '#/stop/7543017');
