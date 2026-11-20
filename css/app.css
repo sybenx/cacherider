@@ -1697,6 +1697,10 @@ a.side:active { background: var(--cr-hover); }
 .ds-head .badge { min-width: 18px; padding: 0 2px; letter-spacing: -.02em; }
 .ds-head a { display: flex; text-decoration: none; }
 .ds-body { position: relative; display: flex; }
+.ds-foot { position: sticky; bottom: 0; z-index: 3; display: flex; padding: 5px 0; background: var(--color-bg); border-top: 1px solid var(--cr-line); }
+.ds-foot .ds-corner { display: flex; align-items: center; padding-left: 4px; box-sizing: border-box; font-size: 0.6875rem; color: var(--cr-muted); }
+.ds-vn { position: absolute; top: 0; width: 46px; line-height: 22px; text-align: center; font-size: 0.75rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--cr-now, #d93025); text-decoration: none; }
+@media (hover: hover) { .ds-vn:hover { text-decoration: underline; } }
 .ds-axis { position: sticky; left: 0; z-index: 2; flex: none; width: 56px; background: var(--color-bg); pointer-events: none; }
 .ds-body svg { display: block; flex: none; }
 .ds-hr { position: absolute; left: 4px; transform: translateY(-50%); font-size: 0.6875rem; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
@@ -1710,6 +1714,7 @@ a.side:active { background: var(--cr-hover); }
 .ds-num { font: 800 10px/1 var(--font-heading); }
 .ds-bus { fill: var(--color-bg); stroke: var(--cr-now, #d93025); stroke-width: 2.5; pointer-events: none; }
 .ds-bus.live { fill: var(--cr-now, #d93025); stroke: var(--color-bg); }
+.ds-busl .ds-bus { pointer-events: auto; cursor: pointer; }
 .ds-off { stroke: var(--cr-now, #d93025); stroke-width: 2; stroke-dasharray: 2 3; stroke-linecap: round; pointer-events: none; }
 .ds-late { fill: var(--cr-now, #d93025); font-size: 10px; font-weight: 700; pointer-events: none; }
 .rd-late { position: absolute; font-size: 12px; font-weight: 700; color: var(--cr-now, #d93025); white-space: nowrap; pointer-events: none; background: var(--color-bg); padding: 0 3px; border-radius: 3px; }

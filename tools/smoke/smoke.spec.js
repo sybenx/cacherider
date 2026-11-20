@@ -319,7 +319,7 @@ test('the Transit Center\'s day: every bus a column, opened at now, a run a tap 
   await expect(page.locator('.daystrip').filter({ visible: true })).toHaveCount(0);
 });
 
-test('a bus off its timetable: the day view\'s red dot where it is and an empty one where it should be; its row says which of the route\'s buses it is', async ({ page }) => {
+test('a bus off its timetable: the day view\'s red dot where it is and an empty one where it should be, its number at the foot; its row says which of the route\'s buses it is', async ({ page }) => {
   // The user: 'the new day view needs to show when buses are off their schedule ... red dots that show live position
   // and the empty dots on the line show the scheduled time', and of the route page: 'clicking different buses i'd like
   // to be able to see 15 1, 2, or 3'. A Route 15 bus staged 6 minutes late at noon on a weekday, when it runs three.
@@ -339,7 +339,7 @@ test('a bus off its timetable: the day view\'s red dot where it is and an empty 
   // Its day: the red dot six minutes up the line from now, the empty one on the now line, a dotted stroke between.
   await go(page, '#/map/route/15?day=1');
   const day = page.locator('.routeday').filter({ visible: true });
-  await expect(day.locator('.rd-late')).toHaveText(['6 min late']);
+  await expect(day.locator('.rd-late')).toHaveText(['Bus 9005 · 6 min late']);   // which bus, too
   await expect(day.locator('.ds-off')).toHaveCount(1);
   const ys = await day.locator('.ds-off').evaluate(l => [...l.parentNode.querySelectorAll('.ds-bus')].map(c => ({ live: c.classList.contains('live'), y: +c.getAttribute('cy') })));
   const live = ys.find(c => c.live), ring = ys.find(c => !c.live && c.y > live.y);
@@ -348,6 +348,11 @@ test('a bus off its timetable: the day view\'s red dot where it is and an empty 
   // The Center's day: the same bus, '+6' by its dot.
   await go(page, '#/hub?day=1');
   await expect(page.locator('.daystrip:not(.routeday) .ds-late').filter({ visible: true })).toHaveText(['+6']);
+  // And its number in the bar at the foot, under its column, a way to it on the map; its dot's hover says it all.
+  const vn = page.locator('.daystrip:not(.routeday) .ds-foot .ds-vn').filter({ visible: true });
+  await expect(vn).toHaveText(['9005']);
+  await expect(vn).toHaveAttribute('href', '#/map/bus/c%3A9005');
+  await expect(page.locator('.daystrip:not(.routeday) .ds-busl title')).toHaveText(['Bus 9005 · 6 min late']);
 });
 
 test('a route\'s day: its buses down the day at 6 px a minute, its timed stops by name, opened at now; the 16 with the Preston commuter in its gap', async ({ page }) => {

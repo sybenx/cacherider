@@ -113,17 +113,21 @@ const liveOn = today => !today || rtStale() ? new Map() : new Map(rt.buses.map(b
  *  on an old timetable can't say), one red dot at now. Off its schedule by 2 minutes or more (lateWords' line), the red
  *  dot is where the bus really is, at the minute its timetable has it there (6 min late: 6 minutes back up the line),
  *  and an empty dot at now is where it should be, a dotted red stroke between them (the user: 'red dots that show live
- *  position and the empty dots on the line show the scheduled time'). Where the feed hasn't it, the empty dot alone. */
+ *  position and the empty dots on the line show the scheduled time'). Where the feed hasn't it, the empty dot alone.
+ *  The red dot says which bus it is ('can we also show the bus number itself on the all day view'): a hover's title,
+ *  'Bus 4006 · 6 min late', and a tap to it on the map. `bus`: the feed's bus, for a label beside it. */
 function nowDot(b, live, nowMin, y, lx, on, past, r) {
   const seenOn = b.runs.find(x => x.trips.some(ti => live.has(ti))), cur = b.runs.find(x => on(x.a) && !past(x.b));
   const x = seenOn || cur;
-  if (!x) return { svg: '', dl: null };
+  if (!x) return { svg: '', dl: null, bus: null };
   const X = lx(x), ny = y(nowMin), dot = (cy, cls) => `<circle cx="${X}" cy="${cy}" r="${r}" class="ds-bus${cls}"/>`;
   const bus = seenOn ? live.get(x.trips.find(ti => live.has(ti))) : null;
-  const dl = bus && !isLoop(bus.ri) && !keptOn(bus.ri) ? busDelay(bus) : null;
-  if (dl === null || Math.abs(dl) < 2) return { svg: dot(ny, bus ? ' live' : ''), dl: null };
-  const ly = y(nowMin - dl);
-  return { svg: `<line x1="${X}" x2="${X}" y1="${ny}" y2="${ly}" class="ds-off"/>${dot(ny, '')}${dot(ly, ' live')}`, dl, X, ly };
+  if (!bus) return { svg: dot(ny, ''), dl: null, bus: null, X, ly: ny };
+  const d = !isLoop(bus.ri) && !keptOn(bus.ri) ? busDelay(bus) : null, dl = d !== null && Math.abs(d) >= 2 ? d : null;
+  const say = esc('Bus ' + bus.label + (dl !== null ? ' · ' + lateWords(dl) : ''));
+  const ly = dl === null ? ny : y(nowMin - dl);
+  const red = `<a href="#/map/bus/${encodeURIComponent(bus.id)}" class="ds-busl" aria-label="${say}"><title>${say}</title>${dot(ly, ' live')}</a>`;
+  return { svg: dl === null ? red : `<line x1="${X}" x2="${X}" y1="${ny}" y2="${ly}" class="ds-off"/>${dot(ny, '')}${red}`, dl, bus, X, ly };
 }
 /** The strip: the hours down the left, held there; the buses' heads along the top, held there as the day scrolls under
  *  them, each route's badge a way to that route's day (his mockup's 'tap a head'; `dayK`, the day picked); a column a bus. Each run a way into its stops
@@ -143,6 +147,7 @@ export function strip(clockNow, today = true, dayK = '') {
     svg += `<line x1="0" x2="${W}" y1="${y(m)}" y2="${y(m)}" class="ds-grid"/>`;
   }
   const heads = buses.map((b, c) => `<span class="ds-head" style="left:${c * CW}px">${b.ris.filter((ri, i, a) => a.findIndex(x => familyKey(x) === familyKey(ri)) === i).slice(0, 2).map(ri => `<a href="#/map/route/${encodeURIComponent(familyKey(ri) === 'PRT' ? D.routes[ri].short : familyKey(ri))}?day=1&on=${dayK}" aria-label="${routeName(ri)} through the day">${badge(ri, 20).s}</a>`).join('')}</span>`).join('');
+  const feet = [];   // each column's bus in the feed now, for the bar at the foot
   buses.forEach((b, c) => {
     const lanes = b.keys.slice(0, 3), cx = c * CW + CW / 2, gap = lanes.length === 3 ? 12 : 14;
     const lx = x => cx + (Math.max(0, lanes.indexOf(familyKey(x.r))) - (lanes.length - 1) / 2) * gap;
@@ -173,11 +178,16 @@ export function strip(clockNow, today = true, dayK = '') {
     if (nowY !== null) {
       const d = nowDot(b, live, clockNow.min, y, lx, on, past, 6);
       g += d.svg;
+      if (d.bus) feet[c] = d.bus;
       if (d.dl !== null) g += `<text x="${d.X + 9}" y="${d.ly + 3}" class="ds-late">${d.dl > 0 ? '+' : '−'}${Math.abs(d.dl)}</text>`;
     }
     svg += `<g>${g}</g>`;
   });
   if (nowY !== null) { svg += `<line x1="0" x2="${W}" y1="${nowY}" y2="${nowY}" class="ds-now"/>`; axis += `<span class="ds-hr ds-nowt" style="top:${nowY}px">${clockShort(clockNow.min)}</span>`; }
+  // The bar at the foot, held there as the heads are at the top: under each column the number of the bus out on it
+  // now, a tap to it on the map. The user: 'can we also show the bus number itself on the all day view', then 'a bar at
+  // the bottom maybe?'. The columns are too narrow to write it by the dot. Only today, with the feed's buses.
+  const foot = feet.some(Boolean) ? `<div class="ds-foot"><span class="ds-corner">Bus</span><div class="ds-headrow" style="width:${W}px">${feet.map((v, c) => v ? `<a class="ds-vn" href="#/map/bus/${encodeURIComponent(v.id)}" style="left:${c * CW}px" aria-label="Bus ${esc(v.label)}">${esc(v.label)}</a>` : '').join('')}</div></div>` : '';
   // Where it opens: at now; before the day's first bus, its start; after its last, its end.
   const at = nowY !== null ? nowY : clockNow.min > bot ? H : 0;
   // One box that scrolls both ways, the room under it high: its heads held at its top and its hours at its left by the
@@ -187,6 +197,7 @@ export function strip(clockNow, today = true, dayK = '') {
     <div class="ds-box"><div class="ds-in" style="width:${W + AX}px">
       <div class="ds-heads"><span class="ds-corner"></span><div class="ds-headrow" style="width:${W}px">${html.raw(heads)}</div></div>
       <div class="ds-body" style="height:${H}px"><div class="ds-axis">${html.raw(axis)}</div><svg width="${W}" height="${H}" aria-label="Every bus's day, a column a bus">${html.raw(svg)}</svg></div>
+      ${html.raw(foot)}
     </div></div></div>`;
 }
 
@@ -404,7 +415,7 @@ export function routeDay(ri0, clockNow, today = true) {
       if (nowY !== null) {
         const d = nowDot(b, live, nowMin, y, lx, on, past, 8);
         svg += d.svg;
-        if (d.dl !== null) lab += `<div class="rd-late" style="top:${d.ly - 9}px;left:${d.X + 12}px">${lateWords(d.dl)}</div>`;
+        if (d.bus) lab += `<div class="rd-late" style="top:${d.ly - 9}px;left:${d.X + 12}px">Bus ${esc(d.bus.label)}${d.dl !== null ? ' · ' + lateWords(d.dl) : ''}</div>`;
       }
     }
     return `<div class="rd-col"><svg width="60" height="${H}">${svg}</svg>${lab}</div>`;
