@@ -82,12 +82,13 @@ export function dress(clockNow = now()) {
 // ---- Real snow (Aaron: 'track real snow weather all of december just for fun', 'use my relay, or we could use nws';
 // then, it snowing in Logan as it shipped, any day it snows, all year, a holiday or not): while it's snowing in Logan,
 // flakes fall over the map (data-snowing on the root, app.css). Asked on load, then every 15 minutes while the page is in sight, nothing about the rider sent. First the
-// National Weather Service's latest observation at the Logan-Cache airport, if it's under 90 minutes old: snow of any
+// National Weather Service's last 12 observations at the Logan-Cache airport, the newest if it's under 90 minutes old
+// (and in winter snow lingering 2 hours after the last that said snow, nwsSnowing): snow of any
 // kind is snow; precipitation it can't name ('UP': an automated station's, and the airport's often is snow) is snow at
 // 0 °C or colder, and none above 3 °C. Anything else it says (clear, rain) is no snow. Only where it can't say (no
 // answer, an old one, 'UP' between 0 and 3 °C) is Aaron's Open-Meteo relay asked, never Open-Meteo itself: snow
 // falling there now, or a snow code. Neither answering is no snow, said nowhere.
-export const NWS_URL = 'https://api.weather.gov/stations/KLGU/observations/latest';
+export const NWS_URL = 'https://api.weather.gov/stations/KLGU/observations?limit=12';
 export const RELAY_URL = 'https://om.aarobh.net/v1/forecast?latitude=41.737&longitude=-111.834&current=snowfall,weather_code,temperature_2m';
 const SNOWS = new Set(['snow', 'snow_showers', 'snow_grains', 'blowing_snow', 'ice_pellets']);
 const SNOW_CODES = new Set([71, 72, 73, 74, 75, 76, 77, 85, 86]);
@@ -96,22 +97,44 @@ const EVERY = 15 * 60e3;
  *  shows more flakes, falling further down the map, the harder it snows (Aaron: 'light moderate and heavy would be
  *  interesting'). */
 const LEVELS = ['light', 'moderate', 'heavy'];
-/** The weather service's word on an observation (its `properties`) at a time (ms): how hard it's snowing ('light',
- *  'moderate', 'heavy': the observation's intensity, none given being moderate; 'UP' at 0 °C or colder light, as it
- *  can't say), false not snowing, null it can't say (none, over 90 minutes old, or 'UP' between 0 and 3 °C), for the
- *  relay to say. */
-export function nwsSnowing(p, at = Date.now()) {
-  if (!p || !(at - Date.parse(p.timestamp) < 90 * 60e3)) return null;
+/** One observation's word (its `properties`): how hard it's snowing ('light', 'moderate', 'heavy': its intensity, none
+ *  given being moderate; 'UP' at 0 °C or colder light, as it can't say), false not snowing, null it can't say ('UP'
+ *  between 0 and 3 °C, or with no temperature). */
+function says(p) {
   const ws = (p.presentWeather || []).filter(Boolean), t = p.temperature && p.temperature.value;
   const snow = ws.filter(x => SNOWS.has(x.weather));
   if (snow.length) return LEVELS[Math.max(...snow.map(x => x.intensity === 'light' ? 0 : x.intensity === 'heavy' ? 2 : 1))];
   if (!ws.some(x => x.weather === 'unknown')) return false;
   return t == null ? null : t <= 0 ? 'light' : t > 3 ? false : null;
 }
-/** The relay's word (Open-Meteo's answer, its `current`): how hard by its snow code (71, 77 and 85 light, 73
- *  moderate, 75 and 86 heavy), or light where snow is falling under some other code; else false. */
-export function relaySnowing(c) {
-  if (!c) return false;
+/** An observation that ends snow lingering: rain of any kind, or above 3 °C. */
+const ends = p => (p.presentWeather || []).some(x => x && /rain|drizzle|thunder/.test(x.weather)) || (p.temperature && p.temperature.value != null && p.temperature.value > 3);
+const LINGER = 120 * 60e3;
+/** The weather service's word on its last few observations (their `properties`, any order) at a time (ms): the newest's,
+ *  if it's under 90 minutes old (else null, for the relay to say). And in winter (`winter`: November to March), the
+ *  newest saying no snow, snow lingers, light, for 2 hours after the last observation that said snow, unless one since
+ *  said rain or above 3 °C (Aaron: 'maybe we make snow persist longer than the forecast by a bit during winter at
+ *  least'; the airport's reports between its snow reports often say nothing, as on 20 Nov 2026, snowing in town, its
+ *  12:24 'Light Snow' followed by an hour of empty ones). */
+export function nwsSnowing(list, at = Date.now(), winter = false) {
+  const ps = (Array.isArray(list) ? list : [list]).filter(p => p && p.timestamp).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  const p = ps[0];
+  if (!p || !(at - Date.parse(p.timestamp) < 90 * 60e3)) return null;
+  const now = says(p);
+  if (now !== false || !winter) return now;
+  for (const q of ps) {
+    if (!(at - Date.parse(q.timestamp) < LINGER) || ends(q)) return false;
+    if (LEVELS.includes(says(q))) return 'light';
+  }
+  return false;
+}
+/** The relay's word (Open-Meteo's answer, its `current`) at a time (ms): how hard by its snow code (71, 77 and 85
+ *  light, 73 moderate, 75 and 86 heavy), or light where snow is falling under some other code; else false. An answer
+ *  over 90 minutes old, or with no time, is no snow (on 20 Nov 2026 the relay served one 3 h 40 min old). */
+export function relaySnowing(c, at = Date.now()) {
+  if (!c || !c.time) return false;
+  const t = Date.parse(/Z|[+-]\d\d:?\d\d$/.test(c.time) ? c.time : c.time + 'Z');   // Open-Meteo's GMT, no zone
+  if (!(at - t < 90 * 60e3)) return false;
   const k = c.weather_code;
   if (k === 75 || k === 86) return 'heavy';
   if (k === 73) return 'moderate';
@@ -127,7 +150,8 @@ let snowTimer = null, askedAt = 0;
 async function askSnow() {
   askedAt = Date.now();
   let on = null;
-  try { on = nwsSnowing((await ask(NWS_URL)).properties); } catch { /* the relay, then */ }
+  const m = +now().ymd.slice(4, 6), winter = m >= 11 || m <= 3;
+  try { on = nwsSnowing(((await ask(NWS_URL)).features || []).map(f => f && f.properties), Date.now(), winter); } catch { /* the relay, then */ }
   if (on === null) try { on = relaySnowing((await ask(RELAY_URL)).current); } catch { /* no snow, then */ }
   const root = document.documentElement;
   if (LEVELS.includes(on)) root.dataset.snowing = on; else delete root.dataset.snowing;

@@ -2452,13 +2452,15 @@ test('Christmas\'s tree at the Center stands clear of every bay\'s badge, betwee
   }
 });
 
-/** Real snow staged (holiday.js): the weather service's answer (`nws`: its observation's `properties`, or 'fail') and
- *  the relay's (`relay`: its `current`, or 'fail'), each ask of either counted. */
-async function stageWeather(page, nws, relay) {
+/** Real snow staged (holiday.js) at a time: the weather service's answer (`nws`: an observation's `properties`, a list
+ *  of them, or 'fail') and the relay's (`relay`: its `current`, stamped 10 minutes before `at` unless it says its own
+ *  `time`, or 'fail'), each ask of either counted. */
+async function stageWeather(page, nws, relay, at) {
   const asked = { nws: 0, relay: 0 };
   const answer = (r, body) => body === 'fail' ? r.fulfill({ status: 503, body: '' }) : r.fulfill({ contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
-  await page.route('https://api.weather.gov/stations/KLGU/observations/latest', r => { asked.nws++; return answer(r, nws === 'fail' ? 'fail' : { properties: nws }); });
-  await page.route(/^https:\/\/om\.aarobh\.net\/v1\/forecast\?/, r => { asked.relay++; return answer(r, relay === 'fail' ? 'fail' : { current: relay }); });
+  const omTime = ms => new Date(ms).toISOString().slice(0, 16);   // Open-Meteo's GMT, no zone
+  await page.route(/^https:\/\/api\.weather\.gov\/stations\/KLGU\/observations\?limit=/, r => { asked.nws++; return answer(r, nws === 'fail' ? 'fail' : { features: [].concat(nws).map(p => ({ properties: p })) }); });
+  await page.route(/^https:\/\/om\.aarobh\.net\/v1\/forecast\?/, r => { asked.relay++; return answer(r, relay === 'fail' ? 'fail' : { current: { time: omTime(at.getTime() - 10 * 60e3), ...relay } }); });
   return asked;
 }
 /** An observation at the airport `ago` minutes before a time: its weather (the service's words, 'snow', 'unknown') and
@@ -2470,7 +2472,7 @@ const snowing = page => page.evaluate(() => { const f = document.getElementById(
 async function snowDay(page, at, nws, relay) {
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await page.route(/^https:\/\/(api\.weather\.gov|om\.aarobh\.net)\//, r => r.abort());
-  const asked = await stageWeather(page, nws, relay);
+  const asked = await stageWeather(page, nws, relay, at);
   await page.clock.setFixedTime(at);
   await page.goto('about:blank');
   await open(page, '#/map');
@@ -2506,6 +2508,36 @@ test('Real snow: flakes fall over the map while it snows in Logan, by the weathe
     else { await page.waitForTimeout(500); expect(await snowing(page), what).toEqual({ on: false, shown: false }); }
     expect(asked.relay, what + ': the relay asked').toBe(relayAsks);
   }
+});
+
+test('Real snow lingers in winter: light for 2 hours after the airport last said snow, ended by rain or above 3 °C; not in July; a stale relay no snow', PHONE, async ({ page }) => {
+  // Aaron, snowing in Logan on 20 Nov 2026 with the app showing none: 'maybe we make snow persist longer than the
+  // forecast by a bit during winter at least'. The airport said 'Light Snow' at 12:24 and then an hour of reports with
+  // no weather (the last no temperature either); the relay served Open-Meteo's answer from 3 h 40 min before.
+  const { christmas: y } = await holidays(page), at = noon(y + '-12-10');
+  const day = (snowAgo, after = []) => [obs(at, snowAgo, 'snow', 1.7, 'light'), ...after, obs(at, 24, null, null)];
+  const blanks = [obs(at, 73, null, 1.7), obs(at, 59, null, 1.7), obs(at, 31, null, 1.7)];
+  const cases = [
+    ['20 Nov at 1:55: snow 91 min ago, empty reports since', day(91, blanks), 'light'],
+    ['the same, snow 126 min ago', day(126, blanks), false],
+    ['rain since the snow', day(60, [obs(at, 40, 'rain', 1.7, 'light')]), false],
+    ['above 3 °C since the snow', day(60, [obs(at, 40, null, 3.5)]), false],
+  ];
+  for (const [what, nws, snows] of cases) {
+    const asked = await snowDay(page, at, nws, { snowfall: 1, weather_code: 75 });
+    if (snows) { await expect.poll(() => snowing(page), what).toEqual({ on: true, shown: true }); expect(await page.evaluate(() => document.documentElement.dataset.snowing), what).toBe(snows); }
+    else { await page.waitForTimeout(500); expect(await snowing(page), what).toEqual({ on: false, shown: false }); }
+    expect(asked.relay, what + ': the relay not asked').toBe(0);
+  }
+  const july = noon((+y + 1) + '-07-15');
+  await snowDay(page, july, [obs(july, 60, 'snow', 0), obs(july, 20, null, 1)], 'fail');
+  await page.waitForTimeout(500);
+  expect(await snowing(page), 'July: no lingering').toEqual({ on: false, shown: false });
+  const old = new Date(at.getTime() - 220 * 60e3).toISOString().slice(0, 16);
+  const asked = await snowDay(page, at, obs(at, 20, 'unknown', 1.5), { time: old, snowfall: 1, weather_code: 75 });
+  await expect.poll(() => asked.relay).toBe(1);
+  await page.waitForTimeout(500);
+  expect(await snowing(page), 'the relay\'s answer 3 h 40 min old').toEqual({ on: false, shown: false });
 });
 
 test('Real snow by how hard it snows: light a few flakes, moderate more, heavy all of them, each over the map\'s top and faded alike', PHONE, async ({ page }) => {
