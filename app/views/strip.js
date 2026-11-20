@@ -49,7 +49,10 @@ function runsOf(c) {
     const last = x.trips[x.trips.length - 1];
     if (!isLoopR(x.r)) {
       const f = tripStops(x.trips[0])[0];
-      out.push({ r: x.r, trips: x.trips, a: f[0], b: endOf(last), from: f[1], to: lastSi(last), link: { si: f[1], ti: x.trips[0] } });
+      // Its calls at the Center on the way (the 16: from the Center to Preston and back through it to USU), each a bar
+      // as a run's own start or end there is (the user: '16 is missing its second bar for its second visit to the ITC').
+      const a = f[0], b = endOf(last), via = [...new Set(x.trips.flatMap(ti => tripStops(ti).filter(([m, si]) => hubSi(si) && m > a && m < b).map(([m]) => m)))];
+      out.push({ r: x.r, trips: x.trips, a, b, from: f[1], to: lastSi(last), via, link: { si: f[1], ti: x.trips[0] } });
       continue;
     }
     // Its calls in order, a call the next trip starts with once; cut at each Center call.
@@ -170,6 +173,7 @@ export function strip(clockNow, today = true, dayK = '') {
       const cap = (si, m) => hubSi(si) || x.loop ? `<line x1="${X - 6}" x2="${X + 6}" y1="${y(m)}" y2="${y(m)}" class="ds-bar" opacity="${op}"/>` : `<circle cx="${X}" cy="${y(m)}" r="3.5" class="ds-ring" opacity="${op}"/>`;
       if (!prev || x.a - prev.b > 45) g += cap(x.from, x.a);
       if (!nx || nx.a - x.b > 45) g += cap(x.to, x.b);
+      for (const m of x.via || []) g += `<line x1="${X - 6}" x2="${X + 6}" y1="${y(m)}" y2="${y(m)}" class="ds-bar" opacity="${past(m) ? 0.4 : 1}"/>`;
       // Its route's number beside a run where the bus runs two (which lane is which), where there's room.
       const li = lanes.indexOf(familyKey(x.r));
       if (lanes.length > 1 && y(x.b) - y(x.a) > 26) g += `<text x="${li === 0 ? X - 6 : X + 6}" y="${y(x.a) + 13}" text-anchor="${li === 0 ? 'end' : 'start'}" fill="${ink(x.r)}" class="ds-num" opacity="${op}">${familyKey(x.r)}</text>`;
@@ -407,6 +411,7 @@ export function routeDay(ri0, clockNow, today = true) {
         };
         if (!p || x.a - p.b > 45) cap(x.from, x.a, 'from');
         if (!nx || nx.a - x.b > 45) cap(x.to, x.b, 'ends');
+        for (const mm of x.via || []) svg += `<line x1="${X - 8}" x2="${X + 8}" y1="${y(mm)}" y2="${y(mm)}" class="ds-bar" opacity="${(past(mm) ? 0.45 : 1) * (m ? 1 : 0.35)}"/>`;
         const k = familyKey(x.r), name = opOf(x.r) ? D.routes[x.r].long.split(/\s/)[0] : k;
         lab += `<a class="rd-run${past(x.b) ? ' done' : ''}${m ? '' : ' other'}" href="#/stop/${D.stops[x.link.si].id}?run=${x.link.ti}&on=${ymd}" style="top:${y(x.a)}px;height:${Math.max(24, y(x.b) - y(x.a))}px;padding-left:${many ? LX[0] + 10 : left}px" aria-label="${routeName(x.r)}, ${clockText(x.a)}">${many ? '' : `<b style="color:${ink(x.r)}">${name}</b>`}<span>${clockShort(x.a)}</span></a>`;
         if (m && towns) lab += bands(x, X);

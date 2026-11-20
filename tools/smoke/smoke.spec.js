@@ -3531,6 +3531,15 @@ test('the Center\'s All day on a wide screen: the panel shows every bus, PRT bes
   const heads = await strip.locator('.ds-head').evaluateAll(hs => hs.map(h => h.textContent.trim()));
   const prt = heads.findIndex(h => h.includes('PRT'));
   if (prt >= 0) expect(heads[prt - 1]).toContain('16');
+  // The 16 calls at the Center twice a run (out to Preston and back through it): a bar at each, not only where the run
+  // starts or ends there (the user: '16 is missing its second bar for its second visit to the ITC').
+  const via = await page.evaluate(async () => { const s = await import('/app/views/strip.js'), t = await import('/app/time.js');
+    return s.busesOn(t.now().ymd).filter(b => b.keys.includes('16')).map(b => b.runs.reduce((n, x) => n + (x.via || []).length, 0)); });
+  if (via.length) {
+    expect(Math.min(...via)).toBeGreaterThan(0);
+    const cols = strip.locator('.ds-body svg > g');
+    for (const [i, h] of heads.entries()) if (h === '16') expect(await cols.nth(i).locator('.ds-bar').count()).toBeGreaterThanOrEqual(4);
+  }
   // Thanksgiving: not a button, a line under them.
   await expect(page.locator('.ds-days a', { hasText: 'Thanksgiving' })).toHaveCount(0);
   await expect(page.locator('.ds-offdays').filter({ visible: true })).toContainText('No buses Thanksgiving Day');
