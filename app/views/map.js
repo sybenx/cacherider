@@ -1531,7 +1531,10 @@ function busRow(b, ri, at = false) {
   // Waiting at the Transit Center a bus is never early: it leaves on time or late.
   const dl = busDelay(b), atHub = D.stops[nextStopOf(b)]?.hub;
   const words = dl !== null && !isLoop(ri) && !keptOn(ri) && !(atHub && dl < 2) ? lateWords(dl) : '';
-  return html`<a class="busrow${at ? ' at' : ''}" id="${busAnchor(b.id)}" data-ring="${b.id}" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}?bus=${encodeURIComponent(b.id)}"><i style="background:#${D.routes[ri].color}"></i><span>Bus ${b.label}${words ? ' · ' + words : ''}</span><span class="livetag"><i></i>Live</span>${icon('map', 16)}</a>`;
+  // Which of the route's buses it is, first, as dispatch says it: '15(2) · Bus 4006'. The user: 'on route view clicking
+  // different buses i'd like to be able to see 15 1, 2, or 3'; on a wide screen a click lands here, not on the bus's card.
+  const nth = busNth(b);
+  return html`<a class="busrow${at ? ' at' : ''}" id="${busAnchor(b.id)}" data-ring="${b.id}" href="#/map/route/${encodeURIComponent(D.routes[ri].short)}?bus=${encodeURIComponent(b.id)}"><i style="background:#${D.routes[ri].color}"></i><span>${nth ? html`<b>${busName(b.ri, nth.n)}</b> · ` : ''}Bus ${b.label}${words ? ' · ' + words : ''}</span><span class="livetag"><i></i>Live</span>${icon('map', 16)}</a>`;
 }
 
 /** Today's last run this way, while it's still to come or on the road: when and where it leaves, where and about
@@ -3259,7 +3262,7 @@ export function liveUpdate(app) {
   };
   const uQuiet = isStale(), uAge = live.at ? Date.now() - live.at : 0;
   if (U && uAge < U_GONE) for (const b of live.buses) place(b, 'u', () => [uQuiet ? OFF_GREY : uink(b.ri), U.routes[b.ri].name + ' · bus ' + b.name + (uQuiet ? ' · not reporting, last heard from at ' + lastSeen() : '')]);
-  if (!rtStale()) for (const b of [...rt.buses, ...rt.parked]) place(b, 'c', () => { const off = offDuty(b); return [off ? OFF_GREY : dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label + (off ? ' · ' + off.toLowerCase() : '')]; });
+  if (!rtStale()) for (const b of [...rt.buses, ...rt.parked]) place(b, 'c', () => { const off = offDuty(b); return [off ? OFF_GREY : dark() ? lift('#' + D.routes[b.ri].color) : '#' + D.routes[b.ri].color, routeName(b.ri, false) + ' · bus ' + b.label + (off ? ' · ' + off.toLowerCase() : (n => n ? ' · ' + busName(b.ri, n.n) : '')(busNth(b)))]; });
   for (const [id, m] of busMarkers) if (!seen.has(id)) { if (m.anim) cancelAnimationFrame(m.anim); m.marker.remove(); busMarkers.delete(id); }
   if (wantIn && busMarkers.has(wantIn) && /^#\/map\/bus\//.test(location.hash)) busIn(wantIn, app);
   if (wantRing && busMarkers.has(wantRing)) ringBus(wantRing);

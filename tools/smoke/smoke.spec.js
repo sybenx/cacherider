@@ -319,6 +319,37 @@ test('the Transit Center\'s day: every bus a column, opened at now, a run a tap 
   await expect(page.locator('.daystrip').filter({ visible: true })).toHaveCount(0);
 });
 
+test('a bus off its timetable: the day view\'s red dot where it is and an empty one where it should be; its row says which of the route\'s buses it is', async ({ page }) => {
+  // The user: 'the new day view needs to show when buses are off their schedule ... red dots that show live position
+  // and the empty dots on the line show the scheduled time', and of the route page: 'clicking different buses i'd like
+  // to be able to see 15 1, 2, or 3'. A Route 15 bus staged 6 minutes late at noon on a weekday, when it runs three.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed && feed.buses ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
+  const d = new Date(); do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6); d.setHours(12, 0, 0, 0);   // a weekday: on a Saturday the 15's one bus, and no number to give
+  await page.clock.setFixedTime(d);
+  await open(page, '#/map/route/15');
+  feed = {};
+  const pick = await onBusDay(page, () => stageBus(page, feed, { route: '15', late: 6 }));
+  expect(pick, 'a Route 15 bus out at noon').not.toBeNull();
+  await page.reload();   // the feed's first look taken with the bus in it
+  await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
+  // The route page's row: dispatch's name first, then the vehicle and how late.
+  const row = page.locator('.busrow').filter({ visible: true }).first();
+  await expect(row).toContainText(/15\([123]\) · Bus 9005 · 6 min late/, { timeout: 20_000 });
+  // Its day: the red dot six minutes up the line from now, the empty one on the now line, a dotted stroke between.
+  await go(page, '#/map/route/15?day=1');
+  const day = page.locator('.routeday').filter({ visible: true });
+  await expect(day.locator('.rd-late')).toHaveText(['6 min late']);
+  await expect(day.locator('.ds-off')).toHaveCount(1);
+  const ys = await day.locator('.ds-off').evaluate(l => [...l.parentNode.querySelectorAll('.ds-bus')].map(c => ({ live: c.classList.contains('live'), y: +c.getAttribute('cy') })));
+  const live = ys.find(c => c.live), ring = ys.find(c => !c.live && c.y > live.y);
+  expect(ring, 'the scheduled dot below the live one').toBeTruthy();
+  expect(ring.y - live.y).toBeGreaterThan(20);   // 6 min at 6 px a minute, less any gap squeezed between
+  // The Center's day: the same bus, '+6' by its dot.
+  await go(page, '#/hub?day=1');
+  await expect(page.locator('.daystrip:not(.routeday) .ds-late').filter({ visible: true })).toHaveText(['+6']);
+});
+
 test('a route\'s day: its buses down the day at 6 px a minute, its timed stops by name, opened at now; the 16 with the Preston commuter in its gap', async ({ page }) => {
   // The user's by-route view: 'i want route 1 to show 3 runs in a view'. The route page's second view, Stops | All day.
   await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
@@ -2236,22 +2267,25 @@ test('Thanksgiving goes by itself: the Friday after, its card where the buses ar
 
 /** A Connect bus staged on a trip running at the clock's time, between two of its stops (the feed's word on it as
  *  well): its id, and the stop it's coming to. Null where nothing's running then. The feed route set before `open`. */
-async function stageBus(page, feed) {
-  const pick = await page.evaluate(async () => {
-    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now();
+async function stageBus(page, feed, { route = null, late = 0 } = {}) {
+  // `late`: minutes behind its timetable, and placed where the timetable had it that long ago (the app doubts a feed
+  // whose minutes don't fit the bus's place, rt.js agrees).
+  const pick = await page.evaluate(async ([route, late]) => {
+    const d = await import('/app/data.js'), t = await import('/app/time.js'), c = t.now(), m0 = c.min - late;
     for (const [si] of d.D.stops.entries()) for (const row of d.timesOn(si, c.ymd)) {
-      const st = d.tripStops(row.trip), k = st.findIndex(x => x[0] > c.min);
-      if (k < 2 || st[0][0] > c.min || d.D.stops[st[k][1]].hub) continue;
+      if (route && d.D.routes[d.tripRoute(row.trip)?.r]?.short !== route) continue;
+      const st = d.tripStops(row.trip), k = st.findIndex(x => x[0] > m0);
+      if (k < 2 || st[0][0] > m0 || d.D.stops[st[k][1]].hub) continue;
       const a = d.D.stops[st[k - 1][1]], b = d.D.stops[st[k][1]];
       if (d.distance(a.lat, a.lon, b.lat, b.lon) < 150) continue;
       return { id: d.D.trips[row.trip], st: st.map(([m, x]) => [m, d.D.stops[x].id]), k, next: b.id, mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], head: d.bearing(a.lat, a.lon, b.lat, b.lon), at: Date.now(), day: c.min * 60 + c.sec };
     }
     return null;
-  });
+  }, [route, late]);
   if (!pick) return null;
   const T = Math.floor(pick.at / 1000), base = T - pick.day;
   feed.t = T;
-  feed.trips = { [pick.id]: { v: '9005', ts: T, s: pick.st.slice(pick.k).map(([m, sid], j) => [sid, pick.k + j, base + m * 60, 0]) } };
+  feed.trips = { [pick.id]: { v: '9005', ts: T, s: pick.st.slice(pick.k).map(([m, sid], j) => [sid, pick.k + j, base + (m + late) * 60, 0]) } };
   feed.buses = [{ id: '9005', label: '9005', trip: pick.id, lat: pick.mid[0], lon: pick.mid[1], bearing: pick.head, speed: 5, ts: T }];
   return pick;
 }

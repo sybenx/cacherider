@@ -6,11 +6,11 @@
 // where its day starts or ends somewhere else (the 16's, the Preston commuter's: the user's own notes on the mockup).
 // No key for the drawing itself: the hours, the route badges at the heads and the now line say it; only today's
 // dots, Live or Scheduled, drawn once above it (a second opinion: 'ring' in words was his end caps too).
-import { D, servicesOn, tripStops, tripEnd, tripRoute, staysOn, familyKey, opOf, stop, liftHex, corridor, timed, agencyRuns, holidayOn } from '../data.js';
+import { D, keptOn, servicesOn, tripStops, tripEnd, tripRoute, staysOn, familyKey, opOf, stop, liftHex, corridor, timed, agencyRuns, holidayOn } from '../data.js';
 import { html, esc, badge, routeName, heardName } from '../ui.js';
 import { clockShort, clockText, isDue, isGone, dayFrom, dayName, fmtDay } from '../time.js';
 import { lightInks } from '../ink.js';
-import { rt, rtStale } from '../rt.js';
+import { rt, rtStale, busDelay, lateWords, isLoop } from '../rt.js';
 import { townsReady, loadTowns, stopTown, tripTowns, routeTownInks } from '../towns.js';
 
 const PPM = 1.6;   // pixels a minute: an hour is 96, a day of buses a long scroll, a 30-minute run a stroke to tap
@@ -105,6 +105,24 @@ export function busesOn(ymd) {
   return buses;
 }
 
+/** Today's buses in the feed, by the timetable trip each is on. None on another day, or with the feed gone quiet. */
+const liveOn = today => !today || rtStale() ? new Map() : new Map(rt.buses.map(b => [D.trips.indexOf(b.trip), b]).filter(([ti]) => ti >= 0));
+/** A column's bus now. Where the feed has it on time, or with no minute to be late by (a loop spaces its buses; a route
+ *  on an old timetable can't say), one red dot at now. Off its schedule by 2 minutes or more (lateWords' line), the red
+ *  dot is where the bus really is, at the minute its timetable has it there (6 min late: 6 minutes back up the line),
+ *  and an empty dot at now is where it should be, a dotted red stroke between them (the user: 'red dots that show live
+ *  position and the empty dots on the line show the scheduled time'). Where the feed hasn't it, the empty dot alone. */
+function nowDot(b, live, nowMin, y, lx, on, past, r) {
+  const seenOn = b.runs.find(x => x.trips.some(ti => live.has(ti))), cur = b.runs.find(x => on(x.a) && !past(x.b));
+  const x = seenOn || cur;
+  if (!x) return { svg: '', dl: null };
+  const X = lx(x), ny = y(nowMin), dot = (cy, cls) => `<circle cx="${X}" cy="${cy}" r="${r}" class="ds-bus${cls}"/>`;
+  const bus = seenOn ? live.get(x.trips.find(ti => live.has(ti))) : null;
+  const dl = bus && !isLoop(bus.ri) && !keptOn(bus.ri) ? busDelay(bus) : null;
+  if (dl === null || Math.abs(dl) < 2) return { svg: dot(ny, bus ? ' live' : ''), dl: null };
+  const ly = y(nowMin - dl);
+  return { svg: `<line x1="${X}" x2="${X}" y1="${ny}" y2="${ly}" class="ds-off"/>${dot(ny, '')}${dot(ly, ' live')}`, dl, X, ly };
+}
 /** The strip: the hours down the left, held there; the buses' heads along the top, held there as the day scrolls under
  *  them, each route's badge a way to that route's day (his mockup's 'tap a head'; `dayK`, the day picked); a column a bus. Each run a way into its stops
  *  (the run's sheet on its first stop's page, as the Center's own times are). `today`: its now and its live buses. */
@@ -115,7 +133,7 @@ export function strip(clockNow, today = true, dayK = '') {
   const y = m => (m - top0) * PPM + TOP, H = y(bot) + 12, W = buses.length * CW;
   const t = m => ({ min: m, day: 0 }), on = m => isDue(t(m), clockNow), past = m => isGone(t(m), clockNow);
   // The feed's buses by the trip they're on: a late one still on a run the timetable has done is out all the same.
-  const live = !today || rtStale() ? new Set() : new Set(rt.buses.map(b => D.trips.indexOf(b.trip)).filter(ti => ti >= 0));
+  const live = liveOn(today);
   const nowY = clockNow.min >= top0 && clockNow.min <= bot ? y(clockNow.min) : null;
   let svg = '', axis = '';
   for (let m = top0; m <= bot; m += 60) {
@@ -151,8 +169,9 @@ export function strip(clockNow, today = true, dayK = '') {
     // Out now: filled where the live feed has the bus, on whichever of its trips it's on; else a ring where the
     // timetable has a run of it on the road.
     if (nowY !== null) {
-      const seenOn = b.runs.find(x => x.trips.some(ti => live.has(ti))), cur = b.runs.find(x => on(x.a) && !past(x.b));
-      if (seenOn || cur) g += `<circle cx="${lx(seenOn || cur)}" cy="${nowY}" r="6" class="ds-bus${seenOn ? ' live' : ''}"/>`;
+      const d = nowDot(b, live, clockNow.min, y, lx, on, past, 6);
+      g += d.svg;
+      if (d.dl !== null) g += `<text x="${d.X + 9}" y="${d.ly + 3}" class="ds-late">${d.dl > 0 ? '+' : '−'}${Math.abs(d.dl)}</text>`;
     }
     svg += `<g>${g}</g>`;
   });
@@ -280,7 +299,7 @@ export function routeDay(ri0, clockNow, today = true) {
   const y = m => { let v = (m - top0) * RPPM + 12; for (const [a, z] of breaks) { if (m >= z) v -= (z - a) * RPPM - RGAP; else if (m > a) v -= (m - a) * RPPM - (m - a) / (z - a) * RGAP; } return v; };
   const inBreak = m => breaks.some(([a, z]) => m > a + 15 && m < z - 15);
   const H = y(bot) + 16, t = m => ({ min: m, day: 0 }), past = m => isGone(t(m), clockNow), on = m => isDue(t(m), clockNow);
-  const live = !today || rtStale() ? new Set() : new Set(rt.buses.map(b => D.trips.indexOf(b.trip)).filter(ti => ti >= 0));
+  const live = liveOn(today);
   const nowY = today && nowMin >= top0 && nowMin <= bot ? y(nowMin) : null;
   let axis = '';
   for (let m = top0; m <= bot; m += 60) if (!inBreak(m)) axis += `<span class="ds-hr" style="top:${y(m)}px">${clockShort(m)}</span><i class="rd-gl" style="top:${y(m)}px"></i>`;
@@ -373,8 +392,9 @@ export function routeDay(ri0, clockNow, today = true) {
         }
       });
       if (nowY !== null) {
-        const seenOn = b.runs.find(x => x.trips.some(ti => live.has(ti))), cur = b.runs.find(x => on(x.a) && !past(x.b));
-        if (seenOn || cur) svg += `<circle cx="${lx(seenOn || cur)}" cy="${nowY}" r="8" class="ds-bus${seenOn ? ' live' : ''}"/>`;
+        const d = nowDot(b, live, nowMin, y, lx, on, past, 8);
+        svg += d.svg;
+        if (d.dl !== null) lab += `<div class="rd-late" style="top:${d.ly - 9}px;left:${d.X + 12}px">${lateWords(d.dl)}</div>`;
       }
     }
     return `<div class="rd-col"><svg width="60" height="${H}">${svg}</svg>${lab}</div>`;

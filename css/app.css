@@ -1707,6 +1707,9 @@ a.side:active { background: var(--cr-hover); }
 .ds-num { font: 800 10px/1 var(--font-heading); }
 .ds-bus { fill: var(--color-bg); stroke: var(--cr-now, #d93025); stroke-width: 2.5; pointer-events: none; }
 .ds-bus.live { fill: var(--cr-now, #d93025); stroke: var(--color-bg); }
+.ds-off { stroke: var(--cr-now, #d93025); stroke-width: 2; stroke-dasharray: 2 3; stroke-linecap: round; pointer-events: none; }
+.ds-late { fill: var(--cr-now, #d93025); font-size: 10px; font-weight: 700; pointer-events: none; }
+.rd-late { position: absolute; font-size: 12px; font-weight: 700; color: var(--cr-now, #d93025); white-space: nowrap; pointer-events: none; background: var(--color-bg); padding: 0 3px; border-radius: 3px; }
 .ds-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; padding: 2px 16px 8px; font-size: 0.8125rem; color: var(--cr-muted); }
 .ds-k { display: inline-flex; align-items: center; gap: 5px; }
 .ds-k i { width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid var(--cr-now, #d93025); background: var(--color-bg); }
