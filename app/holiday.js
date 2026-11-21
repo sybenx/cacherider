@@ -80,15 +80,16 @@ export function dress(clockNow = now()) {
 }
 
 // ---- Real snow (Aaron: 'track real snow weather all of december just for fun', 'use my relay, or we could use nws';
-// then, it snowing in Logan as it shipped, any day it snows, all year, a holiday or not): while it's snowing in Logan,
-// flakes fall over the map (data-snowing on the root, app.css). Asked on load, then every 15 minutes while the page is in sight, nothing about the rider sent. First the
-// National Weather Service's last 12 observations at the Logan-Cache airport, the newest if it's under 90 minutes old
-// (and in winter snow lingering 2 hours after the last that said snow, nwsSnowing): snow of any
-// kind is snow; precipitation it can't name ('UP': an automated station's, and the airport's often is snow) is snow at
-// 0 °C or colder, and none above 3 °C. Anything else it says (clear, rain) is no snow. Only where it can't say (no
-// answer, an old one, 'UP' between 0 and 3 °C) is Aaron's Open-Meteo relay asked, never Open-Meteo itself: snow
-// falling there now, or a snow code. Neither answering is no snow, said nowhere.
-export const NWS_URL = 'https://api.weather.gov/stations/KLGU/observations?limit=12';
+// then, it snowing in Logan as it shipped, any day it snows, all year, a holiday or not; then, the airport's reports
+// missing snow falling in town, 'maybe we should just make it snow all day on days whenever there was snow that day'):
+// from the first report of snow in Logan on a day until its midnight, flakes fall over the map (data-snowing on the
+// root, app.css). Asked on load, then every 15 minutes while the page is in sight, nothing about the rider sent. First
+// the National Weather Service's observations at the Logan-Cache airport since the day's midnight: snow of any kind is
+// snow; precipitation it can't name ('UP': an automated station's, and the airport's often is snow) is snow at 0 °C or
+// colder. Only where it can't say (no answer, nothing under 90 minutes old, 'UP' between 0 and 3 °C, and no snow yet
+// that day) is Aaron's Open-Meteo relay asked, never Open-Meteo itself: snow falling there now, or a snow code; its
+// snow, once said, kept for the rest of the day too. Neither answering is no snow, said nowhere.
+export const NWS_URL = 'https://api.weather.gov/stations/KLGU/observations';
 export const RELAY_URL = 'https://om.aarobh.net/v1/forecast?latitude=41.737&longitude=-111.834&current=snowfall,weather_code,temperature_2m';
 const SNOWS = new Set(['snow', 'snow_showers', 'snow_grains', 'blowing_snow', 'ice_pellets']);
 const SNOW_CODES = new Set([71, 72, 73, 74, 75, 76, 77, 85, 86]);
@@ -107,26 +108,17 @@ function says(p) {
   if (!ws.some(x => x.weather === 'unknown')) return false;
   return t == null ? null : t <= 0 ? 'light' : t > 3 ? false : null;
 }
-/** An observation that ends snow lingering: rain of any kind, or above 3 °C. */
-const ends = p => (p.presentWeather || []).some(x => x && /rain|drizzle|thunder/.test(x.weather)) || (p.temperature && p.temperature.value != null && p.temperature.value > 3);
-const LINGER = 120 * 60e3;
-/** The weather service's word on its last few observations (their `properties`, any order) at a time (ms): the newest's,
- *  if it's under 90 minutes old (else null, for the relay to say). And in winter (`winter`: November to March), the
- *  newest saying no snow, snow lingers, light, for 2 hours after the last observation that said snow, unless one since
- *  said rain or above 3 °C (Aaron: 'maybe we make snow persist longer than the forecast by a bit during winter at
- *  least'; the airport's reports between its snow reports often say nothing, as on 20 Nov 2026, snowing in town, its
- *  12:24 'Light Snow' followed by an hour of empty ones). */
-export function nwsSnowing(list, at = Date.now(), winter = false) {
+/** The weather service's word on the day's observations so far (their `properties`, any order) at a time (ms): the
+ *  newest's level while it says snow (if it's under 90 minutes old); else, any of the day's having said snow, light,
+ *  till midnight (on 20 Nov 2026, snowing in town, the airport said 'Light Snow' till 12:24 and then nothing that
+ *  named it); else the newest's word, false or null (none, old, or 'UP' between 0 and 3 °C) for the relay to say. */
+export function nwsSnowing(list, at = Date.now()) {
   const ps = (Array.isArray(list) ? list : [list]).filter(p => p && p.timestamp).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
-  const p = ps[0];
-  if (!p || !(at - Date.parse(p.timestamp) < 90 * 60e3)) return null;
-  const now = says(p);
-  if (now !== false || !winter) return now;
-  for (const q of ps) {
-    if (!(at - Date.parse(q.timestamp) < LINGER) || ends(q)) return false;
-    if (LEVELS.includes(says(q))) return 'light';
-  }
-  return false;
+  const p = ps[0], fresh = !!p && at - Date.parse(p.timestamp) < 90 * 60e3;
+  const now = fresh ? says(p) : null;
+  if (LEVELS.includes(now)) return now;
+  if (ps.some(q => LEVELS.includes(says(q)))) return 'light';
+  return now;
 }
 /** The relay's word (Open-Meteo's answer, its `current`) at a time (ms): how hard by its snow code (71, 77 and 85
  *  light, 73 moderate, 75 and 86 heavy), or light where snow is falling under some other code; else false. An answer
@@ -146,13 +138,21 @@ const ask = async url => {
   if (!r.ok) throw new Error(r.status);
   return r.json();
 };
+/** The day the relay last said snow ('yyyymmdd'), kept on the device so a page opened again that day still snows. */
+const RELAY_DAY = 'cr-relay-snow-day';
+const relayDay = () => { try { return localStorage.getItem(RELAY_DAY); } catch { return null; } };
 let snowTimer = null, askedAt = 0;
 async function askSnow() {
   askedAt = Date.now();
+  const c = now(), day = c.ymd, midnight = new Date(Math.floor(Date.now() / 60e3) * 60e3 - c.min * 60e3).toISOString().replace(/\.\d+Z$/, 'Z');
   let on = null;
-  const m = +now().ymd.slice(4, 6), winter = m >= 11 || m <= 3;
-  try { on = nwsSnowing(((await ask(NWS_URL)).features || []).map(f => f && f.properties), Date.now(), winter); } catch { /* the relay, then */ }
-  if (on === null) try { on = relaySnowing((await ask(RELAY_URL)).current); } catch { /* no snow, then */ }
+  try { on = nwsSnowing(((await ask(`${NWS_URL}?start=${midnight}`)).features || []).map(f => f && f.properties).filter(p => p && p.timestamp && now(new Date(p.timestamp)).ymd === day)); } catch { /* the relay, then */ }
+  if (on === null || (on === false && relayDay() === day)) {
+    let r = null;
+    if (on === null) try { r = relaySnowing((await ask(RELAY_URL)).current); } catch { /* no snow, then */ }
+    if (LEVELS.includes(r)) { try { localStorage.setItem(RELAY_DAY, day); } catch { /* this page only */ } on = r; }
+    else on = relayDay() === day ? 'light' : false;
+  }
   const root = document.documentElement;
   if (LEVELS.includes(on)) root.dataset.snowing = on; else delete root.dataset.snowing;
 }
