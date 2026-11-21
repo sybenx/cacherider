@@ -1283,7 +1283,9 @@ test('the Center\'s compass: north up and south up, one to the other', PHONE, as
 
 test('a spot picked on the map for where you are: from the home page, and kept after a reload', async ({ page }) => {
   // A desk with no location: the spot was dropped on the next visit (no permission, so the kept place 'wasn't where they
-  // are'), and picking it was only in the sheet that asks for location.
+  // are'), and picking it was only in the sheet that asks for location. No feed: a live bus where the test taps the map
+  // took the tap (a Saturday's, 21 Nov 2026).
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
   await open(page);
   await page.evaluate(() => { localStorage.removeItem('cr-near'); localStorage.removeItem('cr-lastgeo'); });
   await page.reload();
