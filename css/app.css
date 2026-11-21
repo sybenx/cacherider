@@ -1448,7 +1448,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 #body.pk-on #pk-deco { display: block; }
 #pk-deco .pk-swag { position: absolute; top: 59px; left: 0; width: 100%; height: 40px; display: block; }   /* off both edges, carrying on past them; its loops' tops clear of the box, not cut off under it */
 @media (min-width: 840px) {
-  #pk-deco { left: 420px; } :root[data-panel="right"] #pk-deco { left: 0; right: 420px; }
+  #body:not(.map-open) #pk-deco { left: 420px; } :root[data-panel="right"] #body:not(.map-open) #pk-deco { left: 0; right: 420px; }
   #pk-deco .pk-swag { top: 1px; }   /* under the map's buttons, top right */
 }
 
@@ -1462,7 +1462,7 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 #hol-deco .hol-garland { top: 44px; }   /* its twine (16 down its stretch) along the box's bottom edge */
 #hol-deco .hol-lights { top: 56px; }   /* where its wire's hung (10 down its stretch) 6 under the box, as sketched */
 @media (min-width: 840px) {
-  #hol-deco { left: 420px; } :root[data-panel="right"] #hol-deco { left: 0; right: 420px; }
+  #body:not(.map-open) #hol-deco { left: 420px; } :root[data-panel="right"] #body:not(.map-open) #hol-deco { left: 0; right: 420px; }
   #hol-deco .hol-garland { top: -14px; } #hol-deco .hol-lights { top: -4px; }
 }
 /* Christmas's bulbs: in the light theme only a soft glow, the dark theme's halos as sketched; each a slow twinkle on
@@ -1485,7 +1485,8 @@ a.busrow > svg { color: var(--color-accent-700); flex: none; }
 :root[data-snowing] #snow-deco { display: block; }
 :root[data-snowing="heavy"] .hol-flake { opacity: var(--o); }
 #body.pk-on #snow-deco { display: none; }
-@media (min-width: 840px) { #snow-deco { left: 420px; } :root[data-panel="right"] #snow-deco { left: 0; right: 420px; } }
+/* beside the panel on a wide screen; the Map tab, its panel put away, the whole map's width */
+@media (min-width: 840px) { #body:not(.map-open) #snow-deco { left: 420px; } :root[data-panel="right"] #body:not(.map-open) #snow-deco { left: 0; right: 420px; } }
 #snow-deco .hol-flakes { position: absolute; inset: 0; }
 /* How hard it's snowing (data-snowing: light, moderate, heavy) is how many flakes: 14, 26 or all 44. Where they
    fall is the same whatever the snow (Aaron: 'no matter what the snow intensity, it should fade at the same rate.

@@ -2547,6 +2547,22 @@ test('Real snow all day: from the day\'s first report of snow to midnight, light
   expect(await snowing(page), 'the relay\'s answer 3 h 40 min old').toEqual({ on: false, shown: false });
 });
 
+test('Real snow on a wide screen: across the whole map on the Map tab, its panel put away; beside the panel elsewhere', WIDE, async ({ page }) => {
+  // Aaron, of the desktop's Map tab: the snow 'NOT properly wide'. It began 420 px in, where the panel is on every
+  // other view, though the Map tab puts the panel away.
+  const { christmas: y } = await holidays(page), at = noon(y + '-12-10');
+  await snowDay(page, at, obs(at, 10, 'snow', -4, 'heavy'), 'fail');
+  await expect.poll(() => snowing(page)).toEqual({ on: true, shown: true });
+  const span = () => page.evaluate(() => { const r = e => { const b = document.getElementById(e).getBoundingClientRect(); return [Math.round(b.left), Math.round(b.right)]; }; return { snow: r('snow-deco'), map: r('map') }; });
+  const onMap = await span();
+  expect(onMap.snow, 'the Map tab').toEqual(onMap.map);
+  await page.evaluate(() => { location.hash = '#/'; });
+  await expect.poll(() => page.evaluate(() => document.getElementById('body').classList.contains('map-open'))).toBe(false);
+  const side = await page.evaluate(() => { const b = document.getElementById('side').getBoundingClientRect(); return [Math.round(b.left), Math.round(b.right)]; });
+  const home = await span();
+  expect(home.snow[0] >= side[1] || home.snow[1] <= side[0], 'beside the panel, not under it').toBe(true);
+});
+
 test('Real snow by how hard it snows: light a few flakes, moderate more, heavy all of them, each over the map\'s top and faded alike', PHONE, async ({ page }) => {
   // Aaron: 'is the snow too much? it is top to bottom', then of light, moderate and heavy: 'try it'. The flakes shown
   // and how far down the map they fall before fading out, by the weather service's intensity.
