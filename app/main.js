@@ -246,7 +246,7 @@ export async function render(tick = false) {
   // A route by its number where the timetable splits it in halves ('#/map/route/16', a badge's or a tile's): the half on
   // the road now or next, at the stop it was opened from one that calls there. Each half's own address stays its own.
   const halfOf = (short, at) => { const fam = D.routeByShort[short] === undefined ? familyOf(short) : []; return fam.length ? D.routes[familyNow(fam[0], clockNow, D.stopById[at])].short : short; };
-  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: halfOf(dec(seg[2] || ''), seg[4]), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus, every: q.every === '1', day: q.day === '1', on: q.on || '' } : null;
+  const routeArgs = seg[0] === 'map' && seg[1] === 'route' ? { short: halfOf(dec(seg[2] || ''), seg[4]), dir: seg[3], at: seg[4], full: q.all === '1', bus: q.bus, every: q.every === '1', day: q.day === '1' ? true : q.day === '0' ? false : null, on: q.on || '' } : null;
   // The Transit Center on a phone is the map too, at the Center, the board its card; on a wide screen a page beside it.
   const hubMap = seg[0] === 'hub' && !isDesktop();
   // Directions: on a wide screen the page beside the map, the way drawn there.

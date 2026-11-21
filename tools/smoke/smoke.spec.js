@@ -254,7 +254,7 @@ test('a Saturday route whose bus is another route\'s too carries its line on int
     return null;
   });
   test.skip(!pick, 'no bus swaps routes that Saturday');
-  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short) + '?day=0');
   const on = page.locator('.section.onward').filter({ visible: true });
   await expect(on).toHaveCount(1);
   await expect(on).toContainText('This bus becomes ' + pick.to + ' at ');
@@ -386,7 +386,7 @@ test('a route\'s day: its buses down the day at 6 px a minute, its timed stops b
   expect(names.some(n => /[A-Za-z]{4,}/.test(n.replace(/\d+:\d+\s*[AP]M/, '').replace(/\b(North|South|East|West)\b/g, '')))).toBe(true);   // places, not only addresses
   // Back to its stops.
   await page.locator('.rs-views a', { hasText: 'Stops' }).filter({ visible: true }).first().click();
-  await expect(page).toHaveURL(/#\/map\/route\/9$/);
+  await expect(page).toHaveURL(/#\/map\/route\/9\?day=0$/);
   await expect(page.locator('.routeday').filter({ visible: true })).toHaveCount(0);
   // A weekday's 16 at 12:20: no 16 out, the Preston commuter on its road, in its column; the gap without a bus is the
   // road's (8 AM to noon, then 2 to 4:30), never the 16's own (8 AM to 4:30).
@@ -418,10 +418,13 @@ test('a route\'s day marks the towns its bus is in, each named, the Center\'s to
   expect(await day.locator('.rd-hl').evaluateAll(es => es.every(e => /^#[0-9A-F]{6}$/i.test(e.style.getPropertyValue('--town').trim())))).toBe(true);
 });
 
-test('a route whose bus is out as another route between its runs says so from the timetable, and not while its own run is on', WIDE, async ({ page }) => {
+test('a route whose bus is out as another route between its runs says so, from the timetable or the feed, and opens on All day; not while its own run is on', WIDE, async ({ page }) => {
   // The user's block-strip mockup: 'On Route 1 now ... Back on the 9 at 1:00 PM', the answer with no 9 on the map. No
-  // feed (refused), so the timetable's, said so; no stop named, the timetable's place not a sighting.
-  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => r.abort());
+  // feed first, so the timetable's, said so; no stop named, the timetable's place not a sighting. Then the feed's bus on
+  // that run (the user: 'i just want hints at where the bus is and why it's not on a route when people check'): where
+  // it is, live, a tap to it. Opened plain it's the route's day (All day, 'why is it so buried?'), the hint at its top.
+  let feed = null;
+  await page.route(/^https:\/\/live\.cacherider\.com\/$/, r => feed ? r.fulfill({ contentType: 'application/json', body: JSON.stringify(feed) }) : r.abort());
   const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); sat.setHours(4, 0, 0, 0);
   await page.clock.setFixedTime(sat);
   await open(page);
@@ -438,8 +441,9 @@ test('a route whose bus is out as another route between its runs says so from th
         if (!pr || pr.r === ri || !d.staysOn(p, ti)) continue;
         const a = d.tripStops(p)[0][0] + 1;
         if (a >= endOf(p) || runs.some(x => d.tripStops(x)[0][0] <= a && endOf(x) >= a)) continue;
-        const on = runs.find(x => d.tripStops(x)[0][0] + 1 < endOf(x));
-        return { short: r.short, other: u.routeName(pr.r), at: a, on: d.tripStops(on)[0][0] + 1 };
+        const on = runs.find(x => d.tripStops(x)[0][0] + 1 < endOf(x)), ps = d.tripStops(p);
+        return { short: r.short, other: u.routeName(pr.r), otherShort: d.D.routes[pr.r].short, at: a, on: d.tripStops(on)[0][0] + 1, back: d.tripStops(ti)[0][0], self: u.routeName(ri),
+          p: d.D.trips[p], ps: ps.map(([m, x]) => [m, d.D.stops[x].id, d.D.stops[x].lat, d.D.stops[x].lon, !!d.D.stops[x].hub]) };
       }
     }
     return null;
@@ -448,11 +452,32 @@ test('a route whose bus is out as another route between its runs says so from th
   const at = min => { const x = new Date(sat); x.setHours(Math.floor(min / 60), min % 60, 0, 0); return x; };
   await page.clock.setFixedTime(at(pick.at));
   await page.reload();
-  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short) + '?day=0');
   const busy = page.locator('.rs-busy').filter({ visible: true });
   await expect(busy).toHaveCount(1);
   await expect(busy.locator(":scope > span")).toHaveText(`Its next bus is on ${pick.other} now, by the timetable.`);   // no 'back at': the list's first row says it
   await expect(busy.locator('a.badgelink')).toHaveCount(1);
+  // Opened plain: its day, the hint at the top with when it's back; Stops a tap away and kept.
+  const backAt = await page.evaluate(async m => (await import('/app/time.js')).clockText(m), pick.back);
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short));
+  await expect(page.locator('.routeday').filter({ visible: true })).toHaveCount(1);
+  await expect(page.locator('.rs-views a[aria-current="page"]').filter({ visible: true })).toHaveText('All day');
+  await expect(busy.locator(":scope > span")).toHaveText(`Its next bus is on ${pick.other} now, by the timetable · ${pick.self} again at ${backAt}.`);
+  // The feed's bus on that run, between two of its stops: where it is, live, the bus's number last, a tap to it.
+  const k = pick.ps.findIndex(x => x[0] > pick.at && !x[4]);
+  test.skip(k < 1, 'no stop of that run to place the bus by');
+  const T = Math.floor(at(pick.at).getTime() / 1000), base = T - pick.at * 60, A = pick.ps[k - 1], B = pick.ps[k];
+  feed = { t: T, trips: { [pick.p]: { v: '9005', ts: T, s: pick.ps.slice(k).map(([m, sid], j) => [sid, k + j, base + m * 60, 0]) } },
+    buses: [{ id: '9005', label: '9005', trip: pick.p, lat: (A[2] + B[2]) / 2, lon: (A[3] + B[3]) / 2, bearing: 0, speed: 5, ts: T }] };
+  await page.reload();
+  // On its day (on the stops, a bus that ran this route just before says it itself: 'Bus 9005 ran this route and is now').
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short) + '?day=1');
+  const live = page.locator('a.rs-busy.live').filter({ visible: true });
+  await expect(live).toHaveCount(1, { timeout: 20_000 });
+  await expect(live.locator('.rs-busy-t')).toHaveText(new RegExp(`^Its next bus is on ${pick.other.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} now · (by|at) .+ · ${pick.self.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} again at ${backAt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · bus 9005$`));
+  await expect(live.locator('.livetag')).toHaveText('Live');
+  await expect(live).toHaveAttribute('href', '#/map/route/' + encodeURIComponent(pick.otherShort) + '?bus=c%3A9005');
+  feed = null;
   await page.clock.setFixedTime(at(pick.on));   // its own run under way: nothing to explain
   await page.reload();
   await go(page, '#/map/route/' + encodeURIComponent(pick.short));
@@ -2850,7 +2875,7 @@ test('Route 16 is one route: one badge at 2281 N Main with PRT\'s, the last full
 });
 
 test('route: both ways, its sibling, a stop on it', PHONE, async ({ page }) => {
-  await open(page, '#/map/route/2');
+  await open(page, '#/map/route/2?day=0');
   await mapReady(page);
   await expect(page.getByText(/stops, in order|stops left/i).filter({ visible: true }).first()).toBeVisible();
   const ways = page.locator('a[href^="#/map/route/2/"]');

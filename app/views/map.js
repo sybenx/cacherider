@@ -1017,7 +1017,8 @@ function pickRoute(ri, app) {
   // Up by its own address, or by its family's ('#/map/route/16', this half the one it opened)
   if ([h, routeHref(ri)].some(h => location.hash === h || location.hash.startsWith(h + '/') || location.hash.startsWith(h + '?'))) {
     // A bus ringed on it (?bus=): the route itself now, the address too, and the bus let go.
-    if (location.hash.includes('?')) location.hash = location.hash.split('?')[0];
+    // The view picked (?day=0 or 1) kept, so the route doesn't turn to its other view under the rider.
+    if (location.hash.includes('?')) { const v = location.hash.match(/[?&](day=[01])(?!\d)/); location.hash = location.hash.split('?')[0] + (v ? '?' + v[1] : ''); }
     frame(routeBounds(ri), { maxZoom: 15.5, duration: 700 });
     const card = col.querySelector('#mapcard');
     if (!wide() && card.querySelector(':scope > .routesheet')) { card.classList.remove('peek'); card.classList.add('open'); }
@@ -1034,7 +1035,11 @@ function pickRoute(ri, app) {
 function routeSheet({ short, dir, at, full, bus, every, day, on }, clockNow) {
   const ri = D.routeByShort[short];
   if (ri === undefined) return null;
-  if (day) return routeDaySheet(ri, short, on, clockNow);
+  // Opened plain (no stop, way, bus or option in its address) while none of its buses is out and it's a while yet,
+  // or its next bus is out on another route: its day, the question then 'when does it run?'. The user, of All day:
+  // 'so pretty and useful especially for saturday. why is it so buried?'
+  const plain = day === null && at === undefined && dir === undefined && !bus && !full && !every && !on;
+  if (day || (plain && quietOpen(ri, clockNow))) return routeDaySheet(ri, short, on, clockNow);
   const r = route(ri);
   const dirs = Object.keys(r.stops || {});
   const d = dirs.includes(dir) ? dir : dirs[0];
@@ -1421,7 +1426,7 @@ function tripRows(ti, from, clockNow, dim) {
 }
 
 /** A route's two views, its stops and its day (strip.js routeDay), a pair of links by its name as the Center's are. */
-const routeViews = (short, day) => html`<div class="seg rs-views" role="group" aria-label="View"><a href="#/map/route/${encodeURIComponent(short)}"${html.raw(day ? '' : ' aria-current="page"')}>Stops</a><a href="#/map/route/${encodeURIComponent(short)}?day=1"${html.raw(day ? ' aria-current="page"' : '')}>All day</a></div>`;
+const routeViews = (short, day) => html`<div class="seg rs-views" role="group" aria-label="View"><a href="#/map/route/${encodeURIComponent(short)}?day=0"${html.raw(day ? '' : ' aria-current="page"')}>Stops</a><a href="#/map/route/${encodeURIComponent(short)}?day=1"${html.raw(day ? ' aria-current="page"' : '')}>All day</a></div>`;
 /** A route's page on its day view: its head as ever, which day, and its buses down the day (strip.js routeDay). */
 function routeDaySheet(ri, short, on, clockNow) {
   const { days, pick, today, clk } = dayPick(clockNow, on);
@@ -1429,7 +1434,7 @@ function routeDaySheet(ri, short, on, clockNow) {
   const head = html`<div class="head routehead"><div class="rs-name">${badge(ri, 36)}<div class="mid"><span class="name">${routeName(ri, false)}</span>${routeSub(ri) ? html`<span class="sub">${routeSub(ri)}</span>` : ''}</div>${routeViews(short, true)}</div></div>`;
   const s = pick.off ? '' : routeDay(ri, clk, today);
   const none = pick.off ? html`<div class="tcl-note"><b>No buses</b> · ${offDayWords(pick.ymd)}</div>` : !s ? html`<div class="tcl-note"><b>No buses</b></div>` : '';
-  return { head, body: html`<div class="routesheet rs-dayview">${row}${pick.note && !pick.off ? html`<p class="ds-note">${pick.note}</p>` : ''}${s}${none}</div>`, anchor: null, title: routeTitle(ri), ri, day: true };
+  return { head, body: html`<div class="routesheet rs-dayview">${today && !pick.off ? busyNote(ri, clockNow, true) : ''}${row}${pick.note && !pick.off ? html`<p class="ds-note">${pick.note}</p>` : ''}${s}${none}</div>`, anchor: null, title: routeTitle(ri), ri, day: true };
 }
 /** Where this route's bus is while it runs another route between its own runs (a Saturday's 9 out as the 1), and when
  *  it's back: the question with no 9 on the map. The user's block-strip mockup's line, 'On Route 1 now ... Back on the
@@ -1437,19 +1442,53 @@ function routeDaySheet(ri, short, on, clockNow) {
  *  and the run before its next one, its bus's, another route's (not its own other half, 16 AM's and PM's) and on now.
  *  No 'by' a stop: the timetable's place isn't a sighting. No 'back at': the next run's time is the list's first row,
  *  right under it (a second opinion). Not where the feed has that bus: a sighting isn't the timetable's. */
-function busyNote(ri, clockNow) {
+/** Whether a route opened plain opens on its day: decided once an opening (an address, till it changes), so it doesn't
+ *  turn over under the rider when a bus pulls out. Not while one of its buses is out or a run is under way; not with no
+ *  more runs today (its stops say tomorrow's first); else when its next bus is out on another route, or its next run is
+ *  half an hour off or more (a Saturday's gap, the morning before its first), not an hourly route's minutes at the Center. */
+let quietPick = null;
+addEventListener('hashchange', () => { quietPick = null; });
+function quietOpen(ri, clockNow) {
+  if (quietPick && quietPick.hash === location.hash && quietPick.ri === ri) return quietPick.day;
+  let day = false;
+  if (!opOf(ri) && !(!rtStale() && rt.buses.some(b => b.ri === ri))) {
+    const at = min => ({ min, day: 0 }), runs = runsOn(ri, clockNow.ymd);
+    const endOf = ti => { const te = tripEnd(ti), st = tripStops(ti); return te ? te.min : st.length ? st[st.length - 1][0] : -1; };
+    const next = runs.find(x => !isDue(at(x.min), clockNow));
+    day = !!next && !runs.some(x => isDue(at(x.min), clockNow) && !isGone(at(endOf(x.trip)), clockNow))
+      && (minsTo(at(next.min), clockNow) >= 30 || !!busyNote(ri, clockNow));
+  }
+  quietPick = { hash: location.hash, ri, day };
+  return day;
+}
+
+function busyNote(ri, clockNow, onDay = false) {
   if (opOf(ri)) return '';
   const ymd = clockNow.ymd, at = min => ({ min, day: 0 });
   const endOf = ti => { const te = tripEnd(ti), st = tripStops(ti); return te ? te.min : st.length ? st[st.length - 1][0] : -1; };
   const runs = runsOn(ri, ymd);
   if (runs.some(x => isDue(at(x.min), clockNow) && !isGone(at(endOf(x.trip)), clockNow))) return '';
   const next = runs.find(x => !isDue(at(x.min), clockNow));
-  const p = next ? prevTrip(next.trip, ymd) : undefined, pr = p !== undefined ? tripRoute(p) : null;
+  if (!next) return '';
+  // When it's back, on All day only: on the stops it's the list's first row, right under it (a second opinion).
+  const back = onDay ? ` · ${routeName(ri)} again at ${clockText(next.min)}` : '';
+  // The feed's own word first: the bus it has down for the next run (a dispatcher's swap), else the one on the run
+  // before it. Seen out on another route, it's said where it is as a stop's rows say a bus still on its run before
+  // ('by North Walmart': its next stop, or at it), never a stop it's passed; the bus's number last. The
+  // user: 'i just want hints at where the bus is and why it's not on a route when people check'.
+  const p = prevTrip(next.trip, ymd), u = rt.trips[D.trips[next.trip]];
+  const b = rtStale() ? null : rt.buses.find(x => u && u.v !== undefined && x.id.slice(2) === String(u.v)) || (p !== undefined ? rt.buses.find(x => x.trip === D.trips[p]) : null);
+  if (b) {
+    if (b.ri === undefined || b.ri === null || familyKey(b.ri) === familyKey(ri)) return '';
+    const si = nextStopOf(b), to = si !== undefined ? stop(si) : null;
+    const where = !to ? '' : ` · ${distance(b.lat, b.lon, to.lat, to.lon) <= AT_STOP ? 'at' : 'by'} ${to.hub ? 'the ' + D.hub.name : heardName(si).name}`;
+    return html`<a class="re-last rs-busy live" href="#/map/route/${encodeURIComponent(D.routes[b.ri].short)}?bus=${encodeURIComponent(b.id)}">${badge(b.ri, 24)}<span class="rs-busy-t">Its next bus is on ${routeName(b.ri)} now${where}${back} · bus ${b.label}</span><span class="livetag"><i></i>Live</span></a>`;
+  }
+  const pr = p !== undefined ? tripRoute(p) : null;
   if (!pr || familyKey(pr.r) === familyKey(ri) || !staysOn(p, next.trip)) return '';
   const first = tripStops(runOf(p, ymd)[0])[0];
   if (!first || !isDue(at(first[0]), clockNow) || isGone(at(endOf(p)), clockNow)) return '';
-  if (!rtStale() && rt.buses.some(b => b.trip === D.trips[p])) return '';
-  return html`<div class="re-last rs-busy"><span>Its next bus is on ${routeName(pr.r)} now, by the timetable.</span>${html.raw(routeBadgeLink(pr.r, first[1], 24, pr.dir))}</div>`;
+  return html`<div class="re-last rs-busy"><span>Its next bus is on ${routeName(pr.r)} now, by the timetable${back}.</span>${html.raw(routeBadgeLink(pr.r, first[1], 24, pr.dir))}</div>`;
 }
 
 /** `later`: the next trip of the bus furthest along this route, dimmed, under the list. `now`: a bus that ran this
