@@ -2030,6 +2030,10 @@ test('routes list: from the home page\'s Routes line, every route, one opened', 
 test('directions from out of a walk of any stop, on a phone: swiped down, the card goes down to its head and stays, then leaves', PHONE, async ({ page }) => {
   // From north of Franklin, Idaho, to the Transit Center: the card lists the stops to drive to. A swipe down hid it,
   // and the next redraw (the feed's tick, the minute) put it back up; there was no way to see the map under it.
+  // A weekday morning, no feed: on the clock it ran on, a Saturday's evening had no runs left to drive to (21 Nov 2026).
+  await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
+  const d = new Date(); do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6); d.setHours(9, 0, 0, 0);
+  await page.clock.setFixedTime(d);
   await open(page, '#/');
   await go(page, '#/go/10628498/at/42.03000,-111.87400/North%20of%20Franklin');
   await mapReady(page);
