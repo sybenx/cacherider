@@ -803,6 +803,7 @@ export function dirName(ri, dir) {
     else if (named) out = { text: named };
     else { const p = byDist(near(P, 250))[0] || byDist(near(O, 250).filter(p => LANDMARK.test(p.word)))[0]; out = { text: p ? p.name : e.name }; }
   }
+  if (out) out.si = end;   // the stop it names: a run ending there gets there (ui.js arrives)
   dirNames.set(k, out);
   return out;
 }
@@ -811,6 +812,19 @@ const lastCache = new Map();
 /** 'Last full run', 'Last run (partial, to 290 South 100 East)', or null, for a departure on its service day. The last
  *  of its road's (corridor): a route's halves and another operator's run on it count as one, so 16 AM's 7:43 isn't
  *  the last at 2281 North Main with the Preston commuter's 12:38 and 16 PM's 7:23 PM still to come. */
+/** Its road's departures (corridor: a route's halves and another operator's run on it as one) from a departure's stop
+ *  on its service day, the timetable's, in order: for the stop's next bus, its road's last today (ui.js lastLine). */
+export function roadRuns(t) {
+  if (t.trip === undefined || t.si === undefined) return [];
+  const ymd = t.ymd || now().ymd, road = new Set(corridor(t.r));
+  return timesOn(t.si, ymd).filter(x => road.has(x.r) && x.trip !== undefined).map(r => ({ ...r, ymd }));
+}
+/** What a run does that a part-way last doesn't: 'all the way round' a circuit's, from the Transit Center and back to
+ *  it; 'all the way' another's. */
+export function allTheWay(ti) {
+  const st = tripStops(ti), te = tripEnd(ti);
+  return 'all the way' + (st.length && D.stops[st[0][1]].hub && te && D.stops[te.si].hub ? ' round' : '');
+}
 export function lastRun(t) {
   if (t.trip === undefined || t.si === undefined) return null;
   const ymd = t.ymd || now().ymd, key = t.si + '|' + ymd + '|' + corridorKey(t.r);

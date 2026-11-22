@@ -1,6 +1,6 @@
 // Small HTML helpers: escaping, the route badge, the clock time, the icons.
-import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason, keptOn, daysOff } from './data.js';
-import { predict, lateWords, isLoop, loopSpacing, stopsAway, unseen } from './rt.js';
+import { D, route, stop, stopNo, A, stopAlerts, lastRun, routeOrder, nextAt, dirName, activeAlerts, closedThrough, familyKey, family, isHalf, opOf, roadOf, kinOf, offSeason, keptOn, daysOff, tripEnd, roadRuns, allTheWay, runEnd, corridorKey } from './data.js';
+import { predict, lateWords, isLoop, loopSpacing, stopsAway, unseen, tripArrives } from './rt.js';
 import { pointerMark } from './pointer.js';
 import { iconSvg } from './icons.js';
 import { clock, clockText, relative, now, metres, minsTo, isDue, dayFrom, dayName, fmtDay, MON_SHORT } from './time.js';
@@ -206,6 +206,37 @@ export function lastTag(t) {
   return raw(w ? `<span class="lastrun">${esc(w)}</span>` : '');
 }
 /** One departure row: badge · headsign + Live or Scheduled · the time (crossed out and estimated when moved) + how long. */
+/** When a departure gets to the place its words name, { min, live }: where they name where its trip ends ('to Transit
+ *  Center', 'to Hyrum', 'to USU · Smithfield · Richmond'), by the feed as its row is (rt.js tripArrives). Null where
+ *  they don't: a circuit's places (the Transit Center its end but not named), a loop's name, a run ending short of
+ *  the place (the evening's partial last, its tag says where), one that ends where it is. */
+export function arrives(t) {
+  const n = t.trip !== undefined && t.dir !== undefined ? dirName(t.r, t.dir) : null, te = n && !n.places ? tripEnd(t.trip) : null;
+  if (!te || te.si !== n.si || te.si === t.si) return null;
+  const words = String(headsign(t));
+  return words === 'to ' + n.text || words.endsWith(' · ' + n.text) ? tripArrives(t) : null;
+}
+/** ' · there 3:21' after a departure's words: when it gets where they say (arrives), in the live blue where that's the
+ *  feed's word, as the row's own time is. */
+export function thereAt(t) {
+  const a = arrives(t);
+  return raw(a ? `<span class="there"> · there <span${a.live ? ' class="est"' : ''}>${esc(clock(a.min).h)}</span></span>` : '');
+}
+/** The stop's next bus: its road's last run from here today, 'Last 8:14 PM', where that run isn't this one (its own tag
+ *  says so) and isn't cancelled; where the last goes only part way, the last whole one's, 'Last all the way round 8:06
+ *  PM'. Not another operator's (the Preston commuter's would read as the road's), nor a later day's. '' for none. */
+export function lastLine(t) {
+  if (t.day !== 0 || t.cancelled || opOf(t.r) || lastRun(t)) return '';
+  const runs = x => !lively({ ...x, day: 0 }).cancelled;
+  const rows = roadRuns(t).filter(x => x.min >= schedOf(t));
+  let k = rows.length - 1;
+  while (k >= 0 && !runs(rows[k])) k--;
+  const part = k >= 0 && runEnd(rows[k].trip)?.partial;
+  if (part) while (k >= 0 && (runEnd(rows[k].trip)?.partial || !runs(rows[k]))) k--;
+  const x = rows[k];
+  if (!x || x.trip === t.trip) return '';
+  return (part ? 'Last ' + allTheWay(x.trip) + ' ' : 'Last ') + clockText(x.min).replace(' ', '\u00a0');
+}
 export function depRow(t0, clockNow, opts = {}) {
   const t = lively(t0);
   const rel = opts.rel || relative(t, clockNow, opts);
@@ -221,9 +252,11 @@ export function depRow(t0, clockNow, opts = {}) {
   const b = t.si !== undefined ? routeBadgeLink(t.r, t.si, 36, t.dir) : badge(t.r, 36).s;
   // `noRel`: no 'how long' under the time, where the day's heading above already names its day ('tomorrow, Tue' on
   // every row under 'Tuesday 20 Oct' said it again and again)
+  // `there`: when it gets where its words say (thereAt); `last`: its road's last today, under it (lastLine) — the stop's
+  // next bus only
   // `size`: the time's (the stop page's next bus, larger); `relHtml`: 'how long' as markup of its own (its day, warned)
   const relEl = opts.relHtml !== undefined ? (opts.relHtml ? `<span class="rel">${opts.relHtml}</span>` : '') : `<span class="rel${opts.warn ? ' warnmark' : ''}">${esc(rel)}</span>`;
-  return raw(`<div class="row${opts.href ? ' tap' : ''}${opts.cls ? ' ' + opts.cls : ''}"${opts.attrs || ''}>${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}</span>${sub}${lastTag(t).s}</div><div class="end">${when(t, opts.size || 26).s}${loopArrival(t) || opts.noRel ? '' : relEl}</div></div>`);
+  return raw(`<div class="row${opts.href ? ' tap' : ''}${opts.cls ? ' ' + opts.cls : ''}"${opts.attrs || ''}>${b}<div class="mid"><span class="name">${esc(opts.name || headsign(t))}${opts.there && !opts.name ? thereAt(t).s : ''}</span>${sub}${lastTag(t).s || (opts.last ? `<span class="lastline">${esc(opts.last)}</span>` : '')}</div><div class="end">${when(t, opts.size || 26).s}${loopArrival(t) || opts.noRel ? '' : relEl}</div></div>`);
 }
 
 /** A run the feed says is cancelled, in a list of departures: its time struck, 'Cancelled', nothing to count down to. */

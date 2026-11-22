@@ -2,7 +2,7 @@
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopNo, stopIndex, stop, nextAt, timed, keptOn, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, offDayWords, dayShape, alertsUntil, poolAt, POOL, A, distance } from '../data.js';
 import { relative, fmtDay, dayName, clockText, dayFrom, isGone, minsTo } from '../time.js';
-import { routeNames, routeName, html, icon, corners, depRow, cancelledRow, routeLinks, headsign, lively, sidesRow, travel, quarter, replaceTo, oneEach, keptDay, daysOffNote } from '../ui.js';
+import { routeNames, routeName, html, icon, corners, depRow, cancelledRow, routeLinks, headsign, lively, lastLine, sidesRow, travel, quarter, replaceTo, oneEach, keptDay, daysOffNote } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
 import { U, chips, liveTag } from '../usu.js';
@@ -138,7 +138,7 @@ export function render({ id, full, run, on }, clockNow) {
   // it's soon; the detour that pushed it off.
   if (first.day !== 0) parts.push(dayHead(si, first.ymd, clockNow.ymd));
   const firstRel = first.day === 0 ? undefined : closed.has(first.r) ? String(dayWord) : minsTo(first, clockNow) < 180 ? undefined : '';
-  parts.push(depRow(first, clockNow, { size: 42, cls: 'next', away: true, relHtml: firstRel, attrs: first.trip !== undefined ? ` data-trip="${first.trip}" data-on="${first.ymd}"` : '' }));
+  parts.push(depRow(first, clockNow, { size: 42, cls: 'next', away: true, relHtml: firstRel, there: true, last: lastLine(first), attrs: first.trip !== undefined ? ` data-trip="${first.trip}" data-on="${first.ymd}"` : '' }));
 
   // Today's buses here all gone: the whole day to show is the next day with buses, not a list of ones already run.
   const todayAll = td.all.map(t => lively({ ...t, day: 0, ymd: clockNow.ymd }));

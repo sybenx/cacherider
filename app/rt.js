@@ -609,6 +609,17 @@ function lost(b, u) {
 }
 /** When a bus gets to its trip's last stop, in seconds: the feed's time; where the feed has lost the trip, from where
  *  the bus is (there, within 150 m; else the way at a town bus's pace, 6 m/s, a road 1.4 times the straight line). */
+/** When a departure's trip gets to its last stop, { min, live }: the feed's time once the trip's bus is on it (endAt,
+ *  its waits at timed stops in, as the board times a bus coming in), else the timetable's end, as late as the row
+ *  itself is (an early one waits at its timed stops). Never before the row's own minute. Null where the timetable has
+ *  no end for it. (From stop-rows-there, 19 Oct, measured then on the relay's answers.) */
+export function tripArrives(t) {
+  const te = t.trip !== undefined ? tripEnd(t.trip) : null;
+  if (!te) return null;
+  const u = !t.day && !rtStale() && D.trips ? rt.trips[D.trips[t.trip]] : null, b = u && u.v && rt.buses.find(x => x.id === 'c:' + u.v);
+  const at = b && b.trip === D.trips[t.trip] ? endAt(b, u) : null;
+  return { min: Math.max(t.min, at != null ? toMin(at) : te.min + Math.max(0, t.live ? t.live.delay || 0 : 0)), live: at != null || !!t.live };
+}
 export function endAt(b, u) {
   const end = u.stops.find(s => s[1] === u.end);
   if (!lost(b, u)) return end ? (u.waits && u.waits.get(end[1])) || end[2] : null;   // its waits at timed stops in

@@ -525,6 +525,10 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 .whent .was { margin-right: 0; }
 /* the night's end on a departure: 'Last full run', 'Last run (partial, to …)' */
 .lastrun { font-size: var(--tag-size); font-weight: 600; letter-spacing: calc(.1em * var(--tag-k)); text-transform: var(--tag-case); line-height: 1.35; color: var(--color-text); }
+/* The stop's next bus (stop.js): ' · there 3:21' after where it's going, kept on one line, the live blue from .est; and
+   its road's last today under it, 'Last 8:14 PM' (ui.js thereAt, lastLine). */
+.there { font-weight: 400; color: var(--cr-muted); white-space: nowrap; }
+.lastline { display: block; font-size: 0.8125rem; color: var(--cr-muted); }
 .livetag { display: inline-flex; align-items: center; gap: 6px; font-size: var(--tag-size); font-weight: 500; letter-spacing: calc(.12em * var(--tag-k)); text-transform: var(--tag-case); color: var(--color-accent-700); white-space: nowrap; }
 /* a plain dot: a halo pressed against it read as one blur, and a ring clear of it as a radio button picked */
 .livetag i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); flex: none; }
