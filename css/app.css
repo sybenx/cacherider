@@ -1040,6 +1040,18 @@ a.row:hover, .row.tap:hover { background: var(--cr-hover); }
 @media (prefers-reduced-motion: reduce) { .dial .ring, .dial .needle { transition: none; } }
 /* the Transit Center pick's times open the bay's stop page */
 .tc-pick a.cell { color: inherit; text-decoration: none; }
+/* The picked route in the board's look (hub.js picked): no frame; its name, when it leaves bold, where its bus is in
+   grey as the board's rows, then its next departures as the board's own rows, 'how long' at their right. */
+.tc-pick.plain { margin: 16px 0 0; padding: 0; gap: 6px; }
+.tc-pick.plain .top { padding: 0 16px; }
+.tc-pick.plain .title { font-size: 1.25rem; }
+.tc-pick.plain .tc-where { padding: 0 16px; font-size: 0.875rem; color: var(--cr-muted); }
+.tc-pick.plain .tc-where.here { color: var(--color-accent-700); font-weight: 600; }
+.tc-pick.plain .tc-where a { color: var(--color-accent-700); }
+.tc-pick.plain .words { padding: 0 16px; color: var(--cr-muted); }
+.tc-pick.plain .tc-pick-rows { margin-top: 6px; border-top: 1px solid var(--cr-line); }
+.tc-pick.plain .tcb-row { grid-template-columns: 64px minmax(0, 1fr) auto; }
+.tcb-rel { font-size: 0.8125rem; color: var(--cr-muted); white-space: nowrap; }
 @media (hover: hover) { .tc-pick a.cell:hover { background: var(--cr-hover); } }
 /* The map keeps its drags. Some Android browsers (DuckDuckGo) took an up-and-down drag on it as scrolling the
    page, hid their address bar, and dropped the drag: the map claims its touches, and the page itself neither

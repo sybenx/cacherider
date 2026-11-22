@@ -489,24 +489,29 @@ function picked(s, clockNow) {
     : s.away ? 'The bus is out on a run that doesn’t come back through here soon.'
     : s.op ? `${opOf(s.ris[0]).name}’s bus has no live times, so these are scheduled.`
     : 'This route isn’t reporting its position.';
-  // Late, said first and large, under its name: 'is my bus on time, and if not when' is what a rider picks it for.
-  // It was the end of a muted sentence ('…from the Transit Center, 11 min late.'), and 'late' under the first time.
-  const lateLine = !s.loop && s.late && dep && dep.day === 0 ? html`<span class="tc-late">Leaves about ${clock(s.leave).h} · ${s.late} min late</span>` : '';
   // The badge opens the route, landing on its bay; each time opens that bay's stop page, the rest of its day.
   const ri = s.ris[s.ris.length - 1], bay = D.hub.bays.find(b => b.routes.includes(ri));
   const baySi = bay ? bay.stop : undefined;
   // A time opens its run from here: the route from the Center at that time, drawn on the map, its stops listed.
   const stopHref = t => { const si = t.si !== undefined ? t.si : baySi; return si === undefined ? '#/hub' : '#/stop/' + D.stops[si].id + (t.trip !== undefined ? `?run=${t.trip}&on=${t.ymd}` : ''); };
-  const cells = s.deps.map((t, i) => {
+  // In the board's own look (the Center's direction A, 27 Oct): no frame, no boxed cells; the route, where its next bus
+  // is in grey as the board's rows say it, then its next departures as the board's rows, each a way into its run, the
+  // first the next to leave (said once: no 'Leaves 3:00' over a 3:00 row), where it goes only where not the route's own. The sentence only where it says why there's nothing to time (done for the day, out
+  // of service, another operator's). Aaron, 22 Nov, of the branches held for him: the picked route's card 'redo in
+  // the new look'.
+  const ww = whereWord(s), why = !dep || s.off || s.doubt || s.loose || s.away || s.op;
+  const status = html`<span class="tc-where ${ww.cls}">${ww.w}${s.bus ? html` · <a href="#/map/bus/${encodeURIComponent(s.bus)}">On the map</a>` : ''}</span>`;
+  const rows = s.deps.map((t, i) => {
     const m = i === 0 && t.day === 0 ? s.leave : t.min, c = clock(m);
-    const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) + (i === 0 && s.late ? ` · ${s.late} min late` : '') : dayName(t.ymd);
-    if (i === 0 && t.live && t.live.here && t.live.spacing && !t.live.leaves) return html`<a class="cell first" href="${stopHref(t)}"><span class="t">Here</span></a>`;
-    return html`<a class="cell${i === 0 ? ' first' : ''}" href="${stopHref(t)}"><span class="whent">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}<small>${c.ap}</small></span></span><span class="rel">${rel}</span>${lastTag(t)}</a>`;
+    const rel = t.day === 0 ? relative({ ...t, min: m }, clockNow) : dayName(t.ymd);
+    return html`<a class="tcb-row" href="${stopHref(t)}"><span class="tcb-t">${t.day === 0 ? was(schedOf(t), m) : ''}<span class="t${t.live ? ' est' : ''}">${c.h}</span></span>
+      <span class="tcb-mid">${String(headsign(t)) === desc ? '' : html`<span class="dest">${headsign(t)}</span>`}<span class="sub${t.live ? ' live' : unseen(t) ? ' unseen' : ''}">${t.live ? liveWord(t) : t.onTime ? 'Scheduled · on time' : unseen(t) ? 'Scheduled · bus not seen' : 'Scheduled'}</span>${lastTag(t)}</span>
+      <span class="tcb-rel">${rel}</span></a>`;
   });
-  return html`<div class="tc-pick blueprint">${corners()}
-    <div class="top">${baySi !== undefined ? html.raw(routeBadgeLink(ri, baySi, 44, s.deps[0] && s.deps[0].dir, true)) : badge(ri, 44)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-secondary btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
-    ${lateLine}<span class="words">${words}</span>${s.bus ? html`<div class="golinks"><a class="golink" href="#/map/bus/${encodeURIComponent(s.bus)}">${icon('map', 16)}Where it is on the map</a></div>` : ''}
-    ${cells.length ? html`<div class="cells">${cells}</div>` : ''}</div>`;
+  return html`<div class="tc-pick plain">
+    <div class="top">${baySi !== undefined ? html.raw(routeBadgeLink(ri, baySi, 36, s.deps[0] && s.deps[0].dir, true)) : badge(ri, 36)}<div class="col"><span class="title">${title}</span><span class="sub">${desc}</span></div><a class="btn btn-ghost btn-icon" href="#/hub" aria-label="Close">${icon('close', 20)}</a></div>
+    ${dep && dep.day === 0 && !s.off && ww.w ? status : ''}${why ? html`<span class="words">${words}</span>` : ''}
+    ${rows.length ? html`<div class="tcb tc-pick-rows">${rows}</div>` : ''}</div>`;
 }
 
 /** The picked route's whole day from here, an hour to a column, each time to come a way into its run; below its
