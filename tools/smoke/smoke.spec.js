@@ -2938,6 +2938,9 @@ test('route: both ways, its sibling, a stop on it', PHONE, async ({ page }) => {
 
 test('stop: its page, a route badge, a run, saved and unsaved', PHONE, async ({ page }) => {
   await open(page);
+  // A service day's noon (inBusHours): on a Sunday with no location or saved stop the home page lists no stops
+  // (22 Nov 2026).
+  await inBusHours(page);
   const id = await someStop(page);
   await go(page, '#/stop/' + id);
   await expect(page.getByRole('link', { name: 'How to get here' })).toBeVisible();
