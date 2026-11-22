@@ -1214,7 +1214,9 @@ function routeSheet({ short, dir, at, full, bus, every, day, on }, clockNow) {
         <div class="list rs-list line rs-carry"${html.raw(` style="--rc:${toInk}"`)}>${carryRows}</div>`
       : '';   // its last run today, or none left: nothing becomes anything
   }
-  const body = html`<div class="routesheet">${alerts}${opOf(ri) ? '' : daysOffNote(clockNow)}${yours}${opNote(ri, clockNow)}${keptOn(ri) ? html`<div class="rs-op"><span class="muted">These times are from an old timetable (${keptDay(ri)}) and may be off.</span></div>` : ''}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${onward.now || (buses.length ? '' : busyNote(ri, clockNow))}<div class="list rs-list line${!onward.later && swapOut ? ' into' : ''}"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || swapOut}
+  // Its next bus still out on another route, by the feed: the jog in at the top, in place of the note or 'ran this route'.
+  const jog = buses.length ? '' : jogIn(ri, clockNow, ink);
+  const body = html`<div class="routesheet">${alerts}${opOf(ri) ? '' : daysOffNote(clockNow)}${yours}${opNote(ri, clockNow)}${keptOn(ri) ? html`<div class="rs-op"><span class="muted">These times are from an old timetable (${keptDay(ri)}) and may be off.</span></div>` : ''}${line ? '' : routeEnds(ri, dirs, d, clockNow)}${routeLast(ri, lastWays, clockNow)}${jog || onward.now || (buses.length ? '' : busyNote(ri, clockNow))}<div class="list rs-list line${!onward.later && swapOut ? ' into' : ''}${jog ? ' from' : ''}"${html.raw(` style="--rc:${ink}"`)}>${rows}</div>${onward.later || swapOut}
     ${!whole ? html`<div class="rs-all"><a class="btn btn-secondary btn-block" href="${base}${wayPath}?all=1${keep ? '&every=1' : ''}">The whole route · all ${seq.length} stops</a></div>` : ''}</div>`;
   // Opened from a stop, the list lands on that stop; for a bus (its row, its card's route link), on the bus; for a way
   // of a line (an old address, '/15/1'), on its half. Else at the top: the stops still to come start there.
@@ -1462,24 +1464,43 @@ function quietOpen(ri, clockNow) {
   return day;
 }
 
-function busyNote(ri, clockNow, onDay = false) {
-  if (opOf(ri)) return '';
+/** This route's next run, none of its runs under way, and the feed's bus for it: the bus the feed has down for that
+ *  run (a dispatcher's swap), else the one on the run before it. `b` only when the feed sees it out on another route. */
+function nextOut(ri, clockNow) {
+  if (opOf(ri)) return null;
   const ymd = clockNow.ymd, at = min => ({ min, day: 0 });
   const endOf = ti => { const te = tripEnd(ti), st = tripStops(ti); return te ? te.min : st.length ? st[st.length - 1][0] : -1; };
   const runs = runsOn(ri, ymd);
-  if (runs.some(x => isDue(at(x.min), clockNow) && !isGone(at(endOf(x.trip)), clockNow))) return '';
+  if (runs.some(x => isDue(at(x.min), clockNow) && !isGone(at(endOf(x.trip)), clockNow))) return null;
   const next = runs.find(x => !isDue(at(x.min), clockNow));
-  if (!next) return '';
+  if (!next) return null;
+  const p = prevTrip(next.trip, ymd), u = rt.trips[D.trips[next.trip]];
+  let b = rtStale() ? null : rt.buses.find(x => u && u.v !== undefined && x.id.slice(2) === String(u.v)) || (p !== undefined ? rt.buses.find(x => x.trip === D.trips[p]) : null);
+  if (b && (b.ri === undefined || b.ri === null || familyKey(b.ri) === familyKey(ri))) return { next, p, b: null, own: true };
+  return { next, p, b, endOf, at };
+}
+
+/** On the stops, where this route's next bus is still out on another route, by the feed: the line coming in at the top
+ *  in that route's colour, a step sideways into this route's, as the jog at the foot goes on out of it. The user, of
+ *  Route 8's page with its bus still on the 3: 'i'd like a jog at the top of this when it's still route 3', 'smaller,
+ *  just saying which route it's on, not too much more'. A tap to the bus on that route's map. */
+function jogIn(ri, clockNow, ink) {
+  const o = nextOut(ri, clockNow);
+  if (!o || !o.b) return '';
+  const b = o.b, r = D.routes[b.ri], from = dark() ? lift('#' + r.color) : sinkLine('#' + r.color);
+  return html`<a class="section onward jog jog-in"${html.raw(` style="--rc:${ink};--rc2:${from}"`)} href="#/map/route/${encodeURIComponent(r.short)}?bus=${encodeURIComponent(b.id)}"><span>On ${routeName(b.ri)} now · bus ${b.label}</span><span class="livetag"><i></i>Live</span>${badge(b.ri, 24)}</a>`;
+}
+
+function busyNote(ri, clockNow, onDay = false) {
+  const o = nextOut(ri, clockNow);
+  if (!o || o.own) return '';
+  const { next, p, b, endOf, at } = o, ymd = clockNow.ymd;
   // When it's back, on All day only: on the stops it's the list's first row, right under it (a second opinion).
   const back = onDay ? ` · ${routeName(ri)} again at ${clockText(next.min)}` : '';
-  // The feed's own word first: the bus it has down for the next run (a dispatcher's swap), else the one on the run
-  // before it. Seen out on another route, it's said where it is as a stop's rows say a bus still on its run before
-  // ('by North Walmart': its next stop, or at it), never a stop it's passed; the bus's number last. The
-  // user: 'i just want hints at where the bus is and why it's not on a route when people check'.
-  const p = prevTrip(next.trip, ymd), u = rt.trips[D.trips[next.trip]];
-  const b = rtStale() ? null : rt.buses.find(x => u && u.v !== undefined && x.id.slice(2) === String(u.v)) || (p !== undefined ? rt.buses.find(x => x.trip === D.trips[p]) : null);
+  // Seen out on another route, it's said where it is as a stop's rows say a bus still on its run before ('by North
+  // Walmart': its next stop, or at it), never a stop it's passed; the bus's number last. The user: 'i just want hints at
+  // where the bus is and why it's not on a route when people check'.
   if (b) {
-    if (b.ri === undefined || b.ri === null || familyKey(b.ri) === familyKey(ri)) return '';
     const si = nextStopOf(b), to = si !== undefined ? stop(si) : null;
     const where = !to ? '' : ` · ${distance(b.lat, b.lon, to.lat, to.lon) <= AT_STOP ? 'at' : 'by'} ${to.hub ? 'the ' + D.hub.name : heardName(si).name}`;
     return html`<a class="re-last rs-busy live" href="#/map/route/${encodeURIComponent(D.routes[b.ri].short)}?bus=${encodeURIComponent(b.id)}">${badge(b.ri, 24)}<span class="rs-busy-t">Its next bus is on ${routeName(b.ri)} now${where}${back} · bus ${b.label}</span><span class="livetag"><i></i>Live</span></a>`;

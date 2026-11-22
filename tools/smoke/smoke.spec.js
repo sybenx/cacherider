@@ -477,6 +477,16 @@ test('a route whose bus is out as another route between its runs says so, from t
   await expect(live.locator('.rs-busy-t')).toHaveText(new RegExp(`^Its next bus is on ${pick.other.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} now · (by|at) .+ · ${pick.self.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} again at ${backAt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · bus 9005$`));
   await expect(live.locator('.livetag')).toHaveText('Live');
   await expect(live).toHaveAttribute('href', '#/map/route/' + encodeURIComponent(pick.otherShort) + '?bus=c%3A9005');
+  // On its stops: the jog in at the top, the route it's still on and the bus, no more ('smaller, just saying which route
+  // it's on'), in place of 'ran this route'; the line on down from it.
+  await go(page, '#/map/route/' + encodeURIComponent(pick.short) + '?day=0');
+  const jog = page.locator('a.jog-in').filter({ visible: true });
+  await expect(jog).toHaveCount(1, { timeout: 20_000 });
+  await expect(jog.locator(':scope > span').first()).toHaveText(`On ${pick.other} now · bus 9005`);
+  await expect(jog).toHaveAttribute('href', '#/map/route/' + encodeURIComponent(pick.otherShort) + '?bus=c%3A9005');
+  await expect(page.locator('.section.onward', { hasText: 'ran this route' }).filter({ visible: true })).toHaveCount(0);
+  await expect(page.locator('.rs-list.line.from').filter({ visible: true })).toHaveCount(1);
+  if (process.env.JOG_SHOT) await page.locator('.routesheet').filter({ visible: true }).first().screenshot({ path: process.env.JOG_SHOT });
   feed = null;
   await page.clock.setFixedTime(at(pick.on));   // its own run under way: nothing to explain
   await page.reload();

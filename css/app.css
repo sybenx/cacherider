@@ -1701,6 +1701,14 @@ a.side:active { background: var(--cr-hover); }
 .section.onward.jog::before, .section.onward.jog::after { content: ""; position: absolute; width: 8px; box-sizing: border-box; }
 .section.onward.jog::before { left: 30px; top: 0; height: 30px; border-left: 3px solid var(--rc); border-bottom: 3px solid var(--rc); border-bottom-left-radius: 8px; }
 .section.onward.jog::after { left: 37px; top: 27px; bottom: -1px; border-top: 3px solid var(--rc2); border-right: 3px solid var(--rc2); border-top-right-radius: 8px; opacity: .6; }
+/* And in at the top (jogIn): the route its bus is still on, its rail a step to the right, stepping left into this
+   route's, the rail on down the list. */
+.section.onward.jog-in { color: inherit; text-decoration: none; padding-top: 14px; }
+.section.onward.jog-in::before { left: 37px; top: 6px; height: 24px; border-left: 0; border-right: 3px solid var(--rc2); border-bottom: 3px solid var(--rc2); border-bottom-left-radius: 0; border-bottom-right-radius: 8px; }
+.section.onward.jog-in::after { left: 30px; top: 27px; border-top: 3px solid var(--rc); border-right: 0; border-left: 3px solid var(--rc); border-top-right-radius: 0; border-top-left-radius: 8px; opacity: 1; }
+.section.onward.jog-in .livetag, .section.onward.jog-in .badge { flex: none; }
+.rs-list.line.from { padding-top: 0; }
+.rs-list.line.from > :first-child { background-size: 3px 100%; background-position: 14px 0; }
 .rs-carry.line > * { background-position: 26px 0; }
 .rs-carry.line > :first-child { background-size: 3px 100%; background-position: 26px 0; }
 .rs-carry.line > :last-child { background-size: 3px 50%; background-position: 26px 0; }
