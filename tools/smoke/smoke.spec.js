@@ -342,7 +342,14 @@ test('a bus off its timetable: the day view\'s red dot where it is and an empty 
   // Its day: the red dot six minutes up the line from now, the empty one on the now line, a dotted stroke between.
   await go(page, '#/map/route/15?day=1');
   const day = page.locator('.routeday').filter({ visible: true });
-  await expect(day.locator('.rd-late')).toHaveText(['Bus 9005 · 6 min late']);   // which bus, too
+  // Which bus, in the bar at the foot under its column (the user: the number by the dot 'too busy, let's put it at the
+  // bottom'); the 15 runs three, so how late goes under it there, and nothing by the dot.
+  const foot = day.locator('.rd-feet .rd-vn');
+  await expect(foot).toHaveCount(1);
+  await expect(foot).toHaveAttribute('aria-label', 'Bus 9005 · 6 min late');
+  await expect(foot).toHaveAttribute('href', '#/map/bus/c%3A9005');
+  await expect(foot.locator('small')).toHaveText('6 min late');
+  await expect(day.locator('.rd-late')).toHaveCount(0);
   await expect(day.locator('.ds-off')).toHaveCount(1);
   const ys = await day.locator('.ds-off').evaluate(l => [...l.parentNode.querySelectorAll('.ds-bus')].map(c => ({ live: c.classList.contains('live'), y: +c.getAttribute('cy') })));
   const live = ys.find(c => c.live), ring = ys.find(c => !c.live && c.y > live.y);
