@@ -2743,6 +2743,7 @@ test('a route drawn as a line: its key stops, a fold kept open through a redraw,
   // The Blue Loop: its stops on a rail, the stops between its key stops folded. A fold opened stays open as the feed
   // redraws the sheet; 'Every stop' unfolds the lot, 'Key stops' folds them again.
   await open(page, '#/map/route/B');
+  await inBusHours(page);   // out of hours a quiet route opens on All day (cr-v557), not its line
   await expect(page.locator('.rs-list.line').filter({ visible: true }).first()).toBeAttached();
   const fold = page.locator('.rs-fold').filter({ visible: true }).first();
   if (await fold.count()) {
@@ -2925,12 +2926,14 @@ test('Route 16 is one route: one badge at 2281 N Main with PRT\'s, the last full
 
 test('route: both ways, its sibling, a stop on it', PHONE, async ({ page }) => {
   await open(page, '#/map/route/2?day=0');
+  await inBusHours(page);   // out of hours a quiet route opens on All day (cr-v557): 16 PM's half named on its line
   await mapReady(page);
   await expect(page.getByText(/stops, in order|stops left/i).filter({ visible: true }).first()).toBeVisible();
   const ways = page.locator('a[href^="#/map/route/2/"]');
   if (await ways.count()) { await ways.last().click(); await expect(page).toHaveURL(/#\/map\/route\/2\//); }
   await go(page, '#/map/route/16%20PM');   // a half's own address, as old links have it: the page says which half, and links the other
   await expect(page.locator('.routehead .sub').filter({ visible: true }).first()).toContainText(/^Evening runs/);
+  await go(page, '#/map/route/16%20PM?day=0');   // quiet, it may open on All day: the other half is linked on its Stops view
   await expect(page.getByText(/Also its morning runs/).filter({ visible: true }).first()).toBeVisible();
   await page.locator('a[href^="#/stop/"]').filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/#\/stop\//);
@@ -3582,8 +3585,11 @@ test('directions arriving by a time on a later day: that day said, no bus missed
   // Richmond to Utah Podiatry, by 8 AM on a weekday to come: the 15 at 6:40 was 'Today' and 'Missed it? The next 15
   // leaves at 8:10' (gone by the time picked, 8:00, not by the clock), as if the 15 ran hourly.
   await open(page);
-  const d = new Date(); d.setDate(d.getDate() + 2); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  // A service day: not a weekend, not a holiday (Thanksgiving was two days out on 24 Nov 2026).
+  const ymdOf = d => d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  const d = new Date(); d.setDate(d.getDate() + 2);
+  while (d.getDay() === 0 || d.getDay() === 6 || !(await page.evaluate(async y => !!(await import('/app/data.js')).agencyRuns(y), ymdOf(d)))) d.setDate(d.getDate() + 1);
+  const ymd = ymdOf(d);
   await go(page, '#/go/@41.73632,-111.83415:Utah%20Podiatry/at/41.92243,-111.80832/Richmond?t=a' + ymd + '-0800');
   const picked = page.locator('.jsum').filter({ visible: true }).first();
   await expect(picked).toBeVisible();
