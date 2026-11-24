@@ -1792,6 +1792,14 @@ a.side:active { background: var(--cr-hover); }
 .rs-dayview .ds-days { margin-top: 4px; }
 /* A route's day (strip.js routeDay): 6 px a minute, the hours held at the left by the box, its buses side by side. */
 .rd-grid { position: relative; }
+/* The route's day's bar at the foot: its columns as .rd-cols lays them, each bus's number under its dot. */
+.rd-feet { flex: 1; display: flex; gap: 8px; padding-right: 8px; min-height: 22px; }
+/* A column's buses one under another (two only where a late one overlaps the next); on a crowded route, how late
+   under its number. */
+.rd-feet > div { flex: 1; min-width: 0; }
+.rd-vn { position: static; display: block; }
+/* how late centred under the number, but never out past its column's left edge (strip.js sets margin-left) */
+.rd-vn small { display: block; width: max-content; margin-top: -5px; text-align: left; line-height: 14px; font-size: 0.6875rem; font-weight: 600; white-space: nowrap; opacity: .85; }
 .rd-axis { position: sticky; left: 0; top: 0; height: 100%; width: 0; z-index: 2; pointer-events: none; }
 .rd-axis .ds-hr { z-index: 2; white-space: nowrap; }
 .rd-gl { position: absolute; left: 56px; width: 100vw; max-width: 600px; border-top: 1px solid var(--cr-line); }

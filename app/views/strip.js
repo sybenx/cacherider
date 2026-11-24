@@ -385,7 +385,8 @@ export function routeDay(ri0, clockNow, today = true) {
     }
     return out;
   };
-  const cols = slots.map(sl => {
+  const feet = slots.map(() => []);   // each column's buses in the feed now (two, where a late one overlaps the next), for the bar at the foot
+  const cols = slots.map((sl, c) => {
     const others = sl.some(b => b.keys.some(k => !mineK(k)));
     const LX = towns ? [24, 50] : [14, 40], lx = x => mineK(familyKey(x.r)) ? LX[0] : LX[1], left = (others ? LX[1] : LX[0]) + 16;
     let svg = '', lab = '';
@@ -422,13 +423,21 @@ export function routeDay(ri0, clockNow, today = true) {
       });
       if (nowY !== null) {
         const d = nowDot(b, live, nowMin, y, lx, on, past, 8);
-        svg += d.svg;
-        if (d.bus) lab += `<div class="rd-late" style="top:${d.ly - 9}px;left:${d.X + 12}px">Bus ${esc(d.bus.label)}${d.dl !== null ? ' · ' + lateWords(d.dl) : ''}</div>`;
+        // The bus's link is the bar's, at the foot (the dot's a tap still, out of the tab order: one stop a bus).
+        svg += d.svg.replace('class="ds-busl"', 'class="ds-busl" tabindex="-1"');
+        // Its number in the bar at the foot, as the Center's day has it (the user, 24 Nov, of the label on the bus over
+        // the 15's stop names: 'too busy, let's put it at the bottom'). How late beside the dot, but where the columns
+        // are crowded, under its number in the bar: beside the dot it lay over the slanted stop names (15, Green).
+        if (d.bus) feet[c].push({ bus: d.bus, X: d.X, dl: d.dl });
+        if (d.bus && d.dl !== null && !many) lab += `<div class="rd-late" style="top:${d.ly - 9}px;left:${d.X + 12}px">${lateWords(d.dl)}</div>`;
       }
     }
     return `<div class="rd-col"><svg width="60" height="${H}">${svg}</svg>${lab}</div>`;
   }).join('');
   const at = nowY !== null ? nowY : today && nowMin > bot ? H : 0;
+  // The bar's columns as .rd-cols lays them (css .rd-feet: change the two together), each bus's number under its dot.
+  const vn = f => `<a class="ds-vn rd-vn" href="#/map/bus/${encodeURIComponent(f.bus.id)}" style="margin-left:${f.X - 23}px" aria-label="${esc('Bus ' + f.bus.label + (f.dl !== null ? ' · ' + lateWords(f.dl) : ''))}">${esc(f.bus.label)}${many && f.dl !== null ? `<small style="margin-left:${Math.max(-8, 23 - f.X)}px">${lateWords(f.dl)}</small>` : ''}</a>`;
+  const foot = feet.some(f => f.length) ? `<div class="ds-foot"><span class="ds-corner">Bus</span><div class="rd-feet">${feet.map(fs => `<div>${fs.map(vn).join('')}</div>`).join('')}</div></div>` : '';
   return html`<div class="daystrip routeday" data-at="${at}">${html.raw(keyLine(today))}
-    <div class="ds-box"><div class="rd-grid" style="height:${H}px"><div class="rd-axis">${html.raw(axis)}</div><div class="rd-cols${many ? ' many' : ''}">${html.raw(cols)}</div></div></div></div>`;
+    <div class="ds-box"><div class="rd-grid" style="height:${H}px"><div class="rd-axis">${html.raw(axis)}</div><div class="rd-cols${many ? ' many' : ''}">${html.raw(cols)}</div></div>${html.raw(foot)}</div></div>`;
 }
