@@ -13,7 +13,7 @@ routes = [{ pattern = "live.cacherider.com", custom_domain = true }]
 # Bus tracks for spotting detours (the agency's alerts aren't to be trusted alone): every minute, where the buses
 # are, three samples twenty seconds apart, kept fourteen days. Buses only; still nothing of a rider's.
 [triggers]
-crons = ["* * * * *"]
+crons = ["* * * * *", "*/5 * * * *"]   # the second: new service notices sent (src/push.js), a run of its own
 
 [[d1_databases]]
 binding = "TRACKS"

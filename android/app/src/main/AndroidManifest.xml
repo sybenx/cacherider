@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Service alerts as notifications (About → Service alerts): Android 13 and later ask the rider first. -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <application
     android:label="@string/app_name"
     android:icon="@mipmap/ic_launcher"
@@ -56,6 +58,22 @@
         <data android:scheme="https" android:host="cacherider.com" />
       </intent-filter>
     </activity-alias>
+
+    <!-- The site's notifications shown as Cache Rider's own, not the browser's, and the permission asked by the app. -->
+    <service
+      android:name="com.google.androidbrowserhelper.trusted.DelegationService"
+      android:enabled="true"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </service>
+
+    <!-- Asks Android 13 and later for the notification permission when the site does. -->
+    <activity
+      android:name="com.google.androidbrowserhelper.trusted.NotificationPermissionRequestActivity"
+      android:exported="false" />
 
     <!-- Hands the splash image to the browser. -->
     <provider

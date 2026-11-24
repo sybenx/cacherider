@@ -7,6 +7,8 @@
 //   GET /detours → { t, detours: [...] }: the ways round the buses have been seen to take (src/detours.js).
 //   GET /alerts → { fetched, source, alerts: [...] }: the agency's service notices as the tracker site shows
 //     them, minutes after they're posted (the GTFS-realtime alerts feed lags them, and misses some).
+//   POST /push { endpoint, keys }, POST /push/off { endpoint }: a phone asking to be told of new notices, or no
+//     longer (src/push.js); the cron sends them.
 // Decoded here with a plain protobuf reader (the schema is small and fixed),
 // so the app needs no protobuf library and gets a few kilobytes, not fifty.
 // A detoured trip comes in the feed twice (see decode()), and a bus the feed
@@ -17,6 +19,7 @@
 
 import { watchStart, watchStep, watchEnd, detoursJSON, inService } from './detours.js';
 import { earlyStart, earlyStep, earlyEnd, earlyJSON } from './early.js';
+import { subscription, subscribe, unsubscribe, pushRun } from './push.js';
 
 const UPSTREAM = 'https://mycvtdbus.org/gtfs-rt/';
 const RTPI = 'https://mycvtdbus.org/api/rtpi?path=';
@@ -53,17 +56,35 @@ async function dispatch(env, at) {
 export default {
   // Every minute: where the buses are, for spotting detours from the tracks (tools/detours.py reads them); and on
   // their minutes, the data workflows asked for (dispatch).
-  async scheduled(ev, env, ctx) { ctx.waitUntil(Promise.all([track(env), dispatch(env, ev.scheduledTime)])); },
+  // And new service notices sent to the phones that asked (src/push.js).
+  // A run of its own every five minutes (the notices are kept that long at the edge anyway), so its requests out and
+  // its CPU never come out of the tracking's.
+  async scheduled(ev, env, ctx) {
+    if (ev.cron === '*/5 * * * *') return ctx.waitUntil(notices().then(n => pushRun(env, n.alerts)).catch(e => console.log('push run: ' + e.message)));
+    ctx.waitUntil(Promise.all([track(env), dispatch(env, ev.scheduledTime)]));
+  },
   async fetch(req, env, ctx) {
     const origin = req.headers.get('Origin') || '';
     const cors = {
       'Access-Control-Allow-Origin': ORIGINS.includes(origin) || PREVIEW.test(origin) ? origin : ORIGINS[0],
-      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Methods': 'GET, POST',
+      'Access-Control-Allow-Headers': 'Content-Type',
       'Vary': 'Origin',
     };
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
-    if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: cors });
     const url = new URL(req.url), path = url.pathname;
+    if (req.method === 'POST' && (path === '/push' || path === '/push/off')) {
+      // From Cache Rider's own pages only.
+      if (!(ORIGINS.includes(origin) || PREVIEW.test(origin))) return new Response('Not from Cache Rider', { status: 403, headers: cors });
+      const j = await req.json().catch(() => null), no = { ...cors, 'Cache-Control': 'no-store' };
+      if (!j) return new Response('JSON please', { status: 400, headers: no });
+      if (path === '/push/off') { await unsubscribe(env, j.endpoint); return new Response(null, { status: 204, headers: no }); }
+      const sub = subscription(j);
+      if (!sub) return new Response('Not a push subscription', { status: 400, headers: no });
+      await subscribe(env, sub);
+      return new Response(null, { status: 204, headers: no });
+    }
+    if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: cors });
     if (path === '/alerts') return alerts(cors);
     if (path === '/detours') {
       try { return new Response(JSON.stringify(await detoursJSON(env)), { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' } }); }
@@ -214,32 +235,34 @@ async function track(env) {
 // values, and each array's items, are indexes into the array. Read out into the same shape as data/alerts.json.
 async function alerts(cors) {
   try {
-    const r = await fetch(ANNOUNCEMENTS, { headers: UA, cf: { cacheTtl: ALERT_TTL, cacheEverything: true } });
-    if (!r.ok) throw new Error('announcements ' + r.status);
-    const raw = await r.json(), memo = new Map();
-    const dec = i => {
-      if (typeof i !== 'number' || i < 0) return null;
-      if (memo.has(i)) return memo.get(i);
-      const v = raw[i];
-      if (Array.isArray(v)) { const l = []; memo.set(i, l); for (const x of v) l.push(dec(x)); return l; }
-      if (v && typeof v === 'object') { const o = {}; memo.set(i, o); for (const [k, x] of Object.entries(v)) o[dec(+k.slice(1))] = dec(x); return o; }
-      return v;
-    };
-    const msgs = dec(0)?.['routes/transit']?.data?.messages;
-    if (!Array.isArray(msgs)) throw new Error('announcements: no messages');
-    const epoch = s => typeof s === 'string' && !isNaN(Date.parse(s)) ? Math.floor(Date.parse(s) / 1000) : null;
-    const list = msgs.filter(m => m && typeof m === 'object').map(m => ({
-      id: 'a' + m.id, title: String(m.name || '').trim(), text: String(m.text || '').trim(), url: '', cause: '', effect: '',
-      start: epoch(m.start), end: epoch(m.end), routeIds: [],
-      routes: (m.assignments?.routes || []).map(r => r && r.shortName).filter(Boolean),
-      stops: (m.assignments?.stops || []).map(s => s && String(s.id)).filter(Boolean),
-      global: !!m.assignments?.global,
-    }));
-    const body = JSON.stringify({ fetched: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), source: ANNOUNCEMENTS, alerts: list });
-    return new Response(body, { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + ALERT_TTL } });
+    return new Response(JSON.stringify(await notices()), { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + ALERT_TTL } });
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   }
+}
+async function notices() {
+  const r = await fetch(ANNOUNCEMENTS, { headers: UA, cf: { cacheTtl: ALERT_TTL, cacheEverything: true } });
+  if (!r.ok) throw new Error('announcements ' + r.status);
+  const raw = await r.json(), memo = new Map();
+  const dec = i => {
+    if (typeof i !== 'number' || i < 0) return null;
+    if (memo.has(i)) return memo.get(i);
+    const v = raw[i];
+    if (Array.isArray(v)) { const l = []; memo.set(i, l); for (const x of v) l.push(dec(x)); return l; }
+    if (v && typeof v === 'object') { const o = {}; memo.set(i, o); for (const [k, x] of Object.entries(v)) o[dec(+k.slice(1))] = dec(x); return o; }
+    return v;
+  };
+  const msgs = dec(0)?.['routes/transit']?.data?.messages;
+  if (!Array.isArray(msgs)) throw new Error('announcements: no messages');
+  const epoch = s => typeof s === 'string' && !isNaN(Date.parse(s)) ? Math.floor(Date.parse(s) / 1000) : null;
+  const list = msgs.filter(m => m && typeof m === 'object').map(m => ({
+    id: 'a' + m.id, title: String(m.name || '').trim(), text: String(m.text || '').trim(), url: '', cause: '', effect: '',
+    start: epoch(m.start), end: epoch(m.end), routeIds: [],
+    routes: (m.assignments?.routes || []).map(r => r && r.shortName).filter(Boolean),
+    stops: (m.assignments?.stops || []).map(s => s && String(s.id)).filter(Boolean),
+    global: !!m.assignments?.global,
+  }));
+  return { fetched: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), source: ANNOUNCEMENTS, alerts: list };
 }
 
 // Only the trips that call at the asked stops, each cut to those stops, and

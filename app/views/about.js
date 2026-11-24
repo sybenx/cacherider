@@ -7,6 +7,7 @@ import { U } from '../usu.js';
 import { installState, installSheet, app, themeButton, cycleTheme, nearMe, nearOff, toggleClock, toggleUnits, render as redraw } from '../main.js';
 import { isWide } from '../wide.js';
 import { TEST } from './test.js';
+import { canPush, pushSub, pushOn, pushOff } from '../push.js';
 
 export function render({ section }, clockNow) {
   const built = D.feed.built ? fmtDay(D.feed.built.replace(/-/g, '')) : '';
@@ -36,13 +37,14 @@ export function render({ section }, clockNow) {
 `;
   const others = D.routes.filter(r => r.op);   // another operator's routes, kept by hand (data.js opOf)
   const right = html`<div class="section" id="alerts">${icon('ban', 16)}Service alerts</div>
+    ${notifyRow()}
     ${alertsBlock(clockNow)}
     ${daysOffBlock(clockNow)}
     <div class="section">${icon('info', 16)}About the data</div>
     <div class="pad muted" style="font-size:0.875rem;line-height:1.5">
       <p>Times come from ${D.agency.brand}'s published GTFS schedule, refreshed nightly${built ? ` (last ${built})` : ''}. Once a bus is on the road, ${D.agency.brand}'s own tracker reports where it is and when it expects to reach each stop, and those rows say <b>Live</b> instead of Scheduled. A live time is still a prediction. A bus on a detour shows on the map but can't give stop times, so its route's rows stay Scheduled.</p>
       ${others.map(r => html`<p>The ${r.long} is ${r.op.name}'s bus, not ${D.agency.brand}'s. No feed has it, so its times are typed in from <a href="${r.op.timetable}" target="_blank" rel="noopener">${r.op.short || r.op.name}'s timetable</a>, with its holidays, and are always Scheduled.</p>`)}
-      <p>Nothing about you leaves this device. Your location, when you share it, is used only to sort stops by distance, and the last place found is kept on this phone so the app opens where you were. There are no accounts, no analytics and no cookies. The live feed reaches the app through a small relay on Cloudflare, because the tracker refuses requests from browsers; the relay carries the feed one way and keeps nothing.</p>
+      <p>Nothing about you leaves this device. Your location, when you share it, is used only to sort stops by distance, and the last place found is kept on this phone so the app opens where you were. There are no accounts, no analytics and no cookies. The live feed reaches the app through a small relay on Cloudflare, because the tracker refuses requests from browsers; the relay carries the feed one way and keeps nothing of yours, unless you turn on notifications: then it keeps this device's push address (made by your browser, with nothing else of yours) until you turn them off.</p>
       <p>${D.feed.version || ''}</p>
       <p><a href="${D.agency.url}" target="_blank" rel="noopener">${site(D.agency.url)}</a>${D.agency.phone ? ' · ' + D.agency.phone : ''}${D.agency.fares ? html` · <a href="${D.agency.fares}" target="_blank" rel="noopener">fare free</a>` : ''}${U && U.url ? html`<br><a href="${U.url}" target="_blank" rel="noopener">${site(U.url)}</a>${U.phone ? ' · ' + U.phone : ''} · fare free` : ''}${others.map(r => html`<br><a href="${r.op.url}" target="_blank" rel="noopener">${site(r.op.url)}</a>${r.op.phone ? ' · ' + r.op.phone : ''}`)}</p>
       <p><a href="https://github.com/sybenx/cacherider" target="_blank" rel="noopener">Source on GitHub</a> · Companion to the <a href="https://github.com/sybenx/headway" target="_blank" rel="noopener">Headway</a> Pebble watchface. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, via Protomaps.</p></div>
@@ -92,6 +94,23 @@ async function mount(el) {
     if (right) document.documentElement.dataset.panel = 'right'; else delete document.documentElement.dataset.panel;
     redraw();
   };
+
+  const nt = el.querySelector('#notify');
+  if (nt) {
+    const btns = [...nt.querySelectorAll('[data-push]')], sub = nt.querySelector('.s'), said = sub.textContent;
+    const show = on => { for (const b of btns) b.setAttribute('aria-pressed', String((b.dataset.push === 'on') === on)); };
+    pushSub().then(x => show(!!x), () => {});
+    for (const b of btns) b.onclick = async () => {
+      const on = b.dataset.push === 'on';
+      sub.textContent = said;
+      if (b.getAttribute('aria-pressed') === 'true') return;
+      for (const x of btns) x.disabled = true;
+      const why = on ? await pushOn().catch(() => 'This browser couldn’t set up notifications.') : (await pushOff().catch(() => {}), '');
+      sub.textContent = why || said;
+      show(on && !why);
+      for (const x of btns) x.disabled = false;
+    };
+  }
 
   const nr = el.querySelector('#aboutnear');
   if (nr) nr.onclick = () => app.geo ? nearOff() : nearMe();
@@ -174,6 +193,12 @@ function alertsBlock(clockNow) {
 }
 // Stops the alert names that are in the timetable; the others are in its words already.
 const known = a => (a.stops || []).filter(id => D.stopById[id] !== undefined);
+
+/** Notifications of new alerts, on this phone: Off · On, set in mount() once the phone says whether it has them. */
+function notifyRow() {
+  if (!canPush()) return html`<div class="setrows"><div class="setrow"><div class="col"><span class="t">Notifications</span><span class="s">Not in this browser. On an iPhone, add Cache Rider to your home screen first, then turn them on here.</span></div></div></div>`;
+  return html`<div class="setrows"><div class="setrow" id="notify"><div class="col"><span class="t">Notifications</span><span class="s">A notification on this device when ${D.agency.brand} posts a new alert</span></div><div class="seg" role="group" aria-label="Notifications"><button type="button" data-push="off" aria-pressed="false">Off</button><button type="button" data-push="on" aria-pressed="false">On</button></div></div></div>`;
+}
 
 /** A web address as people say it: no https://, no www., no trailing slash. */
 const site = url => url.replace(/^https?:\/\/(www\.)?|\/$/g, '');

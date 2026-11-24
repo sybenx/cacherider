@@ -3676,6 +3676,31 @@ test('alerts and detours: the list, one on the map', PHONE, async ({ page }) => 
   await expect(page.locator('#mapcard.open .eyebrow')).toBeVisible();
 });
 
+test('alerts: notifications on and off', PHONE, async ({ page }) => {
+  // The browser's push made up (a headless browser has none): its say-so, a push address; the relay's answers staged.
+  await page.addInitScript(() => {
+    let sub = null;
+    const fake = { endpoint: 'https://fcm.googleapis.com/fcm/send/smoke', toJSON: () => ({ endpoint: fake.endpoint, keys: { p256dh: 'x', auth: 'y' } }), unsubscribe: async () => { sub = null; return true; } };
+    Notification.requestPermission = async () => 'granted';
+    const reg = { pushManager: { subscribe: async () => (sub = fake), getSubscription: async () => sub } };
+    Object.defineProperty(navigator.serviceWorker, 'ready', { value: Promise.resolve(reg) });   // the worker's blocked here
+  });
+  const sent = [];
+  await page.route(/^https:\/\/live\.cacherider\.com\/push/, r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'GET, POST' } });
+    sent.push([new URL(r.request().url()).pathname, JSON.parse(r.request().postData() || '{}').endpoint]);
+    return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } });
+  });
+  await open(page, '#/about/alerts');
+  const on = page.locator('#notify [data-push="on"]'), off = page.locator('#notify [data-push="off"]');
+  await expect(off).toHaveAttribute('aria-pressed', 'true');
+  await on.click();
+  await expect(on).toHaveAttribute('aria-pressed', 'true');
+  await off.click();
+  await expect(off).toHaveAttribute('aria-pressed', 'true');
+  expect(sent).toEqual([['/push', 'https://fcm.googleapis.com/fcm/send/smoke'], ['/push/off', 'https://fcm.googleapis.com/fcm/send/smoke']]);
+});
+
 test('a detour\'s dots tapped: a notice\'s card, its words a tap away; Back puts it away', async ({ page }, info) => {
   // Staged, the notices made up: a route's stop closed by a notice (its stretch dotted), tapped where it's drawn, found by a
   // spot's marker put there first (the map's own sum, not the test's), the markers let through to the map for it.

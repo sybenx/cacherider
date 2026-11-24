@@ -3,14 +3,14 @@
 // The phone answers from what it keeps, never waiting on the network: the app
 // as this version installed it (a deploy is a new version, and the page offers
 // a reload), the data files as last fetched, each checked behind the page.
-const VERSION = 'cr-v561';
+const VERSION = 'cr-v562';
 // The app's page is './' alone: Cloudflare Pages answers './index.html' with a redirect to './', and an answer kept
 // from a redirect can't be given to a navigation (the browser fails it outright, and every page the app's stood in
 // for, /privacy, /index.html, failed so, online or not, once the app was installed).
 const SHELL = [
   './', './manifest.webmanifest', './css/app.css',
   './app/main.js', './app/wide.js', './app/data.js', './app/time.js', './app/ui.js', './app/icons.js', './app/holiday.js', './app/towns.js',
-  './app/views/home.js', './app/views/stop.js', './app/views/hub.js', './app/views/about.js', './app/views/test.js', './app/views/map.js', './app/views/ustop.js', './app/views/uroute.js', './app/views/routes.js', './app/views/stopwide.js', './app/views/holiday-art.js', './app/views/strip.js','./app/geo.js', './app/usu.js', './app/rt.js', './app/pointer.js', './app/plan.js', './app/views/go.js', './app/views/pumpkin.js', './app/views/pumpkin-art.js', './app/views/find.js', './app/share.js', './app/places.js', './app/ink.js', './app/walknet.js',
+  './app/views/home.js', './app/views/stop.js', './app/views/hub.js', './app/views/about.js', './app/views/test.js', './app/views/map.js', './app/views/ustop.js', './app/views/uroute.js', './app/views/routes.js', './app/views/stopwide.js', './app/views/holiday-art.js', './app/views/strip.js','./app/geo.js', './app/usu.js', './app/rt.js', './app/pointer.js', './app/plan.js', './app/views/go.js', './app/views/pumpkin.js', './app/views/pumpkin-art.js', './app/views/find.js', './app/share.js', './app/places.js', './app/ink.js', './app/walknet.js', './app/push.js',
   './vendor/qrcodegen.mjs', './vendor/maplibre-gl.mjs', './vendor/maplibre-gl-shared.mjs', './vendor/maplibre-gl-worker.mjs', './vendor/maplibre-gl.css', './vendor/basemaps.mjs',
   './fonts/barlow-condensed-400.woff2', './fonts/barlow-condensed-600.woff2',
   './icons/icon.svg', './icons/icon-96.png', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './favicon.ico',
@@ -44,6 +44,27 @@ self.addEventListener('activate', e => {
     // The index once kept among the tiles, where a map merely opened left it looking saved: the mark is its own now.
     .then(() => caches.open('cr-map')).then(c => c.delete(scope + 'tiles/tiles.json'))
     .then(() => self.clients.claim()));
+});
+
+// A new service alert, sent by the relay to a phone that turned notifications on (app/push.js, worker/src/push.js):
+// { alerts: [{ id, title, body }] }, newest first, each its own notification (the alert's id its tag, so one sent
+// twice shows once). A tap opens the alerts on About, in the app if it's open.
+self.addEventListener('push', e => {
+  let list = [];
+  try { list = (e.data && e.data.json().alerts) || []; } catch { /* nothing readable: the plain notice below */ }
+  if (!list.length) list = [{ id: 'alert', title: 'New service alert', body: '' }];
+  e.waitUntil(Promise.all(list.map(a => self.registration.showNotification(a.title, {
+    body: a.body, tag: a.id, icon: scope + 'icons/icon-192.png', data: { url: scope + '#/about/alerts' },
+  }))));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || scope;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    const c = cs.find(c => c.url.startsWith(scope));
+    if (c) return c.focus().then(c => c && c.navigate ? c.navigate(url) : null).catch(() => self.clients.openWindow(url));
+    return self.clients.openWindow(url);
+  }));
 });
 
 self.addEventListener('fetch', e => {
