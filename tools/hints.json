@@ -125,6 +125,8 @@
   "_hand_routes": "Routes no feed has, each kept by hand in a file here (tools/reduce.py merges them): Pocatello Regional Transit's Preston / Logan Commuter. A sister site lists none.",
   "stop_code_digits": 4,
   "_stop_code_digits": "How many figures the agency writes a stop number in: Connect's are four (Stop 0516), its feed dropping the leading zero (516). The app shows them so and searches either way. A sister site whose numbers are as its feed has them leaves it out.",
+  "short_days": [["Christmas Eve", "12-24", "19:00"]],
+  "_short_days": "Days Connect ends early: its usual timetable for the day of the week, only the trips done by the hour (one leaving before it and in within half an hour after). Christmas Eve: Aaron, 24 Nov 2026, from dispatch: treat 7 PM like 9 PM ordinarily is; some routes might go slightly past; all clock-outs before 7:30 PM. One 16 PM run may be cut short or dropped: not known yet.",
   "holidays": [
     ["New Year’s Day", "01-01"],
     ["Memorial Day", "05 last mon"],

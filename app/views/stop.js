@@ -1,7 +1,7 @@
 // The stop page, by time: what's next, then the rest of the day. Its states:
 // after the last bus, no service today, and a stop nothing calls at today.
 import { D, stopNo, stopIndex, stop, nextAt, timed, keptOn, today, newTimetable, timesChange, nextServiceDay, remember, isSaved, toggleSaved, stopAlerts, closedRoutes, dayAlert, quietWords, offDayWords, dayShape, alertsUntil, poolAt, POOL, A, distance } from '../data.js';
-import { relative, fmtDay, dayName, clockText, dayFrom, isGone, minsTo } from '../time.js';
+import { relative, fmtDay, dayName, clockText, clockShort, dayFrom, isGone, minsTo } from '../time.js';
 import { routeNames, routeName, html, icon, corners, depRow, cancelledRow, routeLinks, headsign, lively, lastLine, sidesRow, travel, quarter, replaceTo, oneEach, keptDay, daysOffNote } from '../ui.js';
 import { cancelledAt } from '../rt.js';
 import { shareButton, siteLink } from '../share.js';
@@ -235,10 +235,11 @@ function mount(el) {
 }
 
 /** A day's heading in a stop's list: the date, any days without buses before it, a Saturday's shorter, thinner
- *  service ('12:00–6:30 PM, hourly'), and a system alert about the day. */
+ *  service ('12:00–6:30 PM, hourly'), a day the agency ends early (Christmas Eve: tools/hints.json short_days), and a
+ *  system alert about the day. */
 function dayHead(si, ymd, prevYmd) {
-  const quiet = quietWords(prevYmd, ymd), sat = dayFrom(ymd).dow === 6 ? dayShape(si, ymd) : '';
-  return html`<div class="dayhead">${fmtDay(ymd, true)}${quiet ? html` · <span class="quiet">${quiet}</span>` : ''}${sat ? html` · <span class="shape">${sat}</span>` : ''}${alertLink(ymd)}</div>`;
+  const quiet = quietWords(prevYmd, ymd), sat = dayFrom(ymd).dow === 6 ? dayShape(si, ymd) : '', short = D.short && D.short[ymd];
+  return html`<div class="dayhead">${fmtDay(ymd, true)}${quiet ? html` · <span class="quiet">${quiet}</span>` : ''}${sat ? html` · <span class="shape">${sat}</span>` : ''}${short ? html` · <span class="shape">${short.name}, buses end about ${clockShort(short.end)}</span>` : ''}${alertLink(ymd)}</div>`;
 }
 
 /** On a day a system-wide alert is about (a parade, a late start), the day's heading says its times may not hold:

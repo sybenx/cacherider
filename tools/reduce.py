@@ -373,13 +373,46 @@ _an = agency['agency_name'].split()
 if len(_an) > 2 and _an[0].isupper() and _an[0] == ''.join(w[0] for w in _an[1:1 + len(_an[0])]).upper():
     agency['agency_name'] = ' '.join(_an[1:])
 feed = (table('feed_info.txt', required=False) or [{}])[0]
+# ---- days the agency ends early (hints' short_days): its usual timetable for that day of the week, but only the
+# trips done by the hour given ('treat 7 PM like 9 PM ordinarily is', Aaron, 24 Nov 2026, of Christmas Eve), give or
+# take: a trip leaving before it and in by half an hour after it runs (all clock-outs by 7:30 that night). Each of the
+# day's calendars is swapped, for that date alone, for a copy holding just those trips ('<id>~<date>').
+short_days = {}
+_start, _end = {}, {}
+for per in times.values():
+    for sid, rows in per.items():
+        for r in rows: _start[r[4]] = min(_start.get(r[4], 99999), r[0])
+for ti in range(len(trip_ids)):
+    if ti in ends: _end[ti] = ends[ti][1]
+for name, rule, hhmm in H.get('short_days', []):
+    try:
+        cut = int(hhmm[:2]) * 60 + int(hhmm[3:5])
+        for y in range(datetime.date.today().year, datetime.date.today().year + 3):
+            d = holiday_date(rule, y).strftime('%Y%m%d')
+            if d in agency_holidays: continue
+            dow = datetime.date(int(d[:4]), int(d[4:6]), int(d[6:])).weekday()
+            on = [sv for sv in services if sv['days'][dow] and sv['start'] <= d <= sv['end'] and sv['id'] != 'PRT' and (d, sv['id']) not in feed_says]
+            if not on: continue
+            short_days[d] = {'name': name, 'end': cut}
+            for sv in on:
+                nid = sv['id'] + '~' + d
+                keep = lambda ti: _start.get(ti, 0) < cut and _end.get(ti, _start.get(ti, 0)) <= cut + 30
+                for per in times.values():
+                    if sv['id'] in per:
+                        rows = [r for r in per[sv['id']] if keep(r[4])]
+                        if rows: per[nid] = rows
+                services.append({'id': nid, 'days': [0] * 7, 'start': d, 'end': d, 'desc': sv['desc'] + ', ' + name})
+                exceptions += [[d, sv['id'], 2], [d, nid, 1]]
+    except Exception as e:
+        print('::warning::short day', name, repr(rule), 'unreadable (' + type(e).__name__ + '); left out', file=sys.stderr)
+
 out = {
     'agency': {'name': agency['agency_name'], 'brand': H.get('brand', agency['agency_name']), 'url': H.get('agency_url', agency.get('agency_url', '')),
                'tz': agency.get('agency_timezone', 'America/Denver'), 'phone': agency.get('agency_phone', ''),
                'fares': H.get('agency_fares', agency.get('agency_fare_url', '')), 'codeDigits': int(H.get('stop_code_digits', 0))},
     'feed': {'version': feed.get('feed_version', ''), 'start': feed.get('feed_start_date', ''), 'end': feed.get('feed_end_date', ''),
              'built': datetime.date.today().isoformat()},
-    'routes': routes, 'services': services, 'exceptions': exceptions, 'holidays': agency_holidays, 'headsigns': headsigns,
+    'routes': routes, 'services': services, 'exceptions': exceptions, 'holidays': agency_holidays, 'short': short_days, 'headsigns': headsigns,
     'stops': stops, 'hub': hub_out, 'times': times, 'trips': trip_ids, 'next': next_trip, 'buses': buses,
     'ends': [x for i in range(len(trip_ids)) for x in ends.get(i, [-1, -1])],
     # Where a route calls only when asked, which the feed doesn't say: [stop, route, direction] each.
