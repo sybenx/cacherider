@@ -1,8 +1,8 @@
 # Cache Rider
 
 An unofficial schedule app for Connect, the Cache Valley Transit District bus
-in Logan, Utah. Next buses at any stop, the Transit Center bay by bay, and a
-map. Made by a rider, not by the agency.
+in Logan, Utah. It shows the next buses at any stop, departures at the Transit
+Center by bay, and a map. It is not affiliated with the agency.
 
 Built from a [Claude Design](https://claude.ai/design) spec, and a companion
 to the [Headway](https://github.com/sybenx/headway) Pebble watchface.
