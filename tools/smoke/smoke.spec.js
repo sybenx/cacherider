@@ -3150,7 +3150,10 @@ test('map: a spot and its card, a road and its routes, a right click', async ({ 
   const tap = await page.evaluate(({ x, y }) => [12, -12, 24, -24].map(d => [x, y + d]).find(([x, y]) => (document.elementFromPoint(x, y) || {}).classList?.contains('maplibregl-canvas')) || [x, y + 12], { x: box.x + box.width / 2, y: box.y + box.height / 2 });
   await page.mouse.click(tap[0], tap[1]);
   await expect(page).toHaveURL(/#\/map\/at\/.*\?road=/);
-  await page.locator('#mapcard.open .roadroute').filter({ visible: true }).first().click();
+  // Each route a button that says it opens the whole route (cr-v565: a bare chevron was missed).
+  const row = page.locator('#mapcard.open .roadroute').filter({ visible: true }).first();
+  await expect(row).toContainText(/Whole (route|loop)/);
+  await row.click();
   await expect(page).toHaveURL(/#\/map\/route\//);
   await go(page, '#/map');
   await mapReady(page);
