@@ -2179,7 +2179,10 @@ test('a season\'s route goes with its season: the Pumpkin Walk off the home page
       }
     }
     const ops = new Set(j.routes.filter(x => x.op).map(x => x.op.service));
-    if (runOut) for (const sv of j.services) if (!ops.has(sv.id) && sv.end > day) sv.end = day;
+    if (runOut) {   // and the days put in by date after it (Christmas Eve's timetable, cr-v564: 21 days out on 3 Dec)
+      for (const sv of j.services) if (!ops.has(sv.id) && sv.end > day) sv.end = day;
+      j.exceptions = j.exceptions.filter(([date, sid, type]) => type !== 1 || ops.has(sid) || date <= day);
+    }
     await r.fulfill({ json: j });
   });
   await page.route(/^https:\/\/live\.cacherider\.com\//, r => r.abort());
@@ -3544,8 +3547,10 @@ test('directions arriving by a time: the shuttle among the ways, said as the shu
   // 10 PM), its longest wait counted, one of the ways (walks timed flat, the Blue Loop and a walk up the bench leaves
   // later, first); the Stadium Express (to 5 PM) no way.
   await open(page);
-  const d = new Date(); do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6);
-  const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  // A service day: not a weekend, not a holiday (tomorrow was Thanksgiving on 25 Nov 2026).
+  const ymdOf = d => d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  const d = new Date(); do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6 || !(await page.evaluate(async y => !!(await import('/app/data.js')).agencyRuns(y), ymdOf(d))));
+  const ymd = ymdOf(d);
   await go(page, '#/go/@41.74335,-111.81510:Institute/at/41.75484,-111.81505/Aztec?t=a' + ymd + '-1900');
   const picked = page.locator('.jsum').filter({ visible: true }).first();
   await expect(picked).toBeVisible();
@@ -3588,8 +3593,9 @@ test('directions: a ride no quicker than walking, sparing little of it, isn\'t o
   // from across the road are the ways; walking beats the Green on every count. At 6:21 since CVTD's feed of 2 Nov 2026
   // moved the 6's stop at 400 North 13 m nearer, and its 6:20 could be caught from 6:18.
   await open(page);
-  const d = new Date(); d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  const ymdOf = d => d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  const d = new Date(); d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6 || !(await page.evaluate(async y => !!(await import('/app/data.js')).agencyRuns(y), ymdOf(d)))) d.setDate(d.getDate() + 1);
+  const ymd = ymdOf(d);
   await go(page, '#/go/@41.74061,-111.83124:Transit%20Center/at/41.73999,-111.83690/Logan%20Municipal%20Court?t=' + ymd + '-0621');
   await expect(page.locator('.jsum').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.jrow .badge[title="Green Loop"]').filter({ visible: true })).toHaveCount(0);
@@ -3619,8 +3625,9 @@ test('a route\'s first run the other way, turned round from this way, doesn\'t s
   await open(page);
   const r = await page.evaluate(async () => {
     const d = await import('/app/data.js');
-    const t = new Date(); do t.setDate(t.getDate() + 1); while (t.getDay() === 0 || t.getDay() === 6);
-    const ymd = t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0');
+    const ymdOf = t => t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0');
+    const t = new Date(); do t.setDate(t.getDate() + 1); while (t.getDay() === 0 || t.getDay() === 6 || !d.agencyRuns(ymdOf(t)));   // not a holiday either
+    const ymd = ymdOf(t);
     const ri = d.D.routes.findIndex(x => x.short === '15');
     const firsts = [0, 1].map(dir => { let f = null;
       for (const si of new Set(Object.values(d.D.routes[ri].stops).flat())) for (const x of d.timesOn(si, ymd)) {
