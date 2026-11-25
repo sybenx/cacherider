@@ -120,19 +120,20 @@ const liveOn = today => !today || rtStale() ? new Map() : new Map(rt.buses.map(b
  *  and an empty dot at now is where it should be, a dotted red stroke between them (the user: 'red dots that show live
  *  position and the empty dots on the line show the scheduled time'). Where the feed hasn't it, the empty dot alone.
  *  The red dot says which bus it is ('can we also show the bus number itself on the all day view'): a hover's title,
- *  'Bus 4006 · 6 min late', and a tap to it on the map. `bus`: the feed's bus, for a label beside it. */
-function nowDot(b, live, nowMin, y, lx, on, past, r) {
+ *  'Bus 4006 · 6 min late', and a tap to it on the map. `bus`: the feed's bus, for a label beside it. `ringless`: no
+ *  empty dot where the timetable has it, nor the stroke to it; the red dot alone (the loops' own day). */
+function nowDot(b, live, nowMin, y, lx, on, past, r, ringless = false) {
   const seenOn = b.runs.find(x => x.trips.some(ti => live.has(ti))), cur = b.runs.find(x => on(x.a) && !past(x.b));
   const x = seenOn || cur;
   if (!x) return { svg: '', dl: null, bus: null };
   const X = lx(x), ny = y(nowMin), dot = (cy, cls) => `<circle cx="${X}" cy="${cy}" r="${r}" class="ds-bus${cls}"/>`;
   const bus = seenOn ? live.get(x.trips.find(ti => live.has(ti))) : null;
-  if (!bus) return { svg: dot(ny, ''), dl: null, bus: null, X, ly: ny };
+  if (!bus) return { svg: ringless ? '' : dot(ny, ''), dl: null, bus: null, X, ly: ny };
   const d = !keptOn(bus.ri) ? busDelay(bus) : null, dl = d !== null && Math.abs(d) >= 2 ? d : null;
   const say = esc('Bus ' + bus.label + (dl !== null ? ' · ' + lateWords(dl) : ''));
   const ly = dl === null ? ny : y(nowMin - dl);
   const red = `<a href="#/map/bus/${encodeURIComponent(bus.id)}" class="ds-busl" aria-label="${say}"><title>${say}</title>${dot(ly, ' live')}</a>`;
-  return { svg: dl === null ? red : `<line x1="${X}" x2="${X}" y1="${ny}" y2="${ly}" class="ds-off"/>${dot(ny, '')}${red}`, dl, bus, X, ly };
+  return { svg: dl === null || ringless ? red : `<line x1="${X}" x2="${X}" y1="${ny}" y2="${ly}" class="ds-off"/>${dot(ny, '')}${red}`, dl, bus, X, ly };
 }
 /** The strip: the hours down the left, held there; the buses' heads along the top, held there as the day scrolls under
  *  them, each route's badge a way to that route's day (his mockup's 'tap a head'; `dayK`, the day picked); a column a bus. Each run a way into its stops
@@ -274,7 +275,7 @@ export const dayRow = (days, pick, href) => {
   const words = off.map(name).reduce((a, w, i, all) => !i ? w : a + (i === all.length - 1 ? ' or ' : ', ') + w, '');
   return html`<nav class="seg ds-days" aria-label="Day">${btn.map(d => html`<a href="${href(d)}"${html.raw(d === pick ? ' aria-current="page"' : '')}>${d.label}</a>`)}</nav>${off.length ? html`<p class="ds-offdays">No buses ${words}</p>` : ''}`;
 };
-const keyLine = today => `<p class="ds-key">${today ? '<span class="ds-k"><i class="live"></i>Live</span><span class="ds-k"><i></i>Scheduled</span><span aria-hidden="true">·</span>' : ''}<span>Tap a run for its stops.</span></p>`;
+const keyLine = (today, rings = true) => `<p class="ds-key">${today ? '<span class="ds-k"><i class="live"></i>Live</span>' + (rings ? '<span class="ds-k"><i></i>Scheduled</span>' : '') + '<span aria-hidden="true">·</span>' : ''}<span>Tap a run for its stops.</span></p>`;
 
 // ---- A route's day: its buses down the day at 6 px a minute, the user's own scale ('i want route 1 to show 3 runs
 // in a view'), the same on every route so a run's length never lies; the route page's second view. The road's plan:
@@ -424,7 +425,9 @@ export function routeDay(ri0, clockNow, today = true) {
         }
       });
       if (nowY !== null) {
-        const d = nowDot(b, live, nowMin, y, lx, on, past, 8);
+        // A loop's day without its Scheduled rings or the stroke to them (Aaron, 25 Nov, after its now line went: 'the
+        // scheduled bubbles'); its buses' red dots alone.
+        const d = nowDot(b, live, nowMin, y, lx, on, past, 8, isLoopR(ri0));
         // The bus's link is the bar's, at the foot (the dot's a tap still, out of the tab order: one stop a bus).
         svg += d.svg.replace('class="ds-busl"', 'class="ds-busl" tabindex="-1"');
         // Its number in the bar at the foot, as the Center's day has it (the user, 24 Nov, of the label on the bus over
@@ -440,6 +443,6 @@ export function routeDay(ri0, clockNow, today = true) {
   // The bar's columns as .rd-cols lays them (css .rd-feet: change the two together), each bus's number under its dot.
   const vn = f => `<a class="ds-vn rd-vn" href="#/map/bus/${encodeURIComponent(f.bus.id)}" style="margin-left:${f.X - 23}px" aria-label="${esc('Bus ' + f.bus.label + (f.dl !== null ? ' · ' + lateWords(f.dl) : ''))}">${esc(f.bus.label)}${many && f.dl !== null ? `<small style="margin-left:${Math.max(-8, 23 - f.X)}px">${lateWords(f.dl)}</small>` : ''}</a>`;
   const foot = feet.some(f => f.length) ? `<div class="ds-foot"><span class="ds-corner">Bus</span><div class="rd-feet">${feet.map(fs => `<div>${fs.map(vn).join('')}</div>`).join('')}</div></div>` : '';
-  return html`<div class="daystrip routeday" data-at="${at}">${html.raw(keyLine(today))}
+  return html`<div class="daystrip routeday" data-at="${at}">${html.raw(keyLine(today, !isLoopR(ri0)))}
     <div class="ds-box"><div class="rd-grid" style="height:${H}px"><div class="rd-axis">${html.raw(axis)}</div><div class="rd-cols${many ? ' many' : ''}">${html.raw(cols)}</div></div>${html.raw(foot)}</div></div>`;
 }

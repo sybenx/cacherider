@@ -375,6 +375,9 @@ test('a bus off its timetable: the day view\'s red dot where it is and an empty 
   await expect(bday.locator('.ds-bus.live')).toHaveCount(1);
   await expect(bday.locator('.rd-nl')).toHaveCount(0);
   await expect(bday.locator('.ds-nowt')).toHaveCount(1);
+  // Nor its Scheduled rings, the stroke to one, or 'Scheduled' in its key: the red dot alone.
+  await expect(bday.locator('.ds-bus:not(.live), .ds-off')).toHaveCount(0);
+  await expect(bday.locator('.ds-key')).not.toContainText('Scheduled');
 });
 
 test('a route\'s day: its buses down the day at 6 px a minute, its timed stops by name, opened at now; the 16 with the Preston commuter in its gap', async ({ page }) => {
