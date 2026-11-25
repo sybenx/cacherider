@@ -7,7 +7,8 @@
 // phone's search box (along the top of a wide screen's map), maple and oak leaves in the reds, oranges and golds,
 // wheat, an orange gourd and a cream one. One stretch of it, 390 wide (a phone's width, as sketched), repeated the
 // width of the map; its twine meets the next stretch's where it's hung. Drawn 10 lower than sketched, so the wheat's
-// tips (under the search box on a phone) aren't cut off by the stretch's top.
+// tips (under the search box on a phone) aren't cut off by the stretch's top. The leaves hang stem up, from the twine
+// (Aaron, 25 Nov: they were upside down).
 const wheat = (x, y, r, s) => `<g transform="translate(${x} ${y}) rotate(${r})"><path d="M0 0V-${s[0]}" stroke="#c89a46" stroke-width="${s[1]}" stroke-linecap="round"/><g fill="#dcae55">${s[2]}</g></g>`;
 const GARLAND_STRETCH = `
   <path d="M0 6C46 25 80 30 130 22C170 15 175 12 200 16C240 22 270 32 320 22C346 16 368 8 390 6" stroke="#8a6a43" stroke-width="2" fill="none" stroke-linecap="round"/>
@@ -28,8 +29,8 @@ const GARLAND_STRETCH = `
   <use href="#holMaple" x="338" y="12" width="20" height="22" fill="#c8442a" transform="rotate(-12 348 23)"/>
   <use href="#holMaple" x="368" y="4" width="18" height="20" fill="#d9a03a" transform="rotate(10 377 14)"/>`;
 export const GARLAND = `<svg class="hol-swag hol-garland" height="62" overflow="visible" aria-hidden="true"><defs>
-  <symbol id="holMaple" viewBox="-11 -11 22 24" overflow="visible"><path d="M0 -10L2.2 -5.2 6.2 -7.4 5 -2.4 10 -2.6 7.2 1 9.4 4.4 3.4 3.4 1 8.4 0 6.6 -1 8.4 -3.4 3.4 -9.4 4.4 -7.2 1 -10 -2.6 -5 -2.4 -6.2 -7.4 -2.2 -5.2Z"/><path d="M0 6.6V12" stroke="#6b4a2b" stroke-width="1.2" fill="none" stroke-linecap="round"/></symbol>
-  <symbol id="holOak" viewBox="-6 -12 12 26" overflow="visible"><path d="M0 -11C3 -11 4 -8 3 -7C5 -7 6 -4 4 -3C6 -2 6 1 4 2C6 3 5 6 3 6C4 8 2 10 0 10C-2 10 -4 8 -3 6C-5 6 -6 3 -4 2C-6 1 -6 -2 -4 -3C-6 -4 -5 -7 -3 -7C-4 -8 -3 -11 0 -11Z"/><path d="M0 -9V13" stroke="#6b4a2b" stroke-width="1" fill="none" stroke-linecap="round"/></symbol>
+  <symbol id="holMaple" viewBox="-11 -13 22 24" overflow="visible"><g transform="scale(1 -1)"><path d="M0 -10L2.2 -5.2 6.2 -7.4 5 -2.4 10 -2.6 7.2 1 9.4 4.4 3.4 3.4 1 8.4 0 6.6 -1 8.4 -3.4 3.4 -9.4 4.4 -7.2 1 -10 -2.6 -5 -2.4 -6.2 -7.4 -2.2 -5.2Z"/><path d="M0 6.6V12" stroke="#6b4a2b" stroke-width="1.2" fill="none" stroke-linecap="round"/></g></symbol>
+  <symbol id="holOak" viewBox="-6 -14 12 26" overflow="visible"><g transform="scale(1 -1)"><path d="M0 -11C3 -11 4 -8 3 -7C5 -7 6 -4 4 -3C6 -2 6 1 4 2C6 3 5 6 3 6C4 8 2 10 0 10C-2 10 -4 8 -3 6C-5 6 -6 3 -4 2C-6 1 -6 -2 -4 -3C-6 -4 -5 -7 -3 -7C-4 -8 -3 -11 0 -11Z"/><path d="M0 -9V13" stroke="#6b4a2b" stroke-width="1" fill="none" stroke-linecap="round"/></g></symbol>
   <pattern id="holGarland" width="390" height="62" patternUnits="userSpaceOnUse"><g transform="translate(0 10)">${GARLAND_STRETCH}</g></pattern>
   </defs><rect width="100%" height="62" fill="url(#holGarland)"/></svg>`;
 
