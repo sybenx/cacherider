@@ -307,6 +307,9 @@ function shortNames(sis, inTown) {
   return new Map(all.map(x => [x.si, abbr(x.out)]));
 }
 const shortOf = new Map();   // a road's names, once
+// A route's day's bars (a lap's start at the Center, a wait there, a day's end) half as wide again as its bus's dot (r 8):
+// a bus waiting at the Center sat on its bar and hid it whole (Aaron, 25 Nov: 'can the bar not disappear all the way?').
+const BW = 12;
 export function routeDay(ri0, clockNow, today = true) {
   const ymd = clockNow.ymd, nowMin = clockNow.min;
   const road = new Set([familyKey(ri0), ...corridor(ri0).map(familyKey)]), mineK = k => road.has(k);
@@ -406,17 +409,17 @@ export function routeDay(ri0, clockNow, today = true) {
             const fills = sl.filter(q => q !== b).flatMap(q => q.runs.reduce((acc, r) => { const l = acc[acc.length - 1]; if (l && r.a - l.b <= 45) l.b = r.b; else acc.push({ a: r.a, b: r.b }); return acc; }, [])).filter(q => q.b > p.b && q.a < x.a).sort((u, v) => u.a - v.a);
             for (const q of [...fills, { a: x.a, b: x.a }]) { if (y(q.a) - 8 > y(a0) + 8) svg += `<line x1="${px}" x2="${X}" y1="${y(a0) + 8}" y2="${y(q.a) - 8}" class="ds-out"/>`; a0 = q.b; }
           } else if (jIn) { const ya = y(p.b) - 6, yb = y(x.a) + 6, ym = (ya + yb) / 2, d = Math.sign(X - px); svg += `<path d="M${px} ${ya}L${px} ${ym - 5}Q${px} ${ym} ${px + d * 5} ${ym}L${X - d * 5} ${ym}Q${X} ${ym} ${X} ${ym + 5}L${X} ${yb}" class="ds-step" opacity="${o}"/>`; }
-          else { const yt = (y(p.b) + y(x.a)) / 2; svg += `<line x1="${X - 8}" x2="${X + 8}" y1="${yt}" y2="${yt}" class="ds-bar" opacity="${o}"/>`; }
+          else { const yt = (y(p.b) + y(x.a)) / 2; svg += `<line x1="${X - BW}" x2="${X + BW}" y1="${yt}" y2="${yt}" class="ds-bar" opacity="${o}"/>`; }
         }
         // his round caps: a day that starts or ends away from the Center, and where
         const cap = (si, mm, w) => {
-          if (hub(si) || x.loop) { svg += `<line x1="${X - 8}" x2="${X + 8}" y1="${y(mm)}" y2="${y(mm)}" class="ds-bar" opacity="${op}"/>`; return; }
+          if (hub(si) || x.loop) { svg += `<line x1="${X - BW}" x2="${X + BW}" y1="${y(mm)}" y2="${y(mm)}" class="ds-bar" opacity="${op}"/>`; return; }
           svg += `<circle cx="${X}" cy="${y(mm)}" r="5" class="ds-ring" opacity="${op}"/>`;
           lab += `<div class="rd-cap" style="top:${y(mm) + (w === 'from' ? -18 : 4)}px;left:${X + 12}px;opacity:${op}">${w} ${heardName(si).name}</div>`;
         };
         if (!p || x.a - p.b > 45) cap(x.from, x.a, 'from');
         if (!nx || nx.a - x.b > 45) cap(x.to, x.b, 'ends');
-        for (const mm of x.via || []) svg += `<line x1="${X - 8}" x2="${X + 8}" y1="${y(mm)}" y2="${y(mm)}" class="ds-bar" opacity="${(past(mm) ? 0.45 : 1) * (m ? 1 : 0.35)}"/>`;
+        for (const mm of x.via || []) svg += `<line x1="${X - BW}" x2="${X + BW}" y1="${y(mm)}" y2="${y(mm)}" class="ds-bar" opacity="${(past(mm) ? 0.45 : 1) * (m ? 1 : 0.35)}"/>`;
         const k = familyKey(x.r), name = opOf(x.r) ? D.routes[x.r].long.split(/\s/)[0] : k;
         lab += `<a class="rd-run${past(x.b) ? ' done' : ''}${m ? '' : ' other'}" href="#/stop/${D.stops[x.link.si].id}?run=${x.link.ti}&on=${ymd}" style="top:${y(x.a)}px;height:${Math.max(24, y(x.b) - y(x.a))}px;padding-left:${many ? LX[0] + 10 : left}px" aria-label="${routeName(x.r)}, ${clockText(x.a)}">${many ? '' : `<b style="color:${ink(x.r)}">${name}</b>`}<span>${clockShort(x.a)}</span></a>`;
         if (m && towns) lab += bands(x, X);
