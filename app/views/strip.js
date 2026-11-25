@@ -132,8 +132,32 @@ function nowDot(b, live, nowMin, y, lx, on, past, r, ringless = false) {
   const d = !keptOn(bus.ri) ? busDelay(bus) : null, dl = d !== null && Math.abs(d) >= 2 ? d : null;
   const say = esc('Bus ' + bus.label + (dl !== null ? ' · ' + lateWords(dl) : ''));
   const ly = dl === null ? ny : y(nowMin - dl);
-  const red = `<a href="#/map/bus/${encodeURIComponent(bus.id)}" class="ds-busl" aria-label="${say}"><title>${say}</title>${dot(ly, ' live')}</a>`;
-  return { svg: dl === null || ringless ? red : `<line x1="${X}" x2="${X}" y1="${ny}" y2="${ly}" class="ds-off"/>${dot(ny, '')}${red}`, dl, bus, X, ly };
+  // Off its timetable, the dot is how far, a pill with the minutes in it (Aaron, 25 Nov, of the Center's day: 'what if
+  // we make the time BE the bus dot?', then 'make it consistent along routes too'): early violet, a little late an
+  // amber outline, 5 or more late red. As tall as the dot is wide, a route's day's larger.
+  const ph = r * 2 + 4, pw = r * 4 + 2, kind = dl === null ? '' : dl < 0 ? 'early' : dl >= 5 ? 'late' : 'behind';
+  const mark = dl !== null
+    ? `<rect x="${X - pw / 2}" y="${ly - ph / 2}" width="${pw}" height="${ph}" rx="${ph / 2}" class="ds-pill ${kind}"/><text x="${X}" y="${ly + r * 0.6}" text-anchor="middle" class="ds-pillt ${kind}" style="font-size:${r + 5}px">${dl > 0 ? '−' : '+'}${Math.abs(dl)}</text>`
+    : dot(ly, ' live');
+  const red = `<a href="#/map/bus/${encodeURIComponent(bus.id)}" class="ds-busl" aria-label="${say}"><title>${say}</title>${mark}</a>`;
+  // The pill over the stroke and the ring: where it's 5 minutes off or more, the stroke out from its edge and a smaller
+  // ring drawn over it, so how far off still shows as a length (Aaron, of the pill: 'can we do anything to not lose
+  // information though?'); under that the ring stays under the pill, the minutes in it saying the same.
+  if (dl !== null && !ringless && Math.abs(ly - ny) >= ph / 2) {
+    const edge = ly + (ny > ly ? ph / 2 : -ph / 2);
+    return { svg: `${red}<line x1="${X}" x2="${X}" y1="${edge}" y2="${ny}" class="ds-off"/><circle cx="${X}" cy="${ny}" r="${r * 0.75}" class="ds-bus"/>`, dl, bus, X, ly, ph, pw };
+  }
+  return { svg: dl === null || ringless ? red : `<line x1="${X}" x2="${X}" y1="${ny}" y2="${ly}" class="ds-off"/>${dot(ny, '')}${red}`, dl, bus, X, ly, ph, pw };
+}
+/** A bar under a bus's pill (a wait at the Center, a lap's start, a day's end), `bw` out either side of its line, drawn
+ *  again wider than the pill, its ends out either side, as a route's day keeps its bars out from under a bus's dot
+ *  (cr-v567). `g`: the column's drawing so far; returns what to add under the pill. */
+function barsOut(g, d, bw) {
+  if (d.dl === null || !d.pw) return '';
+  let out = '';
+  for (const [, x1, yy, op] of g.matchAll(/<line x1="([\d.]+)" x2="[\d.]+" y1="([\d.]+)" y2="[\d.]+" class="ds-bar" opacity="([\d.]+)"\/>/g))
+    if (Math.abs(+x1 + bw - d.X) < 1 && Math.abs(+yy - d.ly) <= d.ph / 2 + 1) out += `<line x1="${d.X - d.pw / 2 - 4}" x2="${d.X + d.pw / 2 + 4}" y1="${yy}" y2="${yy}" class="ds-bar" opacity="${op}"/>`;
+  return out;
 }
 /** The strip: the hours down the left, held there; the buses' heads along the top, held there as the day scrolls under
  *  them, each route's badge a way to that route's day (his mockup's 'tap a head'; `dayK`, the day picked); a column a bus. Each run a way into its stops
@@ -184,7 +208,7 @@ export function strip(clockNow, today = true, dayK = '') {
     // timetable has a run of it on the road.
     if (nowY !== null) {
       const d = nowDot(b, live, clockNow.min, y, lx, on, past, 6);
-      g += d.svg;
+      g += barsOut(g, d, 6) + d.svg;
       if (d.bus) feet[c] = { bus: d.bus, dl: d.dl };
     }
     svg += `<g>${g}</g>`;
@@ -193,13 +217,9 @@ export function strip(clockNow, today = true, dayK = '') {
   // The bar at the foot, held there as the heads are at the top: under each column the number of the bus out on it
   // now, a tap to it on the map. The user: 'can we also show the bus number itself on the all day view', then 'a bar at
   // the bottom maybe?'. The columns are too narrow to write it by the dot. Only today, with the feed's buses.
-  // Under each number how far off its timetable the bus is (a coworker at dispatch, 25 Nov: beside the dot it was hard
-  // to see, red on the red now line and over the next column; Aaron: 'the bottom is fine. but colors can also be our
-  // friend'). Behind minus, ahead plus, as dispatch counts it; early blue, a little late an amber
-  // outline (ordinary running, quiet: a second opinion), 5 or more late red.
-  const adh = dl => dl === null ? '' : `<small class="ds-adh ${dl < 0 ? 'early' : dl >= 5 ? 'late' : 'behind'}">${dl > 0 ? '−' : '+'}${Math.abs(dl)}</small>`;
-  const offs = feet.some(f => f && f.dl !== null);
-  const foot = feet.some(Boolean) ? `<div class="ds-foot${offs ? ' adh' : ''}"><span class="ds-corner">Bus</span><div class="ds-headrow" style="width:${W}px">${feet.map((f, c) => f ? `<a class="ds-vn" href="#/map/bus/${encodeURIComponent(f.bus.id)}" style="left:${c * CW}px" aria-label="${esc('Bus ' + f.bus.label + (f.dl !== null ? ' · ' + lateWords(f.dl) : ''))}">${esc(f.bus.label)}${adh(f.dl)}</a>` : '').join('')}</div></div>` : '';
+  // How far off its timetable is in its dot (nowDot's pill), not here: the number alone (Aaron, 25 Nov, of it under
+  // the number: 'i'm not the biggest fan of how far away stuff is').
+  const foot = feet.some(Boolean) ? `<div class="ds-foot"><span class="ds-corner">Bus</span><div class="ds-headrow" style="width:${W}px">${feet.map((f, c) => f ? `<a class="ds-vn" href="#/map/bus/${encodeURIComponent(f.bus.id)}" style="left:${c * CW}px" aria-label="${esc('Bus ' + f.bus.label + (f.dl !== null ? ' · ' + lateWords(f.dl) : ''))}">${esc(f.bus.label)}</a>` : '').join('')}</div></div>` : '';
   // Where it opens: at now; before the day's first bus, its start; after its last, its end.
   const at = nowY !== null ? nowY : clockNow.min > bot ? H : 0;
   // One box that scrolls both ways, the room under it high: its heads held at its top and its hours at its left by the
@@ -279,7 +299,8 @@ export const dayRow = (days, pick, href) => {
   const words = off.map(name).reduce((a, w, i, all) => !i ? w : a + (i === all.length - 1 ? ' or ' : ', ') + w, '');
   return html`<nav class="seg ds-days" aria-label="Day">${btn.map(d => html`<a href="${href(d)}"${html.raw(d === pick ? ' aria-current="page"' : '')}>${d.label}</a>`)}</nav>${off.length ? html`<p class="ds-offdays">No buses ${words}</p>` : ''}`;
 };
-const keyLine = (today, rings = true) => `<p class="ds-key">${today ? '<span class="ds-k"><i class="live"></i>Live</span>' + (rings ? '<span class="ds-k"><i></i>Scheduled</span>' : '') + '<span aria-hidden="true">·</span>' : ''}<span>Tap a run for its stops.</span></p>`;
+// A bus off its timetable as its pill, early and late, as its dots say it.
+const keyLine = (today, rings = true) => `<p class="ds-key">${today ? '<span class="ds-k"><i class="live"></i>Live</span>' + (rings ? '<span class="ds-k"><i></i>Scheduled</span>' : '') + ('<span class="ds-k"><b class="ds-kp early">+2</b>early</span><span class="ds-k"><b class="ds-kp behind">−3</b><b class="ds-kp late">−7</b>late</span>') + '<span aria-hidden="true">·</span>' : ''}<span>Tap a run for its stops.</span></p>`;
 
 // ---- A route's day: its buses down the day at 6 px a minute, the user's own scale ('i want route 1 to show 3 runs
 // in a view'), the same on every route so a run's length never lies; the route page's second view. The road's plan:
@@ -436,19 +457,18 @@ export function routeDay(ri0, clockNow, today = true) {
         // scheduled bubbles'); its buses' red dots alone.
         const d = nowDot(b, live, nowMin, y, lx, on, past, 8, isLoopR(ri0));
         // The bus's link is the bar's, at the foot (the dot's a tap still, out of the tab order: one stop a bus).
-        svg += d.svg.replace('class="ds-busl"', 'class="ds-busl" tabindex="-1"');
+        svg += barsOut(svg, d, BW) + d.svg.replace('class="ds-busl"', 'class="ds-busl" tabindex="-1"');
         // Its number in the bar at the foot, as the Center's day has it (the user, 24 Nov, of the label on the bus over
-        // the 15's stop names: 'too busy, let's put it at the bottom'). How late beside the dot, but where the columns
-        // are crowded, under its number in the bar: beside the dot it lay over the slanted stop names (15, Green).
+        // the 15's stop names: 'too busy, let's put it at the bottom'). How late is in its dot, the pill (no words beside
+        // it, nor under the number: 'make it consistent along routes too').
         if (d.bus) feet[c].push({ bus: d.bus, X: d.X, dl: d.dl });
-        if (d.bus && d.dl !== null && !many) lab += `<div class="rd-late" style="top:${d.ly - 9}px;left:${d.X + 12}px">${lateWords(d.dl)}</div>`;
       }
     }
     return `<div class="rd-col"><svg width="60" height="${H}">${svg}</svg>${lab}</div>`;
   }).join('');
   const at = nowY !== null ? nowY : today && nowMin > bot ? H : 0;
   // The bar's columns as .rd-cols lays them (css .rd-feet: change the two together), each bus's number under its dot.
-  const vn = f => `<a class="ds-vn rd-vn" href="#/map/bus/${encodeURIComponent(f.bus.id)}" style="margin-left:${f.X - 23}px" aria-label="${esc('Bus ' + f.bus.label + (f.dl !== null ? ' · ' + lateWords(f.dl) : ''))}">${esc(f.bus.label)}${many && f.dl !== null ? `<small style="margin-left:${Math.max(-8, 23 - f.X)}px">${lateWords(f.dl)}</small>` : ''}</a>`;
+  const vn = f => `<a class="ds-vn rd-vn" href="#/map/bus/${encodeURIComponent(f.bus.id)}" style="margin-left:${f.X - 23}px" aria-label="${esc('Bus ' + f.bus.label + (f.dl !== null ? ' · ' + lateWords(f.dl) : ''))}">${esc(f.bus.label)}</a>`;
   const foot = feet.some(f => f.length) ? `<div class="ds-foot"><span class="ds-corner">Bus</span><div class="rd-feet">${feet.map(fs => `<div>${fs.map(vn).join('')}</div>`).join('')}</div></div>` : '';
   return html`<div class="daystrip routeday" data-at="${at}">${html.raw(keyLine(today, !isLoopR(ri0)))}
     <div class="ds-box"><div class="rd-grid" style="height:${H}px"><div class="rd-axis">${html.raw(axis)}</div><div class="rd-cols${many ? ' many' : ''}">${html.raw(cols)}</div></div>${html.raw(foot)}</div></div>`;

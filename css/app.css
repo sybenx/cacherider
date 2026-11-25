@@ -38,7 +38,7 @@
   --warn-bg: #fdf0c2; --warn-ink: #4d3a00; --warn-edge: #e0a800;   /* a warning that must be seen: a stop skipped */
   --cr-late: #d4302b;   /* a bus running late */
   --cr-behind: #b35c00; /* a bus a few minutes behind (the Center's day) */
-  --cr-early: #1a5fd0;  /* a bus ahead of its timetable (the Center's day) */
+  --cr-early: #7c3aed;  /* a bus ahead of its timetable (the Center's day) */
   --cr-card: #fff;   /* a raised surface on the paper: the stop page's side buttons */
   color-scheme: light;
 }
@@ -51,7 +51,7 @@
   --color-divider: rgba(238,240,242,.2); --cr-muted: #b3b6bb; --cr-line: rgba(238,240,242,.13);
   --cr-hover: rgba(238,240,242,.06); --cr-scrim: rgba(0,0,0,.6);
   --shadow-md: 0 3px 10px rgba(0,0,0,.5); --shadow-lg: 0 12px 32px rgba(0,0,0,.6);
-  --warn-bg: #3b3005; --warn-ink: #ffe28a; --warn-edge: #e0a800; --cr-late: #e5483f; --cr-behind: #b8680a; --cr-early: #3f7fe0; --cr-card: #1a1d20;
+  --warn-bg: #3b3005; --warn-ink: #ffe28a; --warn-edge: #e0a800; --cr-late: #e5483f; --cr-behind: #b8680a; --cr-early: #8b5cf6; --cr-card: #1a1d20;
   color-scheme: dark;
 }
 
@@ -1763,39 +1763,42 @@ a.side:active { background: var(--cr-hover); }
 .ds-body { position: relative; display: flex; }
 .ds-foot { position: sticky; bottom: 0; z-index: 3; display: flex; padding: 5px 0; background: var(--color-bg); border-top: 1px solid var(--cr-line); }
 /* Lifted off the window's foot where a pointer hovers: the browser's link preview sits there, over the first columns. */
-@media (hover: hover) and (pointer: fine) { .ds-foot { padding-bottom: 28px; } }
+@media (hover: hover) and (pointer: fine) { .ds-foot { padding-bottom: 18px; } }   /* with the box's 4 px under it, clear of a ~20 px preview, no more */
 .ds-foot .ds-corner { display: flex; align-items: center; padding-left: 4px; box-sizing: border-box; font-size: 0.6875rem; color: var(--cr-muted); }
-.ds-vn { position: absolute; top: 0; width: 46px; line-height: 22px; text-align: center; font-size: 0.75rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--cr-now, #d93025); text-decoration: none; }
+.ds-vn { position: absolute; top: 0; width: 46px; line-height: 22px; text-align: center; font-size: 0.75rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--color-text); text-decoration: none; }
 @media (hover: hover) { .ds-vn:hover { text-decoration: underline; } }
-/* The Center's day: its numbers plain, so the colour under them (how early or late) is the one that speaks. */
-.daystrip:not(.routeday) .ds-vn { color: var(--color-text); }
 .ds-axis { position: sticky; left: 0; z-index: 2; flex: none; width: 56px; background: var(--color-bg); pointer-events: none; }
 .ds-body svg { display: block; flex: none; }
 .ds-hr { position: absolute; left: 4px; transform: translateY(-50%); font-size: 0.6875rem; color: var(--cr-muted); font-variant-numeric: tabular-nums; }
-.ds-nowt { left: 0; white-space: nowrap; z-index: 1; padding: 1px 4px; border-radius: 4px; background: var(--cr-now, #d93025); color: #fff; font-weight: 700; }
+.ds-nowt { left: 0; white-space: nowrap; z-index: 1; padding: 1px 4px; border-radius: 4px; background: var(--color-accent-600); color: #fff; font-weight: 700; }
 .ds-grid { stroke: var(--cr-line); stroke-width: 1; }
-.ds-now { stroke: var(--cr-now, #d93025); stroke-width: 1.5; opacity: .7; pointer-events: none; }
+.ds-now { stroke: var(--color-accent-600); stroke-width: 1.5; opacity: .7; pointer-events: none; }
 .ds-out { stroke: var(--cr-muted); stroke-width: 1.5; stroke-dasharray: 2 5; }
 .ds-step { fill: none; stroke: var(--cr-muted); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .ds-bar { stroke: var(--color-text); stroke-width: 2; stroke-linecap: round; }
 .ds-ring { fill: var(--color-bg); stroke: var(--color-text); stroke-width: 2; }
 .ds-num { font: 800 10px/1 var(--font-heading); }
-.ds-bus { fill: var(--color-bg); stroke: var(--cr-now, #d93025); stroke-width: 2.5; pointer-events: none; }
-.ds-bus.live { fill: var(--cr-now, #d93025); stroke: var(--color-bg); }
+.ds-bus { fill: var(--color-bg); stroke: var(--color-text); stroke-width: 2.5; pointer-events: none; }
+.ds-bus.live { fill: var(--color-accent-600); stroke: var(--color-bg); }
 .ds-busl .ds-bus { pointer-events: auto; cursor: pointer; }
-.ds-off { stroke: var(--cr-now, #d93025); stroke-width: 2; stroke-dasharray: 2 3; stroke-linecap: round; pointer-events: none; }
-/* The Center's day: how far off its timetable, under the bus's number in the bar (strip.js adh): early blue, a little
-   late an amber outline, 5 or more late red. */
-.ds-foot.adh .ds-headrow { height: 38px; }
-.ds-adh { display: block; width: max-content; min-width: 24px; box-sizing: border-box; margin: 0 auto; padding: 0 4px; border-radius: 8px; line-height: 15px; font-size: 0.75rem; font-weight: 800; color: #fff; }
-.ds-adh.early { background: var(--cr-early); }
-.ds-adh.behind { color: var(--cr-behind); box-shadow: inset 0 0 0 1.5px var(--cr-behind); }   /* a little late, ordinary running: outlined, so only early and 5+ are loud */
-.ds-adh.late { background: var(--cr-late); }
-.rd-late { position: absolute; font-size: 12px; font-weight: 700; color: var(--cr-now, #d93025); white-space: nowrap; pointer-events: none; background: var(--color-bg); padding: 0 3px; border-radius: 3px; }
+/* A bus off its timetable a pill with its minutes (strip.js nowDot): early violet, a little late an amber outline
+   (ordinary running, quiet), 5 or more late red; in the key the same. */
+.ds-kp { display: inline-block; min-width: 22px; box-sizing: border-box; padding: 0 4px; border-radius: 8px; text-align: center; line-height: 15px; font-size: 0.6875rem; font-weight: 800; color: #fff; }
+.ds-kp + .ds-kp { margin-left: -2px; }
+.ds-kp.early { background: var(--cr-early); }
+.ds-kp.late { background: var(--cr-late); }
+.ds-kp.behind { color: var(--cr-behind); background: var(--color-bg); box-shadow: inset 0 0 0 1.5px var(--cr-behind); }
+.ds-pill { stroke: var(--color-bg); stroke-width: 1.5; cursor: pointer; }
+.ds-pill.early { fill: var(--cr-early); }
+.ds-pill.late { fill: var(--cr-late); }
+.ds-pill.behind { fill: var(--color-bg); stroke: var(--cr-behind); stroke-width: 2; }
+.ds-pillt { font-size: 11px; font-weight: 800; fill: #fff; pointer-events: none; font-variant-numeric: tabular-nums; }
+.ds-pillt.behind { fill: var(--cr-behind); }
+.ds-off { stroke: var(--cr-muted); stroke-width: 2; stroke-dasharray: 2 3; stroke-linecap: round; pointer-events: none; }
 .ds-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; padding: 2px 16px 8px; font-size: 0.8125rem; color: var(--cr-muted); }
 .ds-k { display: inline-flex; align-items: center; gap: 5px; }
-.ds-k i { width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid var(--cr-now, #d93025); background: var(--color-bg); }
-.ds-k i.live { background: var(--cr-now, #d93025); }
+.ds-k i { width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid var(--color-text); background: var(--color-bg); }
+.ds-k i.live { border-color: var(--color-accent-600); background: var(--color-accent-600); }
 /* Which day the strip draws (hub.js dayKinds): a weekday, a Saturday, then each day ahead that runs otherwise. */
 .seg.ds-days { display: flex; width: fit-content; max-width: calc(100% - 32px); margin: 0 16px 8px; overflow-x: auto; scrollbar-width: none; }
 .seg.ds-days a { flex: none; }
@@ -1812,12 +1815,10 @@ a.side:active { background: var(--cr-hover); }
    under its number. */
 .rd-feet > div { flex: 1; min-width: 0; }
 .rd-vn { position: static; display: block; }
-/* how late centred under the number, but never out past its column's left edge (strip.js sets margin-left) */
-.rd-vn small { display: block; width: max-content; margin-top: -5px; text-align: left; line-height: 14px; font-size: 0.6875rem; font-weight: 600; white-space: nowrap; opacity: .85; }
 .rd-axis { position: sticky; left: 0; top: 0; height: 100%; width: 0; z-index: 2; pointer-events: none; }
 .rd-axis .ds-hr { z-index: 2; white-space: nowrap; }
 .rd-gl { position: absolute; left: 56px; width: 100vw; max-width: 600px; border-top: 1px solid var(--cr-line); }
-.rd-nl { position: absolute; left: 56px; width: 100vw; max-width: 600px; border-top: 1.5px solid var(--cr-now, #d93025); opacity: .7; z-index: 3; }
+.rd-nl { position: absolute; left: 56px; width: 100vw; max-width: 600px; border-top: 1.5px solid var(--color-accent-600); opacity: .7; z-index: 3; }
 .rd-brk { position: absolute; left: 56px; width: calc(100vw - 56px); max-width: 540px; text-align: center; z-index: 4; }
 .rd-brk b { display: inline-block; padding: 2px 8px; border-radius: 6px; background: var(--color-bg); font-size: 0.75rem; font-weight: 500; color: var(--cr-muted); }
 .rd-cols { position: absolute; left: 56px; right: 0; top: 0; bottom: 0; display: flex; gap: 8px; padding-right: 8px; }

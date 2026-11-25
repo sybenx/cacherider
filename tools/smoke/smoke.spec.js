@@ -314,8 +314,9 @@ test('the Transit Center\'s day: every bus a column, opened at now, a run a tap 
   await go(page, '#/hub?day=1');
   const head = page.locator('.daystrip .ds-head a').filter({ visible: true }).first();
   await expect(head).toHaveAttribute('href', /^#\/map\/route\/[^/?]+\?day=1&on=sat$/);   // that route's day, on the day picked
-  // The key: today's two dots drawn, once.
-  await expect(page.locator('.ds-key .ds-k').filter({ visible: true })).toHaveCount(2);
+  // The key: today's two dots and the early and late pills, once.
+  await expect(page.locator('.ds-key .ds-k').filter({ visible: true })).toHaveCount(4);
+  await expect(page.locator('.ds-key .ds-kp').filter({ visible: true })).toHaveText(['+2', '−3', '−7']);
   await expect(page.locator('.ds-key').filter({ visible: true })).toContainText('Tap a run for its stops.');
   await page.locator('.tcl-views a', { hasText: 'Board' }).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/#\/hub$/);
@@ -339,28 +340,32 @@ test('a bus off its timetable: the day view\'s red dot where it is and an empty 
   // The route page's row: dispatch's name first, then the vehicle and how late.
   const row = page.locator('.busrow').filter({ visible: true }).first();
   await expect(row).toContainText(/15\([123]\) · Bus 9005 · 6 min late/, { timeout: 20_000 });
-  // Its day: the red dot six minutes up the line from now, the empty one on the now line, a dotted stroke between.
+  // Its day: the bus a pill six minutes up the line from now, '−6' in it, red (Aaron, 25 Nov: 'make it consistent
+  // along routes too'), the timetable's ring on the now line, a dotted stroke between.
   await go(page, '#/map/route/15?day=1');
   const day = page.locator('.routeday').filter({ visible: true });
   // Which bus, in the bar at the foot under its column (the user: the number by the dot 'too busy, let's put it at the
-  // bottom'); the 15 runs three, so how late goes under it there, and nothing by the dot.
+  // bottom'); how late in the pill alone, no words by it or under the number.
   const foot = day.locator('.rd-feet .rd-vn');
   await expect(foot).toHaveCount(1);
   await expect(foot).toHaveAttribute('aria-label', 'Bus 9005 · 6 min late');
   await expect(foot).toHaveAttribute('href', '#/map/bus/c%3A9005');
-  await expect(foot.locator('small')).toHaveText('6 min late');
-  await expect(day.locator('.rd-late')).toHaveCount(0);
+  await expect(foot).toHaveText('9005');
+  await expect(day.locator('.ds-pill.late')).toHaveCount(1);
+  await expect(day.locator('.ds-pillt')).toHaveText(['−6']);
   await expect(day.locator('.ds-off')).toHaveCount(1);
-  const ys = await day.locator('.ds-off').evaluate(l => [...l.parentNode.querySelectorAll('.ds-bus')].map(c => ({ live: c.classList.contains('live'), y: +c.getAttribute('cy') })));
-  const live = ys.find(c => c.live), ring = ys.find(c => !c.live && c.y > live.y);
-  expect(ring, 'the scheduled dot below the live one').toBeTruthy();
-  expect(ring.y - live.y).toBeGreaterThan(20);   // 6 min at 6 px a minute, less any gap squeezed between
-  // The Center's day: the same bus's number in the bar at the foot, under its column, a way to it on the map, and
-  // under the number '−6' (behind: minus), red at 5 or more late (a coworker, 25 Nov: by the dot it was hard to see).
+  const ys = await day.locator('.ds-off').evaluate(l => { const p = l.parentNode.querySelector('.ds-pill'), c = l.parentNode.querySelector('.ds-bus:not(.live)'); return { live: +p.getAttribute('y') + +p.getAttribute('height') / 2, ring: +c.getAttribute('cy') }; });
+  expect(ys.ring - ys.live).toBeGreaterThan(20);   // 6 min at 6 px a minute, less any gap squeezed between
+  // The Center's day: the same bus its dot a pill, '−6' in it (behind: minus), red at 5 or more late (a coworker, 25
+  // Nov: the minutes by the dot were hard to see; Aaron: 'make the time BE the bus dot'); the stroke out from it to the
+  // timetable's ring, 5 minutes off or more. Its number in the bar at the foot, under its column, a way to it on the map.
   await go(page, '#/hub?day=1');
-  const vn = page.locator('.daystrip:not(.routeday) .ds-foot .ds-vn').filter({ visible: true });
-  await expect(vn).toHaveText(['9005−6']);
-  await expect(vn.locator('.ds-adh.late')).toHaveText('−6');
+  const cday = page.locator('.daystrip:not(.routeday)').filter({ visible: true });
+  await expect(cday.locator('.ds-pill.late')).toHaveCount(1);
+  await expect(cday.locator('.ds-pillt')).toHaveText(['−6']);
+  await expect(cday.locator('.ds-off')).toHaveCount(1);
+  const vn = cday.locator('.ds-foot .ds-vn');
+  await expect(vn).toHaveText(['9005']);
   await expect(vn).toHaveAttribute('href', '#/map/bus/c%3A9005');
   await expect(vn).toHaveAttribute('aria-label', 'Bus 9005 · 6 min late');
   await expect(page.locator('.daystrip:not(.routeday) .ds-busl title')).toHaveText(['Bus 9005 · 6 min late']);
@@ -369,14 +374,14 @@ test('a bus off its timetable: the day view\'s red dot where it is and an empty 
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
   await go(page, '#/hub?day=1');
-  await expect(page.locator('.daystrip:not(.routeday) .ds-foot .ds-adh.early').filter({ visible: true })).toHaveText(['+4']);
+  await expect(page.locator('.daystrip:not(.routeday) .ds-pillt.early').filter({ visible: true })).toHaveText(['+4']);
   // The loop's own day draws no now line across it, its time at the left kept (Aaron, 25 Nov); its bus still there.
   await go(page, '#/map/route/B?day=1');
   const bday = page.locator('.routeday').filter({ visible: true });
-  await expect(bday.locator('.ds-bus.live')).toHaveCount(1);
+  await expect(bday.locator('.ds-pillt.early')).toHaveText(['+4']);
   await expect(bday.locator('.rd-nl')).toHaveCount(0);
   await expect(bday.locator('.ds-nowt')).toHaveCount(1);
-  // Nor its Scheduled rings, the stroke to one, or 'Scheduled' in its key: the red dot alone.
+  // Nor its Scheduled rings, the stroke to one, or 'Scheduled' in its key: the bus's pill alone.
   await expect(bday.locator('.ds-bus:not(.live), .ds-off')).toHaveCount(0);
   await expect(bday.locator('.ds-key')).not.toContainText('Scheduled');
 });
