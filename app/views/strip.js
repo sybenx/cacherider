@@ -332,7 +332,9 @@ export function routeDay(ri0, clockNow, today = true) {
   let axis = '';
   for (let m = top0; m <= bot; m += 60) if (!inBreak(m)) axis += `<span class="ds-hr" style="top:${y(m)}px">${clockShort(m)}</span><i class="rd-gl" style="top:${y(m)}px"></i>`;
   for (const [a, z] of breaks) axis += `<span class="rd-brk" style="top:${y(a) + RGAP / 2 - 10}px"><b>No bus ${clockShort(a)} to ${clockShort(z)}</b></span>`;
-  if (nowY !== null) axis += `<span class="ds-hr ds-nowt" style="top:${nowY}px">${clockShort(nowMin)}</span><i class="rd-nl" style="top:${nowY}px"></i>`;
+  // The time now at the left, but no now line across a loop's day (Aaron, 25 Nov: 'literally just remove that red
+  // line', the time kept); the Center's All day and every other route's day keep the line.
+  if (nowY !== null) axis += `<span class="ds-hr ds-nowt" style="top:${nowY}px">${clockShort(nowMin)}</span>${isLoopR(ri0) ? '' : `<i class="rd-nl" style="top:${nowY}px"></i>`}`;
   const hub = si => si >= 0 && !!stop(si).hub;
   // A run's key stops: its timed stops (named ones, on a crowded route), spread across the whole run rather than its
   // first few, one for every 15 minutes of it (three at the least), kept 24px apart: a 16 run out to Preston names its

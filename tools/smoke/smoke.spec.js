@@ -369,6 +369,12 @@ test('a bus off its timetable: the day view\'s red dot where it is and an empty 
   await page.waitForFunction(() => document.querySelector('#tabs a, #topnav a'), null, { polling: 500 });
   await go(page, '#/hub?day=1');
   await expect(page.locator('.daystrip:not(.routeday) .ds-late').filter({ visible: true })).toHaveText(['+4']);
+  // The loop's own day draws no now line across it, its time at the left kept (Aaron, 25 Nov); its bus still there.
+  await go(page, '#/map/route/B?day=1');
+  const bday = page.locator('.routeday').filter({ visible: true });
+  await expect(bday.locator('.ds-bus.live')).toHaveCount(1);
+  await expect(bday.locator('.rd-nl')).toHaveCount(0);
+  await expect(bday.locator('.ds-nowt')).toHaveCount(1);
 });
 
 test('a route\'s day: its buses down the day at 6 px a minute, its timed stops by name, opened at now; the 16 with the Preston commuter in its gap', async ({ page }) => {
