@@ -153,7 +153,7 @@ export function strip(clockNow, today = true, dayK = '') {
     svg += `<line x1="0" x2="${W}" y1="${y(m)}" y2="${y(m)}" class="ds-grid"/>`;
   }
   const heads = buses.map((b, c) => `<span class="ds-head" style="left:${c * CW}px">${b.ris.filter((ri, i, a) => a.findIndex(x => familyKey(x) === familyKey(ri)) === i).slice(0, 2).map(ri => `<a href="#/map/route/${encodeURIComponent(familyKey(ri) === 'PRT' ? D.routes[ri].short : familyKey(ri))}?day=1&on=${dayK}" aria-label="${routeName(ri)} through the day">${badge(ri, 20).s}</a>`).join('')}</span>`).join('');
-  const feet = [];   // each column's bus in the feed now, for the bar at the foot
+  const feet = [];   // each column's bus in the feed now and how far off its timetable, for the bar at the foot
   buses.forEach((b, c) => {
     const lanes = b.keys.slice(0, 3), cx = c * CW + CW / 2, gap = lanes.length === 3 ? 12 : 14;
     const lx = x => cx + (Math.max(0, lanes.indexOf(familyKey(x.r))) - (lanes.length - 1) / 2) * gap;
@@ -185,9 +185,7 @@ export function strip(clockNow, today = true, dayK = '') {
     if (nowY !== null) {
       const d = nowDot(b, live, clockNow.min, y, lx, on, past, 6);
       g += d.svg;
-      if (d.bus) feet[c] = d.bus;
-      // Behind its timetable minus, ahead of it plus, as dispatch counts it (the user: 'a bus behind shows + minutes ... that's backwards').
-      if (d.dl !== null) g += `<text x="${d.X + 9}" y="${d.ly + 3}" class="ds-late">${d.dl > 0 ? '−' : '+'}${Math.abs(d.dl)}</text>`;
+      if (d.bus) feet[c] = { bus: d.bus, dl: d.dl };
     }
     svg += `<g>${g}</g>`;
   });
@@ -195,7 +193,13 @@ export function strip(clockNow, today = true, dayK = '') {
   // The bar at the foot, held there as the heads are at the top: under each column the number of the bus out on it
   // now, a tap to it on the map. The user: 'can we also show the bus number itself on the all day view', then 'a bar at
   // the bottom maybe?'. The columns are too narrow to write it by the dot. Only today, with the feed's buses.
-  const foot = feet.some(Boolean) ? `<div class="ds-foot"><span class="ds-corner">Bus</span><div class="ds-headrow" style="width:${W}px">${feet.map((v, c) => v ? `<a class="ds-vn" href="#/map/bus/${encodeURIComponent(v.id)}" style="left:${c * CW}px" aria-label="Bus ${esc(v.label)}">${esc(v.label)}</a>` : '').join('')}</div></div>` : '';
+  // Under each number how far off its timetable the bus is (a coworker at dispatch, 25 Nov: beside the dot it was hard
+  // to see, red on the red now line and over the next column; Aaron: 'the bottom is fine. but colors can also be our
+  // friend'). Behind minus, ahead plus, as dispatch counts it; early blue, a little late an amber
+  // outline (ordinary running, quiet: a second opinion), 5 or more late red.
+  const adh = dl => dl === null ? '' : `<small class="ds-adh ${dl < 0 ? 'early' : dl >= 5 ? 'late' : 'behind'}">${dl > 0 ? '−' : '+'}${Math.abs(dl)}</small>`;
+  const offs = feet.some(f => f && f.dl !== null);
+  const foot = feet.some(Boolean) ? `<div class="ds-foot${offs ? ' adh' : ''}"><span class="ds-corner">Bus</span><div class="ds-headrow" style="width:${W}px">${feet.map((f, c) => f ? `<a class="ds-vn" href="#/map/bus/${encodeURIComponent(f.bus.id)}" style="left:${c * CW}px" aria-label="${esc('Bus ' + f.bus.label + (f.dl !== null ? ' · ' + lateWords(f.dl) : ''))}">${esc(f.bus.label)}${adh(f.dl)}</a>` : '').join('')}</div></div>` : '';
   // Where it opens: at now; before the day's first bus, its start; after its last, its end.
   const at = nowY !== null ? nowY : clockNow.min > bot ? H : 0;
   // One box that scrolls both ways, the room under it high: its heads held at its top and its hours at its left by the
